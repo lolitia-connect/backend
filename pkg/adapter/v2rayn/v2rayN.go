@@ -4,11 +4,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/perfect-panel/server/pkg/adapter/proxy"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/perfect-panel/server/pkg/adapter/proxy"
 )
 
 type v2rayShareLink struct {
@@ -69,11 +70,19 @@ func (m *V2rayN) buildShadowsocks(uuid string, data proxy.Proxy) string {
 	if !ok {
 		return ""
 	}
+
+	password := uuid
+	// SIP022 AEAD-2022 Ciphers
+	if strings.Contains(ss.Method, "2022") {
+		serverKey, userKey := proxy.GenerateShadowsocks2022Password(ss, uuid)
+		password = fmt.Sprintf("%s:%s", serverKey, userKey)
+	}
+
 	// sip002
 	u := &url.URL{
 		Scheme: "ss",
 		// 还没有写 2022 的
-		User:     url.User(strings.TrimSuffix(base64.URLEncoding.EncodeToString([]byte(ss.Method+":"+uuid)), "=")),
+		User:     url.User(strings.TrimSuffix(base64.URLEncoding.EncodeToString([]byte(ss.Method+":"+password)), "=")),
 		Host:     net.JoinHostPort(data.Server, strconv.Itoa(data.Port)),
 		Fragment: data.Name,
 	}

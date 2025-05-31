@@ -2,6 +2,7 @@ package clash
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/perfect-panel/server/pkg/adapter/proxy"
 )
@@ -19,6 +20,11 @@ func parseShadowsocks(s proxy.Proxy, uuid string) (*Proxy, error) {
 		Cipher:   config.Method,
 		Password: uuid,
 		UDP:      true,
+	}
+
+	if strings.Contains(p.Cipher, "2022") {
+		serverKey, userKey := proxy.GenerateShadowsocks2022Password(config, uuid)
+		p.Password = fmt.Sprintf("%s:%s", serverKey, userKey)
 	}
 
 	return p, nil

@@ -1,6 +1,8 @@
 package clash
 
-import "github.com/perfect-panel/server/pkg/adapter/proxy"
+import (
+	"github.com/perfect-panel/server/pkg/adapter/proxy"
+)
 
 func clashTransport(c *Proxy, transportType string, transportConfig proxy.TransportConfig) {
 

@@ -73,11 +73,17 @@ func ShadowsocksUri(data proxy.Proxy, uuid string) string {
 	if !ok {
 		return ""
 	}
-	// sip002
+
+	password := uuid
+	// SIP022 AEAD-2022 Ciphers
+	if strings.Contains(ss.Method, "2022") {
+		serverKey, userKey := proxy.GenerateShadowsocks2022Password(ss, uuid)
+		password = fmt.Sprintf("%s:%s", serverKey, userKey)
+	}
+
 	u := &url.URL{
-		Scheme: "ss",
-		// 还没有写 2022 的
-		User:     url.User(strings.TrimSuffix(base64.URLEncoding.EncodeToString([]byte(ss.Method+":"+uuid)), "=")),
+		Scheme:   "ss",
+		User:     url.User(strings.TrimSuffix(base64.URLEncoding.EncodeToString([]byte(ss.Method+":"+password)), "=")),
 		Host:     net.JoinHostPort(data.Server, strconv.Itoa(data.Port)),
 		Fragment: data.Name,
 	}

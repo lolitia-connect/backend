@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	"github.com/perfect-panel/server/pkg/adapter/proxy"
-	"github.com/perfect-panel/server/pkg/tool"
-	"github.com/perfect-panel/server/pkg/uuidx"
 )
 
 func buildShadowsocks(data proxy.Proxy, password string) string {
@@ -18,7 +16,7 @@ func buildShadowsocks(data proxy.Proxy, password string) string {
 	}
 
 	if strings.Contains(shadowsocks.Method, "2022") {
-		serverKey, userKey := generateShadowsocks2022Password(shadowsocks, password)
+		serverKey, userKey := proxy.GenerateShadowsocks2022Password(shadowsocks, password)
 		password = fmt.Sprintf("%s:%s", serverKey, userKey)
 	}
 
@@ -33,17 +31,4 @@ func buildShadowsocks(data proxy.Proxy, password string) string {
 	}
 	uri := strings.Join(configs, ",")
 	return uri + "\r\n"
-}
-
-func generateShadowsocks2022Password(ss proxy.Shadowsocks, password string) (string, string) {
-	// server key
-	var serverKey string
-	if ss.Method == "2022-blake3-aes-128-gcm" {
-		serverKey = tool.GenerateCipher(ss.ServerKey, 16)
-		password = uuidx.UUIDToBase64(password, 16)
-	} else {
-		serverKey = tool.GenerateCipher(ss.ServerKey, 32)
-		password = uuidx.UUIDToBase64(password, 32)
-	}
-	return serverKey, password
 }

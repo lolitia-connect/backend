@@ -12,6 +12,10 @@ func buildShadowsocks(data proxy.Proxy, uuid string) string {
 	if !ok {
 		return ""
 	}
+	// Not supporting SIP022 AEAD-2022 Ciphers
+	if strings.Contains(ss.Method, "2022") {
+		return ""
+	}
 	addr := fmt.Sprintf("%s=ss, %s, %d", data.Name, data.Server, data.Port)
 	config := []string{
 		addr,

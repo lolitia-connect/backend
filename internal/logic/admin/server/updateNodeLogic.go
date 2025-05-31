@@ -86,6 +86,26 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 		}
 		config, _ = json.Marshal(cfg)
 		nodeInfo.Config = string(config)
+	} else if req.Protocol == "shadowsocks" {
+		var cfg types.Shadowsocks
+		if err = json.Unmarshal(config, &cfg); err != nil {
+			l.Errorf("[CreateNode] Unmarshal Shadowsocks Config Error: %v", err.Error())
+			return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "json.Unmarshal error: %v", err.Error())
+		}
+		if strings.Contains(cfg.Method, "2022") {
+			var length int
+			switch cfg.Method {
+			case "2022-blake3-aes-128-gcm":
+				length = 16
+			default:
+				length = 32
+			}
+			if len(cfg.ServerKey) != length {
+				cfg.ServerKey = tool.GenerateCipher(cfg.ServerKey, length)
+			}
+		}
+		config, _ = json.Marshal(cfg)
+		nodeInfo.Config = string(config)
 	}
 	err = l.svcCtx.ServerModel.Update(l.ctx, nodeInfo)
 	if err != nil {

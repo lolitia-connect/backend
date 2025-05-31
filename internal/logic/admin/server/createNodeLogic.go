@@ -56,7 +56,7 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 	serverInfo.RelayNode = string(nodeRelay)
 	if req.Protocol == "vless" {
 		var cfg types.Vless
-		if err := json.Unmarshal(config, &cfg); err != nil {
+		if err = json.Unmarshal(config, &cfg); err != nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "json.Unmarshal error: %v", err.Error())
 		}
 		if cfg.Security == "reality" && cfg.SecurityConfig.RealityPublicKey == "" {
@@ -73,6 +73,26 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 		}
 		if cfg.SecurityConfig.RealityServerPort == 0 {
 			cfg.SecurityConfig.RealityServerPort = 443
+		}
+		config, _ = json.Marshal(cfg)
+		serverInfo.Config = string(config)
+	} else if req.Protocol == "shadowsocks" {
+		var cfg types.Shadowsocks
+		if err = json.Unmarshal(config, &cfg); err != nil {
+			l.Errorf("[CreateNode] Unmarshal Shadowsocks Config Error: %v", err.Error())
+			return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "json.Unmarshal error: %v", err.Error())
+		}
+		if strings.Contains(cfg.Method, "2022") {
+			var length int
+			switch cfg.Method {
+			case "2022-blake3-aes-128-gcm":
+				length = 16
+			default:
+				length = 32
+			}
+			if len(cfg.ServerKey) != length {
+				cfg.ServerKey = tool.GenerateCipher(cfg.ServerKey, length)
+			}
 		}
 		config, _ = json.Marshal(cfg)
 		serverInfo.Config = string(config)

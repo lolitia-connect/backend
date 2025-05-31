@@ -39,7 +39,7 @@ func (l *UpdatePaymentMethodLogic) UpdatePaymentMethod(req *types.UpdatePaymentM
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %s", err.Error())
 	}
 	config := parsePaymentPlatformConfig(l.ctx, payment.ParsePlatform(req.Platform), req.Config)
-	tool.DeepCopy(method, req)
+	tool.DeepCopy(method, req, tool.CopyWithIgnoreEmpty(false))
 	method.Config = config
 	if err := l.svcCtx.PaymentModel.Update(l.ctx, method); err != nil {
 		l.Errorw("update payment method error", logger.Field("id", req.Id), logger.Field("error", err.Error()))

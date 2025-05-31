@@ -37,7 +37,7 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 	if err != nil {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server error: %v", err)
 	}
-	tool.DeepCopy(nodeInfo, req)
+	tool.DeepCopy(nodeInfo, req, tool.CopyWithIgnoreEmpty(false))
 	config, err := json.Marshal(req.Config)
 	if err != nil {
 		return err
@@ -50,8 +50,14 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 		return err
 	}
 
-	if len(req.Tags) > 0 {
+	// 处理Tags字段
+	switch {
+	case len(req.Tags) > 0:
+		// 有Tags，进行连接
 		nodeInfo.Tags = strings.Join(req.Tags, ",")
+	default:
+		// 空数组，清空Tags
+		nodeInfo.Tags = ""
 	}
 
 	nodeInfo.City = req.City

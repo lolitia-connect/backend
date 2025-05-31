@@ -117,9 +117,12 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*server.Server, 
 	serverIds := tool.StringToInt64Slice(subDetails.Server)
 	groupIds := tool.StringToInt64Slice(subDetails.ServerGroup)
 
-	logger.Debugf("[Generate Subscribe]serverIds: %v, groupIds: %v", serverIds, groupIds)
+	l.Debugf("[Generate Subscribe]serverIds: %v, groupIds: %v", serverIds, groupIds)
 
 	servers, err := l.svc.ServerModel.FindServerDetailByGroupIdsAndIds(l.ctx.Request.Context(), groupIds, serverIds)
+
+	l.Debugf("[Query Subscribe]found servers: %v", len(servers))
+
 	if err != nil {
 		l.Errorw("[Generate Subscribe]find server details error: %v", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server details error: %v", err.Error())

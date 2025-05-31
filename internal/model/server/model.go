@@ -117,13 +117,16 @@ func (m *customServerModel) FindServerDetailByGroupIdsAndIds(ctx context.Context
 	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
 		conn = conn.
 			Model(&Server{}).
-			Where("enable = ?", true)
-		if len(groupId) > 0 {
-			conn = conn.Or("group_id IN ?", groupId)
+			Where("`enable` = ?", true)
+		if len(groupId) > 0 && len(ids) > 0 {
+			// OR is used to connect group_id and id conditions
+			conn = conn.Where("(`group_id` IN ? OR `id` IN ?)", groupId, ids)
+		} else if len(groupId) > 0 {
+			conn = conn.Where("`group_id` IN ?", groupId)
+		} else if len(ids) > 0 {
+			conn = conn.Where("`id` IN ?", ids)
 		}
-		if len(ids) > 0 {
-			conn = conn.Where("id IN ?", ids)
-		}
+
 		return conn.Order("sort ASC").Find(v).Error
 	})
 	return list, err

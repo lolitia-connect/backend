@@ -275,4 +275,3 @@ service ppanel {
 	@handler GetUserLoginLogs
 	get /login/logs (GetUserLoginLogsRequest) returns (GetUserLoginLogsResponse)
 }
-

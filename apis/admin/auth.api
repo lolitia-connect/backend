@@ -26,16 +26,14 @@ type (
 		List []AuthMethodConfig `json:"list"`
 	}
 
-
 	TestSmsSendRequest {
-		AreaCode string `json:"area_code" validate:"required"`
+		AreaCode  string `json:"area_code" validate:"required"`
 		Telephone string `json:"telephone" validate:"required"`
 	}
 	// Test email smtp request
 	TestEmailSendRequest {
 		Email string `json:"email" validate:"required"`
 	}
-
 )
 
 @server (
@@ -56,7 +54,6 @@ service ppanel {
 	@handler UpdateAuthMethodConfig
 	put /config (UpdateAuthMethodConfigRequest) returns (AuthMethodConfig)
 
-
 	@doc "Test sms send"
 	@handler TestSmsSend
 	post /test_sms_send (TestSmsSendRequest)
@@ -73,4 +70,3 @@ service ppanel {
 	@handler GetEmailPlatform
 	get /email_platform returns (PlatformResponse)
 }
-

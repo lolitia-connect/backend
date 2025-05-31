@@ -202,4 +202,3 @@ service ppanel {
 	@handler UpdateVerifyCodeConfig
 	put /verify_code_config (VerifyCodeConfig)
 }
-

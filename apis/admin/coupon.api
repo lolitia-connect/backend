@@ -21,8 +21,8 @@ type (
 		ExpireTime int64   `json:"expire_time" validate:"required"`
 		UserLimit  int64   `json:"user_limit,omitempty"`
 		Subscribe  []int64 `json:"subscribe,omitempty"`
-		UsedCount  int64 `json:"used_count,omitempty"`
-		Enable     *bool `json:"enable,omitempty"`
+		UsedCount  int64   `json:"used_count,omitempty"`
+		Enable     *bool   `json:"enable,omitempty"`
 	}
 	UpdateCouponRequest {
 		Id         int64   `json:"id" validate:"required"`
@@ -35,8 +35,8 @@ type (
 		ExpireTime int64   `json:"expire_time" validate:"required"`
 		UserLimit  int64   `json:"user_limit,omitempty"`
 		Subscribe  []int64 `json:"subscribe,omitempty"`
-		UsedCount  int64 `json:"used_count,omitempty"`
-		Enable     *bool `json:"enable,omitempty"`
+		UsedCount  int64   `json:"used_count,omitempty"`
+		Enable     *bool   `json:"enable,omitempty"`
 	}
 	DeleteCouponRequest {
 		Id int64 `json:"id" validate:"required"`
@@ -82,4 +82,3 @@ service ppanel {
 	@handler GetCouponList
 	get /list (GetCouponListRequest) returns (GetCouponListResponse)
 }
-

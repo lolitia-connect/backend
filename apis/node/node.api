@@ -44,9 +44,9 @@ type (
 		ServerCommon
 	}
 	GetServerConfigResponse {
-		Basic       ServerBasic          `json:"basic"`
-		Protocol    string               `json:"protocol"`
-		Config 		interface{} `json:"config"`
+		Basic    ServerBasic `json:"basic"`
+		Protocol string      `json:"protocol"`
+		Config   interface{} `json:"config"`
 	}
 	ServerBasic {
 		PushInterval int64 `json:"push_interval"`
@@ -60,8 +60,8 @@ type (
 	ServerUser {
 		Id          int64  `json:"id"`
 		UUID        string `json:"uuid"`
-		SpeedLimit  int64 `json:"speed_limit"`
-		DeviceLimit int64 `json:"device_limit"`
+		SpeedLimit  int64  `json:"speed_limit"`
+		DeviceLimit int64  `json:"device_limit"`
 	}
 	GetServerUserListRequest {
 		ServerCommon
@@ -118,4 +118,3 @@ service ppanel {
 	@handler PushOnlineUsers
 	post /online (OnlineUsersRequest)
 }
-

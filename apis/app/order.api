@@ -12,7 +12,6 @@ import (
 	"../types.api"
 )
 
-
 @server (
 	prefix:     v1/app/order
 	group:      app/order
@@ -55,4 +54,3 @@ service ppanel {
 	@handler QueryOrderList
 	get /list (QueryOrderListRequest) returns (QueryOrderListResponse)
 }
-

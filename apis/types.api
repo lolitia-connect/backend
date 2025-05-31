@@ -426,7 +426,7 @@ type (
 		Subscribe   Subscribe `json:"subscribe"`
 		StartTime   int64     `json:"start_time"`
 		ExpireTime  int64     `json:"expire_time"`
-		FinishedAt int64 `json:"finished_at"`
+		FinishedAt  int64     `json:"finished_at"`
 		ResetTime   int64     `json:"reset_time"`
 		Traffic     int64     `json:"traffic"`
 		Download    int64     `json:"download"`
@@ -505,7 +505,7 @@ type (
 	}
 	ServerRuleGroup {
 		Id        int64    `json:"id"`
-		Icon string `json:"icon"`
+		Icon      string   `json:"icon"`
 		Name      string   `json:"name" validate:"required"`
 		Tags      []string `json:"tags"`
 		Rules     string   `json:"rules"`
@@ -557,8 +557,8 @@ type (
 	//public order
 	PurchaseOrderRequest {
 		SubscribeId int64  `json:"subscribe_id"`
-		Quantity int64 `json:"quantity" validate:"required,gt=0"`
-		Payment int64 `json:"payment,omitempty"`
+		Quantity    int64  `json:"quantity" validate:"required,gt=0"`
+		Payment     int64  `json:"payment,omitempty"`
 		Coupon      string `json:"coupon,omitempty"`
 	}
 	PreOrderResponse {
@@ -713,38 +713,37 @@ type (
 		TotalCommission int64 `json:"total_commission"`
 	}
 
-	AppUserSubcbribe{
-		Id               int64    `json:"id"`
-		Name            string    `json:"name"`
-		Upload          int64     `json:"upload"`
-		Traffic         int64     `json:"traffic"`
-		Download        int64     `json:"download"`
-		DeviceLimit     int64     `json:"device_limit"`
-		StartTime       string    `json:"start_time"`
-		ExpireTime      string    `json:"expire_time"`
-		List []AppUserSubscbribeNode `json:"list"`
+	AppUserSubcbribe {
+		Id          int64                   `json:"id"`
+		Name        string                  `json:"name"`
+		Upload      int64                   `json:"upload"`
+		Traffic     int64                   `json:"traffic"`
+		Download    int64                   `json:"download"`
+		DeviceLimit int64                   `json:"device_limit"`
+		StartTime   string                  `json:"start_time"`
+		ExpireTime  string                  `json:"expire_time"`
+		List        []AppUserSubscbribeNode `json:"list"`
 	}
 
-	AppUserSubscbribeNode{
-		Id              int64     `json:"id"`
-		Name            string    `json:"name"`
-		Uuid            string    `json:"uuid"`
-		Protocol        string    `json:"protocol"`
-		RelayMode       string    `json:"relay_mode"`
-		RelayNode       string    `json:"relay_node"`
-		ServerAddr      string    `json:"server_addr"`
-		SpeedLimit      int       `json:"speed_limit"`
-		Tags            []string  `json:"tags"`
-		Traffic         int64     `json:"traffic"`
-		TrafficRatio    float64   `json:"traffic_ratio"`
-		Upload          int64     `json:"upload"`
-		Config          string    `json:"config"`
-		Country         string    `json:"country"`
-		City            string    `json:"city"`
-		Latitude       string     `json:"latitude"`
-		Longitude      string     `json:"longitude"`
-		CreatedAt       int64     `json:"created_at"`
-		Download        int64     `json:"download"`
+	AppUserSubscbribeNode {
+		Id           int64    `json:"id"`
+		Name         string   `json:"name"`
+		Uuid         string   `json:"uuid"`
+		Protocol     string   `json:"protocol"`
+		RelayMode    string   `json:"relay_mode"`
+		RelayNode    string   `json:"relay_node"`
+		ServerAddr   string   `json:"server_addr"`
+		SpeedLimit   int      `json:"speed_limit"`
+		Tags         []string `json:"tags"`
+		Traffic      int64    `json:"traffic"`
+		TrafficRatio float64  `json:"traffic_ratio"`
+		Upload       int64    `json:"upload"`
+		Config       string   `json:"config"`
+		Country      string   `json:"country"`
+		City         string   `json:"city"`
+		Latitude     string   `json:"latitude"`
+		Longitude    string   `json:"longitude"`
+		CreatedAt    int64    `json:"created_at"`
+		Download     int64    `json:"download"`
 	}
 )
-

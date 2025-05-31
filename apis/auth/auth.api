@@ -11,11 +11,11 @@ info (
 type (
 	// User login request
 	UserLoginRequest {
-		Email    string `json:"email" validate:"required"`
-		Password string `json:"password" validate:"required"`
-		IP       string `header:"X-Original-Forwarded-For"`
+		Email     string `json:"email" validate:"required"`
+		Password  string `json:"password" validate:"required"`
+		IP        string `header:"X-Original-Forwarded-For"`
 		UserAgent string `header:"User-Agent"`
-		CfToken  string `json:"cf_token,optional"`
+		CfToken   string `json:"cf_token,optional"`
 	}
 	// Check user is exist request
 	CheckUserRequest {
@@ -23,32 +23,32 @@ type (
 	}
 	// User login response
 	CheckUserResponse {
-		exist bool `json:"exist"`
+		Exist bool `json:"exist"`
 	}
 	// User login response
 	UserRegisterRequest {
-		Email    string `json:"email" validate:"required"`
-		Password string `json:"password" validate:"required"`
-		Invite   string `json:"invite,optional"`
-		Code     string `json:"code,optional"`
-		IP       string `header:"X-Original-Forwarded-For"`
+		Email     string `json:"email" validate:"required"`
+		Password  string `json:"password" validate:"required"`
+		Invite    string `json:"invite,optional"`
+		Code      string `json:"code,optional"`
+		IP        string `header:"X-Original-Forwarded-For"`
 		UserAgent string `header:"User-Agent"`
-		CfToken  string `json:"cf_token,optional"`
+		CfToken   string `json:"cf_token,optional"`
 	}
 	// User login response
 	ResetPasswordRequest {
-		Email    string `json:"email" validate:"required"`
-		Password string `json:"password" validate:"required"`
-		Code     string `json:"code,optional"`
-		IP       string `header:"X-Original-Forwarded-For"`
+		Email     string `json:"email" validate:"required"`
+		Password  string `json:"password" validate:"required"`
+		Code      string `json:"code,optional"`
+		IP        string `header:"X-Original-Forwarded-For"`
 		UserAgent string `header:"User-Agent"`
-		CfToken  string `json:"cf_token,optional"`
+		CfToken   string `json:"cf_token,optional"`
 	}
 	LoginResponse {
 		Token string `json:"token"`
 	}
 	OAthLoginRequest {
-		Method string `json:"method" validate:"required"` // google, facebook, apple, telegram, github etc.
+		Method   string `json:"method" validate:"required"` // google, facebook, apple, telegram, github etc.
 		Redirect string `json:"redirect"`
 	}
 	OAuthLoginResponse {
@@ -56,7 +56,7 @@ type (
 	}
 
 	OAuthLoginGetTokenRequest {
-		Method string `json:"method" validate:"required"` // google, facebook, apple, telegram, github etc.
+		Method   string      `json:"method" validate:"required"` // google, facebook, apple, telegram, github etc.
 		Callback interface{} `json:"callback" validate:"required"`
 	}
 
@@ -76,7 +76,7 @@ type (
 	}
 	// User login response
 	TelephoneCheckUserResponse {
-		exist bool `json:"exist"`
+		Exist bool `json:"exist"`
 	}
 	// User login response
 	TelephoneRegisterRequest {
@@ -103,7 +103,7 @@ type (
 		State   string `form:"state"`
 	}
 	GoogleLoginCallbackRequest {
-		Code string `form:"code"`
+		Code  string `form:"code"`
 		State string `form:"state"`
 	}
 )
@@ -163,4 +163,3 @@ service ppanel {
 	@handler AppleLoginCallback
 	post /callback/apple (AppleLoginCallbackRequest)
 }
-

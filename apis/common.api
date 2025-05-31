@@ -70,14 +70,14 @@ type (
 		List []Ads `json:"list"`
 	}
 	CheckVerificationCodeRequest {
-	    Method string `json:"method" validate:"required,oneof=email mobile"`
+		Method  string `json:"method" validate:"required,oneof=email mobile"`
 		Account string `json:"account" validate:"required"`
-		Code  string `json:"code" validate:"required"`
-		Type  uint8  `json:"type" validate:"required"`
+		Code    string `json:"code" validate:"required"`
+		Type    uint8  `json:"type" validate:"required"`
 	}
 
-	CheckVerificationCodeRespone{
-	   Status bool `json:"status"`
+	CheckVerificationCodeRespone {
+		Status bool `json:"status"`
 	}
 )
 
@@ -122,4 +122,3 @@ service ppanel {
 	@handler CheckVerificationCode
 	post /check_verification_code (CheckVerificationCodeRequest) returns (CheckVerificationCodeRespone)
 }
-

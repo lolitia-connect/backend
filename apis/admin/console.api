@@ -85,4 +85,3 @@ service ppanel {
 	@handler QueryTicketWaitReply
 	get /ticket returns (TicketWaitRelpyResponse)
 }
-

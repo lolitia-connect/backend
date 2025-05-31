@@ -76,4 +76,3 @@ service ppanel {
 	@handler GetAdsDetail
 	get /detail (GetAdsDetailRequest) returns (Ads)
 }
-

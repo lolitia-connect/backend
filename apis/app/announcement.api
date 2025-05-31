@@ -10,7 +10,6 @@ info (
 
 import "../types.api"
 
-
 @server (
 	prefix:     v1/app/announcement
 	group:      app/announcement
@@ -21,4 +20,3 @@ service ppanel {
 	@handler QueryAnnouncement
 	get /list (QueryAnnouncementRequest) returns (QueryAnnouncementResponse)
 }
-

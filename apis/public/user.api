@@ -95,22 +95,22 @@ type (
 
 	GetSubscribeLogResponse {
 		List  []UserSubscribeLog `json:"list"`
-		Total int64             `json:"total"`
+		Total int64              `json:"total"`
 	}
 
-	UpdateBindMobileRequest{
-		AreaCode 	string `json:"area_code" validate:"required"`
-		Mobile 		string `json:"mobile" validate:"required"`
-		Code  		string `json:"code" validate:"required"`
+	UpdateBindMobileRequest {
+		AreaCode string `json:"area_code" validate:"required"`
+		Mobile   string `json:"mobile" validate:"required"`
+		Code     string `json:"code" validate:"required"`
 	}
 
-	UpdateBindEmailRequest{
-		Email 		string `json:"email" validate:"required"`
+	UpdateBindEmailRequest {
+		Email string `json:"email" validate:"required"`
 	}
 
 	VerifyEmailRequest {
-		Email 		string `json:"email" validate:"required"`
-		Code   		string `json:"code" validate:"required"`
+		Email string `json:"email" validate:"required"`
+		Code  string `json:"code" validate:"required"`
 	}
 )
 
@@ -208,4 +208,3 @@ service ppanel {
 	@handler UpdateBindEmail
 	put /bind_email (UpdateBindEmailRequest)
 }
-

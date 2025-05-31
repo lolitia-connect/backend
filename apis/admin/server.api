@@ -14,7 +14,7 @@ type (
 	GetNodeServerListRequest {
 		Page    int    `form:"page" validate:"required"`
 		Size    int    `form:"size" validate:"required"`
-		Tags string `form:"tags,omitempty"`
+		Tags    string `form:"tags,omitempty"`
 		GroupId int64  `form:"group_id,omitempty"`
 		Search  string `form:"search,omitempty"`
 	}
@@ -88,14 +88,14 @@ type (
 	}
 	CreateRuleGroupRequest {
 		Name   string   `json:"name" validate:"required"`
-		Icon string `json:"icon"`
+		Icon   string   `json:"icon"`
 		Tags   []string `json:"tags"`
 		Rules  string   `json:"rules"`
 		Enable bool     `json:"enable"`
 	}
 	UpdateRuleGroupRequest {
 		Id     int64    `json:"id" validate:"required"`
-		Icon string `json:"icon"`
+		Icon   string   `json:"icon"`
 		Name   string   `json:"name" validate:"required"`
 		Tags   []string `json:"tags"`
 		Rules  string   `json:"rules"`
@@ -187,4 +187,3 @@ service ppanel {
 	@handler GetRuleGroupList
 	get /rule_group_list returns (GetRuleGroupResponse)
 }
-

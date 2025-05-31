@@ -11,10 +11,9 @@ info (
 import "../types.api"
 
 type (
-
 	GetUserTicketListResponse {
-		Total int64        `json:"total"`
-		List  []Ticket 	   `json:"list"`
+		Total int64    `json:"total"`
+		List  []Ticket `json:"list"`
 	}
 	CreateUserTicketRequest {
 		Title       string `json:"title"`
@@ -34,10 +33,10 @@ type (
 		Status *uint8 `json:"status" validate:"required"`
 	}
 	CreateUserTicketFollowRequest {
-		TicketId  int64  `json:"ticket_id"`
-		From      string `json:"from"`
-		Type      uint8  `json:"type"`
-		Content   string `json:"content"`
+		TicketId int64  `json:"ticket_id"`
+		From     string `json:"from"`
+		Type     uint8  `json:"type"`
+		Content  string `json:"content"`
 	}
 )
 
@@ -67,4 +66,3 @@ service ppanel {
 	@handler CreateUserTicket
 	post / (CreateUserTicketRequest)
 }
-

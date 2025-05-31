@@ -9,7 +9,7 @@ info (
 )
 
 import "../types.api"
- 
+
 @server (
 	prefix:     v1/public/subscribe
 	group:      public/subscribe
@@ -28,4 +28,3 @@ service ppanel {
 	@handler QueryApplicationConfig
 	get /application/config returns (ApplicationResponse)
 }
-

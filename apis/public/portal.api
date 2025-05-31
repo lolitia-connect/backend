@@ -19,7 +19,7 @@ type (
 		SubscribeId    int64  `json:"subscribe_id"`
 		Quantity       int64  `json:"quantity"`
 		Coupon         string `json:"coupon,omitempty"`
-		InviteCode string `json:"invite_code,omitempty"`
+		InviteCode     string `json:"invite_code,omitempty"`
 		TurnstileToken string `json:"turnstile_token,omitempty"`
 	}
 	PortalPurchaseResponse {
@@ -29,7 +29,7 @@ type (
 		List []Subscribe `json:"list"`
 	}
 	PrePurchaseOrderRequest {
-		Payment int64 `json:"payment,omitempty"`
+		Payment     int64  `json:"payment,omitempty"`
 		SubscribeId int64  `json:"subscribe_id"`
 		Quantity    int64  `json:"quantity"`
 		Coupon      string `json:"coupon,omitempty"`
@@ -93,4 +93,3 @@ service ppanel {
 	@handler PurchaseCheckout
 	post /order/checkout (CheckoutOrderRequest) returns (CheckoutOrderResponse)
 }
-

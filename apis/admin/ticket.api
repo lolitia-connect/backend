@@ -12,14 +12,14 @@ import "../types.api"
 
 type (
 	UpdateTicketStatusRequest {
-		Id     int64 `json:"id" validate:"required"`
+		Id     int64  `json:"id" validate:"required"`
 		Status *uint8 `json:"status" validate:"required"`
 	}
 	GetTicketListRequest {
 		Page   int64  `form:"page"`
 		Size   int64  `form:"size"`
 		UserId int64  `form:"user_id,omitempty"`
-		Status *uint8  `form:"status,omitempty"`
+		Status *uint8 `form:"status,omitempty"`
 		Search string `form:"search,omitempty"`
 	}
 	GetTicketListResponse {
@@ -59,4 +59,3 @@ service ppanel {
 	@handler CreateTicketFollow
 	post /follow (CreateTicketFollowRequest)
 }
-

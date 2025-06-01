@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
@@ -61,6 +62,13 @@ func (l *GetServerConfigLogic) GetServerConfig(req *types.GetServerConfigRequest
 		l.Errorw("[GetServerConfig] json unmarshal error", logger.Field("error", err.Error()))
 		return nil, err
 	}
+
+	if nodeInfo.Protocol == "shadowsocks" {
+		if value, ok := cfg["server_key"]; ok && value != "" {
+			cfg["server_key"] = base64.StdEncoding.EncodeToString([]byte(value.(string)))
+		}
+	}
+
 	resp = &types.GetServerConfigResponse{
 		Basic: types.ServerBasic{
 			PullInterval: l.svcCtx.Config.Node.NodePullInterval,

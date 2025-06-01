@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/perfect-panel/server/pkg/constant"
@@ -50,6 +51,15 @@ func (l *QueryUserSubscribeLogic) QueryUserSubscribe() (resp *types.QueryUserSub
 	for _, item := range data {
 		var sub types.UserSubscribe
 		tool.DeepCopy(&sub, item)
+
+		// 解析Discount字段 避免在续订时只能续订一个月
+		if item.Subscribe != nil && item.Subscribe.Discount != "" {
+			var discounts []types.SubscribeDiscount
+			if err := json.Unmarshal([]byte(item.Subscribe.Discount), &discounts); err == nil {
+				sub.Subscribe.Discount = discounts
+			}
+		}
+
 		sub.ResetTime = calculateNextResetTime(&sub)
 		resp.List = append(resp.List, sub)
 	}

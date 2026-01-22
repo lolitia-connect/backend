@@ -152,6 +152,7 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 	)
 
 	var userInfo *user.User
+	var trialSubscribe *user.Subscribe
 	err := l.svcCtx.UserModel.Transaction(l.ctx, func(db *gorm.DB) error {
 		// Create new user
 		userInfo = &user.User{
@@ -212,8 +213,10 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 
 		// Activate trial if enabled
 		if l.svcCtx.Config.Register.EnableTrial {
-			if err := l.activeTrial(userInfo.Id, db); err != nil {
-				return err
+			var trialErr error
+			trialSubscribe, trialErr = l.activeTrial(userInfo.Id, db)
+			if trialErr != nil {
+				return trialErr
 			}
 		}
 
@@ -226,6 +229,25 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 			logger.Field("error", err.Error()),
 		)
 		return nil, err
+	}
+
+	// Clear cache after transaction success
+	if l.svcCtx.Config.Register.EnableTrial && trialSubscribe != nil {
+		// Clear user subscription cache
+		if err = l.svcCtx.UserModel.ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
+			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", trialSubscribe.Id))
+			// Don't return error, just log it
+		}
+		// Clear subscription cache
+		if err = l.svcCtx.SubscribeModel.ClearCache(l.ctx, trialSubscribe.SubscribeId); err != nil {
+			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", trialSubscribe.SubscribeId))
+			// Don't return error, just log it
+		}
+		// Clear all server cache
+		if err = l.svcCtx.NodeModel.ClearServerAllCache(l.ctx); err != nil {
+			l.Errorf("ClearServerAllCache error: %v", err.Error())
+			// Don't return error, just log it
+		}
 	}
 
 	l.Infow("device registration completed successfully",
@@ -260,7 +282,7 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 	return userInfo, nil
 }
 
-func (l *DeviceLoginLogic) activeTrial(userId int64, db *gorm.DB) error {
+func (l *DeviceLoginLogic) activeTrial(userId int64, db *gorm.DB) (*user.Subscribe, error) {
 	sub, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, l.svcCtx.Config.Register.TrialSubscribe)
 	if err != nil {
 		l.Errorw("failed to find trial subscription template",
@@ -268,7 +290,7 @@ func (l *DeviceLoginLogic) activeTrial(userId int64, db *gorm.DB) error {
 			logger.Field("trial_subscribe_id", l.svcCtx.Config.Register.TrialSubscribe),
 			logger.Field("error", err.Error()),
 		)
-		return err
+		return nil, err
 	}
 
 	startTime := time.Now()
@@ -295,7 +317,7 @@ func (l *DeviceLoginLogic) activeTrial(userId int64, db *gorm.DB) error {
 			logger.Field("user_id", userId),
 			logger.Field("error", err.Error()),
 		)
-		return err
+		return nil, err
 	}
 
 	l.Infow("trial subscription activated successfully",
@@ -305,8 +327,5 @@ func (l *DeviceLoginLogic) activeTrial(userId int64, db *gorm.DB) error {
 		logger.Field("traffic", sub.Traffic),
 	)
 
-	if clearErr := l.svcCtx.NodeModel.ClearServerAllCache(l.ctx); clearErr != nil {
-		l.Errorf("ClearServerAllCache error: %v", clearErr.Error())
-	}
-	return nil
+	return userSub, nil
 }

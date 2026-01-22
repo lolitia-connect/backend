@@ -45,6 +45,7 @@ func NewTelephoneUserRegisterLogic(ctx context.Context, svcCtx *svc.ServiceConte
 
 func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneRegisterRequest) (resp *types.LoginResponse, err error) {
 	c := l.svcCtx.Config.Register
+	var trialSubscribe *user.Subscribe
 	// Check if the registration is stopped
 	if c.StopRegister {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.StopRegister), "stop register")
@@ -135,12 +136,36 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		}
 		if l.svcCtx.Config.Register.EnableTrial {
 			// Active trial
-			if err = l.activeTrial(userInfo.Id); err != nil {
-				return err
+			var trialErr error
+			trialSubscribe, trialErr = l.activeTrial(userInfo.Id)
+			if trialErr != nil {
+				return trialErr
 			}
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Clear cache after transaction success
+	if l.svcCtx.Config.Register.EnableTrial && trialSubscribe != nil {
+		// Clear user subscription cache
+		if err = l.svcCtx.UserModel.ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
+			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", trialSubscribe.Id))
+			// Don't return error, just log it
+		}
+		// Clear subscription cache
+		if err = l.svcCtx.SubscribeModel.ClearCache(l.ctx, trialSubscribe.SubscribeId); err != nil {
+			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", trialSubscribe.SubscribeId))
+			// Don't return error, just log it
+		}
+		// Clear all server cache
+		if err = l.svcCtx.NodeModel.ClearServerAllCache(l.ctx); err != nil {
+			l.Errorf("ClearServerAllCache error: %v", err.Error())
+			// Don't return error, just log it
+		}
+	}
 
 	// Bind device to user if identifier is provided
 	if req.Identifier != "" {
@@ -229,10 +254,10 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	}, nil
 }
 
-func (l *TelephoneUserRegisterLogic) activeTrial(uid int64) error {
+func (l *TelephoneUserRegisterLogic) activeTrial(uid int64) (*user.Subscribe, error) {
 	sub, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, l.svcCtx.Config.Register.TrialSubscribe)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	userSub := &user.Subscribe{
 		Id:          0,
@@ -250,10 +275,8 @@ func (l *TelephoneUserRegisterLogic) activeTrial(uid int64) error {
 	}
 	err = l.svcCtx.UserModel.InsertSubscribe(l.ctx, userSub)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if clearErr := l.svcCtx.NodeModel.ClearServerAllCache(l.ctx); clearErr != nil {
-		l.Errorf("ClearServerAllCache error: %v", clearErr.Error())
-	}
-	return err
+	return userSub, nil
 }
+

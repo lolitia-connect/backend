@@ -341,6 +341,7 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 	}
 
 	var userInfo *user.User
+	var trialSubscribe *user.Subscribe
 	err := l.svcCtx.UserModel.Transaction(l.ctx, func(db *gorm.DB) error {
 		if email != "" {
 			l.Debugw("checking if email already exists",
@@ -397,8 +398,10 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 				logger.Field("request_id", requestID),
 				logger.Field("user_id", userInfo.Id),
 			)
-			if err := l.activeTrial(userInfo.Id, requestID); err != nil {
-				return err
+			var trialErr error
+			trialSubscribe, trialErr = l.activeTrial(userInfo.Id, requestID)
+			if trialErr != nil {
+				return trialErr
 			}
 		}
 
@@ -413,6 +416,25 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 			logger.Field("duration_ms", time.Since(startTime).Milliseconds()),
 		)
 		return userInfo, err
+	}
+
+	// Clear cache after transaction success
+	if l.svcCtx.Config.Register.EnableTrial && trialSubscribe != nil {
+		// Clear user subscription cache
+		if err = l.svcCtx.UserModel.ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
+			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", trialSubscribe.Id))
+			// Don't return error, just log it
+		}
+		// Clear subscription cache
+		if err = l.svcCtx.SubscribeModel.ClearCache(l.ctx, trialSubscribe.SubscribeId); err != nil {
+			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", trialSubscribe.SubscribeId))
+			// Don't return error, just log it
+		}
+		// Clear all server cache
+		if err = l.svcCtx.NodeModel.ClearServerAllCache(l.ctx); err != nil {
+			l.Errorf("ClearServerAllCache error: %v", err.Error())
+			// Don't return error, just log it
+		}
 	}
 
 	l.Infow("user registration completed successfully",
@@ -793,7 +815,7 @@ func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, av
 	return userInfo, nil
 }
 
-func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) error {
+func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) (*user.Subscribe, error) {
 	l.Debugw("fetching trial subscription template",
 		logger.Field("request_id", requestID),
 		logger.Field("user_id", uid),
@@ -808,7 +830,7 @@ func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) error
 			logger.Field("trial_subscribe_id", l.svcCtx.Config.Register.TrialSubscribe),
 			logger.Field("error", err.Error()),
 		)
-		return err
+		return nil, err
 	}
 
 	startTime := time.Now()
@@ -848,7 +870,7 @@ func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) error
 			logger.Field("user_id", uid),
 			logger.Field("error", err.Error()),
 		)
-		return err
+		return nil, err
 	}
 
 	l.Infow("trial subscription activated successfully",
@@ -858,5 +880,5 @@ func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) error
 		logger.Field("expire_time", expireTime),
 		logger.Field("traffic", sub.Traffic),
 	)
-	return nil
+	return userSub, nil
 }

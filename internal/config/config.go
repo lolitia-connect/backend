@@ -37,9 +37,18 @@ type Config struct {
 }
 
 type RedisConfig struct {
-	Host string `yaml:"Host" default:"localhost:6379"`
-	Pass string `yaml:"Pass" default:""`
-	DB   int    `yaml:"DB" default:"0"`
+	Host         string `yaml:"Host" default:"localhost:6379"`
+	Pass         string `yaml:"Pass" default:""`
+	DB           int    `yaml:"DB" default:"0"`
+	PoolSize     int    `yaml:"PoolSize" default:"100"`    // 连接池大小（最大连接数）
+	MinIdleConns int    `yaml:"MinIdleConns" default:"10"` // 最小空闲连接数
+	MaxRetries   int    `yaml:"MaxRetries" default:"3"`    // 最大重试次数
+	PoolTimeout  int    `yaml:"PoolTimeout" default:"4"`   // 连接池超时时间（秒）
+	IdleTimeout  int    `yaml:"IdleTimeout" default:"300"` // 空闲连接超时时间（秒）
+	MaxConnAge   int    `yaml:"MaxConnAge" default:"0"`    // 连接最大生命周期（秒），0表示不限制
+	DialTimeout  int    `yaml:"DialTimeout" default:"5"`   // 连接超时时间（秒）
+	ReadTimeout  int    `yaml:"ReadTimeout" default:"3"`   // 读超时时间（秒）
+	WriteTimeout int    `yaml:"WriteTimeout" default:"3"`  // 写超时时间（秒）
 }
 
 type JwtAuth struct {

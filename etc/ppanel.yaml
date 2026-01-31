@@ -1,0 +1,45 @@
+Host:  # 服务监听地址
+Port: 8080 # 服务监听端口, 默认: 8080
+Debug: true # 是否开启调试模式, 默认: false
+
+JwtAuth: # JWT认证配置
+  AccessSecret: CHANGE_ME_TO_A_RANDOM_SECRET # 访问令牌密钥, 请修改为随机字符串
+  AccessExpire: 604800 # 访问令牌过期时间,单位秒, 默认: 604800 (7天)
+
+Logger: # 日志配置
+  FilePath: logs/ppanel.log # 日志文件路径
+  MaxSize: 50 # 日志文件最大大小, 单位MB
+  MaxBackup: 3 # 日志文件最大备份数
+  MaxAge: 30 # 日志文件最大保存时间,单位天
+  Compress: true # 是否压缩日志文件
+  Level: debug # 日志级别: debug, info, warn, error, panic, fatal
+
+MySQL:
+  Addr: 127.0.0.1:3306 # MySQL地址
+  Username: root # MySQL用户名 (与创建的用户一致)
+  Password: password # MySQL密码 (换成之前生成的随机密码)
+  Dbname: ppanel # MySQL数据库名 (与脚本创建的数据库一致)
+  Config: charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai
+  MaxIdleConns: 10
+  MaxOpenConns: 100
+  LogMode: debug
+  LogZap: true
+  SlowThreshold: 1000
+
+Redis:
+  Host: 127.0.0.1:6379 # Redis地址，格式：host:port
+  Pass:  # Redis密码，如果没有设置密码可以留空
+  DB: 0 # Redis数据库编号，默认0
+  PoolSize: 100 # 连接池大小（最大连接数），根据应用并发量调整，建议：小流量50-100，中流量100-300，大流量300-500
+  MinIdleConns: 10 # 最小空闲连接数，保持一定数量的空闲连接以减少建立连接的开销，建议为PoolSize的10%
+  MaxRetries: 3 # 最大重试次数，网络抖动时自动重试，建议2-3次
+  PoolTimeout: 4 # 连接池超时时间（秒），从连接池获取连接的最大等待时间，建议3-5秒
+  IdleTimeout: 300 # 空闲连接超时时间（秒），自动回收长时间空闲的连接，建议300-600秒（5-10分钟）
+  MaxConnAge: 0 # 连接最大生命周期（秒），定期重建连接避免长时间使用的问题，0表示不限制，建议7200秒（2小时）或0
+  DialTimeout: 5 # 连接超时时间（秒），建立新连接的超时时间，建议5秒
+  ReadTimeout: 3 # 读操作超时时间（秒），建议2-3秒
+  WriteTimeout: 3 # 写操作超时时间（秒），建议2-3秒
+
+Administrator:
+  Email: admin@ppanel.dev # 后台登录邮箱，请修改
+  Password: CHANGE_ME_TO_STRONG_PASSWORD # 后台登录密码，请修改为强密码

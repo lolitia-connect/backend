@@ -2,6 +2,7 @@ package svc
 
 import (
 	"context"
+	"time"
 
 	"github.com/perfect-panel/server/internal/model/client"
 	"github.com/perfect-panel/server/internal/model/node"
@@ -84,9 +85,18 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	}
 
 	rds := redis.NewClient(&redis.Options{
-		Addr:     c.Redis.Host,
-		Password: c.Redis.Pass,
-		DB:       c.Redis.DB,
+		Addr:            c.Redis.Host,
+		Password:        c.Redis.Pass,
+		DB:              c.Redis.DB,
+		PoolSize:        c.Redis.PoolSize,                                  // 连接池大小：根据应用并发量调整，建议 100-500
+		MinIdleConns:    c.Redis.MinIdleConns,                              // 最小空闲连接：保持一定数量的空闲连接，减少建立连接的开销
+		MaxRetries:      c.Redis.MaxRetries,                                // 最大重试次数：网络抖动时自动重试
+		PoolTimeout:     time.Second * time.Duration(c.Redis.PoolTimeout),  // 从连接池获取连接的超时时间
+		ConnMaxIdleTime: time.Second * time.Duration(c.Redis.IdleTimeout),  // 空闲连接的超时时间，自动回收长时间空闲的连接
+		ConnMaxLifetime: time.Second * time.Duration(c.Redis.MaxConnAge),   // 连接的最大生命周期，定期重建连接避免长时间使用的问题
+		DialTimeout:     time.Second * time.Duration(c.Redis.DialTimeout),  // 建立新连接的超时时间
+		ReadTimeout:     time.Second * time.Duration(c.Redis.ReadTimeout),  // 读操作超时时间
+		WriteTimeout:    time.Second * time.Duration(c.Redis.WriteTimeout), // 写操作超时时间
 	})
 	err = rds.Ping(context.Background()).Err()
 	if err != nil {

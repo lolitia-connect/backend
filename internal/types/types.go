@@ -1100,6 +1100,7 @@ type GetUserListRequest struct {
 	Unscoped        bool   `form:"unscoped,omitempty"`
 	SubscribeId     *int64 `form:"subscribe_id,omitempty"`
 	UserSubscribeId *int64 `form:"user_subscribe_id,omitempty"`
+	ShortCode       string `form:"short_code,omitempty"`
 }
 
 type GetUserListResponse struct {

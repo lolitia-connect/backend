@@ -61,6 +61,7 @@ type UserFilterParams struct {
 	UserId          *int64
 	SubscribeId     *int64
 	UserSubscribeId *int64
+	ShortCode       string
 	Order           string // Order by id, e.g., "desc"
 	Unscoped        bool   // Whether to include soft-deleted records
 }
@@ -145,6 +146,10 @@ func (m *customUserModel) QueryPageList(ctx context.Context, page, size int, fil
 			if filter.SubscribeId != nil {
 				conn = conn.Joins("LEFT JOIN user_subscribe ON user.id = user_subscribe.user_id").
 					Where("user_subscribe.subscribe_id =? and `status` IN (0,1)", *filter.SubscribeId)
+			}
+			if filter.ShortCode != "" {
+				conn = conn.Joins("LEFT JOIN user_device ON user.id = user_device.user_id").
+					Where("user_device.short_code LIKE ?", "%"+filter.ShortCode+"%")
 			}
 			if filter.Order != "" {
 				conn = conn.Order(fmt.Sprintf("user.id %s", filter.Order))

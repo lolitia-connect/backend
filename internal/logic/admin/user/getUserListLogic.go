@@ -33,6 +33,7 @@ func (l *GetUserListLogic) GetUserList(req *types.GetUserListRequest) (*types.Ge
 		Unscoped:        req.Unscoped,
 		SubscribeId:     req.SubscribeId,
 		UserSubscribeId: req.UserSubscribeId,
+		ShortCode:       req.ShortCode,
 		Order:           "DESC",
 	})
 	if err != nil {

@@ -130,19 +130,6 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	}
 	// Calculate the handling fee
 	amount -= coupon
-	var deductionAmount int64
-	// Check user deduction amount
-	if u.GiftAmount > 0 {
-		if u.GiftAmount >= amount {
-			deductionAmount = amount
-			amount = 0
-			u.GiftAmount -= deductionAmount
-		} else {
-			deductionAmount = u.GiftAmount
-			amount -= u.GiftAmount
-			u.GiftAmount = 0
-		}
-	}
 	// find payment method
 	payment, err := l.svcCtx.PaymentModel.FindOne(l.ctx, req.Payment)
 	if err != nil {
@@ -154,6 +141,17 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	if amount > 0 {
 		feeAmount = calculateFee(amount, payment)
 		amount += feeAmount
+	}
+	// Calculate gift amount deduction after fee calculation
+	var deductionAmount int64
+	if u.GiftAmount > 0 && amount > 0 {
+		if u.GiftAmount >= amount {
+			deductionAmount = amount
+			amount = 0
+		} else {
+			deductionAmount = u.GiftAmount
+			amount -= u.GiftAmount
+		}
 	}
 	// query user is new purchase or renewal
 	isNew, err := l.svcCtx.OrderModel.IsUserEligibleForNewOrder(l.ctx, u.Id)
@@ -200,9 +198,10 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 			}
 		}
 
-		// update user deduction && Pre deduction ,Return after canceling the order
+		// update user gift amount and create deduction record
 		if orderInfo.GiftAmount > 0 {
-			// update user deduction && Pre deduction ,Return after canceling the order
+			// deduct gift amount from user
+			u.GiftAmount -= orderInfo.GiftAmount
 			if e := l.svcCtx.UserModel.Update(l.ctx, u, db); e != nil {
 				l.Errorw("[Purchase] Database update error", logger.Field("error", e.Error()), logger.Field("user", u))
 				return e

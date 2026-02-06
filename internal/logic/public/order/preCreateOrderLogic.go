@@ -117,18 +117,6 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 		couponAmount = calculateCoupon(amount, couponInfo)
 	}
 	amount -= couponAmount
-
-	var deductionAmount int64
-	// Check user deduction amount
-	if u.GiftAmount > 0 {
-		if u.GiftAmount >= amount {
-			deductionAmount = amount
-			amount = 0
-		} else {
-			deductionAmount = u.GiftAmount
-			amount -= u.GiftAmount
-		}
-	}
 	var feeAmount int64
 	if req.Payment != 0 {
 		payment, err := l.svcCtx.PaymentModel.FindOne(l.ctx, req.Payment)
@@ -139,8 +127,19 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 		// Calculate the handling fee
 		if amount > 0 {
 			feeAmount = calculateFee(amount, payment)
+			amount += feeAmount
 		}
-		amount += feeAmount
+	}
+	// Calculate gift amount deduction after fee calculation
+	var deductionAmount int64
+	if u.GiftAmount > 0 && amount > 0 {
+		if u.GiftAmount >= amount {
+			deductionAmount = amount
+			amount = 0
+		} else {
+			deductionAmount = u.GiftAmount
+			amount -= u.GiftAmount
+		}
 	}
 
 	resp = &types.PreOrderResponse{

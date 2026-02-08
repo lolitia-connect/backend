@@ -580,7 +580,7 @@ type (
 	//public order
 	PurchaseOrderRequest {
 		SubscribeId int64  `json:"subscribe_id"`
-		Quantity    int64  `json:"quantity" validate:"required,gt=0"`
+		Quantity    int64  `json:"quantity" validate:"required,gt=0,lte=1000"`
 		Payment     int64  `json:"payment,omitempty"`
 		Coupon      string `json:"coupon,omitempty"`
 	}
@@ -598,7 +598,7 @@ type (
 	}
 	RenewalOrderRequest {
 		UserSubscribeID int64  `json:"user_subscribe_id"`
-		Quantity        int64  `json:"quantity"`
+		Quantity        int64  `json:"quantity" validate:"lte=1000"`
 		Payment         int64  `json:"payment"`
 		Coupon          string `json:"coupon,omitempty"`
 	}
@@ -613,7 +613,7 @@ type (
 		OrderNo string `json:"order_no"`
 	}
 	RechargeOrderRequest {
-		Amount  int64 `json:"amount"`
+		Amount  int64 `json:"amount" validate:"required,gt=0,lte=2000000000"`
 		Payment int64 `json:"payment"`
 	}
 	RechargeOrderResponse {

@@ -40,6 +40,21 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 		logger.Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
+
+	// Validate recharge amount
+	if req.Amount <= 0 {
+		l.Errorw("[Recharge] Invalid recharge amount", logger.Field("amount", req.Amount), logger.Field("user_id", u.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "recharge amount must be greater than 0")
+	}
+
+	if req.Amount > MaxRechargeAmount {
+		l.Errorw("[Recharge] Recharge amount exceeds maximum limit",
+			logger.Field("amount", req.Amount),
+			logger.Field("max", MaxRechargeAmount),
+			logger.Field("user_id", u.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "recharge amount exceeds maximum limit")
+	}
+
 	// find payment method
 	payment, err := l.svcCtx.PaymentModel.FindOne(l.ctx, req.Payment)
 	if err != nil {
@@ -48,6 +63,17 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 	}
 	// Calculate the handling fee
 	feeAmount := calculateFee(req.Amount, payment)
+	totalAmount := req.Amount + feeAmount
+
+	// Validate total amount after adding fee
+	if totalAmount > MaxOrderAmount {
+		l.Errorw("[Recharge] Total amount exceeds maximum limit after fee",
+			logger.Field("amount", totalAmount),
+			logger.Field("max", MaxOrderAmount),
+			logger.Field("user_id", u.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "total amount exceeds maximum limit")
+	}
+
 	// query user is new purchase or renewal
 	isNew, err := l.svcCtx.OrderModel.IsUserEligibleForNewOrder(l.ctx, u.Id)
 	if err != nil {
@@ -59,7 +85,7 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 		OrderNo:   tool.GenerateTradeNo(),
 		Type:      4,
 		Price:     req.Amount,
-		Amount:    req.Amount + feeAmount,
+		Amount:    totalAmount,
 		FeeAmount: feeAmount,
 		PaymentId: payment.Id,
 		Method:    payment.Platform,

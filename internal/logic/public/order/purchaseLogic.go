@@ -58,6 +58,12 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		req.Quantity = 1
 	}
 
+	// Validate quantity limit
+	if req.Quantity > MaxQuantity {
+		l.Errorw("[Purchase] Quantity exceeds maximum limit", logger.Field("quantity", req.Quantity), logger.Field("max", MaxQuantity))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "quantity exceeds maximum limit of %d", MaxQuantity)
+	}
+
 	// find user subscription
 	userSub, err := l.svcCtx.UserModel.QueryUserSubscribe(l.ctx, u.Id)
 	if err != nil {
@@ -110,6 +116,17 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	// discount amount
 	amount := int64(float64(price) * discount)
 	discountAmount := price - amount
+
+	// Validate amount to prevent overflow
+	if amount > MaxOrderAmount {
+		l.Errorw("[Purchase] Order amount exceeds maximum limit",
+			logger.Field("amount", amount),
+			logger.Field("max", MaxOrderAmount),
+			logger.Field("user_id", u.Id),
+			logger.Field("subscribe_id", req.SubscribeId))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
+	}
+
 	var coupon int64 = 0
 	// Calculate the coupon deduction
 	if req.Coupon != "" {
@@ -167,6 +184,15 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	if amount > 0 {
 		feeAmount = calculateFee(amount, payment)
 		amount += feeAmount
+
+		// Final validation after adding fee
+		if amount > MaxOrderAmount {
+			l.Errorw("[Purchase] Final order amount exceeds maximum limit after fee",
+				logger.Field("amount", amount),
+				logger.Field("max", MaxOrderAmount),
+				logger.Field("user_id", u.Id))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
+		}
 	}
 	// query user is new purchase or renewal
 	isNew, err := l.svcCtx.OrderModel.IsUserEligibleForNewOrder(l.ctx, u.Id)

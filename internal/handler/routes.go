@@ -888,10 +888,10 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		serverGroupRouter.GET("/user", server.GetServerUserListHandler(serverCtx))
 	}
 
-	serverGroupRouter := router.Group("/v2/server")
+	serverV2GroupRouter := router.Group("/v2/server")
 
 	{
 		// Get Server Protocol Config
-		serverGroupRouter.GET("/:server_id", server.QueryServerProtocolConfigHandler(serverCtx))
+		serverV2GroupRouter.GET("/:server_id", server.QueryServerProtocolConfigHandler(serverCtx))
 	}
 }

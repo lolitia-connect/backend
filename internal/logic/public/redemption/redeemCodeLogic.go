@@ -2,16 +2,17 @@ package redemption
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/perfect-panel/server/internal/model/redemption"
+	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/snowflake"
-	"github.com/perfect-panel/server/pkg/uuidx"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
+	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
 
@@ -42,6 +43,21 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 		logger.Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
+
+	// 使用Redis分布式锁防止并发重复兑换
+	lockKey := fmt.Sprintf("redemption_lock:%d:%s", u.Id, req.Code)
+	lockSuccess, err := l.svcCtx.Redis.SetNX(l.ctx, lockKey, "1", 10*time.Second).Result()
+	if err != nil {
+		l.Errorw("[RedeemCode] Acquire lock failed", logger.Field("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "system busy, please try again later")
+	}
+	if !lockSuccess {
+		l.Errorw("[RedeemCode] Redemption in progress",
+			logger.Field("user_id", u.Id),
+			logger.Field("code", req.Code))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "redemption in progress, please wait")
+	}
+	defer l.svcCtx.Redis.Del(l.ctx, lockKey)
 
 	// Find redemption code by code
 	redemptionCode, err := l.svcCtx.RedemptionCodeModel.FindOneByCode(l.ctx, req.Code)
@@ -102,179 +118,107 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe plan is not available")
 	}
 
-	// Start transaction
-	err = l.svcCtx.RedemptionCodeModel.Transaction(l.ctx, func(tx *gorm.DB) error {
-		// Find user's existing subscribe for this plan
-		var existingSubscribe *user.SubscribeDetails
-		userSubscribes, err := l.svcCtx.UserModel.QueryUserSubscribe(l.ctx, u.Id, 0, 1)
-		if err == nil {
-			for _, us := range userSubscribes {
-				if us.SubscribeId == redemptionCode.SubscribePlan {
-					existingSubscribe = us
-					break
-				}
-			}
-		}
-
-		now := time.Now()
-
-		if existingSubscribe != nil {
-			// Extend existing subscribe
-			var newExpireTime time.Time
-			if existingSubscribe.ExpireTime.After(now) {
-				newExpireTime = existingSubscribe.ExpireTime
-			} else {
-				newExpireTime = now
-			}
-
-			// Calculate duration based on redemption code
-			duration, err := calculateDuration(redemptionCode.UnitTime, redemptionCode.Quantity)
-			if err != nil {
-				l.Errorw("[RedeemCode] Calculate duration error", logger.Field("error", err.Error()))
-				return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "calculate duration error: %v", err.Error())
-			}
-			newExpireTime = newExpireTime.Add(duration)
-
-			// Update subscribe
-			existingSubscribe.ExpireTime = newExpireTime
-			existingSubscribe.Status = 1
-
-			// Add traffic if needed
-			if subscribePlan.Traffic > 0 {
-				existingSubscribe.Traffic = subscribePlan.Traffic * 1024 * 1024 * 1024
-				existingSubscribe.Download = 0
-				existingSubscribe.Upload = 0
-			}
-
-			err = l.svcCtx.UserModel.UpdateSubscribe(l.ctx, &user.Subscribe{
-				Id:         existingSubscribe.Id,
-				UserId:     existingSubscribe.UserId,
-				ExpireTime: existingSubscribe.ExpireTime,
-				Status:     existingSubscribe.Status,
-				Traffic:    existingSubscribe.Traffic,
-				Download:   existingSubscribe.Download,
-				Upload:     existingSubscribe.Upload,
-			}, tx)
-			if err != nil {
-				l.Errorw("[RedeemCode] Update subscribe error", logger.Field("error", err.Error()))
-				return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update subscribe error: %v", err.Error())
-			}
-		} else {
-			// Check quota limit before creating new subscribe
-			if subscribePlan.Quota > 0 {
-				var count int64
-				if err := tx.Model(&user.Subscribe{}).Where("user_id = ? AND subscribe_id = ?", u.Id, redemptionCode.SubscribePlan).Count(&count).Error; err != nil {
-					l.Errorw("[RedeemCode] Count user subscribe failed", logger.Field("error", err.Error()))
-					return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "count user subscribe error: %v", err.Error())
-				}
-				if count >= subscribePlan.Quota {
-					l.Infow("[RedeemCode] Subscribe quota limit exceeded",
-						logger.Field("user_id", u.Id),
-						logger.Field("subscribe_id", redemptionCode.SubscribePlan),
-						logger.Field("quota", subscribePlan.Quota),
-						logger.Field("current_count", count),
-					)
-					return errors.Wrapf(xerr.NewErrCode(xerr.SubscribeQuotaLimit), "subscribe quota limit exceeded")
-				}
-			}
-
-			// Create new subscribe
-			expireTime, traffic, err := calculateSubscribeTimeAndTraffic(redemptionCode.UnitTime, redemptionCode.Quantity, subscribePlan.Traffic)
-			if err != nil {
-				l.Errorw("[RedeemCode] Calculate subscribe time and traffic error", logger.Field("error", err.Error()))
-				return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "calculate subscribe time and traffic error: %v", err.Error())
-			}
-
-			newSubscribe := &user.Subscribe{
-				Id:          snowflake.GetID(),
-				UserId:      u.Id,
-				OrderId:     0,
-				SubscribeId: redemptionCode.SubscribePlan,
-				StartTime:   now,
-				ExpireTime:  expireTime,
-				FinishedAt:  nil,
-				Traffic:     traffic,
-				Download:    0,
-				Upload:      0,
-				Token:       uuidx.SubscribeToken(fmt.Sprintf("redemption:%d:%d", u.Id, time.Now().UnixMilli())),
-				UUID:        uuid.New().String(),
-				Status:      1,
-			}
-
-			err = l.svcCtx.UserModel.InsertSubscribe(l.ctx, newSubscribe, tx)
-			if err != nil {
-				l.Errorw("[RedeemCode] Insert subscribe error", logger.Field("error", err.Error()))
-				return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert subscribe error: %v", err.Error())
-			}
-		}
-
-		// Increment redemption code used count
-		err = l.svcCtx.RedemptionCodeModel.IncrementUsedCount(l.ctx, redemptionCode.Id)
+	// 检查配额限制（预检查，队列任务中会再次检查）
+	if subscribePlan.Quota > 0 {
+		var count int64
+		err = l.svcCtx.DB.Model(&user.Subscribe{}).
+			Where("user_id = ? AND subscribe_id = ?", u.Id, redemptionCode.SubscribePlan).
+			Count(&count).Error
 		if err != nil {
-			l.Errorw("[RedeemCode] Increment used count error", logger.Field("error", err.Error()))
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "increment used count error: %v", err.Error())
+			l.Errorw("[RedeemCode] Check quota failed", logger.Field("error", err.Error()))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "check quota failed")
 		}
-
-		// Create redemption record
-		redemptionRecord := &redemption.RedemptionRecord{
-			Id:               snowflake.GetID(),
-			RedemptionCodeId: redemptionCode.Id,
-			UserId:           u.Id,
-			SubscribeId:      redemptionCode.SubscribePlan,
-			UnitTime:         redemptionCode.UnitTime,
-			Quantity:         redemptionCode.Quantity,
-			RedeemedAt:       now,
-			CreatedAt:        now,
+		if count >= subscribePlan.Quota {
+			l.Errorw("[RedeemCode] Subscribe quota limit exceeded",
+				logger.Field("user_id", u.Id),
+				logger.Field("subscribe_id", redemptionCode.SubscribePlan),
+				logger.Field("quota", subscribePlan.Quota),
+				logger.Field("current_count", count))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeQuotaLimit), "subscribe quota limit exceeded")
 		}
-
-		err = l.svcCtx.RedemptionRecordModel.Insert(l.ctx, redemptionRecord)
-		if err != nil {
-			l.Errorw("[RedeemCode] Insert redemption record error", logger.Field("error", err.Error()))
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert redemption record error: %v", err.Error())
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, err
 	}
+
+	// 判断是否首次购买
+	isNew, err := l.svcCtx.OrderModel.IsUserEligibleForNewOrder(l.ctx, u.Id)
+	if err != nil {
+		l.Errorw("[RedeemCode] Check user order failed", logger.Field("error", err.Error()))
+		// 可以继续，默认为false
+		isNew = false
+	}
+
+	// 创建Order记录
+	orderInfo := &order.Order{
+		UserId:         u.Id,
+		OrderNo:        tool.GenerateTradeNo(),
+		Type:           5, // 兑换类型
+		Quantity:       redemptionCode.Quantity,
+		Price:          0, // 兑换无价格
+		Amount:         0, // 兑换无金额
+		Discount:       0,
+		GiftAmount:     0,
+		Coupon:         "",
+		CouponDiscount: 0,
+		PaymentId:      0,
+		Method:         "redemption",
+		FeeAmount:      0,
+		Commission:     0,
+		Status:         2, // 直接设置为已支付
+		SubscribeId:    redemptionCode.SubscribePlan,
+		IsNew:          isNew,
+	}
+
+	// 保存Order到数据库
+	err = l.svcCtx.OrderModel.Insert(l.ctx, orderInfo)
+	if err != nil {
+		l.Errorw("[RedeemCode] Create order failed", logger.Field("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create order failed")
+	}
+
+	// 缓存兑换码信息到Redis（供队列任务使用）
+	cacheKey := fmt.Sprintf("redemption_order:%s", orderInfo.OrderNo)
+	cacheData := map[string]interface{}{
+		"redemption_code_id": redemptionCode.Id,
+		"unit_time":          redemptionCode.UnitTime,
+		"quantity":           redemptionCode.Quantity,
+	}
+	jsonData, _ := json.Marshal(cacheData)
+	err = l.svcCtx.Redis.Set(l.ctx, cacheKey, jsonData, 2*time.Hour).Err()
+	if err != nil {
+		l.Errorw("[RedeemCode] Cache redemption data failed", logger.Field("error", err.Error()))
+		// 缓存失败，删除已创建的Order避免孤儿记录
+		if delErr := l.svcCtx.OrderModel.Delete(l.ctx, orderInfo.Id); delErr != nil {
+			l.Errorw("[RedeemCode] Delete order failed after cache error",
+				logger.Field("order_id", orderInfo.Id),
+				logger.Field("error", delErr.Error()))
+		}
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "cache redemption data failed")
+	}
+
+	// 触发队列任务
+	payload := queue.ForthwithActivateOrderPayload{
+		OrderNo: orderInfo.OrderNo,
+	}
+	bytes, _ := json.Marshal(&payload)
+	task := asynq.NewTask(queue.ForthwithActivateOrder, bytes, asynq.MaxRetry(5))
+	_, err = l.svcCtx.Queue.EnqueueContext(l.ctx, task)
+	if err != nil {
+		l.Errorw("[RedeemCode] Enqueue task failed", logger.Field("error", err.Error()))
+		// 入队失败，删除Order和Redis缓存
+		l.svcCtx.Redis.Del(l.ctx, cacheKey)
+		if delErr := l.svcCtx.OrderModel.Delete(l.ctx, orderInfo.Id); delErr != nil {
+			l.Errorw("[RedeemCode] Delete order failed after enqueue error",
+				logger.Field("order_id", orderInfo.Id),
+				logger.Field("error", delErr.Error()))
+		}
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "enqueue task failed")
+	}
+
+	l.Infow("[RedeemCode] Redemption order created successfully",
+		logger.Field("order_no", orderInfo.OrderNo),
+		logger.Field("user_id", u.Id),
+	)
 
 	return &types.RedeemCodeResponse{
-		Message: "Redemption successful",
+		Message: "Redemption successful, processing...",
 	}, nil
-}
-
-// calculateDuration calculates time duration based on unit time
-func calculateDuration(unitTime string, quantity int64) (time.Duration, error) {
-	switch unitTime {
-	case "month":
-		return time.Duration(quantity*30*24) * time.Hour, nil
-	case "quarter":
-		return time.Duration(quantity*90*24) * time.Hour, nil
-	case "half_year":
-		return time.Duration(quantity*180*24) * time.Hour, nil
-	case "year":
-		return time.Duration(quantity*365*24) * time.Hour, nil
-	case "day":
-		return time.Duration(quantity*24) * time.Hour, nil
-	default:
-		return time.Duration(quantity*30*24) * time.Hour, nil
-	}
-}
-
-// calculateSubscribeTimeAndTraffic calculates expire time and traffic based on subscribe plan
-func calculateSubscribeTimeAndTraffic(unitTime string, quantity int64, traffic int64) (time.Time, int64, error) {
-	duration, err := calculateDuration(unitTime, quantity)
-	if err != nil {
-		return time.Time{}, 0, err
-	}
-
-	expireTime := time.Now().Add(duration)
-	trafficBytes := int64(0)
-	if traffic > 0 {
-		trafficBytes = traffic * 1024 * 1024 * 1024
-	}
-
-	return expireTime, trafficBytes, nil
 }

@@ -24,14 +24,14 @@ type (
 		Insert(ctx context.Context, data *RedemptionCode) error
 		FindOne(ctx context.Context, id int64) (*RedemptionCode, error)
 		FindOneByCode(ctx context.Context, code string) (*RedemptionCode, error)
-		Update(ctx context.Context, data *RedemptionCode) error
+		Update(ctx context.Context, data *RedemptionCode, tx ...*gorm.DB) error
 		Delete(ctx context.Context, id int64) error
 		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 		customRedemptionCodeLogicModel
 	}
 
 	RedemptionRecordModel interface {
-		Insert(ctx context.Context, data *RedemptionRecord) error
+		Insert(ctx context.Context, data *RedemptionRecord, tx ...*gorm.DB) error
 		FindOne(ctx context.Context, id int64) (*RedemptionRecord, error)
 		Update(ctx context.Context, data *RedemptionRecord) error
 		Delete(ctx context.Context, id int64) error
@@ -41,7 +41,7 @@ type (
 	customRedemptionCodeLogicModel interface {
 		QueryRedemptionCodeListByPage(ctx context.Context, page, size int, subscribePlan int64, unitTime string, code string) (total int64, list []*RedemptionCode, err error)
 		BatchDelete(ctx context.Context, ids []int64) error
-		IncrementUsedCount(ctx context.Context, id int64) error
+		IncrementUsedCount(ctx context.Context, id int64, tx ...*gorm.DB) error
 	}
 
 	customRedemptionRecordLogicModel interface {
@@ -130,13 +130,16 @@ func (m *defaultRedemptionCodeModel) FindOneByCode(ctx context.Context, code str
 	}
 }
 
-func (m *defaultRedemptionCodeModel) Update(ctx context.Context, data *RedemptionCode) error {
+func (m *defaultRedemptionCodeModel) Update(ctx context.Context, data *RedemptionCode, tx ...*gorm.DB) error {
 	old, err := m.FindOne(ctx, data.Id)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
 		db := conn
+		if len(tx) > 0 {
+			db = tx[0]
+		}
 		return db.Save(data).Error
 	}, m.getCacheKeys(old)...)
 	return err
@@ -189,12 +192,15 @@ func (m *customRedemptionCodeModel) BatchDelete(ctx context.Context, ids []int64
 	return nil
 }
 
-func (m *customRedemptionCodeModel) IncrementUsedCount(ctx context.Context, id int64) error {
+func (m *customRedemptionCodeModel) IncrementUsedCount(ctx context.Context, id int64, tx ...*gorm.DB) error {
 	data, err := m.FindOne(ctx, id)
 	if err != nil {
 		return err
 	}
 	data.UsedCount++
+	if len(tx) > 0 {
+		return m.Update(ctx, data, tx[0])
+	}
 	return m.Update(ctx, data)
 }
 
@@ -210,8 +216,11 @@ func (m *defaultRedemptionRecordModel) getCacheKeys(data *RedemptionRecord) []st
 	return cacheKeys
 }
 
-func (m *defaultRedemptionRecordModel) Insert(ctx context.Context, data *RedemptionRecord) error {
+func (m *defaultRedemptionRecordModel) Insert(ctx context.Context, data *RedemptionRecord, tx ...*gorm.DB) error {
 	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
+		if len(tx) > 0 {
+			conn = tx[0]
+		}
 		return conn.Create(data).Error
 	}, m.getCacheKeys(data)...)
 	return err

@@ -18,6 +18,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/logic/telegram"
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/model/redemption"
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
@@ -33,6 +34,7 @@ const (
 	OrderTypeRenewal      = 2 // Subscription renewal
 	OrderTypeResetTraffic = 3 // Traffic quota reset
 	OrderTypeRecharge     = 4 // Balance recharge
+	OrderTypeRedemption   = 5 // Redemption code activation
 )
 
 // Order status constants define the lifecycle states of an order
@@ -145,6 +147,8 @@ func (l *ActivateOrderLogic) processOrderByType(ctx context.Context, orderInfo *
 		return l.ResetTraffic(ctx, orderInfo)
 	case OrderTypeRecharge:
 		return l.Recharge(ctx, orderInfo)
+	case OrderTypeRedemption:
+		return l.RedemptionActivate(ctx, orderInfo)
 	default:
 		logger.WithContext(ctx).Error("Order type is invalid", logger.Field("type", orderInfo.Type))
 		return ErrInvalidOrderType
@@ -825,4 +829,234 @@ func findTelegram(u *user.User) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// RedemptionActivate handles redemption code activation including subscription creation,
+// redemption record creation, used count update, cache clearing, and notifications
+func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *order.Order) error {
+	// 1. 获取用户信息
+	userInfo, err := l.getExistingUser(ctx, orderInfo.UserId)
+	if err != nil {
+		return err
+	}
+
+	// 2. 获取套餐信息
+	sub, err := l.getSubscribeInfo(ctx, orderInfo.SubscribeId)
+	if err != nil {
+		return err
+	}
+
+	// 3. 从Redis获取兑换码信息
+	cacheKey := fmt.Sprintf("redemption_order:%s", orderInfo.OrderNo)
+	data, err := l.svc.Redis.Get(ctx, cacheKey).Result()
+	if err != nil {
+		logger.WithContext(ctx).Error("Get redemption cache failed",
+			logger.Field("error", err.Error()),
+			logger.Field("cache_key", cacheKey),
+		)
+		return err
+	}
+
+	var redemptionData struct {
+		RedemptionCodeId int64  `json:"redemption_code_id"`
+		UnitTime         string `json:"unit_time"`
+		Quantity         int64  `json:"quantity"`
+	}
+	if err = json.Unmarshal([]byte(data), &redemptionData); err != nil {
+		logger.WithContext(ctx).Error("Unmarshal redemption cache failed", logger.Field("error", err.Error()))
+		return err
+	}
+
+	// 4. 幂等性检查：查询是否已有兑换记录
+	existingRecords, err := l.svc.RedemptionRecordModel.FindByUserId(ctx, userInfo.Id)
+	if err == nil {
+		for _, record := range existingRecords {
+			if record.RedemptionCodeId == redemptionData.RedemptionCodeId {
+				logger.WithContext(ctx).Info("Redemption already processed, skip",
+					logger.Field("order_no", orderInfo.OrderNo),
+					logger.Field("user_id", userInfo.Id),
+					logger.Field("redemption_code_id", redemptionData.RedemptionCodeId),
+				)
+				// 已处理过，直接返回成功（幂等性保护）
+				return nil
+			}
+		}
+	}
+
+	// 5. 查找用户现有订阅
+	var existingSubscribe *user.Subscribe
+	userSubscribes, err := l.svc.UserModel.QueryUserSubscribe(ctx, userInfo.Id, 0, 1)
+	if err == nil {
+		for _, us := range userSubscribes {
+			if us.SubscribeId == orderInfo.SubscribeId {
+				existingSubscribe = &user.Subscribe{
+					Id:          us.Id,
+					UserId:      us.UserId,
+					SubscribeId: us.SubscribeId,
+					ExpireTime:  us.ExpireTime,
+					Status:      us.Status,
+					Traffic:     us.Traffic,
+					Download:    us.Download,
+					Upload:      us.Upload,
+				}
+				break
+			}
+		}
+	}
+
+	now := time.Now()
+
+	// 6. 使用事务保护核心操作
+	err = l.svc.DB.Transaction(func(tx *gorm.DB) error {
+		// 6.1 创建或更新订阅
+		if existingSubscribe != nil {
+			// 续期现有订阅
+			var newExpireTime time.Time
+			if existingSubscribe.ExpireTime.After(now) {
+				newExpireTime = existingSubscribe.ExpireTime
+			} else {
+				newExpireTime = now
+			}
+
+			// 计算新的过期时间
+			newExpireTime = tool.AddTime(redemptionData.UnitTime, redemptionData.Quantity, newExpireTime)
+
+			// 更新订阅
+			existingSubscribe.OrderId = orderInfo.Id // 设置OrderId用于追溯
+			existingSubscribe.ExpireTime = newExpireTime
+			existingSubscribe.Status = 1
+
+			// 重置流量（如果套餐有流量限制）
+			if sub.Traffic > 0 {
+				existingSubscribe.Traffic = sub.Traffic * 1024 * 1024 * 1024
+				existingSubscribe.Download = 0
+				existingSubscribe.Upload = 0
+			}
+
+			err = l.svc.UserModel.UpdateSubscribe(ctx, existingSubscribe, tx)
+			if err != nil {
+				logger.WithContext(ctx).Error("Update subscribe failed", logger.Field("error", err.Error()))
+				return err
+			}
+
+			logger.WithContext(ctx).Info("Extended existing subscription",
+				logger.Field("subscribe_id", existingSubscribe.Id),
+				logger.Field("new_expire_time", newExpireTime),
+			)
+		} else {
+			// 检查配额限制
+			if sub.Quota > 0 {
+				var count int64
+				if err := tx.Model(&user.Subscribe{}).
+					Where("user_id = ? AND subscribe_id = ?", userInfo.Id, orderInfo.SubscribeId).
+					Count(&count).Error; err != nil {
+					logger.WithContext(ctx).Error("Count user subscribe failed", logger.Field("error", err.Error()))
+					return err
+				}
+				if count >= sub.Quota {
+					logger.WithContext(ctx).Infow("Subscribe quota limit exceeded",
+						logger.Field("user_id", userInfo.Id),
+						logger.Field("subscribe_id", orderInfo.SubscribeId),
+						logger.Field("quota", sub.Quota),
+						logger.Field("current_count", count),
+					)
+					return fmt.Errorf("subscribe quota limit exceeded")
+				}
+			}
+
+			// 创建新订阅
+			expireTime := tool.AddTime(redemptionData.UnitTime, redemptionData.Quantity, now)
+			traffic := int64(0)
+			if sub.Traffic > 0 {
+				traffic = sub.Traffic * 1024 * 1024 * 1024
+			}
+
+			newSubscribe := &user.Subscribe{
+				UserId:      userInfo.Id,
+				OrderId:     orderInfo.Id,
+				SubscribeId: orderInfo.SubscribeId,
+				StartTime:   now,
+				ExpireTime:  expireTime,
+				FinishedAt:  nil,
+				Traffic:     traffic,
+				Download:    0,
+				Upload:      0,
+				Token:       uuidx.SubscribeToken(orderInfo.OrderNo),
+				UUID:        uuid.New().String(),
+				Status:      1,
+			}
+
+			err = l.svc.UserModel.InsertSubscribe(ctx, newSubscribe, tx)
+			if err != nil {
+				logger.WithContext(ctx).Error("Insert subscribe failed", logger.Field("error", err.Error()))
+				return err
+			}
+
+			logger.WithContext(ctx).Info("Created new subscription",
+				logger.Field("subscribe_id", newSubscribe.Id),
+				logger.Field("expire_time", expireTime),
+			)
+		}
+
+		// 6.2 更新兑换码使用次数
+		err = l.svc.RedemptionCodeModel.IncrementUsedCount(ctx, redemptionData.RedemptionCodeId, tx)
+		if err != nil {
+			logger.WithContext(ctx).Error("Increment used count failed", logger.Field("error", err.Error()))
+			return err
+		}
+
+		// 6.3 创建兑换记录
+		redemptionRecord := &redemption.RedemptionRecord{
+			RedemptionCodeId: redemptionData.RedemptionCodeId,
+			UserId:           userInfo.Id,
+			SubscribeId:      orderInfo.SubscribeId,
+			UnitTime:         redemptionData.UnitTime,
+			Quantity:         redemptionData.Quantity,
+			RedeemedAt:       now,
+			CreatedAt:        now,
+		}
+
+		err = l.svc.RedemptionRecordModel.Insert(ctx, redemptionRecord, tx)
+		if err != nil {
+			logger.WithContext(ctx).Error("Insert redemption record failed", logger.Field("error", err.Error()))
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		logger.WithContext(ctx).Error("Redemption transaction failed", logger.Field("error", err.Error()))
+		return err
+	}
+
+	// 7. 清理缓存（关键步骤：让节点获取最新订阅）
+	l.clearServerCache(ctx, sub)
+
+	// 7.1 清理用户订阅缓存（确保用户端显示最新信息）
+	if existingSubscribe != nil {
+		err = l.svc.UserModel.ClearSubscribeCache(ctx, existingSubscribe)
+		if err != nil {
+			logger.WithContext(ctx).Error("Clear user subscribe cache failed",
+				logger.Field("error", err.Error()),
+				logger.Field("subscribe_id", existingSubscribe.Id),
+				logger.Field("user_id", userInfo.Id),
+			)
+		}
+	}
+
+	// 8. 删除Redis临时数据
+	l.svc.Redis.Del(ctx, cacheKey)
+
+	// 9. 发送通知（可选）
+	// 可以复用现有的通知模板或创建新的兑换通知模板
+	// l.sendNotifications(ctx, orderInfo, userInfo, sub, existingSubscribe, telegram.RedemptionNotify)
+
+	logger.WithContext(ctx).Info("Redemption activation success",
+		logger.Field("order_no", orderInfo.OrderNo),
+		logger.Field("user_id", userInfo.Id),
+		logger.Field("subscribe_id", orderInfo.SubscribeId),
+	)
+
+	return nil
 }

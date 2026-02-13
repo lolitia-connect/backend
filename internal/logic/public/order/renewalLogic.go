@@ -50,6 +50,12 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		req.Quantity = 1
 	}
 
+	// Validate quantity limit
+	if req.Quantity > MaxQuantity {
+		l.Errorw("[Renewal] Quantity exceeds maximum limit", logger.Field("quantity", req.Quantity), logger.Field("max", MaxQuantity))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "quantity exceeds maximum limit of %d", MaxQuantity)
+	}
+
 	orderNo := tool.GenerateTradeNo()
 	// find user subscribe
 	userSubscribe, err := l.svcCtx.UserModel.FindOneUserSubscribe(l.ctx, req.UserSubscribeID)
@@ -75,6 +81,17 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	price := sub.UnitPrice * req.Quantity
 	amount := int64(float64(price) * discount)
 	discountAmount := price - amount
+
+	// Validate amount to prevent overflow
+	if amount > MaxOrderAmount {
+		l.Errorw("[Renewal] Order amount exceeds maximum limit",
+			logger.Field("amount", amount),
+			logger.Field("max", MaxOrderAmount),
+			logger.Field("user_id", u.Id),
+			logger.Field("subscribe_id", sub.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
+	}
+
 	var coupon int64 = 0
 	if req.Coupon != "" {
 		couponInfo, err := l.svcCtx.CouponModel.FindOneByCode(l.ctx, req.Coupon)
@@ -133,6 +150,15 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	}
 
 	amount += feeAmount
+
+	// Final validation after adding fee
+	if amount > MaxOrderAmount {
+		l.Errorw("[Renewal] Final order amount exceeds maximum limit after fee",
+			logger.Field("amount", amount),
+			logger.Field("max", MaxOrderAmount),
+			logger.Field("user_id", u.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
+	}
 
 	// create order
 	orderInfo := order.Order{

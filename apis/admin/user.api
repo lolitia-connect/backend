@@ -180,7 +180,7 @@ type (
 		Total int64                      `json:"total"`
 	}
 	DeleteUserSubscribeRequest {
-		UserSubscribeId int64 `json:"user_subscribe_id"`
+		UserSubscribeId int64 `json:"user_subscribe_id,string"`
 	}
 	GetUserSubscribeByIdRequest {
 		Id int64 `form:"id" validate:"required"`

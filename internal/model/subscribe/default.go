@@ -119,13 +119,35 @@ func (m *defaultSubscribeModel) Update(ctx context.Context, data *Subscribe, tx 
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
+
+	// 获取所有使用该套餐的用户订阅缓存 key
+	var userIds []int64
+	err = m.QueryNoCacheCtx(ctx, &userIds, func(conn *gorm.DB, v interface{}) error {
+		return conn.Table("user_subscribe").
+			Where("subscribe_id = ? AND status IN (0, 1)", data.Id).
+			Distinct("user_id").
+			Pluck("user_id", &userIds).Error
+	})
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	// 构建用户订阅缓存 key 列表
+	userSubscribeCacheKeys := make([]string, 0, len(userIds))
+	for _, userId := range userIds {
+		userSubscribeCacheKeys = append(userSubscribeCacheKeys, fmt.Sprintf("cache:user:subscribe:user:%d", userId))
+	}
+
+	// 合并套餐缓存 key 和用户订阅缓存 key
+	allCacheKeys := append(m.getCacheKeys(old), userSubscribeCacheKeys...)
+
 	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
 		db := conn
 		if len(tx) > 0 {
 			db = tx[0]
 		}
 		return db.Save(data).Error
-	}, m.getCacheKeys(old)...)
+	}, allCacheKeys...)
 	return err
 }
 
@@ -137,13 +159,35 @@ func (m *defaultSubscribeModel) Delete(ctx context.Context, id int64, tx ...*gor
 		}
 		return err
 	}
+
+	// 获取所有使用该套餐的用户订阅缓存 key
+	var userIds []int64
+	err = m.QueryNoCacheCtx(ctx, &userIds, func(conn *gorm.DB, v interface{}) error {
+		return conn.Table("user_subscribe").
+			Where("subscribe_id = ? AND status IN (0, 1)", id).
+			Distinct("user_id").
+			Pluck("user_id", &userIds).Error
+	})
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	// 构建用户订阅缓存 key 列表
+	userSubscribeCacheKeys := make([]string, 0, len(userIds))
+	for _, userId := range userIds {
+		userSubscribeCacheKeys = append(userSubscribeCacheKeys, fmt.Sprintf("cache:user:subscribe:user:%d", userId))
+	}
+
+	// 合并套餐缓存 key 和用户订阅缓存 key
+	allCacheKeys := append(m.getCacheKeys(data), userSubscribeCacheKeys...)
+
 	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
 		db := conn
 		if len(tx) > 0 {
 			db = tx[0]
 		}
 		return db.Delete(&Subscribe{}, id).Error
-	}, m.getCacheKeys(data)...)
+	}, allCacheKeys...)
 	return err
 }
 

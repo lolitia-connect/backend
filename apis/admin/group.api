@@ -1,0 +1,207 @@
+syntax = "v1"
+
+info (
+	title:   "Group API"
+	desc:    "API for user group and node group management"
+	author:  "Tension"
+	email:   "tension@ppanel.com"
+	version: "0.0.1"
+)
+
+import (
+	"../types.api"
+	"./server.api"
+)
+
+type (
+	// ===== 节点组管理 =====
+	// GetNodeGroupListRequest
+	GetNodeGroupListRequest {
+		Page    int    `form:"page"`
+		Size    int    `form:"size"`
+		GroupId string `form:"group_id,omitempty"`
+	}
+	// GetNodeGroupListResponse
+	GetNodeGroupListResponse {
+		Total int64       `json:"total"`
+		List  []NodeGroup `json:"list"`
+	}
+	// CreateNodeGroupRequest
+	CreateNodeGroupRequest {
+		Name           string `json:"name" validate:"required"`
+		Description    string `json:"description"`
+		Sort           int    `json:"sort"`
+		ForCalculation *bool  `json:"for_calculation"`
+		MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
+		MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+	}
+	// UpdateNodeGroupRequest
+	UpdateNodeGroupRequest {
+		Id             int64  `json:"id" validate:"required"`
+		Name           string `json:"name"`
+		Description    string `json:"description"`
+		Sort           int    `json:"sort"`
+		ForCalculation *bool  `json:"for_calculation"`
+		MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
+		MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+	}
+	// DeleteNodeGroupRequest
+	DeleteNodeGroupRequest {
+		Id int64 `json:"id" validate:"required"`
+	}
+	// ===== 分组配置管理 =====
+	// GetGroupConfigRequest
+	GetGroupConfigRequest {
+		Keys []string `form:"keys,omitempty"`
+	}
+	// GetGroupConfigResponse
+	GetGroupConfigResponse {
+		Enabled bool                   `json:"enabled"`
+		Mode    string                 `json:"mode"`
+		Config  map[string]interface{} `json:"config"`
+		State   RecalculationState     `json:"state"`
+	}
+	// UpdateGroupConfigRequest
+	UpdateGroupConfigRequest {
+		Enabled bool                   `json:"enabled"`
+		Mode    string                 `json:"mode"`
+		Config  map[string]interface{} `json:"config"`
+	}
+	// RecalculationState
+	RecalculationState {
+		State    string `json:"state"`
+		Progress int    `json:"progress"`
+		Total    int    `json:"total"`
+	}
+	// ===== 分组操作 =====
+	// RecalculateGroupRequest
+	RecalculateGroupRequest {
+		Mode        string `json:"mode" validate:"required"`
+		TriggerType string `json:"trigger_type"` // "manual" or "scheduled"
+	}
+	// GetGroupHistoryRequest
+	GetGroupHistoryRequest {
+		Page        int    `form:"page"`
+		Size        int    `form:"size"`
+		GroupMode   string `form:"group_mode,omitempty"`
+		TriggerType string `form:"trigger_type,omitempty"`
+	}
+	// GetGroupHistoryResponse
+	GetGroupHistoryResponse {
+		Total int64          `json:"total"`
+		List  []GroupHistory `json:"list"`
+	}
+	// GetGroupHistoryDetailRequest
+	GetGroupHistoryDetailRequest {
+		Id int64 `form:"id" validate:"required"`
+	}
+	// GetGroupHistoryDetailResponse
+	GetGroupHistoryDetailResponse {
+		GroupHistoryDetail
+	}
+	// PreviewUserNodesRequest
+	PreviewUserNodesRequest {
+		UserId int64 `form:"user_id" validate:"required"`
+	}
+	// PreviewUserNodesResponse
+	PreviewUserNodesResponse {
+		UserId     int64           `json:"user_id"`
+		NodeGroups []NodeGroupItem `json:"node_groups"`
+	}
+	// NodeGroupItem
+	NodeGroupItem {
+		Id    int64  `json:"id"`
+		Name  string `json:"name"`
+		Nodes []Node `json:"nodes"`
+	}
+	// ExportGroupResultRequest
+	ExportGroupResultRequest {
+		HistoryId *int64 `form:"history_id,omitempty"`
+	}
+	// ===== Reset Groups =====
+	// ResetGroupsRequest
+	ResetGroupsRequest {
+		Confirm bool `json:"confirm" validate:"required"`
+	}
+	// ===== 套餐分组映射 =====
+	// SubscribeGroupMappingItem
+	SubscribeGroupMappingItem {
+		SubscribeName   string `json:"subscribe_name"`
+		NodeGroupName   string `json:"node_group_name"`
+	}
+	// GetSubscribeGroupMappingRequest
+	GetSubscribeGroupMappingRequest  {}
+	// GetSubscribeGroupMappingResponse
+	GetSubscribeGroupMappingResponse {
+		List []SubscribeGroupMappingItem `json:"list"`
+	}
+)
+
+@server (
+	prefix:     v1/admin/group
+	group:      admin/group
+	jwt:        JwtAuth
+	middleware: AuthMiddleware
+)
+service ppanel {
+	// ===== 节点组管理 =====
+	@doc "Get node group list"
+	@handler GetNodeGroupList
+	get /node/list (GetNodeGroupListRequest) returns (GetNodeGroupListResponse)
+
+	@doc "Create node group"
+	@handler CreateNodeGroup
+	post /node (CreateNodeGroupRequest)
+
+	@doc "Update node group"
+	@handler UpdateNodeGroup
+	put /node (UpdateNodeGroupRequest)
+
+	@doc "Delete node group"
+	@handler DeleteNodeGroup
+	delete /node (DeleteNodeGroupRequest)
+
+	// ===== 分组配置管理 =====
+	@doc "Get group config"
+	@handler GetGroupConfig
+	get /config (GetGroupConfigRequest) returns (GetGroupConfigResponse)
+
+	@doc "Update group config"
+	@handler UpdateGroupConfig
+	put /config (UpdateGroupConfigRequest)
+
+	// ===== 分组操作 =====
+	@doc "Recalculate group"
+	@handler RecalculateGroup
+	post /recalculate (RecalculateGroupRequest)
+
+	@doc "Get recalculation status"
+	@handler GetRecalculationStatus
+	get /recalculation/status returns (RecalculationState)
+
+	@doc "Get group history"
+	@handler GetGroupHistory
+	get /history (GetGroupHistoryRequest) returns (GetGroupHistoryResponse)
+
+	@doc "Export group result"
+	@handler ExportGroupResult
+	get /export (ExportGroupResultRequest)
+
+	// Routes with query parameters
+	@doc "Get group history detail"
+	@handler GetGroupHistoryDetail
+	get /history/detail (GetGroupHistoryDetailRequest) returns (GetGroupHistoryDetailResponse)
+
+	@doc "Preview user nodes"
+	@handler PreviewUserNodes
+	get /preview (PreviewUserNodesRequest) returns (PreviewUserNodesResponse)
+
+	@doc "Reset all groups"
+	@handler ResetGroups
+	post /reset (ResetGroupsRequest)
+
+	@doc "Get subscribe group mapping"
+	@handler GetSubscribeGroupMapping
+	get /subscribe/mapping (GetSubscribeGroupMappingRequest) returns (GetSubscribeGroupMappingResponse)
+}
+

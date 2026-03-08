@@ -2,6 +2,7 @@ package subscribe
 
 import (
 	"context"
+	"strings"
 
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/redis/go-redis/v9"
@@ -19,6 +20,13 @@ type FilterParams struct {
 	Language        string   // Language
 	DefaultLanguage bool     // Default Subscribe Language Data
 	Search          string   // Search Keywords
+	NodeGroupId     *int64   // Node Group ID
+}
+
+type FilterByNodeGroupsParams struct {
+	Page         int     // Page Number
+	Size         int     // Page Size
+	NodeGroupIds []int64 // Node Group IDs (multiple)
 }
 
 func (p *FilterParams) Normalize() {
@@ -32,6 +40,7 @@ func (p *FilterParams) Normalize() {
 
 type customSubscribeLogicModel interface {
 	FilterList(ctx context.Context, params *FilterParams) (int64, []*Subscribe, error)
+	FilterListByNodeGroups(ctx context.Context, params *FilterByNodeGroupsParams) (int64, []*Subscribe, error)
 	ClearCache(ctx context.Context, id ...int64) error
 	QuerySubscribeMinSortByIds(ctx context.Context, ids []int64) (int64, error)
 }
@@ -102,6 +111,10 @@ func (m *customSubscribeModel) FilterList(ctx context.Context, params *FilterPar
 		if len(params.Tags) > 0 {
 			query = query.Scopes(InSet("node_tags", params.Tags))
 		}
+		if params.NodeGroupId != nil {
+			// Filter by node_group_ids using JSON_CONTAINS
+			query = query.Where("JSON_CONTAINS(node_group_ids, ?)", *params.NodeGroupId)
+		}
 		if lang != "" {
 			query = query.Where("language = ?", lang)
 		} else if params.DefaultLanguage {
@@ -153,4 +166,68 @@ func InSet(field string, values []string) func(db *gorm.DB) *gorm.DB {
 		}
 		return query
 	}
+}
+
+// FilterListByNodeGroups Filter subscribes by node groups
+// Match if subscribe's node_group_id OR node_group_ids contains any of the provided node group IDs
+func (m *customSubscribeModel) FilterListByNodeGroups(ctx context.Context, params *FilterByNodeGroupsParams) (int64, []*Subscribe, error) {
+	if params == nil {
+		params = &FilterByNodeGroupsParams{
+			Page: 1,
+			Size: 10,
+		}
+	}
+	if params.Page <= 0 {
+		params.Page = 1
+	}
+	if params.Size <= 0 {
+		params.Size = 10
+	}
+
+	var list []*Subscribe
+	var total int64
+
+	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
+		query := conn.Model(&Subscribe{})
+
+		// Filter by node groups: match if node_group_id or node_group_ids contains any of the provided IDs
+		if len(params.NodeGroupIds) > 0 {
+			var conditions []string
+			var args []interface{}
+
+			// Condition 1: node_group_id IN (...)
+			placeholders := make([]string, len(params.NodeGroupIds))
+			for i, id := range params.NodeGroupIds {
+				placeholders[i] = "?"
+				args = append(args, id)
+			}
+			conditions = append(conditions, "node_group_id IN ("+strings.Join(placeholders, ",")+")")
+
+			// Condition 2: JSON_CONTAINS(node_group_ids, id) for each id
+			for _, id := range params.NodeGroupIds {
+				conditions = append(conditions, "JSON_CONTAINS(node_group_ids, ?)")
+				args = append(args, id)
+			}
+
+			// Combine with OR: (node_group_id IN (...) OR JSON_CONTAINS(node_group_ids, id1) OR ...)
+			query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
+		}
+
+		// Count total
+		if err := query.Count(&total).Error; err != nil {
+			return err
+		}
+
+		// Find with pagination
+		return query.Order("sort ASC").
+			Limit(params.Size).
+			Offset((params.Page - 1) * params.Size).
+			Find(v).Error
+	})
+
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return total, list, nil
 }

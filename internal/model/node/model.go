@@ -33,15 +33,16 @@ type FilterParams struct {
 }
 
 type FilterNodeParams struct {
-	Page     int      // Page Number
-	Size     int      // Page Size
-	NodeId   []int64  // Node IDs
-	ServerId []int64  // Server IDs
-	Tag      []string // Tags
-	Search   string   // Search Address or Name
-	Protocol string   // Protocol
-	Preload  bool     // Preload Server
-	Enabled  *bool    // Enabled
+	Page         int      // Page Number
+	Size         int      // Page Size
+	NodeId       []int64  // Node IDs
+	ServerId     []int64  // Server IDs
+	Tag          []string // Tags
+	NodeGroupIds []int64  // Node Group IDs
+	Search       string   // Search Address or Name
+	Protocol     string   // Protocol
+	Preload      bool     // Preload Server
+	Enabled      *bool    // Enabled
 }
 
 // FilterServerList Filter Server List
@@ -96,6 +97,18 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 	if len(params.Tag) > 0 {
 		query = query.Scopes(InSet("tags", params.Tag))
 	}
+	if len(params.NodeGroupIds) > 0 {
+		// Filter by node_group_ids using JSON_CONTAINS for each group ID
+		// Multiple group IDs: node must belong to at least one of the groups
+		var conditions []string
+		for _, gid := range params.NodeGroupIds {
+			conditions = append(conditions, fmt.Sprintf("JSON_CONTAINS(node_group_ids, %d)", gid))
+		}
+		if len(conditions) > 0 {
+			query = query.Where("(" + strings.Join(conditions, " OR ") + ")")
+		}
+	}
+	// If no NodeGroupIds specified, return all nodes (including public nodes)
 	if params.Protocol != "" {
 		query = query.Where("protocol = ?", params.Protocol)
 	}

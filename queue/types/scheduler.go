@@ -5,4 +5,5 @@ const (
 	SchedulerTotalServerData   = "scheduler:total:server"
 	SchedulerResetTraffic      = "scheduler:reset:traffic"
 	SchedulerTrafficStat       = "scheduler:traffic:stat"
+	SchedulerRecalculateGroup  = "scheduler:recalculate:group"
 )

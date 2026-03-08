@@ -30,12 +30,20 @@ func NewGetSubscribeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 }
 
 func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequest) (resp *types.GetSubscribeListResponse, err error) {
-	total, list, err := l.svcCtx.SubscribeModel.FilterList(l.ctx, &subscribe.FilterParams{
+	// Build filter params
+	filterParams := &subscribe.FilterParams{
 		Page:     int(req.Page),
 		Size:     int(req.Size),
 		Language: req.Language,
 		Search:   req.Search,
-	})
+	}
+
+	// Add NodeGroupId filter if provided
+	if req.NodeGroupId > 0 {
+		filterParams.NodeGroupId = &req.NodeGroupId
+	}
+
+	total, list, err := l.svcCtx.SubscribeModel.FilterList(l.ctx, filterParams)
 	if err != nil {
 		l.Logger.Error("[GetSubscribeListLogic] get subscribe list failed: ", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get subscribe list failed: %v", err.Error())
@@ -56,6 +64,14 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 		}
 		sub.Nodes = tool.StringToInt64Slice(item.Nodes)
 		sub.NodeTags = strings.Split(item.NodeTags, ",")
+		// Handle NodeGroupIds - convert from JSONInt64Slice to []int64
+		if item.NodeGroupIds != nil {
+			sub.NodeGroupIds = []int64(item.NodeGroupIds)
+		} else {
+			sub.NodeGroupIds = []int64{}
+		}
+		// NodeGroupId is already int64, should be copied by DeepCopy
+		sub.NodeGroupId = item.NodeGroupId
 		resultList = append(resultList, sub)
 	}
 

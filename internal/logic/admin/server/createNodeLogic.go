@@ -29,13 +29,14 @@ func NewCreateNodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Create
 
 func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 	data := node.Node{
-		Name:     req.Name,
-		Tags:     tool.StringSliceToString(req.Tags),
-		Enabled:  req.Enabled,
-		Port:     req.Port,
-		Address:  req.Address,
-		ServerId: req.ServerId,
-		Protocol: req.Protocol,
+		Name:         req.Name,
+		Tags:         tool.StringSliceToString(req.Tags),
+		Enabled:      req.Enabled,
+		Port:         req.Port,
+		Address:      req.Address,
+		ServerId:     req.ServerId,
+		Protocol:     req.Protocol,
+		NodeGroupIds: node.JSONInt64Slice(req.NodeGroupIds),
 	}
 	err := l.svcCtx.NodeModel.InsertNode(l.ctx, &data)
 	if err != nil {

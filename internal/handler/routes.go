@@ -12,6 +12,7 @@ import (
 	adminConsole "github.com/perfect-panel/server/internal/handler/admin/console"
 	adminCoupon "github.com/perfect-panel/server/internal/handler/admin/coupon"
 	adminDocument "github.com/perfect-panel/server/internal/handler/admin/document"
+	adminGroup "github.com/perfect-panel/server/internal/handler/admin/group"
 	adminLog "github.com/perfect-panel/server/internal/handler/admin/log"
 	adminMarketing "github.com/perfect-panel/server/internal/handler/admin/marketing"
 	adminOrder "github.com/perfect-panel/server/internal/handler/admin/order"
@@ -186,6 +187,53 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 
 		// Get document list
 		adminDocumentGroupRouter.GET("/list", adminDocument.GetDocumentListHandler(serverCtx))
+	}
+
+	adminGroupGroupRouter := router.Group("/v1/admin/group")
+	adminGroupGroupRouter.Use(middleware.AuthMiddleware(serverCtx))
+
+	{
+		// Get group config
+		adminGroupGroupRouter.GET("/config", adminGroup.GetGroupConfigHandler(serverCtx))
+
+		// Update group config
+		adminGroupGroupRouter.PUT("/config", adminGroup.UpdateGroupConfigHandler(serverCtx))
+
+		// Export group result
+		adminGroupGroupRouter.GET("/export", adminGroup.ExportGroupResultHandler(serverCtx))
+
+		// Get group history
+		adminGroupGroupRouter.GET("/history", adminGroup.GetGroupHistoryHandler(serverCtx))
+
+		// Get group history detail
+		adminGroupGroupRouter.GET("/history/detail", adminGroup.GetGroupHistoryDetailHandler(serverCtx))
+
+		// Create node group
+		adminGroupGroupRouter.POST("/node", adminGroup.CreateNodeGroupHandler(serverCtx))
+
+		// Update node group
+		adminGroupGroupRouter.PUT("/node", adminGroup.UpdateNodeGroupHandler(serverCtx))
+
+		// Delete node group
+		adminGroupGroupRouter.DELETE("/node", adminGroup.DeleteNodeGroupHandler(serverCtx))
+
+		// Get node group list
+		adminGroupGroupRouter.GET("/node/list", adminGroup.GetNodeGroupListHandler(serverCtx))
+
+		// Preview user nodes
+		adminGroupGroupRouter.GET("/preview", adminGroup.PreviewUserNodesHandler(serverCtx))
+
+		// Recalculate group
+		adminGroupGroupRouter.POST("/recalculate", adminGroup.RecalculateGroupHandler(serverCtx))
+
+		// Get recalculation status
+		adminGroupGroupRouter.GET("/recalculation/status", adminGroup.GetRecalculationStatusHandler(serverCtx))
+
+		// Reset all groups
+		adminGroupGroupRouter.POST("/reset", adminGroup.ResetGroupsHandler(serverCtx))
+
+		// Get subscribe group mapping
+		adminGroupGroupRouter.GET("/subscribe/mapping", adminGroup.GetSubscribeGroupMappingHandler(serverCtx))
 	}
 
 	adminLogGroupRouter := router.Group("/v1/admin/log")

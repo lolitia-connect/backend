@@ -120,7 +120,31 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		}
 		userInfo.Commission = req.Commission
 	}
-	tool.DeepCopy(userInfo, req)
+
+	// 只更新指定的字段，不使用 DeepCopy 避免零值覆盖
+
+	// 处理头像（只在提供时更新）
+	if req.Avatar != "" {
+		userInfo.Avatar = req.Avatar
+	}
+
+	// 处理推荐码（只在提供时更新）
+	if req.ReferCode != "" {
+		userInfo.ReferCode = req.ReferCode
+	}
+
+	// 处理推荐人ID（只在非零时更新）
+	if req.RefererId != 0 {
+		userInfo.RefererId = req.RefererId
+	}
+
+	// 处理启用状态（始终更新）
+	userInfo.Enable = &req.Enable
+
+	// 处理管理员状态（始终更新）
+	userInfo.IsAdmin = &req.IsAdmin
+
+	// 更新其他字段（只有在明确提供时才更新）
 	userInfo.OnlyFirstPurchase = &req.OnlyFirstPurchase
 	userInfo.ReferralPercentage = req.ReferralPercentage
 

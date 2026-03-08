@@ -58,6 +58,8 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		Quota:             req.Quota,
 		Nodes:             tool.Int64SliceToString(req.Nodes),
 		NodeTags:          tool.StringSliceToString(req.NodeTags),
+		NodeGroupIds:      subscribe.JSONInt64Slice(req.NodeGroupIds),
+		NodeGroupId:       req.NodeGroupId,
 		Show:              req.Show,
 		Sell:              req.Sell,
 		Sort:              req.Sort,

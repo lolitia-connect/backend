@@ -80,36 +80,40 @@ type (
 		Protocols []Protocol `json:"protocols"`
 	}
 	Node {
-		Id        int64    `json:"id"`
-		Name      string   `json:"name"`
-		Tags      []string `json:"tags"`
-		Port      uint16   `json:"port"`
-		Address   string   `json:"address"`
-		ServerId  int64    `json:"server_id"`
-		Protocol  string   `json:"protocol"`
-		Enabled   *bool    `json:"enabled"`
-		Sort      int      `json:"sort,omitempty"`
-		CreatedAt int64    `json:"created_at"`
-		UpdatedAt int64    `json:"updated_at"`
+		Id           int64    `json:"id"`
+		Name         string   `json:"name"`
+		Tags         []string `json:"tags"`
+		Port         uint16   `json:"port"`
+		Address      string   `json:"address"`
+		ServerId     int64    `json:"server_id"`
+		Protocol     string   `json:"protocol"`
+		Enabled      *bool    `json:"enabled"`
+		Sort         int      `json:"sort,omitempty"`
+		NodeGroupId  int64    `json:"node_group_id,omitempty"`
+		NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+		CreatedAt    int64    `json:"created_at"`
+		UpdatedAt    int64    `json:"updated_at"`
 	}
 	CreateNodeRequest {
-		Name     string   `json:"name"`
-		Tags     []string `json:"tags,omitempty"`
-		Port     uint16   `json:"port"`
-		Address  string   `json:"address"`
-		ServerId int64    `json:"server_id"`
-		Protocol string   `json:"protocol"`
-		Enabled  *bool    `json:"enabled"`
+		Name         string   `json:"name"`
+		Tags         []string `json:"tags,omitempty"`
+		Port         uint16   `json:"port"`
+		Address      string   `json:"address"`
+		ServerId     int64    `json:"server_id"`
+		Protocol     string   `json:"protocol"`
+		Enabled      *bool    `json:"enabled"`
+		NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
 	}
 	UpdateNodeRequest {
-		Id       int64    `json:"id"`
-		Name     string   `json:"name"`
-		Tags     []string `json:"tags,omitempty"`
-		Port     uint16   `json:"port"`
-		Address  string   `json:"address"`
-		ServerId int64    `json:"server_id"`
-		Protocol string   `json:"protocol"`
-		Enabled  *bool    `json:"enabled"`
+		Id           int64    `json:"id"`
+		Name         string   `json:"name"`
+		Tags         []string `json:"tags,omitempty"`
+		Port         uint16   `json:"port"`
+		Address      string   `json:"address"`
+		ServerId     int64    `json:"server_id"`
+		Protocol     string   `json:"protocol"`
+		Enabled      *bool    `json:"enabled"`
+		NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
 	}
 	ToggleNodeStatusRequest {
 		Id     int64 `json:"id"`
@@ -119,9 +123,10 @@ type (
 		Id int64 `json:"id"`
 	}
 	FilterNodeListRequest {
-		Page   int    `form:"page"`
-		Size   int    `form:"size"`
-		Search string `form:"search,omitempty"`
+		Page        int    `form:"page"`
+		Size        int    `form:"size"`
+		Search      string `form:"search,omitempty"`
+		NodeGroupId *int64 `form:"node_group_id,omitempty"`
 	}
 	FilterNodeListResponse {
 		Total int64  `json:"total"`

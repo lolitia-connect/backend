@@ -56,7 +56,9 @@ func (s *service) verify(ctx context.Context, secret string, token string, ip st
 		_ = writer.WriteField("idempotency_key", key)
 	}
 	_ = writer.Close()
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
 	req, _ := http.NewRequest("POST", s.url, body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	firstResult, err := client.Do(req)

@@ -53,6 +53,7 @@ func (l *UpdateUserSubscribeLogic) UpdateUserSubscribe(req *types.UpdateUserSubs
 		Token:       userSub.Token,
 		UUID:        userSub.UUID,
 		Status:      userSub.Status,
+		NodeGroupId: userSub.NodeGroupId,
 	})
 
 	if err != nil {
@@ -74,5 +75,6 @@ func (l *UpdateUserSubscribeLogic) UpdateUserSubscribe(req *types.UpdateUserSubs
 		l.Errorf("ClearServerAllCache error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "failed to clear server cache: %v", err.Error())
 	}
+
 	return nil
 }

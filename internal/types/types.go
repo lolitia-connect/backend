@@ -320,14 +320,24 @@ type CreateDocumentRequest struct {
 	Show    *bool    `json:"show"`
 }
 
+type CreateNodeGroupRequest struct {
+	Name           string `json:"name" validate:"required"`
+	Description    string `json:"description"`
+	Sort           int    `json:"sort"`
+	ForCalculation *bool  `json:"for_calculation"`
+	MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
+	MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+}
+
 type CreateNodeRequest struct {
-	Name     string   `json:"name"`
-	Tags     []string `json:"tags,omitempty"`
-	Port     uint16   `json:"port"`
-	Address  string   `json:"address"`
-	ServerId int64    `json:"server_id"`
-	Protocol string   `json:"protocol"`
-	Enabled  *bool    `json:"enabled"`
+	Name         string   `json:"name"`
+	Tags         []string `json:"tags,omitempty"`
+	Port         uint16   `json:"port"`
+	Address      string   `json:"address"`
+	ServerId     int64    `json:"server_id"`
+	Protocol     string   `json:"protocol"`
+	Enabled      *bool    `json:"enabled"`
+	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
 }
 
 type CreateOrderRequest struct {
@@ -420,6 +430,8 @@ type CreateSubscribeRequest struct {
 	Quota             int64               `json:"quota"`
 	Nodes             []int64             `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
+	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
+	NodeGroupId       int64               `json:"node_group_id"`
 	Show              *bool               `json:"show"`
 	Sell              *bool               `json:"sell"`
 	DeductionRatio    int64               `json:"deduction_ratio"`
@@ -427,6 +439,7 @@ type CreateSubscribeRequest struct {
 	ResetCycle        int64               `json:"reset_cycle"`
 	RenewalReset      *bool               `json:"renewal_reset"`
 	ShowOriginalPrice bool                `json:"show_original_price"`
+	AutoCreateGroup   bool                `json:"auto_create_group"`
 }
 
 type CreateTicketFollowRequest struct {
@@ -502,6 +515,10 @@ type DeleteCouponRequest struct {
 }
 
 type DeleteDocumentRequest struct {
+	Id int64 `json:"id" validate:"required"`
+}
+
+type DeleteNodeGroupRequest struct {
 	Id int64 `json:"id" validate:"required"`
 }
 
@@ -600,6 +617,10 @@ type EmailAuthticateConfig struct {
 	DomainSuffixList   string `json:"domain_suffix_list"`
 }
 
+type ExportGroupResultRequest struct {
+	HistoryId *int64 `form:"history_id,omitempty"`
+}
+
 type FilterBalanceLogRequest struct {
 	FilterLogParams
 	UserId int64 `form:"user_id,optional"`
@@ -658,9 +679,10 @@ type FilterMobileLogResponse struct {
 }
 
 type FilterNodeListRequest struct {
-	Page   int    `form:"page"`
-	Size   int    `form:"size"`
-	Search string `form:"search,omitempty"`
+	Page        int    `form:"page"`
+	Size        int    `form:"size"`
+	Search      string `form:"search,omitempty"`
+	NodeGroupId *int64 `form:"node_group_id,omitempty"`
 }
 
 type FilterNodeListResponse struct {
@@ -884,6 +906,37 @@ type GetGlobalConfigResponse struct {
 	WebAd        bool                   `json:"web_ad"`
 }
 
+type GetGroupConfigRequest struct {
+	Keys []string `form:"keys,omitempty"`
+}
+
+type GetGroupConfigResponse struct {
+	Enabled bool                   `json:"enabled"`
+	Mode    string                 `json:"mode"`
+	Config  map[string]interface{} `json:"config"`
+	State   RecalculationState     `json:"state"`
+}
+
+type GetGroupHistoryDetailRequest struct {
+	Id int64 `form:"id" validate:"required"`
+}
+
+type GetGroupHistoryDetailResponse struct {
+	GroupHistoryDetail
+}
+
+type GetGroupHistoryRequest struct {
+	Page        int    `form:"page"`
+	Size        int    `form:"size"`
+	GroupMode   string `form:"group_mode,omitempty"`
+	TriggerType string `form:"trigger_type,omitempty"`
+}
+
+type GetGroupHistoryResponse struct {
+	Total int64          `json:"total"`
+	List  []GroupHistory `json:"list"`
+}
+
 type GetLoginLogRequest struct {
 	Page int `form:"page"`
 	Size int `form:"size"`
@@ -904,6 +957,17 @@ type GetMessageLogListRequest struct {
 type GetMessageLogListResponse struct {
 	Total int64        `json:"total"`
 	List  []MessageLog `json:"list"`
+}
+
+type GetNodeGroupListRequest struct {
+	Page    int    `form:"page"`
+	Size    int    `form:"size"`
+	GroupId string `form:"group_id,omitempty"`
+}
+
+type GetNodeGroupListResponse struct {
+	Total int64       `json:"total"`
+	List  []NodeGroup `json:"list"`
 }
 
 type GetNodeMultiplierResponse struct {
@@ -1033,11 +1097,19 @@ type GetSubscribeGroupListResponse struct {
 	Total int64            `json:"total"`
 }
 
+type GetSubscribeGroupMappingRequest struct {
+}
+
+type GetSubscribeGroupMappingResponse struct {
+	List []SubscribeGroupMappingItem `json:"list"`
+}
+
 type GetSubscribeListRequest struct {
-	Page     int64  `form:"page" validate:"required"`
-	Size     int64  `form:"size" validate:"required"`
-	Language string `form:"language,omitempty"`
-	Search   string `form:"search,omitempty"`
+	Page        int64  `form:"page" validate:"required"`
+	Size        int64  `form:"size" validate:"required"`
+	Language    string `form:"language,omitempty"`
+	Search      string `form:"search,omitempty"`
+	NodeGroupId int64  `form:"node_group_id,omitempty"`
 }
 
 type GetSubscribeListResponse struct {
@@ -1215,6 +1287,25 @@ type GoogleLoginCallbackRequest struct {
 	State string `form:"state"`
 }
 
+type GroupHistory struct {
+	Id           int64  `json:"id"`
+	GroupMode    string `json:"group_mode"`
+	TriggerType  string `json:"trigger_type"`
+	TotalUsers   int    `json:"total_users"`
+	SuccessCount int    `json:"success_count"`
+	FailedCount  int    `json:"failed_count"`
+	StartTime    *int64 `json:"start_time,omitempty"`
+	EndTime      *int64 `json:"end_time,omitempty"`
+	Operator     string `json:"operator,omitempty"`
+	ErrorLog     string `json:"error_log,omitempty"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
+type GroupHistoryDetail struct {
+	GroupHistory
+	ConfigSnapshot map[string]interface{} `json:"config_snapshot,omitempty"`
+}
+
 type HasMigrateSeverNodeResponse struct {
 	HasMigrate bool `json:"has_migrate"`
 }
@@ -1295,17 +1386,19 @@ type ModuleConfig struct {
 }
 
 type Node struct {
-	Id        int64    `json:"id"`
-	Name      string   `json:"name"`
-	Tags      []string `json:"tags"`
-	Port      uint16   `json:"port"`
-	Address   string   `json:"address"`
-	ServerId  int64    `json:"server_id"`
-	Protocol  string   `json:"protocol"`
-	Enabled   *bool    `json:"enabled"`
-	Sort      int      `json:"sort,omitempty"`
-	CreatedAt int64    `json:"created_at"`
-	UpdatedAt int64    `json:"updated_at"`
+	Id           int64    `json:"id"`
+	Name         string   `json:"name"`
+	Tags         []string `json:"tags"`
+	Port         uint16   `json:"port"`
+	Address      string   `json:"address"`
+	ServerId     int64    `json:"server_id"`
+	Protocol     string   `json:"protocol"`
+	Enabled      *bool    `json:"enabled"`
+	Sort         int      `json:"sort,omitempty"`
+	NodeGroupId  int64    `json:"node_group_id,omitempty"`
+	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+	CreatedAt    int64    `json:"created_at"`
+	UpdatedAt    int64    `json:"updated_at"`
 }
 
 type NodeConfig struct {
@@ -1323,6 +1416,25 @@ type NodeDNS struct {
 	Proto   string   `json:"proto"`
 	Address string   `json:"address"`
 	Domains []string `json:"domains"`
+}
+
+type NodeGroup struct {
+	Id             int64  `json:"id"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	Sort           int    `json:"sort"`
+	ForCalculation bool   `json:"for_calculation"`
+	MinTrafficGB   int64  `json:"min_traffic_gb,omitempty"`
+	MaxTrafficGB   int64  `json:"max_traffic_gb,omitempty"`
+	NodeCount      int64  `json:"node_count,omitempty"`
+	CreatedAt      int64  `json:"created_at"`
+	UpdatedAt      int64  `json:"updated_at"`
+}
+
+type NodeGroupItem struct {
+	Id    int64  `json:"id"`
+	Name  string `json:"name"`
+	Nodes []Node `json:"nodes"`
 }
 
 type NodeOutbound struct {
@@ -1533,6 +1645,15 @@ type PreviewSubscribeTemplateRequest struct {
 
 type PreviewSubscribeTemplateResponse struct {
 	Template string `json:"template"` // 预览的模板内容
+}
+
+type PreviewUserNodesRequest struct {
+	UserId int64 `form:"user_id" validate:"required"`
+}
+
+type PreviewUserNodesResponse struct {
+	UserId     int64           `json:"user_id"`
+	NodeGroups []NodeGroupItem `json:"node_groups"`
 }
 
 type PrivacyPolicyConfig struct {
@@ -1813,6 +1934,17 @@ type QuotaTask struct {
 	UpdatedAt    int64   `json:"updated_at"`
 }
 
+type RecalculateGroupRequest struct {
+	Mode        string `json:"mode" validate:"required"`
+	TriggerType string `json:"trigger_type"` // "manual" or "scheduled"
+}
+
+type RecalculationState struct {
+	State    string `json:"state"`
+	Progress int    `json:"progress"`
+	Total    int    `json:"total"`
+}
+
 type RechargeOrderRequest struct {
 	Amount  int64 `json:"amount" validate:"required,gt=0,lte=2000000000"`
 	Payment int64 `json:"payment"`
@@ -1888,6 +2020,10 @@ type RenewalOrderResponse struct {
 
 type ResetAllSubscribeTokenResponse struct {
 	Success bool `json:"success"`
+}
+
+type ResetGroupsRequest struct {
+	Confirm bool `json:"confirm" validate:"required"`
 }
 
 type ResetPasswordRequest struct {
@@ -2153,6 +2289,8 @@ type Subscribe struct {
 	Quota             int64               `json:"quota"`
 	Nodes             []int64             `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
+	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
+	NodeGroupId       int64               `json:"node_group_id"`
 	Show              bool                `json:"show"`
 	Sell              bool                `json:"sell"`
 	Sort              int64               `json:"sort"`
@@ -2210,6 +2348,11 @@ type SubscribeGroup struct {
 	Description string `json:"description"`
 	CreatedAt   int64  `json:"created_at"`
 	UpdatedAt   int64  `json:"updated_at"`
+}
+
+type SubscribeGroupMappingItem struct {
+	SubscribeName string `json:"subscribe_name"`
+	NodeGroupName string `json:"node_group_name"`
 }
 
 type SubscribeItem struct {
@@ -2465,15 +2608,32 @@ type UpdateDocumentRequest struct {
 	Show    *bool    `json:"show"`
 }
 
+type UpdateGroupConfigRequest struct {
+	Enabled bool                   `json:"enabled"`
+	Mode    string                 `json:"mode"`
+	Config  map[string]interface{} `json:"config"`
+}
+
+type UpdateNodeGroupRequest struct {
+	Id             int64  `json:"id" validate:"required"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	Sort           int    `json:"sort"`
+	ForCalculation *bool  `json:"for_calculation"`
+	MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
+	MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+}
+
 type UpdateNodeRequest struct {
-	Id       int64    `json:"id"`
-	Name     string   `json:"name"`
-	Tags     []string `json:"tags,omitempty"`
-	Port     uint16   `json:"port"`
-	Address  string   `json:"address"`
-	ServerId int64    `json:"server_id"`
-	Protocol string   `json:"protocol"`
-	Enabled  *bool    `json:"enabled"`
+	Id           int64    `json:"id"`
+	Name         string   `json:"name"`
+	Tags         []string `json:"tags,omitempty"`
+	Port         uint16   `json:"port"`
+	Address      string   `json:"address"`
+	ServerId     int64    `json:"server_id"`
+	Protocol     string   `json:"protocol"`
+	Enabled      *bool    `json:"enabled"`
+	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
 }
 
 type UpdateOrderStatusRequest struct {
@@ -2551,6 +2711,8 @@ type UpdateSubscribeRequest struct {
 	Quota             int64               `json:"quota"`
 	Nodes             []int64             `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
+	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
+	NodeGroupId       int64               `json:"node_group_id"`
 	Show              *bool               `json:"show"`
 	Sell              *bool               `json:"sell"`
 	Sort              int64               `json:"sort"`

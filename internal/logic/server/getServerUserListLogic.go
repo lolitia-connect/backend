@@ -55,6 +55,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 		return nil, err
 	}
 
+	// 查询该服务器上该协议的所有节点（包括属于节点组的节点）
 	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:     1,
 		Size:     1000,
@@ -65,25 +66,74 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 		l.Errorw("FilterNodeList error", logger.Field("error", err.Error()))
 		return nil, err
 	}
-	var nodeTag []string
+
+	if len(nodes) == 0 {
+		return &types.GetServerUserListResponse{
+			Users: []types.ServerUser{
+				{
+					Id:   1,
+					UUID: uuidx.NewUUID().String(),
+				},
+			},
+		}, nil
+	}
+
+	// 收集所有唯一的节点组 ID
+	nodeGroupMap := make(map[int64]bool) // nodeGroupId -> true
 	var nodeIds []int64
+	var nodeTags []string
+
 	for _, n := range nodes {
 		nodeIds = append(nodeIds, n.Id)
 		if n.Tags != "" {
-			nodeTag = append(nodeTag, strings.Split(n.Tags, ",")...)
+			nodeTags = append(nodeTags, strings.Split(n.Tags, ",")...)
+		}
+		// 收集节点组 ID
+		if len(n.NodeGroupIds) > 0 {
+			for _, gid := range n.NodeGroupIds {
+				if gid > 0 {
+					nodeGroupMap[gid] = true
+				}
+			}
 		}
 	}
 
-	_, subs, err := l.svcCtx.SubscribeModel.FilterList(l.ctx, &subscribe.FilterParams{
-		Page: 1,
-		Size: 9999,
-		Node: nodeIds,
-		Tags: nodeTag,
-	})
-	if err != nil {
-		l.Errorw("QuerySubscribeIdsByServerIdAndServerGroupId error", logger.Field("error", err.Error()))
-		return nil, err
+	// 获取所有节点组 ID
+	nodeGroupIds := make([]int64, 0, len(nodeGroupMap))
+	for gid := range nodeGroupMap {
+		nodeGroupIds = append(nodeGroupIds, gid)
 	}
+
+	// 查询订阅：
+	// 1. 如果有节点组，查询匹配这些节点组的订阅
+	// 2. 如果没有节点组，查询使用节点 ID 或 tags 的订阅
+	var subs []*subscribe.Subscribe
+	if len(nodeGroupIds) > 0 {
+		// 节点组模式：查询 node_group_id 或 node_group_ids 匹配的订阅
+		_, subs, err = l.svcCtx.SubscribeModel.FilterListByNodeGroups(l.ctx, &subscribe.FilterByNodeGroupsParams{
+			Page:         1,
+			Size:         9999,
+			NodeGroupIds: nodeGroupIds,
+		})
+		if err != nil {
+			l.Errorw("FilterListByNodeGroups error", logger.Field("error", err.Error()))
+			return nil, err
+		}
+	} else {
+		// 传统模式：查询匹配节点 ID 或 tags 的订阅
+		nodeTags = tool.RemoveDuplicateElements(nodeTags...)
+		_, subs, err = l.svcCtx.SubscribeModel.FilterList(l.ctx, &subscribe.FilterParams{
+			Page: 1,
+			Size: 9999,
+			Node: nodeIds,
+			Tags: nodeTags,
+		})
+		if err != nil {
+			l.Errorw("FilterList error", logger.Field("error", err.Error()))
+			return nil, err
+		}
+	}
+
 	if len(subs) == 0 {
 		return &types.GetServerUserListResponse{
 			Users: []types.ServerUser{

@@ -215,14 +215,133 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe details error: %v", err.Error())
 	}
 
+	// 判断是否使用分组模式
+	isGroupMode := l.isGroupEnabled()
+
+	if isGroupMode {
+		// === 分组模式：使用 node_group_id 获取节点 ===
+		// 按优先级获取 node_group_id：user_subscribe.node_group_id > subscribe.node_group_id > subscribe.node_group_ids[0]
+		nodeGroupId := int64(0)
+		source := ""
+
+		// 优先级1: user_subscribe.node_group_id
+		if userSub.NodeGroupId != 0 {
+			nodeGroupId = userSub.NodeGroupId
+			source = "user_subscribe.node_group_id"
+		} else {
+			// 优先级2 & 3: 从 subscribe 表获取
+			if subDetails.NodeGroupId != 0 {
+				nodeGroupId = subDetails.NodeGroupId
+				source = "subscribe.node_group_id"
+			} else if len(subDetails.NodeGroupIds) > 0 {
+				// 优先级3: subscribe.node_group_ids[0]
+				nodeGroupId = subDetails.NodeGroupIds[0]
+				source = "subscribe.node_group_ids[0]"
+			}
+		}
+
+		l.Debugf("[Generate Subscribe]group mode, using %s: %v", source, nodeGroupId)
+
+		// 根据 node_group_id 获取节点
+		enable := true
+
+		// 1. 获取分组节点
+		var groupNodes []*node.Node
+		if nodeGroupId > 0 {
+			params := &node.FilterNodeParams{
+				Page:         0,
+				Size:         1000,
+				NodeGroupIds: []int64{nodeGroupId},
+				Enabled:      &enable,
+				Preload:      true,
+			}
+			_, groupNodes, err = l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), params)
+
+			if err != nil {
+				l.Errorw("[Generate Subscribe]filter nodes by group error", logger.Field("error", err.Error()))
+				return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "filter nodes by group error: %v", err.Error())
+			}
+			l.Debugf("[Generate Subscribe]found %d nodes for node_group_id=%d", len(groupNodes), nodeGroupId)
+		}
+
+		// 2. 获取公共节点（NodeGroupIds 为空的节点）
+		_, allNodes, err := l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
+			Page:    0,
+			Size:    1000,
+			Enabled: &enable,
+			Preload: true,
+		})
+
+		if err != nil {
+			l.Errorw("[Generate Subscribe]filter all nodes error", logger.Field("error", err.Error()))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "filter all nodes error: %v", err.Error())
+		}
+
+		// 过滤出公共节点
+		var publicNodes []*node.Node
+		for _, n := range allNodes {
+			if len(n.NodeGroupIds) == 0 {
+				publicNodes = append(publicNodes, n)
+			}
+		}
+		l.Debugf("[Generate Subscribe]found %d public nodes (node_group_ids is empty)", len(publicNodes))
+
+		// 3. 合并分组节点和公共节点
+		nodesMap := make(map[int64]*node.Node)
+		for _, n := range groupNodes {
+			nodesMap[n.Id] = n
+		}
+		for _, n := range publicNodes {
+			if _, exists := nodesMap[n.Id]; !exists {
+				nodesMap[n.Id] = n
+			}
+		}
+
+		// 转换为切片
+		var result []*node.Node
+		for _, n := range nodesMap {
+			result = append(result, n)
+		}
+
+		l.Debugf("[Generate Subscribe]total nodes (group + public): %d (group: %d, public: %d)", len(result), len(groupNodes), len(publicNodes))
+
+		// 查询节点组信息，获取节点组名称（仅当用户有分组时）
+		if nodeGroupId > 0 {
+			type NodeGroupInfo struct {
+				Id   int64
+				Name string
+			}
+			var nodeGroupInfo NodeGroupInfo
+			err = l.svc.DB.Table("node_group").Select("id, name").Where("id = ?", nodeGroupId).First(&nodeGroupInfo).Error
+			if err != nil {
+				l.Infow("[Generate Subscribe]node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
+			}
+
+			// 如果节点组信息存在，为没有 tag 的分组节点设置节点组名称为 tag
+			if nodeGroupInfo.Id != 0 && nodeGroupInfo.Name != "" {
+				for _, n := range result {
+					// 只为分组节点设置 tag，公共节点不设置
+					if n.Tags == "" && len(n.NodeGroupIds) > 0 {
+						n.Tags = nodeGroupInfo.Name
+						l.Debugf("[Generate Subscribe]set node_group name as tag for node %d: %s", n.Id, nodeGroupInfo.Name)
+					}
+				}
+			}
+		}
+
+		return result, nil
+	}
+
+	// === 标签模式：使用 node_ids 和 tags 获取节点 ===
 	nodeIds := tool.StringToInt64Slice(subDetails.Nodes)
 	tags := tool.RemoveStringElement(strings.Split(subDetails.NodeTags, ","), "")
 
-	l.Debugf("[Generate Subscribe]nodes: %v, NodeTags: %v", len(nodeIds), len(tags))
+	l.Debugf("[Generate Subscribe]tag mode, nodes: %v, NodeTags: %v", len(nodeIds), len(tags))
 	if len(nodeIds) == 0 && len(tags) == 0 {
-		logger.Infow("[Generate Subscribe]no subscribe nodes")
+		logger.Infow("[Generate Subscribe]no subscribe nodes configured")
 		return []*node.Node{}, nil
 	}
+
 	enable := true
 	var nodes []*node.Node
 	_, nodes, err = l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
@@ -231,16 +350,15 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 		NodeId:  nodeIds,
 		Tag:     tool.RemoveDuplicateElements(tags...),
 		Preload: true,
-		Enabled: &enable, // Only get enabled nodes
+		Enabled: &enable,
 	})
-
-	l.Debugf("[Query Subscribe]found servers: %v", len(nodes))
 
 	if err != nil {
 		l.Errorw("[Generate Subscribe]find server details error: %v", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server details error: %v", err.Error())
 	}
-	logger.Debugf("[Generate Subscribe]found servers: %v", len(nodes))
+
+	l.Debugf("[Generate Subscribe]found %d nodes in tag mode", len(nodes))
 	return nodes, nil
 }
 
@@ -289,4 +407,18 @@ func (l *SubscribeLogic) getFirstHostLine() string {
 		return lines[0]
 	}
 	return host
+}
+
+// isGroupEnabled 判断分组功能是否启用
+func (l *SubscribeLogic) isGroupEnabled() bool {
+	var value string
+	err := l.svc.DB.Table("system").
+		Where("`category` = ? AND `key` = ?", "group", "enabled").
+		Select("value").
+		Scan(&value).Error
+	if err != nil {
+		l.Debugf("[SubscribeLogic]check group enabled failed: %v", err)
+		return false
+	}
+	return value == "true" || value == "1"
 }

@@ -29,10 +29,17 @@ func NewFilterNodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Fi
 }
 
 func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (resp *types.FilterNodeListResponse, err error) {
+	// Convert NodeGroupId to []int64 for model
+	var nodeGroupIds []int64
+	if req.NodeGroupId != nil {
+		nodeGroupIds = []int64{*req.NodeGroupId}
+	}
+
 	total, data, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:   req.Page,
-		Size:   req.Size,
-		Search: req.Search,
+		Page:         req.Page,
+		Size:         req.Size,
+		Search:       req.Search,
+		NodeGroupIds: nodeGroupIds,
 	})
 
 	if err != nil {
@@ -43,17 +50,18 @@ func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (
 	list := make([]types.Node, 0)
 	for _, datum := range data {
 		list = append(list, types.Node{
-			Id:        datum.Id,
-			Name:      datum.Name,
-			Tags:      tool.RemoveDuplicateElements(strings.Split(datum.Tags, ",")...),
-			Port:      datum.Port,
-			Address:   datum.Address,
-			ServerId:  datum.ServerId,
-			Protocol:  datum.Protocol,
-			Enabled:   datum.Enabled,
-			Sort:      datum.Sort,
-			CreatedAt: datum.CreatedAt.UnixMilli(),
-			UpdatedAt: datum.UpdatedAt.UnixMilli(),
+			Id:           datum.Id,
+			Name:         datum.Name,
+			Tags:         tool.RemoveDuplicateElements(strings.Split(datum.Tags, ",")...),
+			Port:         datum.Port,
+			Address:      datum.Address,
+			ServerId:     datum.ServerId,
+			Protocol:     datum.Protocol,
+			Enabled:      datum.Enabled,
+			Sort:         datum.Sort,
+			NodeGroupIds: []int64(datum.NodeGroupIds),
+			CreatedAt:    datum.CreatedAt.UnixMilli(),
+			UpdatedAt:    datum.UpdatedAt.UnixMilli(),
 		})
 	}
 

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -22,9 +23,10 @@ import (
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
-	"github.com/perfect-panel/server/queue/types"
+	queueTypes "github.com/perfect-panel/server/queue/types"
 	"gorm.io/gorm"
 )
 
@@ -93,8 +95,8 @@ func (l *ActivateOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task) 
 }
 
 // parsePayload unMarshals the task payload into a structured format
-func (l *ActivateOrderLogic) parsePayload(ctx context.Context, payload []byte) (*types.ForthwithActivateOrderPayload, error) {
-	var p types.ForthwithActivateOrderPayload
+func (l *ActivateOrderLogic) parsePayload(ctx context.Context, payload []byte) (*queueTypes.ForthwithActivateOrderPayload, error) {
+	var p queueTypes.ForthwithActivateOrderPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
 		logger.WithContext(ctx).Error("[ActivateOrderLogic] Unmarshal payload failed",
 			logger.Field("error", err.Error()),
@@ -195,6 +197,9 @@ func (l *ActivateOrderLogic) NewPurchase(ctx context.Context, orderInfo *order.O
 	if err != nil {
 		return err
 	}
+
+	// Trigger user group recalculation (runs in background)
+	l.triggerUserGroupRecalculation(ctx, userInfo.Id)
 
 	// Handle commission in separate goroutine to avoid blocking
 	go l.handleCommission(context.Background(), userInfo, orderInfo)
@@ -357,6 +362,7 @@ func (l *ActivateOrderLogic) createUserSubscription(ctx context.Context, orderIn
 		Token:       uuidx.SubscribeToken(orderInfo.OrderNo),
 		UUID:        uuid.New().String(),
 		Status:      1,
+		NodeGroupId: sub.NodeGroupId, // Inherit node_group_id from subscription plan
 	}
 
 	// Check quota limit before creating subscription (final safeguard)
@@ -503,6 +509,63 @@ func (l *ActivateOrderLogic) clearServerCache(ctx context.Context, sub *subscrib
 	if err := l.svc.SubscribeModel.ClearCache(ctx, sub.Id); err != nil {
 		logger.WithContext(ctx).Error("[Order Queue] Clear subscribe cache failed", logger.Field("error", err.Error()))
 	}
+}
+
+// triggerUserGroupRecalculation triggers user group recalculation after subscription changes
+// This runs asynchronously in background to avoid blocking the main order processing flow
+func (l *ActivateOrderLogic) triggerUserGroupRecalculation(ctx context.Context, userId int64) {
+	go func() {
+		// Use a new context with timeout for group recalculation
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		// Check if group management is enabled
+		var groupEnabled string
+		err := l.svc.DB.Table("system").
+			Where("`category` = ? AND `key` = ?", "group", "enabled").
+			Select("value").
+			Scan(&groupEnabled).Error
+		if err != nil || groupEnabled != "true" && groupEnabled != "1" {
+			logger.Debugf("[Group Trigger] Group management not enabled, skipping recalculation")
+			return
+		}
+
+		// Get the configured grouping mode
+		var groupMode string
+		err = l.svc.DB.Table("system").
+			Where("`category` = ? AND `key` = ?", "group", "mode").
+			Select("value").
+			Scan(&groupMode).Error
+		if err != nil {
+			logger.Errorw("[Group Trigger] Failed to get group mode", logger.Field("error", err.Error()))
+			return
+		}
+
+		// Validate group mode
+		if groupMode != "average" && groupMode != "subscribe" && groupMode != "traffic" {
+			logger.Debugf("[Group Trigger] Invalid group mode (current: %s), skipping", groupMode)
+			return
+		}
+
+		// Trigger group recalculation with the configured mode
+		logic := group.NewRecalculateGroupLogic(ctx, l.svc)
+		req := &types.RecalculateGroupRequest{
+			Mode: groupMode,
+		}
+
+		if err := logic.RecalculateGroup(req); err != nil {
+			logger.Errorw("[Group Trigger] Failed to recalculate user group",
+				logger.Field("user_id", userId),
+				logger.Field("error", err.Error()),
+			)
+			return
+		}
+
+		logger.Infow("[Group Trigger] Successfully recalculated user group",
+			logger.Field("user_id", userId),
+			logger.Field("mode", groupMode),
+		)
+	}()
 }
 
 // Renewal handles subscription renewal including subscription extension,
@@ -898,6 +961,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 					Traffic:     us.Traffic,
 					Download:    us.Download,
 					Upload:      us.Upload,
+					NodeGroupId: us.NodeGroupId,
 				}
 				break
 			}
@@ -984,6 +1048,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 				Token:       uuidx.SubscribeToken(orderInfo.OrderNo),
 				UUID:        uuid.New().String(),
 				Status:      1,
+				NodeGroupId: sub.NodeGroupId, // Inherit node_group_id from subscription plan
 			}
 
 			err = l.svc.UserModel.InsertSubscribe(ctx, newSubscribe, tx)
@@ -1029,6 +1094,9 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 		logger.WithContext(ctx).Error("Redemption transaction failed", logger.Field("error", err.Error()))
 		return err
 	}
+
+	// Trigger user group recalculation (runs in background)
+	l.triggerUserGroupRecalculation(ctx, userInfo.Id)
 
 	// 7. 清理缓存（关键步骤：让节点获取最新订阅）
 	l.clearServerCache(ctx, sub)

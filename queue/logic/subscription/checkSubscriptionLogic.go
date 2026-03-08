@@ -62,7 +62,6 @@ func (l *CheckSubscriptionLogic) ProcessTask(ctx context.Context, _ *asynq.Task)
 			}
 			l.clearServerCache(ctx, list...)
 			logger.Infow("[Check Subscription Traffic] Update subscribe status", logger.Field("user_ids", ids), logger.Field("count", int64(len(ids))))
-
 		} else {
 			logger.Info("[Check Subscription Traffic] No subscribe need to update")
 		}
@@ -108,6 +107,7 @@ func (l *CheckSubscriptionLogic) ProcessTask(ctx context.Context, _ *asynq.Task)
 		} else {
 			logger.Info("[Check Subscription Expire] No subscribe need to update")
 		}
+
 		return nil
 	})
 	if err != nil {

@@ -206,7 +206,7 @@ type (
 		CurrencySymbol string `json:"currency_symbol"`
 	}
 	SubscribeDiscount {
-		Quantity int64 `json:"quantity"`
+		Quantity int64   `json:"quantity"`
 		Discount float64 `json:"discount"`
 	}
 	Subscribe {
@@ -225,6 +225,8 @@ type (
 		Quota             int64               `json:"quota"`
 		Nodes             []int64             `json:"nodes"`
 		NodeTags          []string            `json:"node_tags"`
+		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
+		NodeGroupId       int64               `json:"node_group_id"`
 		Show              bool                `json:"show"`
 		Sell              bool                `json:"sell"`
 		Sort              int64               `json:"sort"`
@@ -486,6 +488,8 @@ type (
 		OrderId     int64     `json:"order_id"`
 		SubscribeId int64     `json:"subscribe_id"`
 		Subscribe   Subscribe `json:"subscribe"`
+		NodeGroupId int64     `json:"node_group_id"`
+		GroupLocked bool      `json:"group_locked"`
 		StartTime   int64     `json:"start_time"`
 		ExpireTime  int64     `json:"expire_time"`
 		FinishedAt  int64     `json:"finished_at"`
@@ -697,7 +701,6 @@ type (
 		List  []SubscribeGroup `json:"list"`
 		Total int64            `json:"total"`
 	}
-
 	GetUserSubscribeTrafficLogsRequest {
 		Page        int   `form:"page"`
 		Size        int   `form:"size"`
@@ -873,6 +876,39 @@ type (
 	// reset user subscribe token
 	ResetUserSubscribeTokenRequest {
 		UserSubscribeId int64 `json:"user_subscribe_id"`
+	}
+	// ===== 分组功能类型定义 =====
+	// NodeGroup 节点组
+	NodeGroup {
+		Id             int64  `json:"id"`
+		Name           string `json:"name"`
+		Description    string `json:"description"`
+		Sort           int    `json:"sort"`
+		ForCalculation bool   `json:"for_calculation"`
+		MinTrafficGB   int64  `json:"min_traffic_gb,omitempty"`
+		MaxTrafficGB   int64  `json:"max_traffic_gb,omitempty"`
+		NodeCount      int64  `json:"node_count,omitempty"`
+		CreatedAt      int64  `json:"created_at"`
+		UpdatedAt      int64  `json:"updated_at"`
+	}
+	// GroupHistory 分组历史记录
+	GroupHistory {
+		Id           int64  `json:"id"`
+		GroupMode    string `json:"group_mode"`
+		TriggerType  string `json:"trigger_type"`
+		TotalUsers   int    `json:"total_users"`
+		SuccessCount int    `json:"success_count"`
+		FailedCount  int    `json:"failed_count"`
+		StartTime    *int64 `json:"start_time,omitempty"`
+		EndTime      *int64 `json:"end_time,omitempty"`
+		Operator     string `json:"operator,omitempty"`
+		ErrorLog     string `json:"error_log,omitempty"`
+		CreatedAt    int64  `json:"created_at"`
+	}
+	// GroupHistoryDetail 分组历史详情
+	GroupHistoryDetail {
+		GroupHistory
+		ConfigSnapshot map[string]interface{} `json:"config_snapshot,omitempty"`
 	}
 )
 

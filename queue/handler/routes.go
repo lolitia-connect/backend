@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/svc"
+	groupLogic "github.com/perfect-panel/server/queue/logic/group"
 	orderLogic "github.com/perfect-panel/server/queue/logic/order"
 	smslogic "github.com/perfect-panel/server/queue/logic/sms"
 	"github.com/perfect-panel/server/queue/logic/subscription"
@@ -43,4 +44,7 @@ func RegisterHandlers(mux *asynq.ServeMux, serverCtx *svc.ServiceContext) {
 
 	// ForthwithQuotaTask
 	mux.Handle(types.ForthwithQuotaTask, task.NewQuotaTaskLogic(serverCtx))
+
+	// SchedulerRecalculateGroup
+	mux.Handle(types.SchedulerRecalculateGroup, groupLogic.NewRecalculateGroupLogic(serverCtx))
 }

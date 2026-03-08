@@ -27,8 +27,8 @@ type (
 		Status        int64  `json:"status,omitempty" validate:"omitempty,oneof=0 1"`
 	}
 	ToggleRedemptionCodeStatusRequest {
-		Id     int64  `json:"id" validate:"required"`
-		Status int64  `json:"status" validate:"oneof=0 1"`
+		Id     int64 `json:"id" validate:"required"`
+		Status int64 `json:"status" validate:"oneof=0 1"`
 	}
 	DeleteRedemptionCodeRequest {
 		Id int64 `json:"id" validate:"required"`
@@ -93,3 +93,4 @@ service ppanel {
 	@handler GetRedemptionRecordList
 	get /record/list (GetRedemptionRecordListRequest) returns (GetRedemptionRecordListResponse)
 }
+

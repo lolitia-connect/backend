@@ -1,10 +1,57 @@
 package user
 
 import (
+	"database/sql/driver"
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// JSONInt64Slice is a custom type for handling []int64 as JSON in database
+type JSONInt64Slice []int64
+
+// Scan implements sql.Scanner interface
+func (j *JSONInt64Slice) Scan(value interface{}) error {
+	if value == nil {
+		*j = []int64{}
+		return nil
+	}
+
+	// Handle []byte
+	bytes, ok := value.([]byte)
+	if !ok {
+		// Try to handle string
+		str, ok := value.(string)
+		if !ok {
+			*j = []int64{}
+			return nil
+		}
+		bytes = []byte(str)
+	}
+
+	if len(bytes) == 0 {
+		*j = []int64{}
+		return nil
+	}
+
+	// Check if it's a JSON array
+	if bytes[0] != '[' {
+		// Not a JSON array, return empty slice
+		*j = []int64{}
+		return nil
+	}
+
+	return json.Unmarshal(bytes, j)
+}
+
+// Value implements driver.Valuer interface
+func (j JSONInt64Slice) Value() (driver.Value, error) {
+	if len(j) == 0 {
+		return "[]", nil
+	}
+	return json.Marshal(j)
+}
 
 type User struct {
 	Id                    int64          `gorm:"primaryKey"`
@@ -43,6 +90,8 @@ type Subscribe struct {
 	User        User       `gorm:"foreignKey:UserId;references:Id"`
 	OrderId     int64      `gorm:"index:idx_order_id;not null;comment:Order ID"`
 	SubscribeId int64      `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
+	NodeGroupId int64      `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
+	GroupLocked *bool      `gorm:"type:tinyint(1);not null;default:0;comment:Group Locked"`
 	StartTime   time.Time  `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
 	ExpireTime  time.Time  `gorm:"default:NULL;comment:Subscription Expire Time"`
 	FinishedAt  *time.Time `gorm:"default:NULL;comment:Finished Time"`

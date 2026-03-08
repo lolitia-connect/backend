@@ -40,6 +40,7 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 	data.Address = req.Address
 	data.Protocol = req.Protocol
 	data.Enabled = req.Enabled
+	data.NodeGroupIds = node.JSONInt64Slice(req.NodeGroupIds)
 	err = l.svcCtx.NodeModel.UpdateNode(l.ctx, data)
 	if err != nil {
 		l.Errorw("[UpdateNode] Update Database Error: ", logger.Field("error", err.Error()))

@@ -16,6 +16,10 @@ func registerIpLimit(svcCtx *svc.ServiceContext, ctx context.Context, registerIp
 		return true
 	}
 
+	// Add timeout protection for Redis operations
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	// Use a sorted set to track IP registrations with timestamp as score
 	// Key format: register:ip:{ip}
 	key := fmt.Sprintf("%s%s", config.RegisterIpKeyPrefix, registerIp)

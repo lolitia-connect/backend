@@ -52,6 +52,12 @@ func (m *Service) Start() {
 		logger.Errorf("register update exchange rate task failed: %s", err.Error())
 	}
 
+	// schedule recalculate group task: every hour
+	recalculateGroupTask := asynq.NewTask(types.SchedulerRecalculateGroup, nil)
+	if _, err := m.server.Register("@every 6h", recalculateGroupTask, asynq.MaxRetry(2)); err != nil {
+		logger.Errorf("register recalculate group task failed: %s", err.Error())
+	}
+
 	if err := m.server.Run(); err != nil {
 		logger.Errorf("run scheduler failed: %s", err.Error())
 	}

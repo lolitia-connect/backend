@@ -48,6 +48,8 @@ type (
 		Quota             int64               `json:"quota"`
 		Nodes             []int64             `json:"nodes"`
 		NodeTags          []string            `json:"node_tags"`
+		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
+		NodeGroupId       int64               `json:"node_group_id"`
 		Show              *bool               `json:"show"`
 		Sell              *bool               `json:"sell"`
 		DeductionRatio    int64               `json:"deduction_ratio"`
@@ -55,6 +57,7 @@ type (
 		ResetCycle        int64               `json:"reset_cycle"`
 		RenewalReset      *bool               `json:"renewal_reset"`
 		ShowOriginalPrice bool                `json:"show_original_price"`
+		AutoCreateGroup   bool                `json:"auto_create_group"`
 	}
 	UpdateSubscribeRequest {
 		Id                int64               `json:"id" validate:"required"`
@@ -72,6 +75,8 @@ type (
 		Quota             int64               `json:"quota"`
 		Nodes             []int64             `json:"nodes"`
 		NodeTags          []string            `json:"node_tags"`
+		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
+		NodeGroupId       int64               `json:"node_group_id"`
 		Show              *bool               `json:"show"`
 		Sell              *bool               `json:"sell"`
 		Sort              int64               `json:"sort"`
@@ -85,10 +90,11 @@ type (
 		Sort []SortItem `json:"sort"`
 	}
 	GetSubscribeListRequest {
-		Page     int64  `form:"page" validate:"required"`
-		Size     int64  `form:"size" validate:"required"`
-		Language string `form:"language,omitempty"`
-		Search   string `form:"search,omitempty"`
+		Page        int64  `form:"page" validate:"required"`
+		Size        int64  `form:"size" validate:"required"`
+		Language    string `form:"language,omitempty"`
+		Search      string `form:"search,omitempty"`
+		NodeGroupId int64  `form:"node_group_id,omitempty"`
 	}
 	SubscribeItem {
 		Subscribe

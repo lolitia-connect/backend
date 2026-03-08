@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/logic/common"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
@@ -126,22 +127,76 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 			return err
 		}
 
-		if l.svcCtx.Config.Register.EnableTrial {
-			// Active trial
-			var trialErr error
-			trialSubscribe, trialErr = l.activeTrial(userInfo.Id)
-			if trialErr != nil {
-				return trialErr
-			}
-		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
+	// Activate trial subscription after transaction success (moved outside transaction to reduce lock time)
+	if l.svcCtx.Config.Register.EnableTrial {
+		trialSubscribe, err = l.activeTrial(userInfo.Id)
+		if err != nil {
+			l.Errorw("Failed to activate trial subscription", logger.Field("error", err.Error()))
+			// Don't fail registration if trial activation fails
+		}
+	}
+
 	// Clear cache after transaction success
 	if l.svcCtx.Config.Register.EnableTrial && trialSubscribe != nil {
+		// Trigger user group recalculation (runs in background)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// Check if group management is enabled
+			var groupEnabled string
+			err := l.svcCtx.DB.Table("system").
+				Where("`category` = ? AND `key` = ?", "group", "enabled").
+				Select("value").
+				Scan(&groupEnabled).Error
+			if err != nil || groupEnabled != "true" && groupEnabled != "1" {
+				l.Debugf("Group management not enabled, skipping recalculation")
+				return
+			}
+
+			// Get the configured grouping mode
+			var groupMode string
+			err = l.svcCtx.DB.Table("system").
+				Where("`category` = ? AND `key` = ?", "group", "mode").
+				Select("value").
+				Scan(&groupMode).Error
+			if err != nil {
+				l.Errorw("Failed to get group mode", logger.Field("error", err.Error()))
+				return
+			}
+
+			// Validate group mode
+			if groupMode != "average" && groupMode != "subscribe" && groupMode != "traffic" {
+				l.Debugf("Invalid group mode (current: %s), skipping", groupMode)
+				return
+			}
+
+			// Trigger group recalculation with the configured mode
+			logic := group.NewRecalculateGroupLogic(ctx, l.svcCtx)
+			req := &types.RecalculateGroupRequest{
+				Mode: groupMode,
+			}
+
+			if err := logic.RecalculateGroup(req); err != nil {
+				l.Errorw("Failed to recalculate user group",
+					logger.Field("user_id", userInfo.Id),
+					logger.Field("error", err.Error()),
+				)
+				return
+			}
+
+			l.Infow("Successfully recalculated user group after registration",
+				logger.Field("user_id", userInfo.Id),
+				logger.Field("mode", groupMode),
+			)
+		}()
+
 		// Clear user subscription cache
 		if err = l.svcCtx.UserModel.ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
 			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", trialSubscribe.Id))

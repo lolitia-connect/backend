@@ -27,6 +27,7 @@ type SubscribeDetails struct {
 	OrderId     int64                `gorm:"index:idx_order_id;not null;comment:Order ID"`
 	SubscribeId int64                `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
 	Subscribe   *subscribe.Subscribe `gorm:"foreignKey:SubscribeId;references:Id"`
+	NodeGroupId int64                `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
 	StartTime   time.Time            `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
 	ExpireTime  time.Time            `gorm:"default:NULL;comment:Subscription Expire Time"`
 	FinishedAt  *time.Time           `gorm:"default:NULL;comment:Finished Time"`

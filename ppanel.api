@@ -30,6 +30,7 @@ import (
 	"apis/admin/ads.api"
 	"apis/admin/marketing.api"
 	"apis/admin/application.api"
+	"apis/admin/group.api"
 	"apis/public/user.api"
 	"apis/public/subscribe.api"
 	"apis/public/redemption.api"

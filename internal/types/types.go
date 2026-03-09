@@ -774,6 +774,12 @@ type Follow struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
+type GenerateCaptchaResponse struct {
+	Id    string `json:"id"`
+	Image string `json:"image"`
+	Type  string `json:"type"`
+}
+
 type GetAdsDetailRequest struct {
 	Id int64 `form:"id"`
 }
@@ -2027,14 +2033,16 @@ type ResetGroupsRequest struct {
 }
 
 type ResetPasswordRequest struct {
-	Identifier string `json:"identifier"`
-	Email      string `json:"email" validate:"required"`
-	Password   string `json:"password" validate:"required"`
-	Code       string `json:"code,optional"`
-	IP         string `header:"X-Original-Forwarded-For"`
-	UserAgent  string `header:"User-Agent"`
-	LoginType  string `header:"Login-Type"`
-	CfToken    string `json:"cf_token,optional"`
+	Identifier  string `json:"identifier"`
+	Email       string `json:"email" validate:"required"`
+	Password    string `json:"password" validate:"required"`
+	Code        string `json:"code,optional"`
+	IP          string `header:"X-Original-Forwarded-For"`
+	UserAgent   string `header:"User-Agent"`
+	LoginType   string `header:"Login-Type"`
+	CfToken     string `json:"cf_token,optional"`
+	CaptchaId   string `json:"captcha_id,optional"`
+	CaptchaCode string `json:"captcha_code,optional"`
 }
 
 type ResetSortRequest struct {
@@ -2403,6 +2411,8 @@ type TelephoneLoginRequest struct {
 	UserAgent         string `header:"User-Agent"`
 	LoginType         string `header:"Login-Type"`
 	CfToken           string `json:"cf_token,optional"`
+	CaptchaId         string `json:"captcha_id,optional"`
+	CaptchaCode       string `json:"captcha_code,optional"`
 }
 
 type TelephoneRegisterRequest struct {
@@ -2416,6 +2426,8 @@ type TelephoneRegisterRequest struct {
 	UserAgent         string `header:"User-Agent"`
 	LoginType         string `header:"Login-Type,optional"`
 	CfToken           string `json:"cf_token,optional"`
+	CaptchaId         string `json:"captcha_id,optional"`
+	CaptchaCode       string `json:"captcha_code,optional"`
 }
 
 type TelephoneResetPasswordRequest struct {
@@ -2428,6 +2440,8 @@ type TelephoneResetPasswordRequest struct {
 	UserAgent         string `header:"User-Agent"`
 	LoginType         string `header:"Login-Type,optional"`
 	CfToken           string `json:"cf_token,optional"`
+	CaptchaId         string `json:"captcha_id,optional"`
+	CaptchaCode       string `json:"captcha_code,optional"`
 }
 
 type TestEmailSendRequest struct {
@@ -2852,25 +2866,29 @@ type UserLoginLog struct {
 }
 
 type UserLoginRequest struct {
-	Identifier string `json:"identifier"`
-	Email      string `json:"email" validate:"required"`
-	Password   string `json:"password" validate:"required"`
-	IP         string `header:"X-Original-Forwarded-For"`
-	UserAgent  string `header:"User-Agent"`
-	LoginType  string `header:"Login-Type"`
-	CfToken    string `json:"cf_token,optional"`
+	Identifier  string `json:"identifier"`
+	Email       string `json:"email" validate:"required"`
+	Password    string `json:"password" validate:"required"`
+	IP          string `header:"X-Original-Forwarded-For"`
+	UserAgent   string `header:"User-Agent"`
+	LoginType   string `header:"Login-Type"`
+	CfToken     string `json:"cf_token,optional"`
+	CaptchaId   string `json:"captcha_id,optional"`
+	CaptchaCode string `json:"captcha_code,optional"`
 }
 
 type UserRegisterRequest struct {
-	Identifier string `json:"identifier"`
-	Email      string `json:"email" validate:"required"`
-	Password   string `json:"password" validate:"required"`
-	Invite     string `json:"invite,optional"`
-	Code       string `json:"code,optional"`
-	IP         string `header:"X-Original-Forwarded-For"`
-	UserAgent  string `header:"User-Agent"`
-	LoginType  string `header:"Login-Type"`
-	CfToken    string `json:"cf_token,optional"`
+	Identifier  string `json:"identifier"`
+	Email       string `json:"email" validate:"required"`
+	Password    string `json:"password" validate:"required"`
+	Invite      string `json:"invite,optional"`
+	Code        string `json:"code,optional"`
+	IP          string `header:"X-Original-Forwarded-For"`
+	UserAgent   string `header:"User-Agent"`
+	LoginType   string `header:"Login-Type"`
+	CfToken     string `json:"cf_token,optional"`
+	CaptchaId   string `json:"captcha_id,optional"`
+	CaptchaCode string `json:"captcha_code,optional"`
 }
 
 type UserStatistics struct {
@@ -2893,6 +2911,8 @@ type UserSubscribe struct {
 	OrderId     int64     `json:"order_id"`
 	SubscribeId int64     `json:"subscribe_id"`
 	Subscribe   Subscribe `json:"subscribe"`
+	NodeGroupId int64     `json:"node_group_id"`
+	GroupLocked bool      `json:"group_locked"`
 	StartTime   int64     `json:"start_time"`
 	ExpireTime  int64     `json:"expire_time"`
 	FinishedAt  int64     `json:"finished_at"`
@@ -2914,6 +2934,8 @@ type UserSubscribeDetail struct {
 	OrderId     int64     `json:"order_id"`
 	SubscribeId int64     `json:"subscribe_id"`
 	Subscribe   Subscribe `json:"subscribe"`
+	NodeGroupId int64     `json:"node_group_id"`
+	GroupLocked bool      `json:"group_locked"`
 	StartTime   int64     `json:"start_time"`
 	ExpireTime  int64     `json:"expire_time"`
 	ResetTime   int64     `json:"reset_time"`
@@ -2997,10 +3019,12 @@ type UserTrafficData struct {
 }
 
 type VeifyConfig struct {
-	TurnstileSiteKey          string `json:"turnstile_site_key"`
-	EnableLoginVerify         bool   `json:"enable_login_verify"`
-	EnableRegisterVerify      bool   `json:"enable_register_verify"`
-	EnableResetPasswordVerify bool   `json:"enable_reset_password_verify"`
+	CaptchaType                    string `json:"captcha_type"`
+	TurnstileSiteKey               string `json:"turnstile_site_key"`
+	EnableUserLoginCaptcha         bool   `json:"enable_user_login_captcha"`
+	EnableUserRegisterCaptcha      bool   `json:"enable_user_register_captcha"`
+	EnableAdminLoginCaptcha        bool   `json:"enable_admin_login_captcha"`
+	EnableUserResetPasswordCaptcha bool   `json:"enable_user_reset_password_captcha"`
 }
 
 type VerifyCodeConfig struct {
@@ -3010,11 +3034,13 @@ type VerifyCodeConfig struct {
 }
 
 type VerifyConfig struct {
-	TurnstileSiteKey          string `json:"turnstile_site_key"`
-	TurnstileSecret           string `json:"turnstile_secret"`
-	EnableLoginVerify         bool   `json:"enable_login_verify"`
-	EnableRegisterVerify      bool   `json:"enable_register_verify"`
-	EnableResetPasswordVerify bool   `json:"enable_reset_password_verify"`
+	CaptchaType                    string `json:"captcha_type"` // local or turnstile
+	TurnstileSiteKey               string `json:"turnstile_site_key"`
+	TurnstileSecret                string `json:"turnstile_secret"`
+	EnableUserLoginCaptcha         bool   `json:"enable_user_login_captcha"`          // User login captcha
+	EnableUserRegisterCaptcha      bool   `json:"enable_user_register_captcha"`       // User register captcha
+	EnableAdminLoginCaptcha        bool   `json:"enable_admin_login_captcha"`         // Admin login captcha
+	EnableUserResetPasswordCaptcha bool   `json:"enable_user_reset_password_captcha"` // User reset password captcha
 }
 
 type VerifyEmailRequest struct {

@@ -154,11 +154,13 @@ type (
 		DeviceLimit             int64  `json:"device_limit"`
 	}
 	VerifyConfig {
-		TurnstileSiteKey          string `json:"turnstile_site_key"`
-		TurnstileSecret           string `json:"turnstile_secret"`
-		EnableLoginVerify         bool   `json:"enable_login_verify"`
-		EnableRegisterVerify      bool   `json:"enable_register_verify"`
-		EnableResetPasswordVerify bool   `json:"enable_reset_password_verify"`
+		CaptchaType                   string `json:"captcha_type"`                      // local or turnstile
+		TurnstileSiteKey              string `json:"turnstile_site_key"`
+		TurnstileSecret               string `json:"turnstile_secret"`
+		EnableUserLoginCaptcha        bool   `json:"enable_user_login_captcha"`         // User login captcha
+		EnableUserRegisterCaptcha     bool   `json:"enable_user_register_captcha"`      // User register captcha
+		EnableAdminLoginCaptcha       bool   `json:"enable_admin_login_captcha"`        // Admin login captcha
+		EnableUserResetPasswordCaptcha bool  `json:"enable_user_reset_password_captcha"` // User reset password captcha
 	}
 	NodeConfig {
 		NodeSecret             string         `json:"node_secret"`

@@ -11,13 +11,15 @@ info (
 type (
 	// User login request
 	UserLoginRequest {
-		Identifier string `json:"identifier"`
-		Email      string `json:"email" validate:"required"`
-		Password   string `json:"password" validate:"required"`
-		IP         string `header:"X-Original-Forwarded-For"`
-		UserAgent  string `header:"User-Agent"`
-		LoginType  string `header:"Login-Type"`
-		CfToken    string `json:"cf_token,optional"`
+		Identifier  string `json:"identifier"`
+		Email       string `json:"email" validate:"required"`
+		Password    string `json:"password" validate:"required"`
+		IP          string `header:"X-Original-Forwarded-For"`
+		UserAgent   string `header:"User-Agent"`
+		LoginType   string `header:"Login-Type"`
+		CfToken     string `json:"cf_token,optional"`
+		CaptchaId   string `json:"captcha_id,optional"`
+		CaptchaCode string `json:"captcha_code,optional"`
 	}
 	// Check user is exist request
 	CheckUserRequest {
@@ -29,26 +31,30 @@ type (
 	}
 	// User login response
 	UserRegisterRequest {
-		Identifier string `json:"identifier"`
-		Email      string `json:"email" validate:"required"`
-		Password   string `json:"password" validate:"required"`
-		Invite     string `json:"invite,optional"`
-		Code       string `json:"code,optional"`
-		IP         string `header:"X-Original-Forwarded-For"`
-		UserAgent  string `header:"User-Agent"`
-		LoginType  string `header:"Login-Type"`
-		CfToken    string `json:"cf_token,optional"`
+		Identifier  string `json:"identifier"`
+		Email       string `json:"email" validate:"required"`
+		Password    string `json:"password" validate:"required"`
+		Invite      string `json:"invite,optional"`
+		Code        string `json:"code,optional"`
+		IP          string `header:"X-Original-Forwarded-For"`
+		UserAgent   string `header:"User-Agent"`
+		LoginType   string `header:"Login-Type"`
+		CfToken     string `json:"cf_token,optional"`
+		CaptchaId   string `json:"captcha_id,optional"`
+		CaptchaCode string `json:"captcha_code,optional"`
 	}
-	// User login response
+	// User reset password request
 	ResetPasswordRequest {
-		Identifier string `json:"identifier"`
-		Email      string `json:"email" validate:"required"`
-		Password   string `json:"password" validate:"required"`
-		Code       string `json:"code,optional"`
-		IP         string `header:"X-Original-Forwarded-For"`
-		UserAgent  string `header:"User-Agent"`
-		LoginType  string `header:"Login-Type"`
-		CfToken    string `json:"cf_token,optional"`
+		Identifier  string `json:"identifier"`
+		Email       string `json:"email" validate:"required"`
+		Password    string `json:"password" validate:"required"`
+		Code        string `json:"code,optional"`
+		IP          string `header:"X-Original-Forwarded-For"`
+		UserAgent   string `header:"User-Agent"`
+		LoginType   string `header:"Login-Type"`
+		CfToken     string `json:"cf_token,optional"`
+		CaptchaId   string `json:"captcha_id,optional"`
+		CaptchaCode string `json:"captcha_code,optional"`
 	}
 	LoginResponse {
 		Token string `json:"token"`
@@ -75,6 +81,8 @@ type (
 		UserAgent         string `header:"User-Agent"`
 		LoginType         string `header:"Login-Type"`
 		CfToken           string `json:"cf_token,optional"`
+		CaptchaId         string `json:"captcha_id,optional"`
+		CaptchaCode       string `json:"captcha_code,optional"`
 	}
 	// Check user is exist request
 	TelephoneCheckUserRequest {
@@ -97,6 +105,8 @@ type (
 		UserAgent         string `header:"User-Agent"`
 		LoginType         string `header:"Login-Type,optional"`
 		CfToken           string `json:"cf_token,optional"`
+		CaptchaId         string `json:"captcha_id,optional"`
+		CaptchaCode       string `json:"captcha_code,optional"`
 	}
 	// User login response
 	TelephoneResetPasswordRequest {
@@ -109,6 +119,8 @@ type (
 		UserAgent         string `header:"User-Agent"`
 		LoginType         string `header:"Login-Type,optional"`
 		CfToken           string `json:"cf_token,optional"`
+		CaptchaId         string `json:"captcha_id,optional"`
+		CaptchaCode       string `json:"captcha_code,optional"`
 	}
 	AppleLoginCallbackRequest {
 		Code    string `form:"code"`
@@ -125,6 +137,11 @@ type (
 		UserAgent  string `json:"user_agent" validate:"required"`
 		CfToken    string `json:"cf_token,optional"`
 		ShortCode  string `json:"short_code,optional"`
+	}
+	GenerateCaptchaResponse {
+		Id    string `json:"id"`
+		Image string `json:"image"`
+		Type  string `json:"type"`
 	}
 )
 
@@ -166,9 +183,32 @@ service ppanel {
 	@handler TelephoneResetPassword
 	post /reset/telephone (TelephoneResetPasswordRequest) returns (LoginResponse)
 
+	@doc "Generate captcha"
+	@handler GenerateCaptcha
+	post /captcha/generate returns (GenerateCaptchaResponse)
+
 	@doc "Device Login"
 	@handler DeviceLogin
 	post /login/device (DeviceLoginRequest) returns (LoginResponse)
+}
+
+@server (
+	prefix:     v1/auth/admin
+	group:      auth/admin
+	middleware: DeviceMiddleware
+)
+service ppanel {
+	@doc "Admin login"
+	@handler AdminLogin
+	post /login (UserLoginRequest) returns (LoginResponse)
+
+	@doc "Admin reset password"
+	@handler AdminResetPassword
+	post /reset (ResetPasswordRequest) returns (LoginResponse)
+
+	@doc "Generate captcha"
+	@handler AdminGenerateCaptcha
+	post /captcha/generate returns (GenerateCaptchaResponse)
 }
 
 @server (

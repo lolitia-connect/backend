@@ -17,6 +17,7 @@ func init() {
 		SecretIsEmpty:     "Secret is empty",
 		InvalidAccess:     "Invalid access",
 		InvalidCiphertext: "Invalid ciphertext",
+		PermissionDenied:  "Permission denied",
 		// Database error
 		DatabaseQueryError:   "Database query error",
 		DatabaseUpdateError:  "Database update error",

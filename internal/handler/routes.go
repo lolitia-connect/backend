@@ -25,6 +25,7 @@ import (
 	adminTool "github.com/perfect-panel/server/internal/handler/admin/tool"
 	adminUser "github.com/perfect-panel/server/internal/handler/admin/user"
 	auth "github.com/perfect-panel/server/internal/handler/auth"
+	authAdmin "github.com/perfect-panel/server/internal/handler/auth/admin"
 	authOauth "github.com/perfect-panel/server/internal/handler/auth/oauth"
 	common "github.com/perfect-panel/server/internal/handler/common"
 	publicAnnouncement "github.com/perfect-panel/server/internal/handler/public/announcement"
@@ -670,6 +671,9 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 	authGroupRouter.Use(middleware.DeviceMiddleware(serverCtx))
 
 	{
+		// Generate captcha
+		authGroupRouter.POST("/captcha/generate", auth.GenerateCaptchaHandler(serverCtx))
+
 		// Check user is exist
 		authGroupRouter.GET("/check", auth.CheckUserHandler(serverCtx))
 
@@ -696,6 +700,20 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 
 		// Reset password
 		authGroupRouter.POST("/reset/telephone", auth.TelephoneResetPasswordHandler(serverCtx))
+	}
+
+	authAdminGroupRouter := router.Group("/v1/auth/admin")
+	authAdminGroupRouter.Use(middleware.DeviceMiddleware(serverCtx))
+
+	{
+		// Generate captcha
+		authAdminGroupRouter.POST("/captcha/generate", authAdmin.AdminGenerateCaptchaHandler(serverCtx))
+
+		// Admin login
+		authAdminGroupRouter.POST("/login", authAdmin.AdminLoginHandler(serverCtx))
+
+		// Admin reset password
+		authAdminGroupRouter.POST("/reset", authAdmin.AdminResetPasswordHandler(serverCtx))
 	}
 
 	authOauthGroupRouter := router.Group("/v1/auth/oauth")

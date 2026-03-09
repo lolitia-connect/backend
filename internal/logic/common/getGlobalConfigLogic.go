@@ -41,27 +41,26 @@ func (l *GetGlobalConfigLogic) GetGlobalConfig() (resp *types.GetGlobalConfigRes
 		l.Logger.Error("[GetGlobalConfigLogic] GetVerifyCodeConfig error: ", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyCodeConfig error: %v", err.Error())
 	}
+	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	if err != nil {
+		l.Logger.Error("[GetGlobalConfigLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
+	}
 
 	tool.DeepCopy(&resp.Site, l.svcCtx.Config.Site)
 	tool.DeepCopy(&resp.Subscribe, l.svcCtx.Config.Subscribe)
 	tool.DeepCopy(&resp.Auth.Email, l.svcCtx.Config.Email)
 	tool.DeepCopy(&resp.Auth.Mobile, l.svcCtx.Config.Mobile)
 	tool.DeepCopy(&resp.Auth.Register, l.svcCtx.Config.Register)
-	tool.DeepCopy(&resp.Verify, l.svcCtx.Config.Verify)
 	tool.DeepCopy(&resp.Invite, l.svcCtx.Config.Invite)
 	tool.SystemConfigSliceReflectToStruct(currencyCfg, &resp.Currency)
 	tool.SystemConfigSliceReflectToStruct(verifyCodeCfg, &resp.VerifyCode)
+	tool.SystemConfigSliceReflectToStruct(verifyCfg, &resp.Verify)
 
 	if report.IsGatewayMode() {
 		resp.Subscribe.SubscribePath = "/sub" + l.svcCtx.Config.Subscribe.SubscribePath
 	}
 
-	resp.Verify = types.VeifyConfig{
-		TurnstileSiteKey:          l.svcCtx.Config.Verify.TurnstileSiteKey,
-		EnableLoginVerify:         l.svcCtx.Config.Verify.LoginVerify,
-		EnableRegisterVerify:      l.svcCtx.Config.Verify.RegisterVerify,
-		EnableResetPasswordVerify: l.svcCtx.Config.Verify.ResetPasswordVerify,
-	}
 	var methods []string
 
 	// auth methods

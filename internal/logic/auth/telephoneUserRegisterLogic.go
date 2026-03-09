@@ -13,6 +13,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/phone"
@@ -81,6 +82,12 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 	}
 	l.svcCtx.Redis.Del(l.ctx, cacheKey)
+
+	// Verify captcha
+	if err := l.verifyCaptcha(req); err != nil {
+		return nil, err
+	}
+
 	// Check if the user exists
 	_, err = l.svcCtx.UserModel.FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -278,5 +285,69 @@ func (l *TelephoneUserRegisterLogic) activeTrial(uid int64) (*user.Subscribe, er
 		return nil, err
 	}
 	return userSub, nil
+}
+
+func (l *TelephoneUserRegisterLogic) verifyCaptcha(req *types.TelephoneRegisterRequest) error {
+	// Get verify config from database
+	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	if err != nil {
+		l.Logger.Error("[TelephoneUserRegisterLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
+	}
+
+	var config struct {
+		CaptchaType               string `json:"captcha_type"`
+		EnableUserRegisterCaptcha bool   `json:"enable_user_register_captcha"`
+		TurnstileSecret           string `json:"turnstile_secret"`
+	}
+	tool.SystemConfigSliceReflectToStruct(verifyCfg, &config)
+
+	// Check if captcha is enabled for user register
+	if !config.EnableUserRegisterCaptcha {
+		return nil
+	}
+
+	// Verify based on captcha type
+	if config.CaptchaType == "local" {
+		if req.CaptchaId == "" || req.CaptchaCode == "" {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
+		}
+
+		captchaService := captcha.NewService(captcha.Config{
+			Type:        captcha.CaptchaTypeLocal,
+			RedisClient: l.svcCtx.Redis,
+		})
+
+		valid, err := captchaService.Verify(l.ctx, req.CaptchaId, req.CaptchaCode, req.IP)
+		if err != nil {
+			l.Logger.Error("[TelephoneUserRegisterLogic] Verify captcha error: ", logger.Field("error", err.Error()))
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
+		}
+
+		if !valid {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
+		}
+	} else if config.CaptchaType == "turnstile" {
+		if req.CfToken == "" {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
+		}
+
+		captchaService := captcha.NewService(captcha.Config{
+			Type:            captcha.CaptchaTypeTurnstile,
+			TurnstileSecret: config.TurnstileSecret,
+		})
+
+		valid, err := captchaService.Verify(l.ctx, req.CfToken, "", req.IP)
+		if err != nil {
+			l.Logger.Error("[TelephoneUserRegisterLogic] Verify turnstile error: ", logger.Field("error", err.Error()))
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
+		}
+
+		if !valid {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
+		}
+	}
+
+	return nil
 }
 

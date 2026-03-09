@@ -13,6 +13,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -80,6 +81,12 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 		}
 	}
+
+	// Verify captcha
+	if err := l.verifyCaptcha(req); err != nil {
+		return nil, err
+	}
+
 	// Check if the user exists
 	u, err := l.svcCtx.UserModel.FindOneByEmail(l.ctx, req.Email)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -250,7 +257,7 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 	}
 	loginStatus := true
 	defer func() {
-		if token != "" && userInfo.Id != 0 {
+		if token != "" && userInfo != nil && userInfo.Id != 0 {
 			loginLog := log.Login{
 				Method:    "email",
 				LoginIP:   req.IP,
@@ -322,4 +329,68 @@ func (l *UserRegisterLogic) activeTrial(uid int64) (*user.Subscribe, error) {
 		return nil, err
 	}
 	return userSub, nil
+}
+
+func (l *UserRegisterLogic) verifyCaptcha(req *types.UserRegisterRequest) error {
+	// Get verify config from database
+	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	if err != nil {
+		l.Logger.Error("[UserRegisterLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
+	}
+
+	var config struct {
+		CaptchaType               string `json:"captcha_type"`
+		EnableUserRegisterCaptcha bool   `json:"enable_user_register_captcha"`
+		TurnstileSecret           string `json:"turnstile_secret"`
+	}
+	tool.SystemConfigSliceReflectToStruct(verifyCfg, &config)
+
+	// Check if user register captcha is enabled
+	if !config.EnableUserRegisterCaptcha {
+		return nil
+	}
+
+	// Verify based on captcha type
+	if config.CaptchaType == "local" {
+		if req.CaptchaId == "" || req.CaptchaCode == "" {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
+		}
+
+		captchaService := captcha.NewService(captcha.Config{
+			Type:        captcha.CaptchaTypeLocal,
+			RedisClient: l.svcCtx.Redis,
+		})
+
+		valid, err := captchaService.Verify(l.ctx, req.CaptchaId, req.CaptchaCode, req.IP)
+		if err != nil {
+			l.Logger.Error("[UserRegisterLogic] Verify captcha error: ", logger.Field("error", err.Error()))
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
+		}
+
+		if !valid {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
+		}
+	} else if config.CaptchaType == "turnstile" {
+		if req.CfToken == "" {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
+		}
+
+		captchaService := captcha.NewService(captcha.Config{
+			Type:            captcha.CaptchaTypeTurnstile,
+			TurnstileSecret: config.TurnstileSecret,
+		})
+
+		valid, err := captchaService.Verify(l.ctx, req.CfToken, "", req.IP)
+		if err != nil {
+			l.Logger.Error("[UserRegisterLogic] Verify turnstile error: ", logger.Field("error", err.Error()))
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
+		}
+
+		if !valid {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
+		}
+	}
+
+	return nil
 }

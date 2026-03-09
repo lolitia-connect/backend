@@ -8,6 +8,7 @@ import (
 
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/uuidx"
 
@@ -43,7 +44,7 @@ func (l *ResetPasswordLogic) ResetPassword(req *types.ResetPasswordRequest) (res
 	loginStatus := false
 
 	defer func() {
-		if userInfo.Id != 0 && loginStatus {
+		if userInfo != nil && userInfo.Id != 0 && loginStatus {
 			loginLog := log.Login{
 				Method:    "email",
 				LoginIP:   req.IP,
@@ -83,6 +84,11 @@ func (l *ResetPasswordLogic) ResetPassword(req *types.ResetPasswordRequest) (res
 			l.Errorw("Verification code error", logger.Field("cacheKey", cacheKey), logger.Field("error", "Verification code error"), logger.Field("reqCode", req.Code), logger.Field("payloadCode", payload.Code))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "Verification code error")
 		}
+	}
+
+	// Verify captcha
+	if err := l.verifyCaptcha(req); err != nil {
+		return nil, err
 	}
 
 	// Check user
@@ -149,3 +155,68 @@ func (l *ResetPasswordLogic) ResetPassword(req *types.ResetPasswordRequest) (res
 		Token: token,
 	}, nil
 }
+
+func (l *ResetPasswordLogic) verifyCaptcha(req *types.ResetPasswordRequest) error {
+	// Get verify config from database
+	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	if err != nil {
+		l.Logger.Error("[ResetPasswordLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
+	}
+
+	var config struct {
+		CaptchaType                    string `json:"captcha_type"`
+		EnableUserResetPasswordCaptcha bool   `json:"enable_user_reset_password_captcha"`
+		TurnstileSecret                string `json:"turnstile_secret"`
+	}
+	tool.SystemConfigSliceReflectToStruct(verifyCfg, &config)
+
+	// Check if user reset password captcha is enabled
+	if !config.EnableUserResetPasswordCaptcha {
+		return nil
+	}
+
+	// Verify based on captcha type
+	if config.CaptchaType == "local" {
+		if req.CaptchaId == "" || req.CaptchaCode == "" {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
+		}
+
+		captchaService := captcha.NewService(captcha.Config{
+			Type:        captcha.CaptchaTypeLocal,
+			RedisClient: l.svcCtx.Redis,
+		})
+
+		valid, err := captchaService.Verify(l.ctx, req.CaptchaId, req.CaptchaCode, req.IP)
+		if err != nil {
+			l.Logger.Error("[ResetPasswordLogic] Verify captcha error: ", logger.Field("error", err.Error()))
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
+		}
+
+		if !valid {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
+		}
+	} else if config.CaptchaType == "turnstile" {
+		if req.CfToken == "" {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
+		}
+
+		captchaService := captcha.NewService(captcha.Config{
+			Type:            captcha.CaptchaTypeTurnstile,
+			TurnstileSecret: config.TurnstileSecret,
+		})
+
+		valid, err := captchaService.Verify(l.ctx, req.CfToken, "", req.IP)
+		if err != nil {
+			l.Logger.Error("[ResetPasswordLogic] Verify turnstile error: ", logger.Field("error", err.Error()))
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
+		}
+
+		if !valid {
+			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
+		}
+	}
+
+	return nil
+}
+

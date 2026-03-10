@@ -70,10 +70,12 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		Id           int64
 		NodeGroupId  int64
 		NodeGroupIds string // JSON string
+		Nodes        string // JSON string - 直接分配的节点ID
+		NodeTags     string // 节点标签
 	}
 	var subscribeInfos []SubscribeInfo
 	err = l.svcCtx.DB.Table("subscribe").
-		Select("id, node_group_id, node_group_ids").
+		Select("id, node_group_id, node_group_ids, nodes, node_tags").
 		Where("id IN ?", subscribeIds).
 		Find(&subscribeInfos).Error
 	if err != nil {
@@ -124,6 +126,28 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 
 	logger.Infof("[PreviewUserNodes] collected node_group_ids with priority: %v", allNodeGroupIds)
 
+	// 3. 收集所有订阅中直接分配的节点ID
+	var allDirectNodeIds []int64
+	for _, subInfo := range subscribeInfos {
+		if subInfo.Nodes != "" && subInfo.Nodes != "null" {
+			// nodes 是逗号分隔的字符串，如 "1,2,3"
+			nodeIdStrs := strings.Split(subInfo.Nodes, ",")
+			for _, idStr := range nodeIdStrs {
+				idStr = strings.TrimSpace(idStr)
+				if idStr != "" {
+					var nodeId int64
+					if _, err := fmt.Sscanf(idStr, "%d", &nodeId); err == nil {
+						allDirectNodeIds = append(allDirectNodeIds, nodeId)
+					}
+				}
+			}
+			logger.Debugf("[PreviewUserNodes] subscribe_id=%d has direct nodes: %s", subInfo.Id, subInfo.Nodes)
+		}
+	}
+	// 去重
+	allDirectNodeIds = removeDuplicateInt64(allDirectNodeIds)
+	logger.Infof("[PreviewUserNodes] collected direct node_ids: %v", allDirectNodeIds)
+
 	// 4. 判断分组功能是否启用
 	var groupEnabled string
 	l.svcCtx.DB.Table("system").
@@ -141,8 +165,8 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		// === 启用分组功能：通过用户订阅的 node_group_id 查询节点 ===
 		logger.Infof("[PreviewUserNodes] using group-based node filtering")
 
-		if len(allNodeGroupIds) == 0 {
-			logger.Infof("[PreviewUserNodes] no node groups found in user subscribes")
+		if len(allNodeGroupIds) == 0 && len(allDirectNodeIds) == 0 {
+			logger.Infof("[PreviewUserNodes] no node groups and no direct nodes found in user subscribes")
 			resp = &types.PreviewUserNodesResponse{
 				UserId:     req.UserId,
 				NodeGroups: []types.NodeGroupItem{},
@@ -150,67 +174,48 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 			return resp, nil
 		}
 
-		// 5. 查询所有启用的节点
-		var dbNodes []node.Node
-		err = l.svcCtx.DB.Table("nodes").
-			Where("enabled = ?", true).
-			Find(&dbNodes).Error
-		if err != nil {
-			logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
-			return nil, err
-		}
-
-		// 6. 过滤出包含至少一个匹配节点组的节点
-		// node_group_ids 为空 = 公共节点，所有人可见
-		// node_group_ids 与订阅的 node_group_id 匹配 = 该节点可见
-		for _, n := range dbNodes {
-			// 公共节点（node_group_ids 为空），所有人可见
-			if len(n.NodeGroupIds) == 0 {
-				filteredNodes = append(filteredNodes, n)
-				continue
+		// 5. 查询所有启用的节点（只有当有节点组时才查询）
+		if len(allNodeGroupIds) > 0 {
+			var dbNodes []node.Node
+			err = l.svcCtx.DB.Table("nodes").
+				Where("enabled = ?", true).
+				Find(&dbNodes).Error
+			if err != nil {
+				logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
+				return nil, err
 			}
 
-			// 检查节点的 node_group_ids 是否与订阅的 node_group_id 有交集
-			for _, nodeGroupId := range n.NodeGroupIds {
-				if tool.Contains(allNodeGroupIds, nodeGroupId) {
+			// 6. 过滤出包含至少一个匹配节点组的节点
+			// node_group_ids 为空 = 公共节点，所有人可见
+			// node_group_ids 与订阅的 node_group_id 匹配 = 该节点可见
+			for _, n := range dbNodes {
+				// 公共节点（node_group_ids 为空），所有人可见
+				if len(n.NodeGroupIds) == 0 {
 					filteredNodes = append(filteredNodes, n)
-					break
+					continue
+				}
+
+				// 检查节点的 node_group_ids 是否与订阅的 node_group_id 有交集
+				for _, nodeGroupId := range n.NodeGroupIds {
+					if tool.Contains(allNodeGroupIds, nodeGroupId) {
+						filteredNodes = append(filteredNodes, n)
+						break
+					}
 				}
 			}
-		}
 
-		logger.Infof("[PreviewUserNodes] found %v nodes using group filter", len(filteredNodes))
+			logger.Infof("[PreviewUserNodes] found %v nodes using group filter", len(filteredNodes))
+		}
 
 	} else {
 		// === 未启用分组功能：通过订阅的 node_tags 查询节点 ===
 		logger.Infof("[PreviewUserNodes] using tag-based node filtering")
 
-		// 5. 获取所有订阅的 subscribeId 列表
-		subscribeIds := make([]int64, len(userSubscribes))
-		for i, us := range userSubscribes {
-			subscribeIds[i] = us.SubscribeId
-		}
-
-		// 6. 查询这些订阅的 node_tags
-		type SubscribeNodeTags struct {
-			Id       int64
-			NodeTags string
-		}
-		var subscribeNodeTagsList []SubscribeNodeTags
-		err = l.svcCtx.DB.Table("subscribe").
-			Where("id IN ?", subscribeIds).
-			Select("id, node_tags").
-			Find(&subscribeNodeTagsList).Error
-		if err != nil {
-			logger.Errorf("[PreviewUserNodes] failed to get subscribe node tags: %v", err)
-			return nil, err
-		}
-
-		// 7. 合并所有标签
+		// 从已查询的 subscribeInfos 中获取 node_tags
 		var allTags []string
-		for _, snt := range subscribeNodeTagsList {
-			if snt.NodeTags != "" {
-				tags := strings.Split(snt.NodeTags, ",")
+		for _, subInfo := range subscribeInfos {
+			if subInfo.NodeTags != "" {
+				tags := strings.Split(subInfo.NodeTags, ",")
 				allTags = append(allTags, tags...)
 			}
 		}
@@ -221,8 +226,8 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 
 		logger.Infof("[PreviewUserNodes] merged tags from subscribes: %v", allTags)
 
-		if len(allTags) == 0 {
-			logger.Infof("[PreviewUserNodes] no tags found in subscribes")
+		if len(allTags) == 0 && len(allDirectNodeIds) == 0 {
+			logger.Infof("[PreviewUserNodes] no tags and no direct nodes found in subscribes")
 			resp = &types.PreviewUserNodesResponse{
 				UserId:     req.UserId,
 				NodeGroups: []types.NodeGroupItem{},
@@ -230,216 +235,319 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 			return resp, nil
 		}
 
-		// 8. 查询所有启用的节点
-		var dbNodes []node.Node
-		err = l.svcCtx.DB.Table("nodes").
-			Where("enabled = ?", true).
-			Find(&dbNodes).Error
-		if err != nil {
-			logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
-			return nil, err
+		// 8. 查询所有启用的节点（只有当有 tags 时才查询）
+		if len(allTags) > 0 {
+			var dbNodes []node.Node
+			err = l.svcCtx.DB.Table("nodes").
+				Where("enabled = ?", true).
+				Find(&dbNodes).Error
+			if err != nil {
+				logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
+				return nil, err
+			}
+
+			// 9. 过滤出包含至少一个匹配标签的节点
+			for _, n := range dbNodes {
+				if n.Tags == "" {
+					continue
+				}
+				nodeTags := strings.Split(n.Tags, ",")
+				// 检查是否有交集
+				for _, tag := range nodeTags {
+					if tag != "" && tool.Contains(allTags, tag) {
+						filteredNodes = append(filteredNodes, n)
+						break
+					}
+				}
+			}
+
+			logger.Infof("[PreviewUserNodes] found %v nodes using tag filter", len(filteredNodes))
+		}
+	}
+
+	// 10. 根据是否启用分组功能，选择不同的分组方式
+	nodeGroupItems := make([]types.NodeGroupItem, 0)
+
+	if isGroupEnabled {
+		// === 启用分组：按节点组分组 ===
+		// 转换为 types.Node 并按节点组分组
+		type NodeWithGroup struct {
+			Node         node.Node
+			NodeGroupIds []int64
 		}
 
-		// 9. 过滤出包含至少一个匹配标签的节点
-		for _, n := range dbNodes {
-			if n.Tags == "" {
+		nodesWithGroup := make([]NodeWithGroup, 0, len(filteredNodes))
+		for _, n := range filteredNodes {
+			nodesWithGroup = append(nodesWithGroup, NodeWithGroup{
+				Node:         n,
+				NodeGroupIds: n.NodeGroupIds,
+			})
+		}
+
+		// 按节点组分组节点
+		type NodeGroupMap struct {
+			Id    int64
+			Nodes []types.Node
+		}
+
+		// 创建节点组映射：group_id -> nodes
+		groupMap := make(map[int64]*NodeGroupMap)
+
+		// 获取所有涉及的节点组ID
+		allGroupIds := make([]int64, 0)
+		for _, ng := range nodesWithGroup {
+			if len(ng.NodeGroupIds) > 0 {
+				// 如果节点属于节点组，按第一个节点组分组
+				firstGroupId := ng.NodeGroupIds[0]
+				if _, exists := groupMap[firstGroupId]; !exists {
+					groupMap[firstGroupId] = &NodeGroupMap{
+						Id:    firstGroupId,
+						Nodes: []types.Node{},
+					}
+					allGroupIds = append(allGroupIds, firstGroupId)
+				}
+
+				// 转换节点
+				tags := []string{}
+				if ng.Node.Tags != "" {
+					tags = strings.Split(ng.Node.Tags, ",")
+				}
+				node := types.Node{
+					Id:           ng.Node.Id,
+					Name:         ng.Node.Name,
+					Tags:         tags,
+					Port:         ng.Node.Port,
+					Address:      ng.Node.Address,
+					ServerId:     ng.Node.ServerId,
+					Protocol:     ng.Node.Protocol,
+					Enabled:      ng.Node.Enabled,
+					Sort:         ng.Node.Sort,
+					NodeGroupIds: []int64(ng.Node.NodeGroupIds),
+					CreatedAt:    ng.Node.CreatedAt.Unix(),
+					UpdatedAt:    ng.Node.UpdatedAt.Unix(),
+				}
+
+				groupMap[firstGroupId].Nodes = append(groupMap[firstGroupId].Nodes, node)
+			} else {
+				// 没有节点组的节点，使用 group_id = 0 作为"无节点组"分组
+				if _, exists := groupMap[0]; !exists {
+					groupMap[0] = &NodeGroupMap{
+						Id:    0,
+						Nodes: []types.Node{},
+					}
+				}
+
+				tags := []string{}
+				if ng.Node.Tags != "" {
+					tags = strings.Split(ng.Node.Tags, ",")
+				}
+				node := types.Node{
+					Id:           ng.Node.Id,
+					Name:         ng.Node.Name,
+					Tags:         tags,
+					Port:         ng.Node.Port,
+					Address:      ng.Node.Address,
+					ServerId:     ng.Node.ServerId,
+					Protocol:     ng.Node.Protocol,
+					Enabled:      ng.Node.Enabled,
+					Sort:         ng.Node.Sort,
+					NodeGroupIds: []int64(ng.Node.NodeGroupIds),
+					CreatedAt:    ng.Node.CreatedAt.Unix(),
+					UpdatedAt:    ng.Node.UpdatedAt.Unix(),
+				}
+
+				groupMap[0].Nodes = append(groupMap[0].Nodes, node)
+			}
+		}
+
+		// 查询节点组信息并构建响应
+		nodeGroupInfoMap := make(map[int64]string)
+		validGroupIds := make([]int64, 0)
+
+		if len(allGroupIds) > 0 {
+			type NodeGroupInfo struct {
+				Id   int64
+				Name string
+			}
+			var nodeGroupInfos []NodeGroupInfo
+			err = l.svcCtx.DB.Table("node_group").
+				Select("id, name").
+				Where("id IN ?", allGroupIds).
+				Find(&nodeGroupInfos).Error
+			if err != nil {
+				logger.Errorf("[PreviewUserNodes] failed to get node group infos: %v", err)
+				return nil, err
+			}
+
+			logger.Infof("[PreviewUserNodes] found %v node group infos from %v requested", len(nodeGroupInfos), len(allGroupIds))
+
+			// 创建节点组信息映射和有效节点组ID列表
+			for _, ngInfo := range nodeGroupInfos {
+				nodeGroupInfoMap[ngInfo.Id] = ngInfo.Name
+				validGroupIds = append(validGroupIds, ngInfo.Id)
+				logger.Debugf("[PreviewUserNodes] node_group[%d] = %s", ngInfo.Id, ngInfo.Name)
+			}
+
+			// 记录无效的节点组ID
+			for _, requestedId := range allGroupIds {
+				found := false
+				for _, validId := range validGroupIds {
+					if requestedId == validId {
+						found = true
+						break
+					}
+				}
+				if !found {
+					logger.Infof("[PreviewUserNodes] node_group_id %d not found in database, treating as public nodes", requestedId)
+				}
+			}
+		}
+
+		// 构建响应：根据有效节点组ID重新分组节点
+		publicNodes := make([]types.Node, 0)
+
+		// 遍历所有分组，重新分类节点
+		for groupId, gm := range groupMap {
+			if groupId == 0 {
+				// 本来就是无节点组的节点
+				publicNodes = append(publicNodes, gm.Nodes...)
 				continue
 			}
-			nodeTags := strings.Split(n.Tags, ",")
-			// 检查是否有交集
-			for _, tag := range nodeTags {
-				if tag != "" && tool.Contains(allTags, tag) {
-					filteredNodes = append(filteredNodes, n)
+
+			// 检查这个节点组ID是否有效
+			isValid := false
+			for _, validId := range validGroupIds {
+				if groupId == validId {
+					isValid = true
 					break
 				}
 			}
+
+			if isValid {
+				// 节点组有效，添加到对应的分组
+				groupName := nodeGroupInfoMap[groupId]
+				if groupName == "" {
+					groupName = fmt.Sprintf("Group %d", groupId)
+				}
+				nodeGroupItems = append(nodeGroupItems, types.NodeGroupItem{
+					Id:    groupId,
+					Name:  groupName,
+					Nodes: gm.Nodes,
+				})
+				logger.Infof("[PreviewUserNodes] adding node group: id=%d, name=%s, nodes=%d", groupId, groupName, len(gm.Nodes))
+			} else {
+				// 节点组无效，节点归入公共节点组
+				logger.Infof("[PreviewUserNodes] node_group_id %d invalid, moving %d nodes to public group", groupId, len(gm.Nodes))
+				publicNodes = append(publicNodes, gm.Nodes...)
+			}
 		}
 
-		logger.Infof("[PreviewUserNodes] found %v nodes using tag filter", len(filteredNodes))
-	}
+		// 添加公共节点组（如果有）
+		if len(publicNodes) > 0 {
+			nodeGroupItems = append(nodeGroupItems, types.NodeGroupItem{
+				Id:    0,
+				Name:  "",
+				Nodes: publicNodes,
+			})
+			logger.Infof("[PreviewUserNodes] adding public group: nodes=%d", len(publicNodes))
+		}
 
-	// 10. 转换为 types.Node 并按节点组分组
-	type NodeWithGroup struct {
-		Node         node.Node
-		NodeGroupIds []int64
-	}
+	} else {
+		// === 未启用分组：按 tag 分组 ===
+		// 按 tag 分组节点
+		tagGroupMap := make(map[string][]types.Node)
 
-	nodesWithGroup := make([]NodeWithGroup, 0, len(filteredNodes))
-	for _, n := range filteredNodes {
-		nodesWithGroup = append(nodesWithGroup, NodeWithGroup{
-			Node:         n,
-			NodeGroupIds: []int64(n.NodeGroupIds),
-		})
-	}
-
-	// 11. 按节点组分组节点
-	type NodeGroupMap struct {
-		Id    int64
-		Nodes []types.Node
-	}
-
-	// 创建节点组映射：group_id -> nodes
-	groupMap := make(map[int64]*NodeGroupMap)
-
-	// 获取所有涉及的节点组ID
-	allGroupIds := make([]int64, 0)
-	for _, ng := range nodesWithGroup {
-		if len(ng.NodeGroupIds) > 0 {
-			// 如果节点属于节点组，按第一个节点组分组（或者可以按所有节点组）
-			// 这里使用节点的第一个节点组
-			firstGroupId := ng.NodeGroupIds[0]
-			if _, exists := groupMap[firstGroupId]; !exists {
-				groupMap[firstGroupId] = &NodeGroupMap{
-					Id:    firstGroupId,
-					Nodes: []types.Node{},
-				}
-				allGroupIds = append(allGroupIds, firstGroupId)
+		for _, n := range filteredNodes {
+			tags := []string{}
+			if n.Tags != "" {
+				tags = strings.Split(n.Tags, ",")
 			}
 
 			// 转换节点
-			tags := []string{}
-			if ng.Node.Tags != "" {
-				tags = strings.Split(ng.Node.Tags, ",")
-			}
 			node := types.Node{
-				Id:           ng.Node.Id,
-				Name:         ng.Node.Name,
+				Id:           n.Id,
+				Name:         n.Name,
 				Tags:         tags,
-				Port:         ng.Node.Port,
-				Address:      ng.Node.Address,
-				ServerId:     ng.Node.ServerId,
-				Protocol:     ng.Node.Protocol,
-				Enabled:      ng.Node.Enabled,
-				Sort:         ng.Node.Sort,
-				NodeGroupIds: []int64(ng.Node.NodeGroupIds),
-				CreatedAt:    ng.Node.CreatedAt.Unix(),
-				UpdatedAt:    ng.Node.UpdatedAt.Unix(),
+				Port:         n.Port,
+				Address:      n.Address,
+				ServerId:     n.ServerId,
+				Protocol:     n.Protocol,
+				Enabled:      n.Enabled,
+				Sort:         n.Sort,
+				NodeGroupIds: []int64(n.NodeGroupIds),
+				CreatedAt:    n.CreatedAt.Unix(),
+				UpdatedAt:    n.UpdatedAt.Unix(),
 			}
 
-			groupMap[firstGroupId].Nodes = append(groupMap[firstGroupId].Nodes, node)
-		} else {
-			// 没有节点组的节点，使用 group_id = 0 作为"无节点组"分组
-			if _, exists := groupMap[0]; !exists {
-				groupMap[0] = &NodeGroupMap{
-					Id:    0,
-					Nodes: []types.Node{},
+			// 将节点添加到每个匹配的 tag 分组中
+			if len(tags) > 0 {
+				for _, tag := range tags {
+					tag = strings.TrimSpace(tag)
+					if tag != "" {
+						tagGroupMap[tag] = append(tagGroupMap[tag], node)
+					}
 				}
+			} else {
+				// 没有 tag 的节点放入特殊分组
+				tagGroupMap[""] = append(tagGroupMap[""], node)
 			}
+		}
 
-			tags := []string{}
-			if ng.Node.Tags != "" {
-				tags = strings.Split(ng.Node.Tags, ",")
-			}
-			node := types.Node{
-				Id:           ng.Node.Id,
-				Name:         ng.Node.Name,
-				Tags:         tags,
-				Port:         ng.Node.Port,
-				Address:      ng.Node.Address,
-				ServerId:     ng.Node.ServerId,
-				Protocol:     ng.Node.Protocol,
-				Enabled:      ng.Node.Enabled,
-				Sort:         ng.Node.Sort,
-				NodeGroupIds: []int64(ng.Node.NodeGroupIds),
-				CreatedAt:    ng.Node.CreatedAt.Unix(),
-				UpdatedAt:    ng.Node.UpdatedAt.Unix(),
-			}
-
-			groupMap[0].Nodes = append(groupMap[0].Nodes, node)
+		// 构建响应：按 tag 分组
+		for tag, nodes := range tagGroupMap {
+			nodeGroupItems = append(nodeGroupItems, types.NodeGroupItem{
+				Id:    0, // tag 分组使用 ID 0
+				Name:  tag,
+				Nodes: nodes,
+			})
+			logger.Infof("[PreviewUserNodes] adding tag group: tag=%s, nodes=%d", tag, len(nodes))
 		}
 	}
 
-	// 12. 查询节点组信息并构建响应
-	nodeGroupInfoMap := make(map[int64]string)
-	validGroupIds := make([]int64, 0) // 存储在数据库中实际存在的节点组ID
-
-	if len(allGroupIds) > 0 {
-		type NodeGroupInfo struct {
-			Id   int64
-			Name string
-		}
-		var nodeGroupInfos []NodeGroupInfo
-		err = l.svcCtx.DB.Table("node_group").
-			Select("id, name").
-			Where("id IN ?", allGroupIds).
-			Find(&nodeGroupInfos).Error
+	// 添加套餐节点组（直接分配的节点）
+	if len(allDirectNodeIds) > 0 {
+		// 查询直接分配的节点详情
+		var directNodes []node.Node
+		err = l.svcCtx.DB.Table("nodes").
+			Where("id IN ? AND enabled = ?", allDirectNodeIds, true).
+			Find(&directNodes).Error
 		if err != nil {
-			logger.Errorf("[PreviewUserNodes] failed to get node group infos: %v", err)
+			logger.Errorf("[PreviewUserNodes] failed to get direct nodes: %v", err)
 			return nil, err
 		}
 
-		logger.Infof("[PreviewUserNodes] found %v node group infos from %v requested", len(nodeGroupInfos), len(allGroupIds))
-
-		// 创建节点组信息映射和有效节点组ID列表
-		for _, ngInfo := range nodeGroupInfos {
-			nodeGroupInfoMap[ngInfo.Id] = ngInfo.Name
-			validGroupIds = append(validGroupIds, ngInfo.Id)
-			logger.Debugf("[PreviewUserNodes] node_group[%d] = %s", ngInfo.Id, ngInfo.Name)
-		}
-
-		// 记录无效的节点组ID（节点有这个ID但数据库中不存在）
-		for _, requestedId := range allGroupIds {
-			found := false
-			for _, validId := range validGroupIds {
-				if requestedId == validId {
-					found = true
-					break
+		if len(directNodes) > 0 {
+			// 转换为 types.Node
+			directNodeItems := make([]types.Node, 0, len(directNodes))
+			for _, n := range directNodes {
+				tags := []string{}
+				if n.Tags != "" {
+					tags = strings.Split(n.Tags, ",")
 				}
+				directNodeItems = append(directNodeItems, types.Node{
+					Id:           n.Id,
+					Name:         n.Name,
+					Tags:         tags,
+					Port:         n.Port,
+					Address:      n.Address,
+					ServerId:     n.ServerId,
+					Protocol:     n.Protocol,
+					Enabled:      n.Enabled,
+					Sort:         n.Sort,
+					NodeGroupIds: []int64(n.NodeGroupIds),
+					CreatedAt:    n.CreatedAt.Unix(),
+					UpdatedAt:    n.UpdatedAt.Unix(),
+				})
 			}
-			if !found {
-				logger.Infof("[PreviewUserNodes] node_group_id %d not found in database, treating as public nodes", requestedId)
-			}
-		}
-	}
 
-	// 13. 构建响应：根据有效节点组ID重新分组节点
-	nodeGroupItems := make([]types.NodeGroupItem, 0)
-	publicNodes := make([]types.Node, 0) // 公共节点（包括无效节点组和无节点组的节点）
-
-	// 遍历所有分组，重新分类节点
-	for groupId, gm := range groupMap {
-		if groupId == 0 {
-			// 本来就是无节点组的节点
-			publicNodes = append(publicNodes, gm.Nodes...)
-			continue
-		}
-
-		// 检查这个节点组ID是否有效（在数据库中存在）
-		isValid := false
-		for _, validId := range validGroupIds {
-			if groupId == validId {
-				isValid = true
-				break
-			}
-		}
-
-		if isValid {
-			// 节点组有效，添加到对应的分组
-			groupName := nodeGroupInfoMap[groupId]
-			if groupName == "" {
-				groupName = fmt.Sprintf("Group %d", groupId)
-			}
+			// 添加套餐节点组（使用特殊ID -1，Name 为空字符串，前端根据 ID -1 进行国际化）
 			nodeGroupItems = append(nodeGroupItems, types.NodeGroupItem{
-				Id:    groupId,
-				Name:  groupName,
-				Nodes: gm.Nodes,
+				Id:    -1,
+				Name:  "", // 空字符串，前端根据 ID -1 识别并国际化
+				Nodes: directNodeItems,
 			})
-			logger.Infof("[PreviewUserNodes] adding node group: id=%d, name=%s, nodes=%d", groupId, groupName, len(gm.Nodes))
-		} else {
-			// 节点组无效，节点归入公共节点组
-			logger.Infof("[PreviewUserNodes] node_group_id %d invalid, moving %d nodes to public group", groupId, len(gm.Nodes))
-			publicNodes = append(publicNodes, gm.Nodes...)
+			logger.Infof("[PreviewUserNodes] adding subscription nodes group: nodes=%d", len(directNodeItems))
 		}
-	}
-
-	// 最后添加公共节点组（如果有）
-	if len(publicNodes) > 0 {
-		nodeGroupItems = append(nodeGroupItems, types.NodeGroupItem{
-			Id:    0,
-			Name:  "",
-			Nodes: publicNodes,
-		})
-		logger.Infof("[PreviewUserNodes] adding public group: nodes=%d", len(publicNodes))
 	}
 
 	// 14. 返回结果

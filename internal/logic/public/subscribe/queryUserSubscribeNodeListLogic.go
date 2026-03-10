@@ -177,19 +177,27 @@ func (l *QueryUserSubscribeNodeListLogic) getNodesByGroup(userSub *user.Subscrib
 	// 按优先级获取 node_group_id：user_subscribe.node_group_id > subscribe.node_group_id > subscribe.node_group_ids[0]
 	nodeGroupId := int64(0)
 	source := ""
+	var directNodeIds []int64
 
 	// 优先级1: user_subscribe.node_group_id
 	if userSub.NodeGroupId != 0 {
 		nodeGroupId = userSub.NodeGroupId
 		source = "user_subscribe.node_group_id"
-	} else {
-		// 优先级2 & 3: 从 subscribe 表获取
-		subDetails, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, userSub.SubscribeId)
-		if err != nil {
-			l.Errorw("[GetNodesByGroup] find subscribe details error", logger.Field("error", err.Error()))
-			return nil, err
-		}
+	}
 
+	// 获取 subscribe 详情（用于获取 node_group_id 和直接分配的节点）
+	subDetails, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, userSub.SubscribeId)
+	if err != nil {
+		l.Errorw("[GetNodesByGroup] find subscribe details error", logger.Field("error", err.Error()))
+		return nil, err
+	}
+
+	// 获取直接分配的节点ID
+	directNodeIds = tool.StringToInt64Slice(subDetails.Nodes)
+	l.Debugf("[GetNodesByGroup] direct nodes: %v", directNodeIds)
+
+	// 如果 user_subscribe 没有 node_group_id，从 subscribe 获取
+	if nodeGroupId == 0 {
 		// 优先级2: subscribe.node_group_id
 		if subDetails.NodeGroupId != 0 {
 			nodeGroupId = subDetails.NodeGroupId
@@ -201,29 +209,60 @@ func (l *QueryUserSubscribeNodeListLogic) getNodesByGroup(userSub *user.Subscrib
 		}
 	}
 
-	// 如果所有优先级都没有获取到，返回空节点列表
-	if nodeGroupId == 0 {
-		l.Debugw("[GetNodesByGroup] no node_group_id found in any priority, returning no nodes")
-		return []*node.Node{}, nil
-	}
-
 	l.Debugf("[GetNodesByGroup] Using %s: %v", source, nodeGroupId)
 
-	// Filter nodes by node_group_id
+	// 查询所有启用的节点
 	enable := true
-	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:         0,
-		Size:         1000,
-		NodeGroupIds: []int64{nodeGroupId}, // Filter by node_group_ids
-		Enabled:      &enable,
+	_, allNodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
+		Page:    0,
+		Size:    10000,
+		Enabled: &enable,
 	})
 	if err != nil {
 		l.Errorw("[GetNodesByGroup] FilterNodeList error", logger.Field("error", err.Error()))
 		return nil, err
 	}
 
-	l.Debugf("[GetNodesByGroup] Found %d nodes for node_group_id=%d", len(nodes), nodeGroupId)
-	return nodes, nil
+	// 过滤节点
+	var resultNodes []*node.Node
+	nodeIdMap := make(map[int64]bool)
+
+	for _, n := range allNodes {
+		// 1. 公共节点（node_group_ids 为空），所有人可见
+		if len(n.NodeGroupIds) == 0 {
+			if !nodeIdMap[n.Id] {
+				resultNodes = append(resultNodes, n)
+				nodeIdMap[n.Id] = true
+			}
+			continue
+		}
+
+		// 2. 如果有节点组，检查节点是否属于该节点组
+		if nodeGroupId != 0 {
+			for _, gid := range n.NodeGroupIds {
+				if gid == nodeGroupId {
+					if !nodeIdMap[n.Id] {
+						resultNodes = append(resultNodes, n)
+						nodeIdMap[n.Id] = true
+					}
+					break
+				}
+			}
+		}
+	}
+
+	// 3. 添加直接分配的节点
+	if len(directNodeIds) > 0 {
+		for _, n := range allNodes {
+			if tool.Contains(directNodeIds, n.Id) && !nodeIdMap[n.Id] {
+				resultNodes = append(resultNodes, n)
+				nodeIdMap[n.Id] = true
+			}
+		}
+	}
+
+	l.Debugf("[GetNodesByGroup] Found %d nodes (group=%d, direct=%d)", len(resultNodes), nodeGroupId, len(directNodeIds))
+	return resultNodes, nil
 }
 
 // getNodesByTag gets nodes based on subscribe node_ids and tags
@@ -236,7 +275,13 @@ func (l *QueryUserSubscribeNodeListLogic) getNodesByTag(userSub *user.Subscribe)
 
 	nodeIds := tool.StringToInt64Slice(subDetails.Nodes)
 	tags := strings.Split(subDetails.NodeTags, ",")
-
+	newTags := make([]string, 0)
+	for _, t := range tags {
+		if t != "" {
+			newTags = append(newTags, t)
+		}
+	}
+	tags = newTags
 	l.Debugf("[Generate Subscribe]nodes: %v, NodeTags: %v", nodeIds, tags)
 
 	enable := true

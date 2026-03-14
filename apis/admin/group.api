@@ -28,22 +28,30 @@ type (
 	}
 	// CreateNodeGroupRequest
 	CreateNodeGroupRequest {
-		Name           string `json:"name" validate:"required"`
-		Description    string `json:"description"`
-		Sort           int    `json:"sort"`
-		ForCalculation *bool  `json:"for_calculation"`
-		MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
-		MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+		Name                string `json:"name" validate:"required"`
+		Description         string `json:"description"`
+		Sort                int    `json:"sort"`
+		ForCalculation      *bool  `json:"for_calculation"`
+		IsExpiredGroup      *bool  `json:"is_expired_group"`
+		ExpiredDaysLimit    *int   `json:"expired_days_limit"`
+		MaxTrafficGBExpired *int64 `json:"max_traffic_gb_expired,omitempty"`
+		SpeedLimit          *int   `json:"speed_limit"`
+		MinTrafficGB        *int64 `json:"min_traffic_gb,omitempty"`
+		MaxTrafficGB        *int64 `json:"max_traffic_gb,omitempty"`
 	}
 	// UpdateNodeGroupRequest
 	UpdateNodeGroupRequest {
-		Id             int64  `json:"id" validate:"required"`
-		Name           string `json:"name"`
-		Description    string `json:"description"`
-		Sort           int    `json:"sort"`
-		ForCalculation *bool  `json:"for_calculation"`
-		MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
-		MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+		Id                  int64  `json:"id" validate:"required"`
+		Name                string `json:"name"`
+		Description         string `json:"description"`
+		Sort                int    `json:"sort"`
+		ForCalculation      *bool  `json:"for_calculation"`
+		IsExpiredGroup      *bool  `json:"is_expired_group"`
+		ExpiredDaysLimit    *int   `json:"expired_days_limit"`
+		MaxTrafficGBExpired *int64 `json:"max_traffic_gb_expired,omitempty"`
+		SpeedLimit          *int   `json:"speed_limit"`
+		MinTrafficGB        *int64 `json:"min_traffic_gb,omitempty"`
+		MaxTrafficGB        *int64 `json:"max_traffic_gb,omitempty"`
 	}
 	// DeleteNodeGroupRequest
 	DeleteNodeGroupRequest {

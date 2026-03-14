@@ -3,9 +3,13 @@ package group
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/group"
+	"github.com/perfect-panel/server/internal/model/node"
+	"github.com/perfect-panel/server/internal/model/subscribe"
+	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -131,7 +135,7 @@ func (l *RecalculateGroupLogic) getUserEmail(tx *gorm.DB, userId int64) string {
 	}
 
 	var authMethod UserAuthMethod
-	if err := tx.Table("user_auth_methods").
+	if err := tx.Model(&user.AuthMethods{}).
 		Select("auth_identifier").
 		Where("user_id = ? AND (auth_type = ? OR auth_type = ?)", userId, "email", "6").
 		First(&authMethod).Error; err != nil {
@@ -152,7 +156,7 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(tx *gorm.DB, historyId in
 	}
 
 	var userSubscribes []UserSubscribeInfo
-	if err := tx.Table("user_subscribe").
+	if err := tx.Model(&user.Subscribe{}).
 		Select("id, user_id, subscribe_id").
 		Where("group_locked = ? AND status IN (0, 1)", 0). // 只查询未锁定且有效的用户订阅
 		Scan(&userSubscribes).Error; err != nil {
@@ -168,7 +172,7 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(tx *gorm.DB, historyId in
 
 	// 1.5 查询所有参与计算的节点组ID
 	var calculationNodeGroups []group.NodeGroup
-	if err := tx.Table("node_group").
+	if err := tx.Model(&group.NodeGroup{}).
 		Select("id").
 		Where("for_calculation = ?", true).
 		Scan(&calculationNodeGroups).Error; err != nil {
@@ -195,7 +199,7 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(tx *gorm.DB, historyId in
 		NodeGroupIds string `json:"node_group_ids"` // JSON string
 	}
 	var subscribeInfos []SubscribeInfo
-	if err := tx.Table("subscribe").
+	if err := tx.Model(&subscribe.Subscribe{}).
 		Select("id, node_group_ids").
 		Where("id IN ?", subscribeIds).
 		Find(&subscribeInfos).Error; err != nil {
@@ -261,10 +265,10 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(tx *gorm.DB, historyId in
 			}
 		}
 
-		// 如果没有节点组ID，跳过
+		// 如果没有节点组ID,跳过
 		if len(nodeGroupIds) == 0 {
 			l.Debugf("no valid node_group_ids for subscribe_id=%d, setting to 0", subInfo.Id)
-			if err := tx.Table("user_subscribe").
+			if err := tx.Model(&user.Subscribe{}).
 				Where("id = ?", us.Id).
 				Update("node_group_id", 0).Error; err != nil {
 				l.Errorw("failed to update user_subscribe node_group_id",
@@ -290,7 +294,7 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(tx *gorm.DB, historyId in
 		}
 
 		// 更新 user_subscribe 的 node_group_id 字段（单个ID）
-		if err := tx.Table("user_subscribe").
+		if err := tx.Model(&user.Subscribe{}).
 			Where("id = ?", us.Id).
 			Update("node_group_id", selectedNodeGroupId).Error; err != nil {
 			l.Errorw("failed to update user_subscribe node_group_id",
@@ -329,8 +333,8 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(tx *gorm.DB, historyId in
 		// 统计该节点组的节点数
 		var nodeCount int64 = 0
 		if nodeGroupId > 0 {
-			if err := tx.Table("nodes").
-				Where("JSON_CONTAINS(node_group_ids, ?)", nodeGroupId).
+			if err := tx.Model(&node.Node{}).
+				Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroupId)).
 				Count(&nodeCount).Error; err != nil {
 				l.Errorw("failed to count nodes",
 					logger.Field("node_group_id", nodeGroupId),
@@ -383,7 +387,7 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(tx *gorm.DB, historyId 
 	}
 
 	var userSubscribes []UserSubscribeInfo
-	if err := tx.Table("user_subscribe").
+	if err := tx.Model(&user.Subscribe{}).
 		Select("id, user_id, subscribe_id").
 		Where("group_locked = ? AND status IN (0, 1)", 0).
 		Scan(&userSubscribes).Error; err != nil {
@@ -400,7 +404,7 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(tx *gorm.DB, historyId 
 
 	// 1.5 查询所有参与计算的节点组ID
 	var calculationNodeGroups []group.NodeGroup
-	if err := tx.Table("node_group").
+	if err := tx.Model(&group.NodeGroup{}).
 		Select("id").
 		Where("for_calculation = ?", true).
 		Scan(&calculationNodeGroups).Error; err != nil {
@@ -427,7 +431,7 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(tx *gorm.DB, historyId 
 		NodeGroupIds string `json:"node_group_ids"` // JSON string
 	}
 	var subscribeInfos []SubscribeInfo
-	if err := tx.Table("subscribe").
+	if err := tx.Model(&subscribe.Subscribe{}).
 		Select("id, node_group_ids").
 		Where("id IN ?", subscribeIds).
 		Find(&subscribeInfos).Error; err != nil {
@@ -501,7 +505,7 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(tx *gorm.DB, historyId 
 			us.Id, us.SubscribeId, selectedNodeGroupId, len(nodeGroupIds))
 
 		// 更新 user_subscribe 的 node_group_id 字段
-		if err := tx.Table("user_subscribe").
+		if err := tx.Model(&user.Subscribe{}).
 			Where("id = ?", us.Id).
 			Update("node_group_id", selectedNodeGroupId).Error; err != nil {
 			l.Errorw("failed to update user_subscribe node_group_id",
@@ -548,7 +552,7 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(tx *gorm.DB, historyId 
 		expiredAffectedCount := 0
 		for _, eu := range expiredUserSubscribes {
 			// 更新 user_subscribe 表的 node_group_id 字段到 0
-			if err := tx.Table("user_subscribe").
+			if err := tx.Model(&user.Subscribe{}).
 				Where("id = ?", eu.Id).
 				Update("node_group_id", 0).Error; err != nil {
 				l.Errorw("failed to update expired user subscribe node_group_id",
@@ -573,8 +577,8 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(tx *gorm.DB, historyId 
 		// 统计该节点组的节点数
 		var nodeCount int64 = 0
 		if nodeGroupId > 0 {
-			if err := tx.Table("nodes").
-				Where("JSON_CONTAINS(node_group_ids, ?)", nodeGroupId).
+			if err := tx.Model(&node.Node{}).
+				Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroupId)).
 				Count(&nodeCount).Error; err != nil {
 				l.Errorw("failed to count nodes",
 					logger.Field("node_group_id", nodeGroupId),
@@ -652,7 +656,7 @@ func (l *RecalculateGroupLogic) executeTrafficGrouping(tx *gorm.DB, historyId in
 	}
 
 	var userSubscribes []UserSubscribeInfo
-	if err := tx.Table("user_subscribe").
+	if err := tx.Model(&user.Subscribe{}).
 		Select("id, user_id, upload, download, (upload + download) as used_traffic").
 		Where("group_locked = ? AND status IN (0, 1)", 0). // 只查询有效且未锁定的用户订阅
 		Scan(&userSubscribes).Error; err != nil {
@@ -694,7 +698,7 @@ func (l *RecalculateGroupLogic) executeTrafficGrouping(tx *gorm.DB, historyId in
 		// 如果没有匹配到任何范围，targetNodeGroupId 保持为 0（不分配节点组）
 
 		// 更新 user_subscribe 的 node_group_id 字段
-		if err := tx.Table("user_subscribe").
+		if err := tx.Model(&user.Subscribe{}).
 			Where("id = ?", us.Id).
 			Update("node_group_id", targetNodeGroupId).Error; err != nil {
 			l.Errorw("failed to update user subscribe node_group_id",

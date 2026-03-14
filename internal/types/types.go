@@ -321,12 +321,16 @@ type CreateDocumentRequest struct {
 }
 
 type CreateNodeGroupRequest struct {
-	Name           string `json:"name" validate:"required"`
-	Description    string `json:"description"`
-	Sort           int    `json:"sort"`
-	ForCalculation *bool  `json:"for_calculation"`
-	MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
-	MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+	Name                string `json:"name" validate:"required"`
+	Description         string `json:"description"`
+	Sort                int    `json:"sort"`
+	ForCalculation      *bool  `json:"for_calculation"`
+	IsExpiredGroup      *bool  `json:"is_expired_group"`
+	ExpiredDaysLimit    *int   `json:"expired_days_limit"`
+	MaxTrafficGBExpired *int64 `json:"max_traffic_gb_expired,omitempty"`
+	SpeedLimit          *int   `json:"speed_limit"`
+	MinTrafficGB        *int64 `json:"min_traffic_gb,omitempty"`
+	MaxTrafficGB        *int64 `json:"max_traffic_gb,omitempty"`
 }
 
 type CreateNodeRequest struct {
@@ -432,6 +436,7 @@ type CreateSubscribeRequest struct {
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id"`
+	TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 	Show              *bool               `json:"show"`
 	Sell              *bool               `json:"sell"`
 	DeductionRatio    int64               `json:"deduction_ratio"`
@@ -500,6 +505,13 @@ type CurrencyConfig struct {
 	AccessKey      string `json:"access_key"`
 	CurrencyUnit   string `json:"currency_unit"`
 	CurrencySymbol string `json:"currency_symbol"`
+}
+
+type DailyTrafficStats struct {
+	Date     string `json:"date"`
+	Upload   int64  `json:"upload"`
+	Download int64  `json:"download"`
+	Total    int64  `json:"total"`
 }
 
 type DeleteAdsRequest struct {
@@ -1277,6 +1289,18 @@ type GetUserTicketListResponse struct {
 	List  []Ticket `json:"list"`
 }
 
+type GetUserTrafficStatsRequest struct {
+	UserSubscribeId string `form:"user_subscribe_id" validate:"required"`
+	Days            int    `form:"days" validate:"required,oneof=7 30"`
+}
+
+type GetUserTrafficStatsResponse struct {
+	List          []DailyTrafficStats `json:"list"`
+	TotalUpload   int64               `json:"total_upload"`
+	TotalDownload int64               `json:"total_download"`
+	TotalTraffic  int64               `json:"total_traffic"`
+}
+
 type GiftLog struct {
 	Type        uint16 `json:"type"`
 	UserId      int64  `json:"user_id"`
@@ -1425,16 +1449,20 @@ type NodeDNS struct {
 }
 
 type NodeGroup struct {
-	Id             int64  `json:"id"`
-	Name           string `json:"name"`
-	Description    string `json:"description"`
-	Sort           int    `json:"sort"`
-	ForCalculation bool   `json:"for_calculation"`
-	MinTrafficGB   int64  `json:"min_traffic_gb,omitempty"`
-	MaxTrafficGB   int64  `json:"max_traffic_gb,omitempty"`
-	NodeCount      int64  `json:"node_count,omitempty"`
-	CreatedAt      int64  `json:"created_at"`
-	UpdatedAt      int64  `json:"updated_at"`
+	Id                  int64  `json:"id"`
+	Name                string `json:"name"`
+	Description         string `json:"description"`
+	Sort                int    `json:"sort"`
+	ForCalculation      bool   `json:"for_calculation"`
+	IsExpiredGroup      bool   `json:"is_expired_group"`
+	ExpiredDaysLimit    int    `json:"expired_days_limit"`
+	MaxTrafficGBExpired int64  `json:"max_traffic_gb_expired,omitempty"`
+	SpeedLimit          int    `json:"speed_limit"`
+	MinTrafficGB        int64  `json:"min_traffic_gb,omitempty"`
+	MaxTrafficGB        int64  `json:"max_traffic_gb,omitempty"`
+	NodeCount           int64  `json:"node_count,omitempty"`
+	CreatedAt           int64  `json:"created_at"`
+	UpdatedAt           int64  `json:"updated_at"`
 }
 
 type NodeGroupItem struct {
@@ -2299,6 +2327,7 @@ type Subscribe struct {
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id"`
+	TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 	Show              bool                `json:"show"`
 	Sell              bool                `json:"sell"`
 	Sort              int64               `json:"sort"`
@@ -2492,6 +2521,13 @@ type TosConfig struct {
 	TosContent string `json:"tos_content"`
 }
 
+type TrafficLimit struct {
+	StatType     string `json:"stat_type"`
+	StatValue    int64  `json:"stat_value"`
+	TrafficUsage int64  `json:"traffic_usage"`
+	SpeedLimit   int64  `json:"speed_limit"`
+}
+
 type TrafficLog struct {
 	Id          int64 `json:"id"`
 	ServerId    int64 `json:"server_id"`
@@ -2629,13 +2665,17 @@ type UpdateGroupConfigRequest struct {
 }
 
 type UpdateNodeGroupRequest struct {
-	Id             int64  `json:"id" validate:"required"`
-	Name           string `json:"name"`
-	Description    string `json:"description"`
-	Sort           int    `json:"sort"`
-	ForCalculation *bool  `json:"for_calculation"`
-	MinTrafficGB   *int64 `json:"min_traffic_gb,omitempty"`
-	MaxTrafficGB   *int64 `json:"max_traffic_gb,omitempty"`
+	Id                  int64  `json:"id" validate:"required"`
+	Name                string `json:"name"`
+	Description         string `json:"description"`
+	Sort                int    `json:"sort"`
+	ForCalculation      *bool  `json:"for_calculation"`
+	IsExpiredGroup      *bool  `json:"is_expired_group"`
+	ExpiredDaysLimit    *int   `json:"expired_days_limit"`
+	MaxTrafficGBExpired *int64 `json:"max_traffic_gb_expired,omitempty"`
+	SpeedLimit          *int   `json:"speed_limit"`
+	MinTrafficGB        *int64 `json:"min_traffic_gb,omitempty"`
+	MaxTrafficGB        *int64 `json:"max_traffic_gb,omitempty"`
 }
 
 type UpdateNodeRequest struct {
@@ -2727,6 +2767,7 @@ type UpdateSubscribeRequest struct {
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id"`
+	TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 	Show              *bool               `json:"show"`
 	Sell              *bool               `json:"sell"`
 	Sort              int64               `json:"sort"`
@@ -2907,6 +2948,7 @@ type UserStatisticsResponse struct {
 
 type UserSubscribe struct {
 	Id          int64     `json:"id"`
+	IdStr       string    `json:"id_str"`
 	UserId      int64     `json:"user_id"`
 	OrderId     int64     `json:"order_id"`
 	SubscribeId int64     `json:"subscribe_id"`

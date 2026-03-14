@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/group"
+	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -37,6 +38,34 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 		return err
 	}
 
+	// 验证:系统中只能有一个过期节点组
+	if req.IsExpiredGroup != nil && *req.IsExpiredGroup {
+		var count int64
+		err := l.svcCtx.DB.Model(&group.NodeGroup{}).
+			Where("is_expired_group = ? AND id != ?", true, req.Id).
+			Count(&count).Error
+		if err != nil {
+			logger.Errorf("failed to check expired group count: %v", err)
+			return err
+		}
+		if count > 0 {
+			return errors.New("system already has an expired node group, cannot create multiple")
+		}
+
+		// 验证:被订阅商品设置为默认节点组的不能设置为过期节点组
+		var subscribeCount int64
+		err = l.svcCtx.DB.Model(&subscribe.Subscribe{}).
+			Where("node_group_id = ?", req.Id).
+			Count(&subscribeCount).Error
+		if err != nil {
+			logger.Errorf("failed to check subscribe usage: %v", err)
+			return err
+		}
+		if subscribeCount > 0 {
+			return errors.New("this node group is used as default node group in subscription products, cannot set as expired group")
+		}
+	}
+
 	// 构建更新数据
 	updates := map[string]interface{}{
 		"updated_at": time.Now(),
@@ -52,6 +81,22 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 	}
 	if req.ForCalculation != nil {
 		updates["for_calculation"] = *req.ForCalculation
+	}
+	if req.IsExpiredGroup != nil {
+		updates["is_expired_group"] = *req.IsExpiredGroup
+		// 过期节点组不参与分组计算
+		if *req.IsExpiredGroup {
+			updates["for_calculation"] = false
+		}
+	}
+	if req.ExpiredDaysLimit != nil {
+		updates["expired_days_limit"] = *req.ExpiredDaysLimit
+	}
+	if req.MaxTrafficGBExpired != nil {
+		updates["max_traffic_gb_expired"] = *req.MaxTrafficGBExpired
+	}
+	if req.SpeedLimit != nil {
+		updates["speed_limit"] = *req.SpeedLimit
 	}
 
 	// 获取新的流量区间值

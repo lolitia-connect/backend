@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
+	"github.com/perfect-panel/server/internal/model/subscribe"
+	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -38,7 +41,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		NodeGroupId int64 // 用户订阅的 node_group_id（单个ID）
 	}
 	var userSubscribes []UserSubscribe
-	err = l.svcCtx.DB.Table("user_subscribe").
+	err = l.svcCtx.DB.Model(&user.Subscribe{}).
 		Select("id, user_id, subscribe_id, node_group_id").
 		Where("user_id = ? AND status IN ?", req.UserId, []int8{0, 1}).
 		Find(&userSubscribes).Error
@@ -74,7 +77,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		NodeTags     string // 节点标签
 	}
 	var subscribeInfos []SubscribeInfo
-	err = l.svcCtx.DB.Table("subscribe").
+	err = l.svcCtx.DB.Model(&subscribe.Subscribe{}).
 		Select("id, node_group_id, node_group_ids, nodes, node_tags").
 		Where("id IN ?", subscribeIds).
 		Find(&subscribeInfos).Error
@@ -149,15 +152,23 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 	logger.Infof("[PreviewUserNodes] collected direct node_ids: %v", allDirectNodeIds)
 
 	// 4. 判断分组功能是否启用
-	var groupEnabled string
-	l.svcCtx.DB.Table("system").
+	type SystemConfig struct {
+		Value string
+	}
+	var config SystemConfig
+	l.svcCtx.DB.Model(&struct {
+		Category string `gorm:"column:category"`
+		Key      string `gorm:"column:key"`
+		Value    string `gorm:"column:value"`
+	}{}).
+		Table("system").
 		Where("`category` = ? AND `key` = ?", "group", "enabled").
 		Select("value").
-		Scan(&groupEnabled)
+		Scan(&config)
 
-	logger.Infof("[PreviewUserNodes] groupEnabled: %v", groupEnabled)
+	logger.Infof("[PreviewUserNodes] groupEnabled: %v", config.Value)
 
-	isGroupEnabled := groupEnabled == "true" || groupEnabled == "1"
+	isGroupEnabled := config.Value == "true" || config.Value == "1"
 
 	var filteredNodes []node.Node
 
@@ -177,7 +188,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		// 5. 查询所有启用的节点（只有当有节点组时才查询）
 		if len(allNodeGroupIds) > 0 {
 			var dbNodes []node.Node
-			err = l.svcCtx.DB.Table("nodes").
+			err = l.svcCtx.DB.Model(&node.Node{}).
 				Where("enabled = ?", true).
 				Find(&dbNodes).Error
 			if err != nil {
@@ -238,7 +249,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		// 8. 查询所有启用的节点（只有当有 tags 时才查询）
 		if len(allTags) > 0 {
 			var dbNodes []node.Node
-			err = l.svcCtx.DB.Table("nodes").
+			err = l.svcCtx.DB.Model(&node.Node{}).
 				Where("enabled = ?", true).
 				Find(&dbNodes).Error
 			if err != nil {
@@ -370,7 +381,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 				Name string
 			}
 			var nodeGroupInfos []NodeGroupInfo
-			err = l.svcCtx.DB.Table("node_group").
+			err = l.svcCtx.DB.Model(&group.NodeGroup{}).
 				Select("id, name").
 				Where("id IN ?", allGroupIds).
 				Find(&nodeGroupInfos).Error
@@ -508,7 +519,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 	if len(allDirectNodeIds) > 0 {
 		// 查询直接分配的节点详情
 		var directNodes []node.Node
-		err = l.svcCtx.DB.Table("nodes").
+		err = l.svcCtx.DB.Model(&node.Node{}).
 			Where("id IN ? AND enabled = ?", allDirectNodeIds, true).
 			Find(&directNodes).Error
 		if err != nil {

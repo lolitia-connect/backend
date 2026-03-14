@@ -34,6 +34,12 @@ func (l *CreateSubscribeLogic) CreateSubscribe(req *types.CreateSubscribeRequest
 		val, _ := json.Marshal(req.Discount)
 		discount = string(val)
 	}
+
+	trafficLimit := ""
+	if len(req.TrafficLimit) > 0 {
+		val, _ := json.Marshal(req.TrafficLimit)
+		trafficLimit = string(val)
+	}
 	sub := &subscribe.Subscribe{
 		Id:                0,
 		Name:              req.Name,
@@ -52,6 +58,7 @@ func (l *CreateSubscribeLogic) CreateSubscribe(req *types.CreateSubscribeRequest
 		NodeTags:          tool.StringSliceToString(req.NodeTags),
 		NodeGroupIds:      subscribe.JSONInt64Slice(req.NodeGroupIds),
 		NodeGroupId:       req.NodeGroupId,
+		TrafficLimit:      trafficLimit,
 		Show:              req.Show,
 		Sell:              req.Sell,
 		Sort:              0,

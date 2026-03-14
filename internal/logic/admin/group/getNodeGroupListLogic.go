@@ -2,8 +2,10 @@ package group
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/perfect-panel/server/internal/model/group"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -46,9 +48,9 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 	// 转换为响应格式
 	var list []types.NodeGroup
 	for _, ng := range nodeGroups {
-		// 统计该组的节点数
+		// 统计该组的节点数（JSON数组查询）
 		var nodeCount int64
-		l.svcCtx.DB.Table("nodes").Where("node_group_id = ?", ng.Id).Count(&nodeCount)
+		l.svcCtx.DB.Model(&node.Node{}).Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", ng.Id)).Count(&nodeCount)
 
 		// 处理指针类型的字段
 		var forCalculation bool
@@ -58,25 +60,37 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 			forCalculation = true // 默认值
 		}
 
-		var minTrafficGB, maxTrafficGB int64
+		var isExpiredGroup bool
+		if ng.IsExpiredGroup != nil {
+			isExpiredGroup = *ng.IsExpiredGroup
+		}
+
+		var minTrafficGB, maxTrafficGB, maxTrafficGBExpired int64
 		if ng.MinTrafficGB != nil {
 			minTrafficGB = *ng.MinTrafficGB
 		}
 		if ng.MaxTrafficGB != nil {
 			maxTrafficGB = *ng.MaxTrafficGB
 		}
+		if ng.MaxTrafficGBExpired != nil {
+			maxTrafficGBExpired = *ng.MaxTrafficGBExpired
+		}
 
 		list = append(list, types.NodeGroup{
-			Id:             ng.Id,
-			Name:           ng.Name,
-			Description:    ng.Description,
-			Sort:           ng.Sort,
-			ForCalculation: forCalculation,
-			MinTrafficGB:   minTrafficGB,
-			MaxTrafficGB:   maxTrafficGB,
-			NodeCount:      nodeCount,
-			CreatedAt:      ng.CreatedAt.Unix(),
-			UpdatedAt:      ng.UpdatedAt.Unix(),
+			Id:                  ng.Id,
+			Name:                ng.Name,
+			Description:         ng.Description,
+			Sort:                ng.Sort,
+			ForCalculation:      forCalculation,
+			IsExpiredGroup:      isExpiredGroup,
+			ExpiredDaysLimit:    ng.ExpiredDaysLimit,
+			MaxTrafficGBExpired: maxTrafficGBExpired,
+			SpeedLimit:          ng.SpeedLimit,
+			MinTrafficGB:        minTrafficGB,
+			MaxTrafficGB:        maxTrafficGB,
+			NodeCount:           nodeCount,
+			CreatedAt:           ng.CreatedAt.Unix(),
+			UpdatedAt:           ng.UpdatedAt.Unix(),
 		})
 	}
 

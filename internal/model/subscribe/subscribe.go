@@ -71,6 +71,7 @@ type Subscribe struct {
 	NodeTags          string         `gorm:"type:varchar(255);comment:Node Tags"`
 	NodeGroupIds      JSONInt64Slice `gorm:"type:json;comment:Node Group IDs (JSON array, multiple groups)"`
 	NodeGroupId       int64          `gorm:"default:0;index:idx_node_group_id;comment:Default Node Group ID (single ID)"`
+	TrafficLimit      string         `gorm:"type:text;comment:Traffic Limit Rules"`
 	Show              *bool          `gorm:"type:tinyint(1);not null;default:0;comment:Show portal page"`
 	Sell              *bool          `gorm:"type:tinyint(1);not null;default:0;comment:Sell"`
 	Sort              int64          `gorm:"type:int;not null;default:0;comment:Sort"`

@@ -28,14 +28,14 @@ func NewGetSubscribeGroupMappingLogic(ctx context.Context, svcCtx *svc.ServiceCo
 func (l *GetSubscribeGroupMappingLogic) GetSubscribeGroupMapping(req *types.GetSubscribeGroupMappingRequest) (resp *types.GetSubscribeGroupMappingResponse, err error) {
 	// 1. 查询所有订阅套餐
 	var subscribes []subscribe.Subscribe
-	if err := l.svcCtx.DB.Table("subscribe").Find(&subscribes).Error; err != nil {
+	if err := l.svcCtx.DB.Model(&subscribe.Subscribe{}).Find(&subscribes).Error; err != nil {
 		l.Errorw("[GetSubscribeGroupMapping] failed to query subscribes", logger.Field("error", err.Error()))
 		return nil, err
 	}
 
 	// 2. 查询所有节点组
 	var nodeGroups []group.NodeGroup
-	if err := l.svcCtx.DB.Table("node_group").Find(&nodeGroups).Error; err != nil {
+	if err := l.svcCtx.DB.Model(&group.NodeGroup{}).Find(&nodeGroups).Error; err != nil {
 		l.Errorw("[GetSubscribeGroupMapping] failed to query node groups", logger.Field("error", err.Error()))
 		return nil, err
 	}

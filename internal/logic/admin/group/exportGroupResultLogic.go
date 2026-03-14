@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/perfect-panel/server/internal/model/group"
+	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -77,7 +78,7 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 			NodeGroupId int64 `json:"node_group_id"`
 		}
 		var userSubscribes []UserNodeGroupInfo
-		if err := l.svcCtx.DB.Table("user_subscribe").
+		if err := l.svcCtx.DB.Model(&user.Subscribe{}).
 			Select("DISTINCT user_id as id, node_group_id").
 			Where("node_group_id > ?", 0).
 			Find(&userSubscribes).Error; err != nil {

@@ -85,25 +85,27 @@ func (*User) TableName() string {
 }
 
 type Subscribe struct {
-	Id          int64      `gorm:"primaryKey"`
-	UserId      int64      `gorm:"index:idx_user_id;not null;comment:User ID"`
-	User        User       `gorm:"foreignKey:UserId;references:Id"`
-	OrderId     int64      `gorm:"index:idx_order_id;not null;comment:Order ID"`
-	SubscribeId int64      `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
-	NodeGroupId int64      `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
-	GroupLocked *bool      `gorm:"type:tinyint(1);not null;default:0;comment:Group Locked"`
-	StartTime   time.Time  `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
-	ExpireTime  time.Time  `gorm:"default:NULL;comment:Subscription Expire Time"`
-	FinishedAt  *time.Time `gorm:"default:NULL;comment:Finished Time"`
-	Traffic     int64      `gorm:"default:0;comment:Traffic"`
-	Download    int64      `gorm:"default:0;comment:Download Traffic"`
-	Upload      int64      `gorm:"default:0;comment:Upload Traffic"`
-	Token       string     `gorm:"index:idx_token;unique;type:varchar(255);default:'';comment:Token"`
-	UUID        string     `gorm:"type:varchar(255);unique;index:idx_uuid;default:'';comment:UUID"`
-	Status      uint8      `gorm:"type:tinyint(1);default:0;comment:Subscription Status: 0: Pending 1: Active 2: Finished 3: Expired 4: Deducted 5: stopped"`
-	Note        string     `gorm:"type:varchar(500);default:'';comment:User note for subscription"`
-	CreatedAt   time.Time  `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt   time.Time  `gorm:"comment:Update Time"`
+	Id              int64      `gorm:"primaryKey"`
+	UserId          int64      `gorm:"index:idx_user_id;not null;comment:User ID"`
+	User            User       `gorm:"foreignKey:UserId;references:Id"`
+	OrderId         int64      `gorm:"index:idx_order_id;not null;comment:Order ID"`
+	SubscribeId     int64      `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
+	NodeGroupId     int64      `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
+	GroupLocked     *bool      `gorm:"type:tinyint(1);not null;default:0;comment:Group Locked"`
+	StartTime       time.Time  `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
+	ExpireTime      time.Time  `gorm:"default:NULL;comment:Subscription Expire Time"`
+	FinishedAt      *time.Time `gorm:"default:NULL;comment:Finished Time"`
+	Traffic         int64      `gorm:"default:0;comment:Traffic"`
+	Download        int64      `gorm:"default:0;comment:Download Traffic"`
+	Upload          int64      `gorm:"default:0;comment:Upload Traffic"`
+	ExpiredDownload int64      `gorm:"default:0;comment:Expired period download traffic (bytes)"`
+	ExpiredUpload   int64      `gorm:"default:0;comment:Expired period upload traffic (bytes)"`
+	Token           string     `gorm:"index:idx_token;unique;type:varchar(255);default:'';comment:Token"`
+	UUID            string     `gorm:"type:varchar(255);unique;index:idx_uuid;default:'';comment:UUID"`
+	Status          uint8      `gorm:"type:tinyint(1);default:0;comment:Subscription Status: 0: Pending 1: Active 2: Finished 3: Expired 4: Deducted 5: stopped"`
+	Note            string     `gorm:"type:varchar(500);default:'';comment:User note for subscription"`
+	CreatedAt       time.Time  `gorm:"<-:create;comment:Creation Time"`
+	UpdatedAt       time.Time  `gorm:"comment:Update Time"`
 }
 
 func (*Subscribe) TableName() string {

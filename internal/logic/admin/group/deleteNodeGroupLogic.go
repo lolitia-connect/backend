@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/perfect-panel/server/internal/model/group"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -37,9 +38,9 @@ func (l *DeleteNodeGroupLogic) DeleteNodeGroup(req *types.DeleteNodeGroupRequest
 		return err
 	}
 
-	// 检查是否有关联节点
+	// 检查是否有关联节点（使用JSON_CONTAINS查询node_group_ids数组）
 	var nodeCount int64
-	if err := l.svcCtx.DB.Table("nodes").Where("node_group_id = ?", nodeGroup.Id).Count(&nodeCount).Error; err != nil {
+	if err := l.svcCtx.DB.Model(&node.Node{}).Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroup.Id)).Count(&nodeCount).Error; err != nil {
 		logger.Errorf("failed to count nodes in group: %v", err)
 		return err
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
@@ -88,7 +89,7 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (userSubscribeNodes []*types.UserSubscribeNodeInfo, err error) {
 	userSubscribeNodes = make([]*types.UserSubscribeNodeInfo, 0)
 	if l.isSubscriptionExpired(userSub) {
-		return l.createExpiredServers(), nil
+		return l.createExpiredServers(userSub), nil
 	}
 
 	// Check if group management is enabled
@@ -312,8 +313,98 @@ func (l *QueryUserSubscribeNodeListLogic) isSubscriptionExpired(userSub *user.Su
 	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
 }
 
-func (l *QueryUserSubscribeNodeListLogic) createExpiredServers() []*types.UserSubscribeNodeInfo {
-	return nil
+func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Subscribe) []*types.UserSubscribeNodeInfo {
+	// 1. 查询过期节点组
+	var expiredGroup group.NodeGroup
+	err := l.svcCtx.DB.Where("is_expired_group = ?", true).First(&expiredGroup).Error
+	if err != nil {
+		l.Debugw("no expired node group configured", logger.Field("error", err))
+		return nil
+	}
+
+	// 2. 检查用户是否在过期天数限制内
+	expiredDays := int(time.Since(userSub.ExpireTime).Hours() / 24)
+	if expiredDays > expiredGroup.ExpiredDaysLimit {
+		l.Debugf("user subscription expired %d days, exceeds limit %d days", expiredDays, expiredGroup.ExpiredDaysLimit)
+		return nil
+	}
+
+	// 3. 检查用户已使用流量是否超过限制(仅使用过期期间的流量)
+	if expiredGroup.MaxTrafficGBExpired != nil && *expiredGroup.MaxTrafficGBExpired > 0 {
+		usedTrafficGB := (userSub.ExpiredDownload + userSub.ExpiredUpload) / (1024 * 1024 * 1024)
+		if usedTrafficGB >= *expiredGroup.MaxTrafficGBExpired {
+			l.Debugf("user expired traffic %d GB, exceeds expired group limit %d GB", usedTrafficGB, *expiredGroup.MaxTrafficGBExpired)
+			return nil
+		}
+	}
+
+	// 4. 查询过期节点组的节点
+	enable := true
+	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
+		Page:         0,
+		Size:         1000,
+		NodeGroupIds: []int64{expiredGroup.Id},
+		Enabled:      &enable,
+	})
+	if err != nil {
+		l.Errorw("failed to query expired group nodes", logger.Field("error", err))
+		return nil
+	}
+
+	if len(nodes) == 0 {
+		l.Debug("no nodes found in expired group")
+		return nil
+	}
+
+	// 5. 查询服务器信息
+	var serverMapIds = make(map[int64]*node.Server)
+	for _, n := range nodes {
+		serverMapIds[n.ServerId] = nil
+	}
+	var serverIds []int64
+	for k := range serverMapIds {
+		serverIds = append(serverIds, k)
+	}
+
+	servers, err := l.svcCtx.NodeModel.QueryServerList(l.ctx, serverIds)
+	if err != nil {
+		l.Errorw("failed to query servers", logger.Field("error", err))
+		return nil
+	}
+
+	for _, s := range servers {
+		serverMapIds[s.Id] = s
+	}
+
+	// 6. 构建节点列表
+	userSubscribeNodes := make([]*types.UserSubscribeNodeInfo, 0, len(nodes))
+	for _, n := range nodes {
+		server := serverMapIds[n.ServerId]
+		if server == nil {
+			continue
+		}
+		userSubscribeNode := &types.UserSubscribeNodeInfo{
+			Id:              n.Id,
+			Name:            n.Name,
+			Uuid:            userSub.UUID,
+			Protocol:        n.Protocol,
+			Protocols:       server.Protocols,
+			Port:            n.Port,
+			Address:         n.Address,
+			Tags:            strings.Split(n.Tags, ","),
+			Country:         server.Country,
+			City:            server.City,
+			Latitude:        server.Latitude,
+			Longitude:       server.Longitude,
+			LongitudeCenter: server.LongitudeCenter,
+			LatitudeCenter:  server.LatitudeCenter,
+			CreatedAt:       n.CreatedAt.Unix(),
+		}
+		userSubscribeNodes = append(userSubscribeNodes, userSubscribeNode)
+	}
+
+	l.Infof("returned %d nodes from expired group for user %d (expired %d days)", len(userSubscribeNodes), userSub.UserId, expiredDays)
+	return userSubscribeNodes
 }
 
 func (l *QueryUserSubscribeNodeListLogic) getFirstHostLine() string {

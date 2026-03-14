@@ -42,6 +42,12 @@ func (l *GetSubscribeDetailsLogic) GetSubscribeDetails(req *types.GetSubscribeDe
 			l.Logger.Error("[GetSubscribeDetailsLogic] JSON unmarshal failed: ", logger.Field("error", err.Error()), logger.Field("discount", sub.Discount))
 		}
 	}
+	if sub.TrafficLimit != "" {
+		err = json.Unmarshal([]byte(sub.TrafficLimit), &resp.TrafficLimit)
+		if err != nil {
+			l.Logger.Error("[GetSubscribeDetailsLogic] JSON unmarshal failed: ", logger.Field("error", err.Error()), logger.Field("traffic_limit", sub.TrafficLimit))
+		}
+	}
 	resp.Nodes = tool.StringToInt64Slice(sub.Nodes)
 	resp.NodeTags = strings.Split(sub.NodeTags, ",")
 	return resp, nil

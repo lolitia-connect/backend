@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/perfect-panel/server/pkg/constant"
@@ -51,6 +52,9 @@ func (l *QueryUserSubscribeLogic) QueryUserSubscribe() (resp *types.QueryUserSub
 	for _, item := range data {
 		var sub types.UserSubscribe
 		tool.DeepCopy(&sub, item)
+
+		// 填充 IdStr 字段，避免前端精度丢失
+		sub.IdStr = strconv.FormatInt(item.Id, 10)
 
 		// 解析Discount字段 避免在续订时只能续订一个月
 		if item.Subscribe != nil && item.Subscribe.Discount != "" {

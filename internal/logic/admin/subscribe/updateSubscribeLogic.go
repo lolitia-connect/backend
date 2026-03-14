@@ -42,6 +42,12 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		val, _ := json.Marshal(req.Discount)
 		discount = string(val)
 	}
+
+	trafficLimit := ""
+	if len(req.TrafficLimit) > 0 {
+		val, _ := json.Marshal(req.TrafficLimit)
+		trafficLimit = string(val)
+	}
 	sub := &subscribe.Subscribe{
 		Id:                req.Id,
 		Name:              req.Name,
@@ -60,6 +66,7 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		NodeTags:          tool.StringSliceToString(req.NodeTags),
 		NodeGroupIds:      subscribe.JSONInt64Slice(req.NodeGroupIds),
 		NodeGroupId:       req.NodeGroupId,
+		TrafficLimit:      trafficLimit,
 		Show:              req.Show,
 		Sell:              req.Sell,
 		Sort:              req.Sort,

@@ -82,7 +82,7 @@ type customUserLogicModel interface {
 	FindOneSubscribeDetailsById(ctx context.Context, id int64) (*SubscribeDetails, error)
 	FindOneUserSubscribe(ctx context.Context, id int64) (*SubscribeDetails, error)
 	FindUsersSubscribeBySubscribeId(ctx context.Context, subscribeId int64) ([]*Subscribe, error)
-	UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, tx ...*gorm.DB) error
+	UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool, tx ...*gorm.DB) error
 	QueryResisterUserTotalByDate(ctx context.Context, date time.Time) (int64, error)
 	QueryResisterUserTotalByMonthly(ctx context.Context, date time.Time) (int64, error)
 	QueryResisterUserTotal(ctx context.Context) (int64, error)
@@ -181,7 +181,7 @@ func (m *customUserModel) BatchDeleteUser(ctx context.Context, ids []int64, tx .
 	}, m.batchGetCacheKeys(users...)...)
 }
 
-func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, tx ...*gorm.DB) error {
+func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool, tx ...*gorm.DB) error {
 	sub, err := m.FindOneSubscribe(ctx, id)
 	if err != nil {
 		return err
@@ -198,10 +198,21 @@ func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id
 		if len(tx) > 0 {
 			conn = tx[0]
 		}
-		return conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
-			"download": gorm.Expr("download + ?", download),
-			"upload":   gorm.Expr("upload + ?", upload),
-		}).Error
+
+		// 根据订阅状态更新对应的流量字段
+		if isExpired {
+			// 过期期间,更新过期流量字段
+			return conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
+				"expired_download": gorm.Expr("expired_download + ?", download),
+				"expired_upload":   gorm.Expr("expired_upload + ?", upload),
+			}).Error
+		} else {
+			// 正常期间,更新正常流量字段
+			return conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
+				"download": gorm.Expr("download + ?", download),
+				"upload":   gorm.Expr("upload + ?", upload),
+			}).Error
+		}
 	})
 }
 

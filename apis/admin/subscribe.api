@@ -50,6 +50,7 @@ type (
 		NodeTags          []string            `json:"node_tags"`
 		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
 		NodeGroupId       int64               `json:"node_group_id"`
+		TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 		Show              *bool               `json:"show"`
 		Sell              *bool               `json:"sell"`
 		DeductionRatio    int64               `json:"deduction_ratio"`
@@ -77,6 +78,7 @@ type (
 		NodeTags          []string            `json:"node_tags"`
 		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
 		NodeGroupId       int64               `json:"node_group_id"`
+		TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 		Show              *bool               `json:"show"`
 		Sell              *bool               `json:"sell"`
 		Sort              int64               `json:"sort"`

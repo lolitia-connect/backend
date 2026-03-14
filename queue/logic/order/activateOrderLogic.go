@@ -351,18 +351,20 @@ func (l *ActivateOrderLogic) getSubscribeInfo(ctx context.Context, subscribeId i
 func (l *ActivateOrderLogic) createUserSubscription(ctx context.Context, orderInfo *order.Order, sub *subscribe.Subscribe) (*user.Subscribe, error) {
 	now := time.Now()
 	userSub := &user.Subscribe{
-		UserId:      orderInfo.UserId,
-		OrderId:     orderInfo.Id,
-		SubscribeId: orderInfo.SubscribeId,
-		StartTime:   now,
-		ExpireTime:  tool.AddTime(sub.UnitTime, orderInfo.Quantity, now),
-		Traffic:     sub.Traffic,
-		Download:    0,
-		Upload:      0,
-		Token:       uuidx.SubscribeToken(orderInfo.OrderNo),
-		UUID:        uuid.New().String(),
-		Status:      1,
-		NodeGroupId: sub.NodeGroupId, // Inherit node_group_id from subscription plan
+		UserId:          orderInfo.UserId,
+		OrderId:         orderInfo.Id,
+		SubscribeId:     orderInfo.SubscribeId,
+		StartTime:       now,
+		ExpireTime:      tool.AddTime(sub.UnitTime, orderInfo.Quantity, now),
+		Traffic:         sub.Traffic,
+		Download:        0,
+		Upload:          0,
+		ExpiredDownload: 0,
+		ExpiredUpload:   0,
+		Token:           uuidx.SubscribeToken(orderInfo.OrderNo),
+		UUID:            uuid.New().String(),
+		Status:          1,
+		NodeGroupId:     sub.NodeGroupId, // Inherit node_group_id from subscription plan
 	}
 
 	// Check quota limit before creating subscription (final safeguard)
@@ -650,6 +652,9 @@ func (l *ActivateOrderLogic) updateSubscriptionForRenewal(ctx context.Context, u
 
 	userSub.ExpireTime = tool.AddTime(sub.UnitTime, orderInfo.Quantity, userSub.ExpireTime)
 	userSub.Status = 1
+	// 续费时重置过期流量字段
+	userSub.ExpiredDownload = 0
+	userSub.ExpiredUpload = 0
 
 	if err := l.svc.UserModel.UpdateSubscribe(ctx, userSub); err != nil {
 		logger.WithContext(ctx).Error("Update user subscribe failed", logger.Field("error", err.Error()))
@@ -674,6 +679,8 @@ func (l *ActivateOrderLogic) ResetTraffic(ctx context.Context, orderInfo *order.
 	// Reset traffic
 	userSub.Download = 0
 	userSub.Upload = 0
+	userSub.ExpiredDownload = 0
+	userSub.ExpiredUpload = 0
 	userSub.Status = 1
 
 	if err := l.svc.UserModel.UpdateSubscribe(ctx, userSub); err != nil {

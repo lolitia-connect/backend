@@ -955,6 +955,9 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		// Reset User Subscribe Token
 		publicUserGroupRouter.PUT("/subscribe_token", publicUser.ResetUserSubscribeTokenHandler(serverCtx))
 
+		// Get User Traffic Statistics
+		publicUserGroupRouter.GET("/traffic_stats", publicUser.GetUserTrafficStatsHandler(serverCtx))
+
 		// Unbind Device
 		publicUserGroupRouter.PUT("/unbind_device", publicUser.UnbindDeviceHandler(serverCtx))
 

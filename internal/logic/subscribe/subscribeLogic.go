@@ -8,6 +8,7 @@ import (
 
 	"github.com/perfect-panel/server/adapter"
 	"github.com/perfect-panel/server/internal/model/client"
+	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/report"
@@ -206,6 +207,19 @@ func (l *SubscribeLogic) logSubscribeActivity(subscribeStatus bool, userSub *use
 
 func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, error) {
 	if l.isSubscriptionExpired(userSub) {
+		// 尝试获取过期节点组的节点
+		expiredNodes, err := l.getExpiredGroupNodes(userSub)
+		if err != nil {
+			l.Errorw("[Generate Subscribe]get expired group nodes error", logger.Field("error", err.Error()))
+			return l.createExpiredServers(), nil
+		}
+		// 如果有符合条件的过期节点组节点，返回它们
+		if len(expiredNodes) > 0 {
+			l.Debugf("[Generate Subscribe]user %d can use expired node group, nodes count: %d", userSub.UserId, len(expiredNodes))
+			return expiredNodes, nil
+		}
+		// 否则返回假的过期节点
+		l.Debugf("[Generate Subscribe]user %d cannot use expired node group, return fake expired nodes", userSub.UserId)
 		return l.createExpiredServers(), nil
 	}
 
@@ -421,4 +435,53 @@ func (l *SubscribeLogic) isGroupEnabled() bool {
 		return false
 	}
 	return value == "true" || value == "1"
+}
+
+// getExpiredGroupNodes 获取过期节点组的节点
+func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.Node, error) {
+	// 1. 查询过期节点组
+	var expiredGroup group.NodeGroup
+	err := l.svc.DB.Where("is_expired_group = ?", true).First(&expiredGroup).Error
+	if err != nil {
+		l.Debugw("[SubscribeLogic]no expired node group configured", logger.Field("error", err.Error()))
+		return nil, err
+	}
+
+	// 2. 检查用户是否在过期天数限制内
+	expiredDays := int(time.Since(userSub.ExpireTime).Hours() / 24)
+	if expiredDays > expiredGroup.ExpiredDaysLimit {
+		l.Debugf("[SubscribeLogic]user %d subscription expired %d days, exceeds limit %d days", userSub.UserId, expiredDays, expiredGroup.ExpiredDaysLimit)
+		return nil, nil
+	}
+
+	// 3. 检查用户已使用流量是否超过限制(仅使用过期期间的流量)
+	if expiredGroup.MaxTrafficGBExpired != nil && *expiredGroup.MaxTrafficGBExpired > 0 {
+		usedTrafficGB := (userSub.ExpiredDownload + userSub.ExpiredUpload) / (1024 * 1024 * 1024)
+		if usedTrafficGB >= *expiredGroup.MaxTrafficGBExpired {
+			l.Debugf("[SubscribeLogic]user %d expired traffic %d GB, exceeds expired group limit %d GB", userSub.UserId, usedTrafficGB, *expiredGroup.MaxTrafficGBExpired)
+			return nil, nil
+		}
+	}
+
+	// 4. 查询过期节点组的节点
+	enable := true
+	_, nodes, err := l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
+		Page:         0,
+		Size:         1000,
+		NodeGroupIds: []int64{expiredGroup.Id},
+		Enabled:      &enable,
+		Preload:      true,
+	})
+	if err != nil {
+		l.Errorw("[SubscribeLogic]failed to query expired group nodes", logger.Field("error", err.Error()))
+		return nil, err
+	}
+
+	if len(nodes) == 0 {
+		l.Debug("[SubscribeLogic]no nodes found in expired group")
+		return nil, nil
+	}
+
+	l.Infof("[SubscribeLogic]returned %d nodes from expired group for user %d (expired %d days)", len(nodes), userSub.UserId, expiredDays)
+	return nodes, nil
 }

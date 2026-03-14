@@ -62,6 +62,12 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 				l.Logger.Error("[GetSubscribeListLogic] JSON unmarshal failed: ", logger.Field("error", err.Error()), logger.Field("discount", item.Discount))
 			}
 		}
+		if item.TrafficLimit != "" {
+			err = json.Unmarshal([]byte(item.TrafficLimit), &sub.TrafficLimit)
+			if err != nil {
+				l.Logger.Error("[GetSubscribeListLogic] JSON unmarshal failed: ", logger.Field("error", err.Error()), logger.Field("traffic_limit", item.TrafficLimit))
+			}
+		}
 		sub.Nodes = tool.StringToInt64Slice(item.Nodes)
 		sub.NodeTags = strings.Split(item.NodeTags, ",")
 		// Handle NodeGroupIds - convert from JSONInt64Slice to []int64

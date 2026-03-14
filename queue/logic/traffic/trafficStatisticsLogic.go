@@ -98,11 +98,13 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 		// update user subscribe with log
 		d := int64(float32(log.Download) * ratio * realTimeMultiplier)
 		u := int64(float32(log.Upload) * ratio * realTimeMultiplier)
-		if err := l.svc.UserModel.UpdateUserSubscribeWithTraffic(ctx, sub.Id, d, u); err != nil {
+		isExpired := now.After(sub.ExpireTime)
+		if err := l.svc.UserModel.UpdateUserSubscribeWithTraffic(ctx, sub.Id, d, u, isExpired); err != nil {
 			logger.WithContext(ctx).Error("[TrafficStatistics] Update user subscribe with log failed",
 				logger.Field("sid", log.SID),
 				logger.Field("download", float32(log.Download)*ratio),
 				logger.Field("upload", float32(log.Upload)*ratio),
+				logger.Field("is_expired", isExpired),
 				logger.Field("error", err.Error()),
 			)
 			continue

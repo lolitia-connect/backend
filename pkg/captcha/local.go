@@ -3,6 +3,7 @@ package captcha
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/mojocn/base64Captcha"
@@ -15,8 +16,18 @@ type localService struct {
 }
 
 func newLocalService(redisClient *redis.Client) Service {
-	// Configure captcha driver
-	driver := base64Captcha.NewDriverDigit(80, 240, 5, 0.7, 80)
+	// Configure captcha driver - alphanumeric with visual effects (letters + numbers)
+	driver := base64Captcha.NewDriverString(
+		80,  // height
+		240, // width
+		20,  // noise count (more interference)
+		base64Captcha.OptionShowSlimeLine|base64Captcha.OptionShowSineLine, // show curved lines
+		5, // length (5 characters)
+		"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", // source (exclude confusing chars)
+		nil, // bg color (use default)
+		nil, // fonts (use default)
+		nil, // fonts storage (use default)
+	)
 	return &localService{
 		redis:  redisClient,
 		driver: driver,
@@ -61,8 +72,8 @@ func (s *localService) Verify(ctx context.Context, id string, code string, ip st
 	// Delete captcha after verification (one-time use)
 	s.redis.Del(ctx, key)
 
-	// Verify code
-	return answer == code, nil
+	// Verify code (case-insensitive)
+	return strings.EqualFold(answer, code), nil
 }
 
 func (s *localService) GetType() CaptchaType {
@@ -94,5 +105,5 @@ func (r *redisStore) Get(id string, clear bool) string {
 
 func (r *redisStore) Verify(id, answer string, clear bool) bool {
 	v := r.Get(id, clear)
-	return v == answer
+	return strings.EqualFold(v, answer)
 }

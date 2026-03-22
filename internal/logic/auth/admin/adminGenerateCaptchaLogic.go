@@ -64,6 +64,17 @@ func (l *AdminGenerateCaptchaLogic) AdminGenerateCaptcha() (resp *types.Generate
 	} else if config.CaptchaType == "turnstile" {
 		// For Turnstile, just return the site key
 		resp.Id = config.TurnstileSiteKey
+	} else if config.CaptchaType == "slider" {
+		// For slider, generate background and block images
+		sliderSvc := captcha.NewSliderService(l.svcCtx.Redis)
+		id, bgImage, blockImage, err := sliderSvc.GenerateSlider(l.ctx)
+		if err != nil {
+			l.Logger.Error("[AdminGenerateCaptchaLogic] Generate slider captcha error: ", logger.Field("error", err.Error()))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Generate slider captcha error: %v", err.Error())
+		}
+		resp.Id = id
+		resp.Image = bgImage
+		resp.BlockImage = blockImage
 	}
 
 	return resp, nil

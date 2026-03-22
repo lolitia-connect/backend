@@ -165,65 +165,28 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 }
 
 func (l *AdminResetPasswordLogic) verifyCaptcha(req *types.ResetPasswordRequest) error {
-	// Get verify config from database
 	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
 	if err != nil {
 		l.Logger.Error("[AdminResetPasswordLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 
-	var config struct {
+	var cfg struct {
 		CaptchaType             string `json:"captcha_type"`
 		EnableAdminLoginCaptcha bool   `json:"enable_admin_login_captcha"`
 		TurnstileSecret         string `json:"turnstile_secret"`
 	}
-	tool.SystemConfigSliceReflectToStruct(verifyCfg, &config)
+	tool.SystemConfigSliceReflectToStruct(verifyCfg, &cfg)
 
-	// Check if admin login captcha is enabled (use admin login captcha for reset password)
-	if !config.EnableAdminLoginCaptcha {
+	if !cfg.EnableAdminLoginCaptcha {
 		return nil
 	}
 
-	// Verify based on captcha type
-	if config.CaptchaType == "local" {
-		if req.CaptchaId == "" || req.CaptchaCode == "" {
-			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
-		}
-
-		captchaService := captcha.NewService(captcha.Config{
-			Type:        captcha.CaptchaTypeLocal,
-			RedisClient: l.svcCtx.Redis,
-		})
-
-		valid, err := captchaService.Verify(l.ctx, req.CaptchaId, req.CaptchaCode, req.IP)
-		if err != nil {
-			l.Logger.Error("[AdminResetPasswordLogic] Verify captcha error: ", logger.Field("error", err.Error()))
-			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
-		}
-
-		if !valid {
-			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
-		}
-	} else if config.CaptchaType == "turnstile" {
-		if req.CfToken == "" {
-			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "captcha required")
-		}
-
-		captchaService := captcha.NewService(captcha.Config{
-			Type:            captcha.CaptchaTypeTurnstile,
-			TurnstileSecret: config.TurnstileSecret,
-		})
-
-		valid, err := captchaService.Verify(l.ctx, req.CfToken, "", req.IP)
-		if err != nil {
-			l.Logger.Error("[AdminResetPasswordLogic] Verify turnstile error: ", logger.Field("error", err.Error()))
-			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify captcha error")
-		}
-
-		if !valid {
-			return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "invalid captcha")
-		}
-	}
-
-	return nil
+	return captcha.VerifyCaptcha(l.ctx, l.svcCtx.Redis, cfg.CaptchaType, cfg.TurnstileSecret, captcha.VerifyInput{
+		CaptchaId:   req.CaptchaId,
+		CaptchaCode: req.CaptchaCode,
+		CfToken:     req.CfToken,
+		SliderToken: req.SliderToken,
+		IP:          req.IP,
+	})
 }

@@ -787,9 +787,10 @@ type Follow struct {
 }
 
 type GenerateCaptchaResponse struct {
-	Id    string `json:"id"`
-	Image string `json:"image"`
-	Type  string `json:"type"`
+	Id         string `json:"id"`
+	Image      string `json:"image"`
+	Type       string `json:"type"`
+	BlockImage string `json:"block_image,omitempty"`
 }
 
 type GetAdsDetailRequest struct {
@@ -2071,6 +2072,7 @@ type ResetPasswordRequest struct {
 	CfToken     string `json:"cf_token,optional"`
 	CaptchaId   string `json:"captcha_id,optional"`
 	CaptchaCode string `json:"captcha_code,optional"`
+	SliderToken string `json:"slider_token,optional"`
 }
 
 type ResetSortRequest struct {
@@ -2294,6 +2296,17 @@ type SiteCustomDataContacts struct {
 	Address   string `json:"address"`
 }
 
+type SliderVerifyCaptchaRequest struct {
+	Id    string `json:"id" validate:"required"`
+	X     int    `json:"x" validate:"required"`
+	Y     int    `json:"y" validate:"required"`
+	Trail string `json:"trail"`
+}
+
+type SliderVerifyCaptchaResponse struct {
+	Token string `json:"token"`
+}
+
 type SortItem struct {
 	Id   int64 `json:"id" validate:"required"`
 	Sort int64 `json:"sort" validate:"required"`
@@ -2442,6 +2455,7 @@ type TelephoneLoginRequest struct {
 	CfToken           string `json:"cf_token,optional"`
 	CaptchaId         string `json:"captcha_id,optional"`
 	CaptchaCode       string `json:"captcha_code,optional"`
+	SliderToken       string `json:"slider_token,optional"`
 }
 
 type TelephoneRegisterRequest struct {
@@ -2457,6 +2471,7 @@ type TelephoneRegisterRequest struct {
 	CfToken           string `json:"cf_token,optional"`
 	CaptchaId         string `json:"captcha_id,optional"`
 	CaptchaCode       string `json:"captcha_code,optional"`
+	SliderToken       string `json:"slider_token,optional"`
 }
 
 type TelephoneResetPasswordRequest struct {
@@ -2471,6 +2486,7 @@ type TelephoneResetPasswordRequest struct {
 	CfToken           string `json:"cf_token,optional"`
 	CaptchaId         string `json:"captcha_id,optional"`
 	CaptchaCode       string `json:"captcha_code,optional"`
+	SliderToken       string `json:"slider_token,optional"`
 }
 
 type TestEmailSendRequest struct {
@@ -2916,6 +2932,7 @@ type UserLoginRequest struct {
 	CfToken     string `json:"cf_token,optional"`
 	CaptchaId   string `json:"captcha_id,optional"`
 	CaptchaCode string `json:"captcha_code,optional"`
+	SliderToken string `json:"slider_token,optional"`
 }
 
 type UserRegisterRequest struct {
@@ -2930,6 +2947,7 @@ type UserRegisterRequest struct {
 	CfToken     string `json:"cf_token,optional"`
 	CaptchaId   string `json:"captcha_id,optional"`
 	CaptchaCode string `json:"captcha_code,optional"`
+	SliderToken string `json:"slider_token,optional"`
 }
 
 type UserStatistics struct {

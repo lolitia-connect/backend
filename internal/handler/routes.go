@@ -674,6 +674,9 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		// Generate captcha
 		authGroupRouter.POST("/captcha/generate", auth.GenerateCaptchaHandler(serverCtx))
 
+		// Verify slider captcha
+		authGroupRouter.POST("/captcha/slider/verify", auth.SliderVerifyCaptchaHandler(serverCtx))
+
 		// Check user is exist
 		authGroupRouter.GET("/check", auth.CheckUserHandler(serverCtx))
 
@@ -693,12 +696,12 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		authGroupRouter.POST("/register", auth.UserRegisterHandler(serverCtx))
 
 		// User Telephone register
-		authGroupRouter.POST("/register/telephone", auth.TelephoneUserRegisterHandler(serverCtx))
+		authGroupRouter.POST("/register/telephone", auth.TelephoneRegisterHandler(serverCtx))
 
 		// Reset password
 		authGroupRouter.POST("/reset", auth.ResetPasswordHandler(serverCtx))
 
-		// Reset password
+		// Reset password by telephone
 		authGroupRouter.POST("/reset/telephone", auth.TelephoneResetPasswordHandler(serverCtx))
 	}
 
@@ -708,6 +711,9 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 	{
 		// Generate captcha
 		authAdminGroupRouter.POST("/captcha/generate", authAdmin.AdminGenerateCaptchaHandler(serverCtx))
+
+		// Verify slider captcha
+		authAdminGroupRouter.POST("/captcha/slider/verify", authAdmin.AdminSliderVerifyCaptchaHandler(serverCtx))
 
 		// Admin login
 		authAdminGroupRouter.POST("/login", authAdmin.AdminLoginHandler(serverCtx))
@@ -1008,10 +1014,10 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 		serverGroupRouter.GET("/user", server.GetServerUserListHandler(serverCtx))
 	}
 
-	serverV2GroupRouter := router.Group("/v2/server")
+	serverGroupRouterV2 := router.Group("/v2/server")
 
 	{
 		// Get Server Protocol Config
-		serverV2GroupRouter.GET("/:server_id", server.QueryServerProtocolConfigHandler(serverCtx))
+		serverGroupRouterV2.GET("/:server_id", server.QueryServerProtocolConfigHandler(serverCtx))
 	}
 }

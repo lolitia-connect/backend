@@ -20,6 +20,7 @@ type (
 		CfToken     string `json:"cf_token,optional"`
 		CaptchaId   string `json:"captcha_id,optional"`
 		CaptchaCode string `json:"captcha_code,optional"`
+		SliderToken string `json:"slider_token,optional"`
 	}
 	// Check user is exist request
 	CheckUserRequest {
@@ -42,6 +43,7 @@ type (
 		CfToken     string `json:"cf_token,optional"`
 		CaptchaId   string `json:"captcha_id,optional"`
 		CaptchaCode string `json:"captcha_code,optional"`
+		SliderToken string `json:"slider_token,optional"`
 	}
 	// User reset password request
 	ResetPasswordRequest {
@@ -55,6 +57,7 @@ type (
 		CfToken     string `json:"cf_token,optional"`
 		CaptchaId   string `json:"captcha_id,optional"`
 		CaptchaCode string `json:"captcha_code,optional"`
+		SliderToken string `json:"slider_token,optional"`
 	}
 	LoginResponse {
 		Token string `json:"token"`
@@ -83,6 +86,7 @@ type (
 		CfToken           string `json:"cf_token,optional"`
 		CaptchaId         string `json:"captcha_id,optional"`
 		CaptchaCode       string `json:"captcha_code,optional"`
+		SliderToken       string `json:"slider_token,optional"`
 	}
 	// Check user is exist request
 	TelephoneCheckUserRequest {
@@ -107,6 +111,7 @@ type (
 		CfToken           string `json:"cf_token,optional"`
 		CaptchaId         string `json:"captcha_id,optional"`
 		CaptchaCode       string `json:"captcha_code,optional"`
+		SliderToken       string `json:"slider_token,optional"`
 	}
 	// User login response
 	TelephoneResetPasswordRequest {
@@ -121,6 +126,7 @@ type (
 		CfToken           string `json:"cf_token,optional"`
 		CaptchaId         string `json:"captcha_id,optional"`
 		CaptchaCode       string `json:"captcha_code,optional"`
+		SliderToken       string `json:"slider_token,optional"`
 	}
 	AppleLoginCallbackRequest {
 		Code    string `form:"code"`
@@ -139,9 +145,19 @@ type (
 		ShortCode  string `json:"short_code,optional"`
 	}
 	GenerateCaptchaResponse {
-		Id    string `json:"id"`
-		Image string `json:"image"`
-		Type  string `json:"type"`
+		Id         string `json:"id"`
+		Image      string `json:"image"`
+		Type       string `json:"type"`
+		BlockImage string `json:"block_image,omitempty"`
+	}
+	SliderVerifyCaptchaRequest {
+		Id    string `json:"id" validate:"required"`
+		X     int    `json:"x" validate:"required"`
+		Y     int    `json:"y" validate:"required"`
+		Trail string `json:"trail"`
+	}
+	SliderVerifyCaptchaResponse {
+		Token string `json:"token"`
 	}
 )
 
@@ -176,20 +192,24 @@ service ppanel {
 	get /check/telephone (TelephoneCheckUserRequest) returns (TelephoneCheckUserResponse)
 
 	@doc "User Telephone register"
-	@handler TelephoneUserRegister
+	@handler TelephoneRegister
 	post /register/telephone (TelephoneRegisterRequest) returns (LoginResponse)
 
-	@doc "Reset password"
+	@doc "Reset password by telephone"
 	@handler TelephoneResetPassword
 	post /reset/telephone (TelephoneResetPasswordRequest) returns (LoginResponse)
+
+	@doc "Device Login"
+	@handler DeviceLogin
+	post /login/device (DeviceLoginRequest) returns (LoginResponse)
 
 	@doc "Generate captcha"
 	@handler GenerateCaptcha
 	post /captcha/generate returns (GenerateCaptchaResponse)
 
-	@doc "Device Login"
-	@handler DeviceLogin
-	post /login/device (DeviceLoginRequest) returns (LoginResponse)
+	@doc "Verify slider captcha"
+	@handler SliderVerifyCaptcha
+	post /captcha/slider/verify (SliderVerifyCaptchaRequest) returns (SliderVerifyCaptchaResponse)
 }
 
 @server (
@@ -209,6 +229,10 @@ service ppanel {
 	@doc "Generate captcha"
 	@handler AdminGenerateCaptcha
 	post /captcha/generate returns (GenerateCaptchaResponse)
+
+	@doc "Verify slider captcha"
+	@handler AdminSliderVerifyCaptcha
+	post /captcha/slider/verify (SliderVerifyCaptchaRequest) returns (SliderVerifyCaptchaResponse)
 }
 
 @server (
@@ -228,4 +252,3 @@ service ppanel {
 	@handler AppleLoginCallback
 	post /callback/apple (AppleLoginCallbackRequest)
 }
-

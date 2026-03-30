@@ -29,6 +29,7 @@ type (
 	// CreateNodeGroupRequest
 	CreateNodeGroupRequest {
 		Name                string `json:"name" validate:"required"`
+		Type                string `json:"type,omitempty"`
 		Description         string `json:"description"`
 		Sort                int    `json:"sort"`
 		ForCalculation      *bool  `json:"for_calculation"`
@@ -43,6 +44,7 @@ type (
 	UpdateNodeGroupRequest {
 		Id                  int64  `json:"id" validate:"required"`
 		Name                string `json:"name"`
+		Type                string `json:"type,omitempty"`
 		Description         string `json:"description"`
 		Sort                int    `json:"sort"`
 		ForCalculation      *bool  `json:"for_calculation"`
@@ -212,4 +214,3 @@ service ppanel {
 	@handler GetSubscribeGroupMapping
 	get /subscribe/mapping (GetSubscribeGroupMappingRequest) returns (GetSubscribeGroupMappingResponse)
 }
-

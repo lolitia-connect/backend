@@ -256,6 +256,15 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 
 		l.Debugf("[Generate Subscribe]group mode, using %s: %v", source, nodeGroupId)
 
+		var currentNodeGroup *group.NodeGroup
+		if nodeGroupId > 0 {
+			currentNodeGroup = l.getAccessibleNodeGroup(nodeGroupId, group.NodeGroupAccessSubscribe)
+			if currentNodeGroup == nil {
+				l.Debugf("[Generate Subscribe]node group %d from %s is not accessible for subscribe output", nodeGroupId, source)
+				nodeGroupId = 0
+			}
+		}
+
 		// 根据 node_group_id 获取节点
 		enable := true
 
@@ -320,25 +329,12 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 		l.Debugf("[Generate Subscribe]total nodes (group + public): %d (group: %d, public: %d)", len(result), len(groupNodes), len(publicNodes))
 
 		// 查询节点组信息，获取节点组名称（仅当用户有分组时）
-		if nodeGroupId > 0 {
-			type NodeGroupInfo struct {
-				Id   int64
-				Name string
-			}
-			var nodeGroupInfo NodeGroupInfo
-			err = l.svc.DB.Table("node_group").Select("id, name").Where("id = ?", nodeGroupId).First(&nodeGroupInfo).Error
-			if err != nil {
-				l.Infow("[Generate Subscribe]node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
-			}
-
-			// 如果节点组信息存在，为没有 tag 的分组节点设置节点组名称为 tag
-			if nodeGroupInfo.Id != 0 && nodeGroupInfo.Name != "" {
-				for _, n := range result {
-					// 只为分组节点设置 tag，公共节点不设置
-					if n.Tags == "" && len(n.NodeGroupIds) > 0 {
-						n.Tags = nodeGroupInfo.Name
-						l.Debugf("[Generate Subscribe]set node_group name as tag for node %d: %s", n.Id, nodeGroupInfo.Name)
-					}
+		if currentNodeGroup != nil && currentNodeGroup.Name != "" {
+			for _, n := range result {
+				// 只为分组节点设置 tag，公共节点不设置
+				if n.Tags == "" && len(n.NodeGroupIds) > 0 {
+					n.Tags = currentNodeGroup.Name
+					l.Debugf("[Generate Subscribe]set node_group name as tag for node %d: %s", n.Id, currentNodeGroup.Name)
 				}
 			}
 		}
@@ -446,6 +442,10 @@ func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.
 		l.Debugw("[SubscribeLogic]no expired node group configured", logger.Field("error", err.Error()))
 		return nil, err
 	}
+	if !group.IsNodeGroupTypeAccessible(expiredGroup.Type, group.NodeGroupAccessSubscribe) {
+		l.Debugf("[SubscribeLogic]expired node group %d is not accessible for subscribe output", expiredGroup.Id)
+		return nil, nil
+	}
 
 	// 2. 检查用户是否在过期天数限制内
 	expiredDays := int(time.Since(userSub.ExpireTime).Hours() / 24)
@@ -484,4 +484,23 @@ func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.
 
 	l.Infof("[SubscribeLogic]returned %d nodes from expired group for user %d (expired %d days)", len(nodes), userSub.UserId, expiredDays)
 	return nodes, nil
+}
+
+func (l *SubscribeLogic) getAccessibleNodeGroup(nodeGroupId int64, accessType string) *group.NodeGroup {
+	if nodeGroupId == 0 {
+		return nil
+	}
+
+	var nodeGroup group.NodeGroup
+	if err := l.svc.DB.Select("id, name, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
+		l.Infow("[Generate Subscribe]node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
+		return nil
+	}
+
+	if !group.IsNodeGroupTypeAccessible(nodeGroup.Type, accessType) {
+		return nil
+	}
+
+	nodeGroup.Type = group.MustNodeGroupType(nodeGroup.Type)
+	return &nodeGroup
 }

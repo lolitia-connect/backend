@@ -26,10 +26,15 @@ func NewCreateNodeGroupLogic(ctx context.Context, svcCtx *svc.ServiceContext) *C
 }
 
 func (l *CreateNodeGroupLogic) CreateNodeGroup(req *types.CreateNodeGroupRequest) error {
+	nodeGroupType, err := group.ResolveNodeGroupType(req.Type)
+	if err != nil {
+		return err
+	}
+
 	// 验证:系统中只能有一个过期节点组
 	if req.IsExpiredGroup != nil && *req.IsExpiredGroup {
 		var count int64
-		err := l.svcCtx.DB.Model(&group.NodeGroup{}).
+		err = l.svcCtx.DB.Model(&group.NodeGroup{}).
 			Where("is_expired_group = ?", true).
 			Count(&count).Error
 		if err != nil {
@@ -44,6 +49,7 @@ func (l *CreateNodeGroupLogic) CreateNodeGroup(req *types.CreateNodeGroupRequest
 	// 创建节点组
 	nodeGroup := &group.NodeGroup{
 		Name:                req.Name,
+		Type:                nodeGroupType,
 		Description:         req.Description,
 		Sort:                req.Sort,
 		ForCalculation:      req.ForCalculation,

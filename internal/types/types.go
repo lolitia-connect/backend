@@ -322,6 +322,7 @@ type CreateDocumentRequest struct {
 
 type CreateNodeGroupRequest struct {
 	Name                string `json:"name" validate:"required"`
+	Type                string `json:"type,omitempty"`
 	Description         string `json:"description"`
 	Sort                int    `json:"sort"`
 	ForCalculation      *bool  `json:"for_calculation"`
@@ -1452,6 +1453,7 @@ type NodeDNS struct {
 type NodeGroup struct {
 	Id                  int64  `json:"id"`
 	Name                string `json:"name"`
+	Type                string `json:"type"`
 	Description         string `json:"description"`
 	Sort                int    `json:"sort"`
 	ForCalculation      bool   `json:"for_calculation"`
@@ -2683,6 +2685,7 @@ type UpdateGroupConfigRequest struct {
 type UpdateNodeGroupRequest struct {
 	Id                  int64  `json:"id" validate:"required"`
 	Name                string `json:"name"`
+	Type                string `json:"type,omitempty"`
 	Description         string `json:"description"`
 	Sort                int    `json:"sort"`
 	ForCalculation      *bool  `json:"for_calculation"`

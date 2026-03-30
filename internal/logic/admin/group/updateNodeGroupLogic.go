@@ -76,6 +76,13 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 	if req.Description != "" {
 		updates["description"] = req.Description
 	}
+	if req.Type != "" {
+		nodeGroupType, err := group.ResolveNodeGroupType(req.Type)
+		if err != nil {
+			return err
+		}
+		updates["group_type"] = nodeGroupType
+	}
 	if req.Sort != 0 {
 		updates["sort"] = req.Sort
 	}

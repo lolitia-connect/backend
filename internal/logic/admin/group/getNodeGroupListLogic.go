@@ -79,6 +79,7 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 		list = append(list, types.NodeGroup{
 			Id:                  ng.Id,
 			Name:                ng.Name,
+			Type:                group.MustNodeGroupType(ng.Type),
 			Description:         ng.Description,
 			Sort:                ng.Sort,
 			ForCalculation:      forCalculation,

@@ -211,6 +211,12 @@ func (l *QueryUserSubscribeNodeListLogic) getNodesByGroup(userSub *user.Subscrib
 	}
 
 	l.Debugf("[GetNodesByGroup] Using %s: %v", source, nodeGroupId)
+	if nodeGroupId > 0 {
+		if l.getAccessibleNodeGroup(nodeGroupId, group.NodeGroupAccessApp) == nil {
+			l.Debugf("[GetNodesByGroup] node group %d from %s is not accessible for app output", nodeGroupId, source)
+			nodeGroupId = 0
+		}
+	}
 
 	// 查询所有启用的节点
 	enable := true
@@ -321,6 +327,10 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 		l.Debugw("no expired node group configured", logger.Field("error", err))
 		return nil
 	}
+	if !group.IsNodeGroupTypeAccessible(expiredGroup.Type, group.NodeGroupAccessApp) {
+		l.Debugf("expired node group %d is not accessible for app output", expiredGroup.Id)
+		return nil
+	}
 
 	// 2. 检查用户是否在过期天数限制内
 	expiredDays := int(time.Since(userSub.ExpireTime).Hours() / 24)
@@ -405,6 +415,25 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 
 	l.Infof("returned %d nodes from expired group for user %d (expired %d days)", len(userSubscribeNodes), userSub.UserId, expiredDays)
 	return userSubscribeNodes
+}
+
+func (l *QueryUserSubscribeNodeListLogic) getAccessibleNodeGroup(nodeGroupId int64, accessType string) *group.NodeGroup {
+	if nodeGroupId == 0 {
+		return nil
+	}
+
+	var nodeGroup group.NodeGroup
+	if err := l.svcCtx.DB.Select("id, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
+		l.Debugw("[GetNodesByGroup] node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
+		return nil
+	}
+
+	if !group.IsNodeGroupTypeAccessible(nodeGroup.Type, accessType) {
+		return nil
+	}
+
+	nodeGroup.Type = group.MustNodeGroupType(nodeGroup.Type)
+	return &nodeGroup
 }
 
 func (l *QueryUserSubscribeNodeListLogic) getFirstHostLine() string {

@@ -892,6 +892,7 @@ type (
 	NodeGroup {
 		Id                  int64  `json:"id"`
 		Name                string `json:"name"`
+		Type                string `json:"type"`
 		Description         string `json:"description"`
 		Sort                int    `json:"sort"`
 		ForCalculation      bool   `json:"for_calculation"`

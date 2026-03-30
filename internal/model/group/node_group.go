@@ -10,6 +10,7 @@ import (
 type NodeGroup struct {
 	Id                  int64     `gorm:"primaryKey"`
 	Name                string    `gorm:"type:varchar(255);not null;comment:Name"`
+	Type                string    `gorm:"column:group_type;type:varchar(32);not null;default:'common';comment:Node Group Type"`
 	Description         string    `gorm:"type:varchar(500);comment:Description"`
 	Sort                int       `gorm:"default:0;index:idx_sort;comment:Sort Order"`
 	ForCalculation      *bool     `gorm:"default:true;not null;comment:For Calculation: whether this node group participates in grouping calculation"`

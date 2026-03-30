@@ -58,6 +58,8 @@ func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (
 			ServerId:     datum.ServerId,
 			Protocol:     datum.Protocol,
 			Enabled:      datum.Enabled,
+			NodeType:     datum.NodeType,
+			IsHidden:     datum.IsHidden,
 			Sort:         datum.Sort,
 			NodeGroupIds: []int64(datum.NodeGroupIds),
 			CreatedAt:    datum.CreatedAt.UnixMilli(),

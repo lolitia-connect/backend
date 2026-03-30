@@ -43,6 +43,7 @@ type FilterNodeParams struct {
 	Protocol     string   // Protocol
 	Preload      bool     // Preload Server
 	Enabled      *bool    // Enabled
+	IsHidden     *bool    // IsHidden - when not nil, filter by hidden status
 }
 
 // FilterServerList Filter Server List
@@ -115,6 +116,10 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 
 	if params.Enabled != nil {
 		query = query.Where("enabled = ?", *params.Enabled)
+	}
+
+	if params.IsHidden != nil {
+		query = query.Where("is_hidden = ?", *params.IsHidden)
 	}
 
 	if params.Preload {

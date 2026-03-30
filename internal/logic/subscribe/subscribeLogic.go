@@ -267,6 +267,7 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 
 		// 根据 node_group_id 获取节点
 		enable := true
+		isHidden := false
 
 		// 1. 获取分组节点
 		var groupNodes []*node.Node
@@ -276,6 +277,7 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 				Size:         1000,
 				NodeGroupIds: []int64{nodeGroupId},
 				Enabled:      &enable,
+				IsHidden:     &isHidden,
 				Preload:      true,
 			}
 			_, groupNodes, err = l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), params)
@@ -289,10 +291,11 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 
 		// 2. 获取公共节点（NodeGroupIds 为空的节点）
 		_, allNodes, err := l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
-			Page:    0,
-			Size:    1000,
-			Enabled: &enable,
-			Preload: true,
+			Page:     0,
+			Size:     1000,
+			Enabled:  &enable,
+			IsHidden: &isHidden,
+			Preload:  true,
 		})
 
 		if err != nil {
@@ -353,14 +356,16 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 	}
 
 	enable := true
+	isHidden := false
 	var nodes []*node.Node
 	_, nodes, err = l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
-		Page:    1,
-		Size:    1000,
-		NodeId:  nodeIds,
-		Tag:     tool.RemoveDuplicateElements(tags...),
-		Preload: true,
-		Enabled: &enable,
+		Page:     1,
+		Size:     1000,
+		NodeId:   nodeIds,
+		Tag:      tool.RemoveDuplicateElements(tags...),
+		Preload:  true,
+		Enabled:  &enable,
+		IsHidden: &isHidden,
 	})
 
 	if err != nil {
@@ -465,11 +470,13 @@ func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.
 
 	// 4. 查询过期节点组的节点
 	enable := true
+	isHidden := false
 	_, nodes, err := l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
 		Page:         0,
 		Size:         1000,
 		NodeGroupIds: []int64{expiredGroup.Id},
 		Enabled:      &enable,
+		IsHidden:     &isHidden,
 		Preload:      true,
 	})
 	if err != nil {

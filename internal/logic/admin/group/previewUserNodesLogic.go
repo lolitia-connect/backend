@@ -189,7 +189,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		if len(allNodeGroupIds) > 0 {
 			var dbNodes []node.Node
 			err = l.svcCtx.DB.Model(&node.Node{}).
-				Where("enabled = ?", true).
+				Where("enabled = ? AND is_hidden = ?", true, false).
 				Find(&dbNodes).Error
 			if err != nil {
 				logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
@@ -250,7 +250,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		if len(allTags) > 0 {
 			var dbNodes []node.Node
 			err = l.svcCtx.DB.Model(&node.Node{}).
-				Where("enabled = ?", true).
+				Where("enabled = ? AND is_hidden = ?", true, false).
 				Find(&dbNodes).Error
 			if err != nil {
 				logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
@@ -520,7 +520,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		// 查询直接分配的节点详情
 		var directNodes []node.Node
 		err = l.svcCtx.DB.Model(&node.Node{}).
-			Where("id IN ? AND enabled = ?", allDirectNodeIds, true).
+			Where("id IN ? AND enabled = ? AND is_hidden = ?", allDirectNodeIds, true, false).
 			Find(&directNodes).Error
 		if err != nil {
 			logger.Errorf("[PreviewUserNodes] failed to get direct nodes: %v", err)

@@ -220,10 +220,12 @@ func (l *QueryUserSubscribeNodeListLogic) getNodesByGroup(userSub *user.Subscrib
 
 	// 查询所有启用的节点
 	enable := true
+	isHidden := false
 	_, allNodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:    0,
-		Size:    10000,
-		Enabled: &enable,
+		Page:     0,
+		Size:     10000,
+		Enabled:  &enable,
+		IsHidden: &isHidden,
 	})
 	if err != nil {
 		l.Errorw("[GetNodesByGroup] FilterNodeList error", logger.Field("error", err.Error()))
@@ -292,12 +294,14 @@ func (l *QueryUserSubscribeNodeListLogic) getNodesByTag(userSub *user.Subscribe)
 	l.Debugf("[Generate Subscribe]nodes: %v, NodeTags: %v", nodeIds, tags)
 
 	enable := true
+	isHidden := false
 	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:    0,
-		Size:    1000,
-		NodeId:  nodeIds,
-		Tag:     tags,
-		Enabled: &enable, // Only get enabled nodes
+		Page:     0,
+		Size:     1000,
+		NodeId:   nodeIds,
+		Tag:      tags,
+		Enabled:  &enable, // Only get enabled nodes
+		IsHidden: &isHidden,
 	})
 
 	return nodes, err
@@ -306,10 +310,12 @@ func (l *QueryUserSubscribeNodeListLogic) getNodesByTag(userSub *user.Subscribe)
 // getAllNodes returns all enabled nodes
 func (l *QueryUserSubscribeNodeListLogic) getAllNodes() ([]*node.Node, error) {
 	enable := true
+	isHidden := false
 	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:    0,
-		Size:    1000,
-		Enabled: &enable,
+		Page:     0,
+		Size:     1000,
+		Enabled:  &enable,
+		IsHidden: &isHidden,
 	})
 
 	return nodes, err
@@ -350,11 +356,13 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 
 	// 4. 查询过期节点组的节点
 	enable := true
+	isHidden := false
 	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:         0,
 		Size:         1000,
 		NodeGroupIds: []int64{expiredGroup.Id},
 		Enabled:      &enable,
+		IsHidden:     &isHidden,
 	})
 	if err != nil {
 		l.Errorw("failed to query expired group nodes", logger.Field("error", err))

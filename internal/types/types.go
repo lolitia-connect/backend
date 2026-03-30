@@ -342,6 +342,8 @@ type CreateNodeRequest struct {
 	ServerId     int64    `json:"server_id"`
 	Protocol     string   `json:"protocol"`
 	Enabled      *bool    `json:"enabled"`
+	NodeType     string   `json:"node_type,omitempty"`
+	IsHidden     *bool    `json:"is_hidden,omitempty"`
 	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
 }
 
@@ -1426,6 +1428,8 @@ type Node struct {
 	ServerId     int64    `json:"server_id"`
 	Protocol     string   `json:"protocol"`
 	Enabled      *bool    `json:"enabled"`
+	NodeType     string   `json:"node_type"` // front: 前置节点, landing: 落地节点
+	IsHidden     *bool    `json:"is_hidden"`
 	Sort         int      `json:"sort,omitempty"`
 	NodeGroupId  int64    `json:"node_group_id,omitempty"`
 	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
@@ -2706,6 +2710,8 @@ type UpdateNodeRequest struct {
 	ServerId     int64    `json:"server_id"`
 	Protocol     string   `json:"protocol"`
 	Enabled      *bool    `json:"enabled"`
+	NodeType     string   `json:"node_type,omitempty"`
+	IsHidden     *bool    `json:"is_hidden,omitempty"`
 	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
 }
 

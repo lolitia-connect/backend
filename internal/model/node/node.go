@@ -64,6 +64,8 @@ type Node struct {
 	Server       *Server        `gorm:"foreignKey:ServerId;references:Id"`
 	Protocol     string         `gorm:"type:varchar(100);not null;default:'';comment:Protocol"`
 	Enabled      *bool          `gorm:"type:boolean;not null;default:true;comment:Enabled"`
+	NodeType     string         `gorm:"type:varchar(20);not null;default:'landing';comment:Node Type - front: frontend node, landing: landing node"`
+	IsHidden     *bool          `gorm:"type:boolean;not null;default:false;comment:Hidden - users cannot see hidden nodes"`
 	Sort         int            `gorm:"uniqueIndex;not null;default:0;comment:Sort"`
 	NodeGroupIds JSONInt64Slice `gorm:"type:json;comment:Node Group IDs (JSON array, multiple groups)"`
 	CreatedAt    time.Time      `gorm:"<-:create;comment:Creation Time"`

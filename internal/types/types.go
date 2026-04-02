@@ -374,6 +374,7 @@ type CreatePaymentMethodRequest struct {
 	FeeMode     uint        `json:"fee_mode"`
 	FeePercent  int64       `json:"fee_percent,omitempty"`
 	FeeAmount   int64       `json:"fee_amount,omitempty"`
+	Sort        int64       `json:"sort,omitempty"`
 	Enable      *bool       `json:"enable" validate:"required"`
 }
 
@@ -1582,6 +1583,7 @@ type PaymentConfig struct {
 	FeeMode     uint        `json:"fee_mode"`
 	FeePercent  int64       `json:"fee_percent,omitempty"`
 	FeeAmount   int64       `json:"fee_amount,omitempty"`
+	Sort        int64       `json:"sort,omitempty"`
 	Enable      *bool       `json:"enable" validate:"required"`
 }
 
@@ -1594,6 +1596,7 @@ type PaymentMethod struct {
 	FeeMode     uint   `json:"fee_mode"`
 	FeePercent  int64  `json:"fee_percent"`
 	FeeAmount   int64  `json:"fee_amount"`
+	Sort        int64  `json:"sort"`
 }
 
 type PaymentMethodDetail struct {
@@ -1607,6 +1610,7 @@ type PaymentMethodDetail struct {
 	FeeMode     uint        `json:"fee_mode"`
 	FeePercent  int64       `json:"fee_percent"`
 	FeeAmount   int64       `json:"fee_amount"`
+	Sort        int64       `json:"sort"`
 	Enable      bool        `json:"enable"`
 	NotifyURL   string      `json:"notify_url"`
 }
@@ -2733,6 +2737,7 @@ type UpdatePaymentMethodRequest struct {
 	FeeMode     uint        `json:"fee_mode"`
 	FeePercent  int64       `json:"fee_percent,omitempty"`
 	FeeAmount   int64       `json:"fee_amount,omitempty"`
+	Sort        int64       `json:"sort,omitempty"`
 	Enable      *bool       `json:"enable" validate:"required"`
 }
 

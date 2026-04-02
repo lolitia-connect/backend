@@ -41,7 +41,7 @@ func (m *customPaymentModel) FindAll(ctx context.Context) ([]*Payment, error) {
 func (m *customPaymentModel) FindAvailableMethods(ctx context.Context) ([]*Payment, error) {
 	var resp []*Payment
 	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Payment{}).Where("enable = ?", true).Find(v).Error
+		return conn.Model(&Payment{}).Where("enable = ?", true).Order("sort ASC, id ASC").Find(v).Error
 	})
 	return resp, err
 }
@@ -63,7 +63,7 @@ func (m *customPaymentModel) FindListByPage(ctx context.Context, page, size int,
 			}
 		}
 
-		return conn.Count(&total).Offset((page - 1) * size).Limit(size).Find(v).Error
+		return conn.Count(&total).Order("sort ASC, id ASC").Offset((page - 1) * size).Limit(size).Find(v).Error
 	})
 	return total, resp, err
 }

@@ -16,7 +16,7 @@ type (
 		Content string `json:"content" validate:"required"`
 	}
 	UpdateAnnouncementRequest {
-		Id      int64  `json:"id" validate:"required"`
+		Id      int64  `json:"id,string" validate:"required"`
 		Title   string `json:"title"`
 		Content string `json:"content"`
 		Show    *bool  `json:"show"`
@@ -24,11 +24,11 @@ type (
 		Popup   *bool  `json:"popup"`
 	}
 	UpdateAnnouncementEnableRequest {
-		Id     int64 `json:"id" validate:"required"`
+		Id     int64 `json:"id,string" validate:"required"`
 		Enable *bool `json:"enable" validate:"required"`
 	}
 	DeleteAnnouncementRequest {
-		Id int64 `json:"id" validate:"required"`
+		Id int64 `json:"id,string" validate:"required"`
 	}
 	GetAnnouncementListRequest {
 		Page   int64  `form:"page"`

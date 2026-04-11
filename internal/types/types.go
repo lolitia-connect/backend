@@ -22,7 +22,7 @@ type AlipayNotifyResponse struct {
 }
 
 type Announcement struct {
-	Id        int64  `json:"id"`
+	Id        int64  `json:"id,string"`
 	Title     string `json:"title"`
 	Content   string `json:"content"`
 	Show      *bool  `json:"show"`
@@ -38,7 +38,7 @@ type AnyTLS struct {
 }
 
 type AppUserSubcbribe struct {
-	Id          int64                   `json:"id"`
+	Id          int64                   `json:"id,string"`
 	Name        string                  `json:"name"`
 	Upload      int64                   `json:"upload"`
 	Traffic     int64                   `json:"traffic"`
@@ -50,7 +50,7 @@ type AppUserSubcbribe struct {
 }
 
 type AppUserSubscbribeNode struct {
-	Id           int64    `json:"id"`
+	Id           int64    `json:"id,string"`
 	Name         string   `json:"name"`
 	Uuid         string   `json:"uuid"`
 	Protocol     string   `json:"protocol"`
@@ -78,7 +78,7 @@ type AppleLoginCallbackRequest struct {
 }
 
 type Application struct {
-	Id            int64  `json:"id"`
+	Id            int64  `json:"id,string"`
 	Icon          string `json:"icon"`
 	Name          string `json:"name"`
 	Description   string `json:"description"`
@@ -99,7 +99,7 @@ type ApplicationResponse struct {
 }
 
 type ApplicationResponseInfo struct {
-	Id            int64               `json:"id"`
+	Id            int64               `json:"id,string"`
 	Name          string              `json:"name"`
 	Icon          string              `json:"icon"`
 	Description   string              `json:"description"`
@@ -108,7 +108,7 @@ type ApplicationResponseInfo struct {
 }
 
 type ApplicationVersion struct {
-	Id          int64  `json:"id"`
+	Id          int64  `json:"id,string"`
 	Url         string `json:"url"`
 	Version     string `json:"version" validate:"required"`
 	Description string `json:"description"`
@@ -123,7 +123,7 @@ type AuthConfig struct {
 }
 
 type AuthMethodConfig struct {
-	Id      int64       `json:"id"`
+	Id      int64       `json:"id,string"`
 	Method  string      `json:"method"`
 	Config  interface{} `json:"config"`
 	Enabled bool        `json:"enabled"`
@@ -131,7 +131,7 @@ type AuthMethodConfig struct {
 
 type BalanceLog struct {
 	Type      uint16 `json:"type"`
-	UserId    int64  `json:"user_id"`
+	UserId    int64  `json:"user_id,string"`
 	Amount    int64  `json:"amount"`
 	OrderNo   string `json:"order_no,omitempty"`
 	Balance   int64  `json:"balance"`
@@ -139,31 +139,31 @@ type BalanceLog struct {
 }
 
 type BatchDeleteCouponRequest struct {
-	Ids []int64 `json:"ids" validate:"required"`
+	Ids []string `json:"ids" validate:"required"`
 }
 
 type BatchDeleteDocumentRequest struct {
-	Ids []int64 `json:"ids" validate:"required"`
+	Ids []string `json:"ids" validate:"required"`
 }
 
 type BatchDeleteRedemptionCodeRequest struct {
-	Ids []int64 `json:"ids" validate:"required"`
+	Ids []string `json:"ids" validate:"required"`
 }
 
 type BatchDeleteSubscribeGroupRequest struct {
-	Ids []int64 `json:"ids" validate:"required"`
+	Ids []string `json:"ids" validate:"required"`
 }
 
 type BatchDeleteSubscribeRequest struct {
-	Ids []int64 `json:"ids" validate:"required"`
+	Ids []string `json:"ids" validate:"required"`
 }
 
 type BatchDeleteUserRequest struct {
-	Ids []int64 `json:"ids" validate:"required"`
+	Ids []string `json:"ids" validate:"required"`
 }
 
 type BatchSendEmailTask struct {
-	Id                int64  `json:"id"`
+	Id                int64  `json:"id,string"`
 	Subject           string `json:"subject"`
 	Content           string `json:"content"`
 	Recipients        string `json:"recipients"`
@@ -237,7 +237,7 @@ type CloseOrderRequest struct {
 
 type CommissionLog struct {
 	Type      uint16 `json:"type"`
-	UserId    int64  `json:"user_id"`
+	UserId    int64  `json:"user_id,string"`
 	Amount    int64  `json:"amount"`
 	OrderNo   string `json:"order_no"`
 	Timestamp int64  `json:"timestamp"`
@@ -255,20 +255,20 @@ type ConnectionRecords struct {
 }
 
 type Coupon struct {
-	Id         int64   `json:"id"`
-	Name       string  `json:"name"`
-	Code       string  `json:"code"`
-	Count      int64   `json:"count"`
-	Type       uint8   `json:"type"`
-	Discount   int64   `json:"discount"`
-	StartTime  int64   `json:"start_time"`
-	ExpireTime int64   `json:"expire_time"`
-	UserLimit  int64   `json:"user_limit"`
-	Subscribe  []int64 `json:"subscribe"`
-	UsedCount  int64   `json:"used_count"`
-	Enable     bool    `json:"enable"`
-	CreatedAt  int64   `json:"created_at"`
-	UpdatedAt  int64   `json:"updated_at"`
+	Id         int64    `json:"id,string"`
+	Name       string   `json:"name"`
+	Code       string   `json:"code"`
+	Count      int64    `json:"count"`
+	Type       uint8    `json:"type"`
+	Discount   int64    `json:"discount"`
+	StartTime  int64    `json:"start_time"`
+	ExpireTime int64    `json:"expire_time"`
+	UserLimit  int64    `json:"user_limit"`
+	Subscribe  []string `json:"subscribe"`
+	UsedCount  int64    `json:"used_count"`
+	Enable     bool     `json:"enable"`
+	CreatedAt  int64    `json:"created_at"`
+	UpdatedAt  int64    `json:"updated_at"`
 }
 
 type CreateAdsRequest struct {
@@ -300,17 +300,17 @@ type CreateBatchSendEmailTaskRequest struct {
 }
 
 type CreateCouponRequest struct {
-	Name       string  `json:"name" validate:"required"`
-	Code       string  `json:"code,omitempty"`
-	Count      int64   `json:"count,omitempty"`
-	Type       uint8   `json:"type" validate:"required"`
-	Discount   int64   `json:"discount" validate:"required"`
-	StartTime  int64   `json:"start_time" validate:"required"`
-	ExpireTime int64   `json:"expire_time" validate:"required"`
-	UserLimit  int64   `json:"user_limit,omitempty"`
-	Subscribe  []int64 `json:"subscribe,omitempty"`
-	UsedCount  int64   `json:"used_count,omitempty"`
-	Enable     *bool   `json:"enable,omitempty"`
+	Name       string   `json:"name" validate:"required"`
+	Code       string   `json:"code,omitempty"`
+	Count      int64    `json:"count,omitempty"`
+	Type       uint8    `json:"type" validate:"required"`
+	Discount   int64    `json:"discount" validate:"required"`
+	StartTime  int64    `json:"start_time" validate:"required"`
+	ExpireTime int64    `json:"expire_time" validate:"required"`
+	UserLimit  int64    `json:"user_limit,omitempty"`
+	Subscribe  []string `json:"subscribe,omitempty"`
+	UsedCount  int64    `json:"used_count,omitempty"`
+	Enable     *bool    `json:"enable,omitempty"`
 }
 
 type CreateDocumentRequest struct {
@@ -339,16 +339,16 @@ type CreateNodeRequest struct {
 	Tags         []string `json:"tags,omitempty"`
 	Port         uint16   `json:"port"`
 	Address      string   `json:"address"`
-	ServerId     int64    `json:"server_id"`
+	ServerId     int64    `json:"server_id,string"`
 	Protocol     string   `json:"protocol"`
 	Enabled      *bool    `json:"enabled"`
 	NodeType     string   `json:"node_type,omitempty"`
 	IsHidden     *bool    `json:"is_hidden,omitempty"`
-	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+	NodeGroupIds []string `json:"node_group_ids,omitempty"`
 }
 
 type CreateOrderRequest struct {
-	UserId         int64  `json:"user_id" validate:"required"`
+	UserId         int64  `json:"user_id,string" validate:"required"`
 	Type           uint8  `json:"type" validate:"required"`
 	Quantity       int64  `json:"quantity,omitempty" validate:"omitempty,lte=1000"`
 	Price          int64  `json:"price" validate:"required,gte=0,lte=2000000000"`
@@ -358,10 +358,10 @@ type CreateOrderRequest struct {
 	CouponDiscount int64  `json:"coupon_discount,omitempty" validate:"omitempty,gte=0,lte=2000000000"`
 	Commission     int64  `json:"commission" validate:"gte=0,lte=2000000000"`
 	FeeAmount      int64  `json:"fee_amount" validate:"required,gte=0,lte=2000000000"`
-	PaymentId      int64  `json:"payment_id" validate:"required"`
+	PaymentId      int64  `json:"payment_id,string" validate:"required"`
 	TradeNo        string `json:"trade_no,omitempty"`
 	Status         uint8  `json:"status,omitempty"`
-	SubscribeId    int64  `json:"subscribe_id,omitempty"`
+	SubscribeId    int64  `json:"subscribe_id,omitempty,string"`
 }
 
 type CreatePaymentMethodRequest struct {
@@ -379,19 +379,19 @@ type CreatePaymentMethodRequest struct {
 }
 
 type CreateQuotaTaskRequest struct {
-	Subscribers  []int64 `json:"subscribers"`
-	IsActive     *bool   `json:"is_active"`
-	StartTime    int64   `json:"start_time"`
-	EndTime      int64   `json:"end_time"`
-	ResetTraffic bool    `json:"reset_traffic"`
-	Days         uint64  `json:"days"`
-	GiftType     uint8   `json:"gift_type"`
-	GiftValue    uint64  `json:"gift_value"`
+	Subscribers  []string `json:"subscribers"`
+	IsActive     *bool    `json:"is_active"`
+	StartTime    int64    `json:"start_time"`
+	EndTime      int64    `json:"end_time"`
+	ResetTraffic bool     `json:"reset_traffic"`
+	Days         uint64   `json:"days"`
+	GiftType     uint8    `json:"gift_type"`
+	GiftValue    uint64   `json:"gift_value"`
 }
 
 type CreateRedemptionCodeRequest struct {
 	TotalCount    int64  `json:"total_count" validate:"required"`
-	SubscribePlan int64  `json:"subscribe_plan" validate:"required"`
+	SubscribePlan int64  `json:"subscribe_plan,string" validate:"required"`
 	UnitTime      string `json:"unit_time" validate:"required,oneof=day month quarter half_year year"`
 	Quantity      int64  `json:"quantity" validate:"required"`
 	BatchCount    int64  `json:"batch_count" validate:"required,min=1"`
@@ -438,8 +438,8 @@ type CreateSubscribeRequest struct {
 	Quota             int64               `json:"quota"`
 	Nodes             []int64             `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
-	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
-	NodeGroupId       int64               `json:"node_group_id"`
+	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
+	NodeGroupId       int64               `json:"node_group_id,string"`
 	TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 	Show              *bool               `json:"show"`
 	Sell              *bool               `json:"sell"`
@@ -452,14 +452,14 @@ type CreateSubscribeRequest struct {
 }
 
 type CreateTicketFollowRequest struct {
-	TicketId int64  `json:"ticket_id" validate:"required"`
+	TicketId int64  `json:"ticket_id,string" validate:"required"`
 	From     string `json:"from" validate:"required"`
 	Type     uint8  `json:"type" validate:"required"`
 	Content  string `json:"content" validate:"required"`
 }
 
 type CreateUserAuthMethodRequest struct {
-	UserId         int64  `json:"user_id"`
+	UserId         int64  `json:"user_id,string"`
 	AuthType       string `json:"auth_type"`
 	AuthIdentifier string `json:"auth_identifier"`
 }
@@ -469,7 +469,7 @@ type CreateUserRequest struct {
 	Telephone          string `json:"telephone"`
 	TelephoneAreaCode  string `json:"telephone_area_code"`
 	Password           string `json:"password"`
-	ProductId          int64  `json:"product_id"`
+	ProductId          int64  `json:"product_id,string"`
 	Duration           int64  `json:"duration"`
 	ReferralPercentage uint8  `json:"referral_percentage"`
 	OnlyFirstPurchase  bool   `json:"only_first_purchase"`
@@ -482,14 +482,14 @@ type CreateUserRequest struct {
 }
 
 type CreateUserSubscribeRequest struct {
-	UserId      int64 `json:"user_id"`
+	UserId      int64 `json:"user_id,string"`
 	ExpiredAt   int64 `json:"expired_at"`
 	Traffic     int64 `json:"traffic"`
-	SubscribeId int64 `json:"subscribe_id"`
+	SubscribeId int64 `json:"subscribe_id,string"`
 }
 
 type CreateUserTicketFollowRequest struct {
-	TicketId int64  `json:"ticket_id"`
+	TicketId int64  `json:"ticket_id,string"`
 	From     string `json:"from"`
 	Type     uint8  `json:"type"`
 	Content  string `json:"content"`
@@ -519,60 +519,60 @@ type DailyTrafficStats struct {
 }
 
 type DeleteAdsRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type DeleteAnnouncementRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteCouponRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteDocumentRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteNodeGroupRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteNodeRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type DeletePaymentMethodRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteRedemptionCodeRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteServerRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type DeleteSubscribeApplicationRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type DeleteSubscribeGroupRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteSubscribeRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type DeleteUserAuthMethodRequest struct {
-	UserId   int64  `json:"user_id"`
+	UserId   int64  `json:"user_id,string"`
 	AuthType string `json:"auth_type"`
 }
 
 type DeleteUserDeivceRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type DeleteUserSubscribeRequest struct {
@@ -595,7 +595,7 @@ type DeviceLoginRequest struct {
 }
 
 type Document struct {
-	Id        int64    `json:"id"`
+	Id        int64    `json:"id,string"`
 	Title     string   `json:"title"`
 	Content   string   `json:"content"`
 	Tags      []string `json:"tags"`
@@ -782,8 +782,8 @@ type FilterTrafficLogDetailsResponse struct {
 }
 
 type Follow struct {
-	Id        int64  `json:"id"`
-	TicketId  int64  `json:"ticket_id"`
+	Id        int64  `json:"id,string"`
+	TicketId  int64  `json:"ticket_id,string"`
 	From      string `json:"from"`
 	Type      uint8  `json:"type"`
 	Content   string `json:"content"`
@@ -865,7 +865,7 @@ type GetBatchSendEmailTaskListResponse struct {
 }
 
 type GetBatchSendEmailTaskStatusRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type GetBatchSendEmailTaskStatusResponse struct {
@@ -902,7 +902,7 @@ type GetDeviceOnlineStatsResponse struct {
 }
 
 type GetDocumentDetailRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type GetDocumentListRequest struct {
@@ -1180,7 +1180,7 @@ type GetTosResponse struct {
 }
 
 type GetUserAuthMethodRequest struct {
-	UserId int64 `json:"user_id"`
+	UserId int64 `json:"user_id,string"`
 }
 
 type GetUserAuthMethodResponse struct {
@@ -1308,9 +1308,9 @@ type GetUserTrafficStatsResponse struct {
 
 type GiftLog struct {
 	Type        uint16 `json:"type"`
-	UserId      int64  `json:"user_id"`
+	UserId      int64  `json:"user_id,string"`
 	OrderNo     string `json:"order_no"`
-	SubscribeId int64  `json:"subscribe_id"`
+	SubscribeId int64  `json:"subscribe_id,string"`
 	Amount      int64  `json:"amount"`
 	Balance     int64  `json:"balance"`
 	Remark      string `json:"remark,omitempty"`
@@ -1323,7 +1323,7 @@ type GoogleLoginCallbackRequest struct {
 }
 
 type GroupHistory struct {
-	Id           int64  `json:"id"`
+	Id           int64  `json:"id,string"`
 	GroupMode    string `json:"group_mode"`
 	TriggerType  string `json:"trigger_type"`
 	TotalUsers   int    `json:"total_users"`
@@ -1366,7 +1366,7 @@ type InviteConfig struct {
 }
 
 type KickOfflineRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type LogResponse struct {
@@ -1379,7 +1379,7 @@ type LogSetting struct {
 }
 
 type LoginLog struct {
-	UserId    int64  `json:"user_id"`
+	UserId    int64  `json:"user_id,string"`
 	Method    string `json:"method"`
 	LoginIP   string `json:"login_ip"`
 	UserAgent string `json:"user_agent"`
@@ -1392,7 +1392,7 @@ type LoginResponse struct {
 }
 
 type MessageLog struct {
-	Id        int64       `json:"id"`
+	Id        int64       `json:"id,string"`
 	Type      uint8       `json:"type"`
 	Platform  string      `json:"platform"`
 	To        string      `json:"to"`
@@ -1421,19 +1421,19 @@ type ModuleConfig struct {
 }
 
 type Node struct {
-	Id           int64    `json:"id"`
+	Id           int64    `json:"id,string"`
 	Name         string   `json:"name"`
 	Tags         []string `json:"tags"`
 	Port         uint16   `json:"port"`
 	Address      string   `json:"address"`
-	ServerId     int64    `json:"server_id"`
+	ServerId     int64    `json:"server_id,string"`
 	Protocol     string   `json:"protocol"`
 	Enabled      *bool    `json:"enabled"`
 	NodeType     string   `json:"node_type"` // front: 前置节点, landing: 落地节点
 	IsHidden     *bool    `json:"is_hidden"`
 	Sort         int      `json:"sort,omitempty"`
-	NodeGroupId  int64    `json:"node_group_id,omitempty"`
-	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+	NodeGroupId  int64    `json:"node_group_id,omitempty,string"`
+	NodeGroupIds []string `json:"node_group_ids,omitempty"`
 	CreatedAt    int64    `json:"created_at"`
 	UpdatedAt    int64    `json:"updated_at"`
 }
@@ -1456,7 +1456,7 @@ type NodeDNS struct {
 }
 
 type NodeGroup struct {
-	Id                  int64  `json:"id"`
+	Id                  int64  `json:"id,string"`
 	Name                string `json:"name"`
 	Type                string `json:"type"`
 	Description         string `json:"description"`
@@ -1474,7 +1474,7 @@ type NodeGroup struct {
 }
 
 type NodeGroupItem struct {
-	Id    int64  `json:"id"`
+	Id    int64  `json:"id,string"`
 	Name  string `json:"name"`
 	Nodes []Node `json:"nodes"`
 }
@@ -1519,8 +1519,8 @@ type OnlineUsersRequest struct {
 }
 
 type Order struct {
-	Id             int64         `json:"id"`
-	UserId         int64         `json:"user_id"`
+	Id             int64         `json:"id,string"`
+	UserId         int64         `json:"user_id,string"`
 	OrderNo        string        `json:"order_no"`
 	Type           uint8         `json:"type"`
 	Quantity       int64         `json:"quantity"`
@@ -1535,14 +1535,14 @@ type Order struct {
 	FeeAmount      int64         `json:"fee_amount"`
 	TradeNo        string        `json:"trade_no"`
 	Status         uint8         `json:"status"`
-	SubscribeId    int64         `json:"subscribe_id"`
+	SubscribeId    int64         `json:"subscribe_id,string"`
 	CreatedAt      int64         `json:"created_at"`
 	UpdatedAt      int64         `json:"updated_at"`
 }
 
 type OrderDetail struct {
-	Id             int64         `json:"id"`
-	UserId         int64         `json:"user_id"`
+	Id             int64         `json:"id,string"`
+	UserId         int64         `json:"user_id,string"`
 	OrderNo        string        `json:"order_no"`
 	Type           uint8         `json:"type"`
 	Quantity       int64         `json:"quantity"`
@@ -1558,7 +1558,7 @@ type OrderDetail struct {
 	FeeAmount      int64         `json:"fee_amount"`
 	TradeNo        string        `json:"trade_no"`
 	Status         uint8         `json:"status"`
-	SubscribeId    int64         `json:"subscribe_id"`
+	SubscribeId    int64         `json:"subscribe_id,string"`
 	Subscribe      Subscribe     `json:"subscribe"`
 	CreatedAt      int64         `json:"created_at"`
 	UpdatedAt      int64         `json:"updated_at"`
@@ -1573,7 +1573,7 @@ type OrdersStatistics struct {
 }
 
 type PaymentConfig struct {
-	Id          int64       `json:"id" validate:"required"`
+	Id          int64       `json:"id,string" validate:"required"`
 	Name        string      `json:"name" validate:"required"`
 	Platform    string      `json:"platform" validate:"required"`
 	Description string      `json:"description"`
@@ -1588,7 +1588,7 @@ type PaymentConfig struct {
 }
 
 type PaymentMethod struct {
-	Id          int64  `json:"id"`
+	Id          int64  `json:"id,string"`
 	Name        string `json:"name"`
 	Platform    string `json:"platform"`
 	Description string `json:"description"`
@@ -1600,7 +1600,7 @@ type PaymentMethod struct {
 }
 
 type PaymentMethodDetail struct {
-	Id          int64       `json:"id"`
+	Id          int64       `json:"id,string"`
 	Name        string      `json:"name"`
 	Platform    string      `json:"platform"`
 	Description string      `json:"description"`
@@ -1629,8 +1629,8 @@ type PortalPurchaseRequest struct {
 	AuthType       string `json:"auth_type"`
 	Identifier     string `json:"identifier"`
 	Password       string `json:"password,omitempty"`
-	Payment        int64  `json:"payment"`
-	SubscribeId    int64  `json:"subscribe_id"`
+	Payment        int64  `json:"payment,string"`
+	SubscribeId    int64  `json:"subscribe_id,string"`
 	Quantity       int64  `json:"quantity"`
 	Coupon         string `json:"coupon,omitempty"`
 	InviteCode     string `json:"invite_code,omitempty"`
@@ -1652,8 +1652,8 @@ type PreOrderResponse struct {
 }
 
 type PrePurchaseOrderRequest struct {
-	Payment     int64  `json:"payment,omitempty"`
-	SubscribeId int64  `json:"subscribe_id"`
+	Payment     int64  `json:"payment,omitempty,string"`
+	SubscribeId int64  `json:"subscribe_id,string"`
 	Quantity    int64  `json:"quantity"`
 	Coupon      string `json:"coupon,omitempty"`
 }
@@ -1672,7 +1672,7 @@ type PreRenewalOrderResponse struct {
 }
 
 type PreUnsubscribeRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type PreUnsubscribeResponse struct {
@@ -1697,7 +1697,7 @@ type PreviewUserNodesRequest struct {
 }
 
 type PreviewUserNodesResponse struct {
-	UserId     int64           `json:"user_id"`
+	UserId     int64           `json:"user_id,string"`
 	NodeGroups []NodeGroupItem `json:"node_groups"`
 }
 
@@ -1767,9 +1767,9 @@ type PubilcVerifyCodeConfig struct {
 }
 
 type PurchaseOrderRequest struct {
-	SubscribeId int64  `json:"subscribe_id"`
+	SubscribeId int64  `json:"subscribe_id,string"`
 	Quantity    int64  `json:"quantity" validate:"required,gt=0,lte=1000"`
-	Payment     int64  `json:"payment,omitempty"`
+	Payment     int64  `json:"payment,omitempty,string"`
 	Coupon      string `json:"coupon,omitempty"`
 }
 
@@ -1860,10 +1860,10 @@ type QueryQuotaTaskListResponse struct {
 }
 
 type QueryQuotaTaskPreCountRequest struct {
-	Subscribers []int64 `json:"subscribers"`
-	IsActive    *bool   `json:"is_active"`
-	StartTime   int64   `json:"start_time"`
-	EndTime     int64   `json:"end_time"`
+	Subscribers []string `json:"subscribers"`
+	IsActive    *bool    `json:"is_active"`
+	StartTime   int64    `json:"start_time"`
+	EndTime     int64    `json:"end_time"`
 }
 
 type QueryQuotaTaskPreCountResponse struct {
@@ -1871,7 +1871,7 @@ type QueryQuotaTaskPreCountResponse struct {
 }
 
 type QueryQuotaTaskStatusRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type QueryQuotaTaskStatusResponse struct {
@@ -1961,22 +1961,22 @@ type QueryWithdrawalLogListResponse struct {
 }
 
 type QuotaTask struct {
-	Id           int64   `json:"id"`
-	Subscribers  []int64 `json:"subscribers"`
-	IsActive     *bool   `json:"is_active"`
-	StartTime    int64   `json:"start_time"`
-	EndTime      int64   `json:"end_time"`
-	ResetTraffic bool    `json:"reset_traffic"`
-	Days         uint64  `json:"days"`
-	GiftType     uint8   `json:"gift_type"`
-	GiftValue    uint64  `json:"gift_value"`
-	Objects      []int64 `json:"objects"` // UserSubscribe IDs
-	Status       uint8   `json:"status"`
-	Total        int64   `json:"total"`
-	Current      int64   `json:"current"`
-	Errors       string  `json:"errors"`
-	CreatedAt    int64   `json:"created_at"`
-	UpdatedAt    int64   `json:"updated_at"`
+	Id           int64    `json:"id,string"`
+	Subscribers  []string `json:"subscribers"`
+	IsActive     *bool    `json:"is_active"`
+	StartTime    int64    `json:"start_time"`
+	EndTime      int64    `json:"end_time"`
+	ResetTraffic bool     `json:"reset_traffic"`
+	Days         uint64   `json:"days"`
+	GiftType     uint8    `json:"gift_type"`
+	GiftValue    uint64   `json:"gift_value"`
+	Objects      []string `json:"objects"` // UserSubscribe IDs
+	Status       uint8    `json:"status"`
+	Total        int64    `json:"total"`
+	Current      int64    `json:"current"`
+	Errors       string   `json:"errors"`
+	CreatedAt    int64    `json:"created_at"`
+	UpdatedAt    int64    `json:"updated_at"`
 }
 
 type RecalculateGroupRequest struct {
@@ -1992,7 +1992,7 @@ type RecalculationState struct {
 
 type RechargeOrderRequest struct {
 	Amount  int64 `json:"amount" validate:"required,gt=0,lte=2000000000"`
-	Payment int64 `json:"payment"`
+	Payment int64 `json:"payment,string"`
 }
 
 type RechargeOrderResponse struct {
@@ -2008,11 +2008,11 @@ type RedeemCodeResponse struct {
 }
 
 type RedemptionCode struct {
-	Id            int64  `json:"id"`
+	Id            int64  `json:"id,string"`
 	Code          string `json:"code"`
 	TotalCount    int64  `json:"total_count"`
 	UsedCount     int64  `json:"used_count"`
-	SubscribePlan int64  `json:"subscribe_plan"`
+	SubscribePlan int64  `json:"subscribe_plan,string"`
 	UnitTime      string `json:"unit_time"`
 	Quantity      int64  `json:"quantity"`
 	Status        int64  `json:"status"`
@@ -2021,10 +2021,10 @@ type RedemptionCode struct {
 }
 
 type RedemptionRecord struct {
-	Id               int64  `json:"id"`
-	RedemptionCodeId int64  `json:"redemption_code_id"`
-	UserId           int64  `json:"user_id"`
-	SubscribeId      int64  `json:"subscribe_id"`
+	Id               int64  `json:"id,string"`
+	RedemptionCodeId int64  `json:"redemption_code_id,string"`
+	UserId           int64  `json:"user_id,string"`
+	SubscribeId      int64  `json:"subscribe_id,string"`
 	UnitTime         string `json:"unit_time"`
 	Quantity         int64  `json:"quantity"`
 	RedeemedAt       int64  `json:"redeemed_at"`
@@ -2034,7 +2034,7 @@ type RedemptionRecord struct {
 type RegisterConfig struct {
 	StopRegister            bool   `json:"stop_register"`
 	EnableTrial             bool   `json:"enable_trial"`
-	TrialSubscribe          int64  `json:"trial_subscribe"`
+	TrialSubscribe          int64  `json:"trial_subscribe,string"`
 	TrialTime               int64  `json:"trial_time"`
 	TrialTimeUnit           string `json:"trial_time_unit"`
 	EnableIpRegisterLimit   bool   `json:"enable_ip_register_limit"`
@@ -2044,7 +2044,7 @@ type RegisterConfig struct {
 }
 
 type RegisterLog struct {
-	UserId     int64  `json:"user_id"`
+	UserId     int64  `json:"user_id,string"`
 	AuthMethod string `json:"auth_method"`
 	Identifier string `json:"identifier"`
 	RegisterIP string `json:"register_ip"`
@@ -2053,9 +2053,9 @@ type RegisterLog struct {
 }
 
 type RenewalOrderRequest struct {
-	UserSubscribeID int64  `json:"user_subscribe_id"`
+	UserSubscribeID int64  `json:"user_subscribe_id,string"`
 	Quantity        int64  `json:"quantity" validate:"lte=1000"`
-	Payment         int64  `json:"payment"`
+	Payment         int64  `json:"payment,string"`
 	Coupon          string `json:"coupon,omitempty"`
 }
 
@@ -2091,23 +2091,23 @@ type ResetSortRequest struct {
 
 type ResetSubscribeLog struct {
 	Type            uint16 `json:"type"`
-	UserId          int64  `json:"user_id"`
-	UserSubscribeId int64  `json:"user_subscribe_id"`
+	UserId          int64  `json:"user_id,string"`
+	UserSubscribeId int64  `json:"user_subscribe_id,string"`
 	OrderNo         string `json:"order_no,omitempty"`
 	Timestamp       int64  `json:"timestamp"`
 }
 
 type ResetSubscribeTrafficLog struct {
-	Id              int64  `json:"id"`
+	Id              int64  `json:"id,string"`
 	Type            uint16 `json:"type"`
-	UserSubscribeId int64  `json:"user_subscribe_id"`
+	UserSubscribeId int64  `json:"user_subscribe_id,string"`
 	OrderNo         string `json:"order_no,omitempty"`
 	Timestamp       int64  `json:"timestamp"`
 }
 
 type ResetTrafficOrderRequest struct {
-	UserSubscribeID int64 `json:"user_subscribe_id"`
-	Payment         int64 `json:"payment"`
+	UserSubscribeID int64 `json:"user_subscribe_id,string"`
+	Payment         int64 `json:"payment,string"`
 }
 
 type ResetTrafficOrderResponse struct {
@@ -2115,11 +2115,11 @@ type ResetTrafficOrderResponse struct {
 }
 
 type ResetUserSubscribeTokenRequest struct {
-	UserSubscribeId int64 `json:"user_subscribe_id"`
+	UserSubscribeId int64 `json:"user_subscribe_id,string"`
 }
 
 type ResetUserSubscribeTrafficRequest struct {
-	UserSubscribeId int64 `json:"user_subscribe_id"`
+	UserSubscribeId int64 `json:"user_subscribe_id,string"`
 }
 
 type RevenueStatisticsResponse struct {
@@ -2156,7 +2156,7 @@ type SendSmsCodeRequest struct {
 }
 
 type Server struct {
-	Id             int64        `json:"id"`
+	Id             int64        `json:"id,string"`
 	Name           string       `json:"name"`
 	Country        string       `json:"country"`
 	City           string       `json:"city"`
@@ -2181,7 +2181,7 @@ type ServerCommon struct {
 }
 
 type ServerGroup struct {
-	Id          int64  `json:"id"`
+	Id          int64  `json:"id,string"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	CreatedAt   int64  `json:"created_at"`
@@ -2195,9 +2195,9 @@ type ServerOnlineIP struct {
 
 type ServerOnlineUser struct {
 	IP          []ServerOnlineIP `json:"ip"`
-	UserId      int64            `json:"user_id"`
+	UserId      int64            `json:"user_id,string"`
 	Subscribe   string           `json:"subscribe"`
-	SubscribeId int64            `json:"subscribe_id"`
+	SubscribeId int64            `json:"subscribe_id,string"`
 	Traffic     int64            `json:"traffic"`
 	ExpiredAt   int64            `json:"expired_at"`
 }
@@ -2216,7 +2216,7 @@ type ServerPushUserTrafficRequest struct {
 }
 
 type ServerRuleGroup struct {
-	Id        int64    `json:"id"`
+	Id        int64    `json:"id,string"`
 	Icon      string   `json:"icon"`
 	Name      string   `json:"name" validate:"required"`
 	Type      string   `json:"type"`
@@ -2260,12 +2260,12 @@ type ServerTrafficData struct {
 }
 
 type ServerTrafficLog struct {
-	ServerId int64  `json:"server_id"` // Server ID
-	Upload   int64  `json:"upload"`    // Upload traffic in bytes
-	Download int64  `json:"download"`  // Download traffic in bytes
-	Total    int64  `json:"total"`     // Total traffic in bytes (Upload + Download)
-	Date     string `json:"date"`      // Date in YYYY-MM-DD format
-	Details  bool   `json:"details"`   // Whether to show detailed traffic
+	ServerId int64  `json:"server_id,string"` // Server ID
+	Upload   int64  `json:"upload"`           // Upload traffic in bytes
+	Download int64  `json:"download"`         // Download traffic in bytes
+	Total    int64  `json:"total"`            // Total traffic in bytes (Upload + Download)
+	Date     string `json:"date"`             // Date in YYYY-MM-DD format
+	Details  bool   `json:"details"`          // Whether to show detailed traffic
 }
 
 type ServerUser struct {
@@ -2318,12 +2318,12 @@ type SliderVerifyCaptchaResponse struct {
 }
 
 type SortItem struct {
-	Id   int64 `json:"id" validate:"required"`
+	Id   int64 `json:"id,string" validate:"required"`
 	Sort int64 `json:"sort" validate:"required"`
 }
 
 type StopBatchSendEmailTaskRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type StripePayment struct {
@@ -2333,7 +2333,7 @@ type StripePayment struct {
 }
 
 type Subscribe struct {
-	Id                int64               `json:"id"`
+	Id                int64               `json:"id,string"`
 	Name              string              `json:"name"`
 	Language          string              `json:"language"`
 	Description       string              `json:"description"`
@@ -2348,8 +2348,8 @@ type Subscribe struct {
 	Quota             int64               `json:"quota"`
 	Nodes             []int64             `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
-	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
-	NodeGroupId       int64               `json:"node_group_id"`
+	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
+	NodeGroupId       int64               `json:"node_group_id,string"`
 	TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 	Show              bool                `json:"show"`
 	Sell              bool                `json:"sell"`
@@ -2364,7 +2364,7 @@ type Subscribe struct {
 }
 
 type SubscribeApplication struct {
-	Id                int64        `json:"id"`
+	Id                int64        `json:"id,string"`
 	Name              string       `json:"name"`
 	Description       string       `json:"description,omitempty"`
 	Icon              string       `json:"icon,omitempty"`
@@ -2403,7 +2403,7 @@ type SubscribeDiscount struct {
 }
 
 type SubscribeGroup struct {
-	Id          int64  `json:"id"`
+	Id          int64  `json:"id,string"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	CreatedAt   int64  `json:"created_at"`
@@ -2421,11 +2421,11 @@ type SubscribeItem struct {
 }
 
 type SubscribeLog struct {
-	UserId          int64  `json:"user_id"`
+	UserId          int64  `json:"user_id,string"`
 	Token           string `json:"token"`
 	UserAgent       string `json:"user_agent"`
 	ClientIP        string `json:"client_ip"`
-	UserSubscribeId int64  `json:"user_subscribe_id"`
+	UserSubscribeId int64  `json:"user_subscribe_id,string"`
 	Timestamp       int64  `json:"timestamp"`
 }
 
@@ -2509,10 +2509,10 @@ type TestSmsSendRequest struct {
 }
 
 type Ticket struct {
-	Id          int64    `json:"id"`
+	Id          int64    `json:"id,string"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
-	UserId      int64    `json:"user_id"`
+	UserId      int64    `json:"user_id,string"`
 	Follows     []Follow `json:"follow,omitempty"`
 	Status      uint8    `json:"status"`
 	CreatedAt   int64    `json:"created_at"`
@@ -2530,17 +2530,17 @@ type TimePeriod struct {
 }
 
 type ToggleNodeStatusRequest struct {
-	Id     int64 `json:"id"`
+	Id     int64 `json:"id,string"`
 	Enable *bool `json:"enable"`
 }
 
 type ToggleRedemptionCodeStatusRequest struct {
-	Id     int64 `json:"id" validate:"required"`
+	Id     int64 `json:"id,string" validate:"required"`
 	Status int64 `json:"status" validate:"oneof=0 1"`
 }
 
 type ToggleUserSubscribeStatusRequest struct {
-	UserSubscribeId int64 `json:"user_subscribe_id"`
+	UserSubscribeId int64 `json:"user_subscribe_id,string"`
 }
 
 type TosConfig struct {
@@ -2555,20 +2555,20 @@ type TrafficLimit struct {
 }
 
 type TrafficLog struct {
-	Id          int64 `json:"id"`
-	ServerId    int64 `json:"server_id"`
-	UserId      int64 `json:"user_id"`
-	SubscribeId int64 `json:"subscribe_id"`
+	Id          int64 `json:"id,string"`
+	ServerId    int64 `json:"server_id,string"`
+	UserId      int64 `json:"user_id,string"`
+	SubscribeId int64 `json:"subscribe_id,string"`
 	Download    int64 `json:"download"`
 	Upload      int64 `json:"upload"`
 	Timestamp   int64 `json:"timestamp"`
 }
 
 type TrafficLogDetails struct {
-	Id          int64 `json:"id"`
-	ServerId    int64 `json:"server_id"`
-	UserId      int64 `json:"user_id"`
-	SubscribeId int64 `json:"subscribe_id"`
+	Id          int64 `json:"id,string"`
+	ServerId    int64 `json:"server_id,string"`
+	UserId      int64 `json:"user_id,string"`
+	SubscribeId int64 `json:"subscribe_id,string"`
 	Download    int64 `json:"download"`
 	Upload      int64 `json:"upload"`
 	Timestamp   int64 `json:"timestamp"`
@@ -2607,7 +2607,7 @@ type Tuic struct {
 }
 
 type UnbindDeviceRequest struct {
-	Id int64 `json:"id" validate:"required"`
+	Id int64 `json:"id,string" validate:"required"`
 }
 
 type UnbindOAuthRequest struct {
@@ -2615,11 +2615,11 @@ type UnbindOAuthRequest struct {
 }
 
 type UnsubscribeRequest struct {
-	Id int64 `json:"id"`
+	Id int64 `json:"id,string"`
 }
 
 type UpdateAdsRequest struct {
-	Id          int64  `json:"id"`
+	Id          int64  `json:"id,string"`
 	Title       string `json:"title"`
 	Type        string `json:"type"`
 	Content     string `json:"content"`
@@ -2631,12 +2631,12 @@ type UpdateAdsRequest struct {
 }
 
 type UpdateAnnouncementEnableRequest struct {
-	Id     int64 `json:"id" validate:"required"`
+	Id     int64 `json:"id,string" validate:"required"`
 	Enable *bool `json:"enable" validate:"required"`
 }
 
 type UpdateAnnouncementRequest struct {
-	Id      int64  `json:"id" validate:"required"`
+	Id      int64  `json:"id,string" validate:"required"`
 	Title   string `json:"title"`
 	Content string `json:"content"`
 	Show    *bool  `json:"show"`
@@ -2645,7 +2645,7 @@ type UpdateAnnouncementRequest struct {
 }
 
 type UpdateAuthMethodConfigRequest struct {
-	Id      int64       `json:"id"`
+	Id      int64       `json:"id,string"`
 	Method  string      `json:"method"`
 	Config  interface{} `json:"config"`
 	Enabled *bool       `json:"enabled"`
@@ -2662,22 +2662,22 @@ type UpdateBindMobileRequest struct {
 }
 
 type UpdateCouponRequest struct {
-	Id         int64   `json:"id" validate:"required"`
-	Name       string  `json:"name" validate:"required"`
-	Code       string  `json:"code,omitempty"`
-	Count      int64   `json:"count,omitempty"`
-	Type       uint8   `json:"type" validate:"required"`
-	Discount   int64   `json:"discount" validate:"required"`
-	StartTime  int64   `json:"start_time" validate:"required"`
-	ExpireTime int64   `json:"expire_time" validate:"required"`
-	UserLimit  int64   `json:"user_limit,omitempty"`
-	Subscribe  []int64 `json:"subscribe,omitempty"`
-	UsedCount  int64   `json:"used_count,omitempty"`
-	Enable     *bool   `json:"enable,omitempty"`
+	Id         int64    `json:"id,string" validate:"required"`
+	Name       string   `json:"name" validate:"required"`
+	Code       string   `json:"code,omitempty"`
+	Count      int64    `json:"count,omitempty"`
+	Type       uint8    `json:"type" validate:"required"`
+	Discount   int64    `json:"discount" validate:"required"`
+	StartTime  int64    `json:"start_time" validate:"required"`
+	ExpireTime int64    `json:"expire_time" validate:"required"`
+	UserLimit  int64    `json:"user_limit,omitempty"`
+	Subscribe  []string `json:"subscribe,omitempty"`
+	UsedCount  int64    `json:"used_count,omitempty"`
+	Enable     *bool    `json:"enable,omitempty"`
 }
 
 type UpdateDocumentRequest struct {
-	Id      int64    `json:"id" validate:"required"`
+	Id      int64    `json:"id,string" validate:"required"`
 	Title   string   `json:"title" validate:"required"`
 	Content string   `json:"content" validate:"required"`
 	Tags    []string `json:"tags,omitempty" `
@@ -2691,7 +2691,7 @@ type UpdateGroupConfigRequest struct {
 }
 
 type UpdateNodeGroupRequest struct {
-	Id                  int64  `json:"id" validate:"required"`
+	Id                  int64  `json:"id,string" validate:"required"`
 	Name                string `json:"name"`
 	Type                string `json:"type,omitempty"`
 	Description         string `json:"description"`
@@ -2706,28 +2706,28 @@ type UpdateNodeGroupRequest struct {
 }
 
 type UpdateNodeRequest struct {
-	Id           int64    `json:"id"`
+	Id           int64    `json:"id,string"`
 	Name         string   `json:"name"`
 	Tags         []string `json:"tags,omitempty"`
 	Port         uint16   `json:"port"`
 	Address      string   `json:"address"`
-	ServerId     int64    `json:"server_id"`
+	ServerId     int64    `json:"server_id,string"`
 	Protocol     string   `json:"protocol"`
 	Enabled      *bool    `json:"enabled"`
 	NodeType     string   `json:"node_type,omitempty"`
 	IsHidden     *bool    `json:"is_hidden,omitempty"`
-	NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+	NodeGroupIds []string `json:"node_group_ids,omitempty"`
 }
 
 type UpdateOrderStatusRequest struct {
-	Id        int64  `json:"id" validate:"required"`
+	Id        int64  `json:"id,string" validate:"required"`
 	Status    uint8  `json:"status" validate:"required"`
-	PaymentId int64  `json:"payment_id,omitempty"`
+	PaymentId int64  `json:"payment_id,omitempty,string"`
 	TradeNo   string `json:"trade_no,omitempty"`
 }
 
 type UpdatePaymentMethodRequest struct {
-	Id          int64       `json:"id" validate:"required"`
+	Id          int64       `json:"id,string" validate:"required"`
 	Name        string      `json:"name" validate:"required"`
 	Platform    string      `json:"platform" validate:"required"`
 	Description string      `json:"description"`
@@ -2742,16 +2742,16 @@ type UpdatePaymentMethodRequest struct {
 }
 
 type UpdateRedemptionCodeRequest struct {
-	Id            int64  `json:"id" validate:"required"`
+	Id            int64  `json:"id,string" validate:"required"`
 	TotalCount    int64  `json:"total_count,omitempty"`
-	SubscribePlan int64  `json:"subscribe_plan,omitempty"`
+	SubscribePlan int64  `json:"subscribe_plan,omitempty,string"`
 	UnitTime      string `json:"unit_time,omitempty" validate:"omitempty,oneof=day month quarter half_year year"`
 	Quantity      int64  `json:"quantity,omitempty"`
 	Status        int64  `json:"status,omitempty" validate:"omitempty,oneof=0 1"`
 }
 
 type UpdateServerRequest struct {
-	Id        int64      `json:"id"`
+	Id        int64      `json:"id,string"`
 	Name      string     `json:"name"`
 	Country   string     `json:"country,omitempty"`
 	City      string     `json:"city,omitempty"`
@@ -2761,7 +2761,7 @@ type UpdateServerRequest struct {
 }
 
 type UpdateSubscribeApplicationRequest struct {
-	Id                int64        `json:"id"`
+	Id                int64        `json:"id,string"`
 	Name              string       `json:"name"`
 	Description       string       `json:"description,omitempty"`
 	Icon              string       `json:"icon,omitempty"`
@@ -2774,13 +2774,13 @@ type UpdateSubscribeApplicationRequest struct {
 }
 
 type UpdateSubscribeGroupRequest struct {
-	Id          int64  `json:"id" validate:"required"`
+	Id          int64  `json:"id,string" validate:"required"`
 	Name        string `json:"name" validate:"required"`
 	Description string `json:"description"`
 }
 
 type UpdateSubscribeRequest struct {
-	Id                int64               `json:"id" validate:"required"`
+	Id                int64               `json:"id,string" validate:"required"`
 	Name              string              `json:"name" validate:"required"`
 	Language          string              `json:"language"`
 	Description       string              `json:"description"`
@@ -2795,8 +2795,8 @@ type UpdateSubscribeRequest struct {
 	Quota             int64               `json:"quota"`
 	Nodes             []int64             `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
-	NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
-	NodeGroupId       int64               `json:"node_group_id"`
+	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
+	NodeGroupId       int64               `json:"node_group_id,string"`
 	TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 	Show              *bool               `json:"show"`
 	Sell              *bool               `json:"sell"`
@@ -2809,18 +2809,18 @@ type UpdateSubscribeRequest struct {
 }
 
 type UpdateTicketStatusRequest struct {
-	Id     int64  `json:"id" validate:"required"`
+	Id     int64  `json:"id,string" validate:"required"`
 	Status *uint8 `json:"status" validate:"required"`
 }
 
 type UpdateUserAuthMethodRequest struct {
-	UserId         int64  `json:"user_id"`
+	UserId         int64  `json:"user_id,string"`
 	AuthType       string `json:"auth_type"`
 	AuthIdentifier string `json:"auth_identifier"`
 }
 
 type UpdateUserBasiceInfoRequest struct {
-	UserId             int64  `json:"user_id" validate:"required"`
+	UserId             int64  `json:"user_id,string" validate:"required"`
 	Password           string `json:"password"`
 	Avatar             string `json:"avatar"`
 	Balance            int64  `json:"balance"`
@@ -2830,7 +2830,7 @@ type UpdateUserBasiceInfoRequest struct {
 	GiftAmount         int64  `json:"gift_amount"`
 	Telegram           int64  `json:"telegram"`
 	ReferCode          string `json:"refer_code"`
-	RefererId          int64  `json:"referer_id"`
+	RefererId          int64  `json:"referer_id,string"`
 	Enable             bool   `json:"enable"`
 	IsAdmin            bool   `json:"is_admin"`
 }
@@ -2843,7 +2843,7 @@ type UpdateUserNotifyRequest struct {
 }
 
 type UpdateUserNotifySettingRequest struct {
-	UserId                int64 `json:"user_id" validate:"required"`
+	UserId                int64 `json:"user_id,string" validate:"required"`
 	EnableBalanceNotify   bool  `json:"enable_balance_notify"`
 	EnableLoginNotify     bool  `json:"enable_login_notify"`
 	EnableSubscribeNotify bool  `json:"enable_subscribe_notify"`
@@ -2859,13 +2859,13 @@ type UpdateUserRulesRequest struct {
 }
 
 type UpdateUserSubscribeNoteRequest struct {
-	UserSubscribeId int64  `json:"user_subscribe_id" validate:"required"`
+	UserSubscribeId int64  `json:"user_subscribe_id,string" validate:"required"`
 	Note            string `json:"note" validate:"max=500"`
 }
 
 type UpdateUserSubscribeRequest struct {
-	UserSubscribeId int64 `json:"user_subscribe_id"`
-	SubscribeId     int64 `json:"subscribe_id"`
+	UserSubscribeId int64 `json:"user_subscribe_id,string"`
+	SubscribeId     int64 `json:"subscribe_id,string"`
 	Traffic         int64 `json:"traffic"`
 	ExpiredAt       int64 `json:"expired_at"`
 	Upload          int64 `json:"upload"`
@@ -2873,12 +2873,12 @@ type UpdateUserSubscribeRequest struct {
 }
 
 type UpdateUserTicketStatusRequest struct {
-	Id     int64  `json:"id" validate:"required"`
+	Id     int64  `json:"id,string" validate:"required"`
 	Status *uint8 `json:"status" validate:"required"`
 }
 
 type User struct {
-	Id                    int64            `json:"id"`
+	Id                    int64            `json:"id,string"`
 	Avatar                string           `json:"avatar"`
 	Balance               int64            `json:"balance"`
 	Commission            int64            `json:"commission"`
@@ -2887,7 +2887,7 @@ type User struct {
 	GiftAmount            int64            `json:"gift_amount"`
 	Telegram              int64            `json:"telegram"`
 	ReferCode             string           `json:"refer_code"`
-	RefererId             int64            `json:"referer_id"`
+	RefererId             int64            `json:"referer_id,string"`
 	Enable                bool             `json:"enable"`
 	IsAdmin               bool             `json:"is_admin,omitempty"`
 	EnableBalanceNotify   bool             `json:"enable_balance_notify"`
@@ -2917,7 +2917,7 @@ type UserAuthMethod struct {
 }
 
 type UserDevice struct {
-	Id         int64  `json:"id"`
+	Id         int64  `json:"id,string"`
 	Ip         string `json:"ip"`
 	Identifier string `json:"identifier"`
 	UserAgent  string `json:"user_agent"`
@@ -2928,8 +2928,8 @@ type UserDevice struct {
 }
 
 type UserLoginLog struct {
-	Id        int64  `json:"id"`
-	UserId    int64  `json:"user_id"`
+	Id        int64  `json:"id,string"`
+	UserId    int64  `json:"user_id,string"`
 	LoginIP   string `json:"login_ip"`
 	UserAgent string `json:"user_agent"`
 	Success   bool   `json:"success"`
@@ -2979,13 +2979,13 @@ type UserStatisticsResponse struct {
 }
 
 type UserSubscribe struct {
-	Id          int64     `json:"id"`
+	Id          int64     `json:"id,string"`
 	IdStr       string    `json:"id_str"`
-	UserId      int64     `json:"user_id"`
-	OrderId     int64     `json:"order_id"`
-	SubscribeId int64     `json:"subscribe_id"`
+	UserId      int64     `json:"user_id,string"`
+	OrderId     int64     `json:"order_id,string"`
+	SubscribeId int64     `json:"subscribe_id,string"`
 	Subscribe   Subscribe `json:"subscribe"`
-	NodeGroupId int64     `json:"node_group_id"`
+	NodeGroupId int64     `json:"node_group_id,string"`
 	GroupLocked bool      `json:"group_locked"`
 	StartTime   int64     `json:"start_time"`
 	ExpireTime  int64     `json:"expire_time"`
@@ -3002,13 +3002,13 @@ type UserSubscribe struct {
 }
 
 type UserSubscribeDetail struct {
-	Id          int64     `json:"id"`
-	UserId      int64     `json:"user_id"`
+	Id          int64     `json:"id,string"`
+	UserId      int64     `json:"user_id,string"`
 	User        User      `json:"user"`
-	OrderId     int64     `json:"order_id"`
-	SubscribeId int64     `json:"subscribe_id"`
+	OrderId     int64     `json:"order_id,string"`
+	SubscribeId int64     `json:"subscribe_id,string"`
 	Subscribe   Subscribe `json:"subscribe"`
-	NodeGroupId int64     `json:"node_group_id"`
+	NodeGroupId int64     `json:"node_group_id,string"`
 	GroupLocked bool      `json:"group_locked"`
 	StartTime   int64     `json:"start_time"`
 	ExpireTime  int64     `json:"expire_time"`
@@ -3023,10 +3023,10 @@ type UserSubscribeDetail struct {
 }
 
 type UserSubscribeInfo struct {
-	Id          int64                    `json:"id"`
-	UserId      int64                    `json:"user_id"`
-	OrderId     int64                    `json:"order_id"`
-	SubscribeId int64                    `json:"subscribe_id"`
+	Id          int64                    `json:"id,string"`
+	UserId      int64                    `json:"user_id,string"`
+	OrderId     int64                    `json:"order_id,string"`
+	SubscribeId int64                    `json:"subscribe_id,string"`
 	StartTime   int64                    `json:"start_time"`
 	ExpireTime  int64                    `json:"expire_time"`
 	FinishedAt  int64                    `json:"finished_at"`
@@ -3043,9 +3043,9 @@ type UserSubscribeInfo struct {
 }
 
 type UserSubscribeLog struct {
-	Id              int64  `json:"id"`
-	UserId          int64  `json:"user_id"`
-	UserSubscribeId int64  `json:"user_subscribe_id"`
+	Id              int64  `json:"id,string"`
+	UserId          int64  `json:"user_id,string"`
+	UserSubscribeId int64  `json:"user_subscribe_id,string"`
 	Token           string `json:"token"`
 	IP              string `json:"ip"`
 	UserAgent       string `json:"user_agent"`
@@ -3053,7 +3053,7 @@ type UserSubscribeLog struct {
 }
 
 type UserSubscribeNodeInfo struct {
-	Id              int64    `json:"id"`
+	Id              int64    `json:"id,string"`
 	Name            string   `json:"name"`
 	Uuid            string   `json:"uuid"`
 	Protocol        string   `json:"protocol"`
@@ -3071,13 +3071,13 @@ type UserSubscribeNodeInfo struct {
 }
 
 type UserSubscribeTrafficLog struct {
-	SubscribeId int64  `json:"subscribe_id"` // Subscribe ID
-	UserId      int64  `json:"user_id"`      // User ID
-	Upload      int64  `json:"upload"`       // Upload traffic in bytes
-	Download    int64  `json:"download"`     // Download traffic in bytes
-	Total       int64  `json:"total"`        // Total traffic in bytes (Upload + Download)
-	Date        string `json:"date"`         // Date in YYYY-MM-DD format
-	Details     bool   `json:"details"`      // Whether to show detailed traffic
+	SubscribeId int64  `json:"subscribe_id,string"` // Subscribe ID
+	UserId      int64  `json:"user_id,string"`      // User ID
+	Upload      int64  `json:"upload"`              // Upload traffic in bytes
+	Download    int64  `json:"download"`            // Download traffic in bytes
+	Total       int64  `json:"total"`               // Total traffic in bytes (Upload + Download)
+	Date        string `json:"date"`                // Date in YYYY-MM-DD format
+	Details     bool   `json:"details"`             // Whether to show detailed traffic
 }
 
 type UserTraffic struct {
@@ -3169,8 +3169,8 @@ type WeeklyStat struct {
 }
 
 type WithdrawalLog struct {
-	Id        int64  `json:"id"`
-	UserId    int64  `json:"user_id"`
+	Id        int64  `json:"id,string"`
+	UserId    int64  `json:"user_id,string"`
 	Amount    int64  `json:"amount"`
 	Content   string `json:"content"`
 	Status    uint8  `json:"status"`

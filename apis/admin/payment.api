@@ -25,7 +25,7 @@ type (
 		Enable      *bool       `json:"enable" validate:"required"`
 	}
 	UpdatePaymentMethodRequest {
-		Id          int64       `json:"id" validate:"required"`
+		Id          int64       `json:"id,string" validate:"required"`
 		Name        string      `json:"name" validate:"required"`
 		Platform    string      `json:"platform" validate:"required"`
 		Description string      `json:"description"`
@@ -39,7 +39,7 @@ type (
 		Enable      *bool       `json:"enable" validate:"required"`
 	}
 	DeletePaymentMethodRequest {
-		Id int64 `json:"id" validate:"required"`
+		Id int64 `json:"id,string" validate:"required"`
 	}
 	GetPaymentMethodListRequest {
 		Page     int    `form:"page"`

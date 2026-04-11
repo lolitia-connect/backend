@@ -36,11 +36,11 @@ type (
 		List  []MessageLog `json:"list"`
 	}
 	SubscribeLog {
-		UserId          int64  `json:"user_id"`
+		UserId          int64  `json:"user_id,string"`
 		Token           string `json:"token"`
 		UserAgent       string `json:"user_agent"`
 		ClientIP        string `json:"client_ip"`
-		UserSubscribeId int64  `json:"user_subscribe_id"`
+		UserSubscribeId int64  `json:"user_subscribe_id,string"`
 		Timestamp       int64  `json:"timestamp"`
 	}
 	FilterSubscribeLogRequest {
@@ -53,7 +53,7 @@ type (
 		List  []SubscribeLog `json:"list"`
 	}
 	LoginLog {
-		UserId    int64  `json:"user_id"`
+		UserId    int64  `json:"user_id,string"`
 		Method    string `json:"method"`
 		LoginIP   string `json:"login_ip"`
 		UserAgent string `json:"user_agent"`
@@ -69,7 +69,7 @@ type (
 		List  []LoginLog `json:"list"`
 	}
 	RegisterLog {
-		UserId     int64  `json:"user_id"`
+		UserId     int64  `json:"user_id,string"`
 		AuthMethod string `json:"auth_method"`
 		Identifier string `json:"identifier"`
 		RegisterIP string `json:"register_ip"`
@@ -86,8 +86,8 @@ type (
 	}
 	ResetSubscribeLog {
 		Type            uint16 `json:"type"`
-		UserId          int64  `json:"user_id"`
-		UserSubscribeId int64  `json:"user_subscribe_id"`
+		UserId          int64  `json:"user_id,string"`
+		UserSubscribeId int64  `json:"user_subscribe_id,string"`
 		OrderNo         string `json:"order_no,omitempty"`
 		Timestamp       int64  `json:"timestamp"`
 	}
@@ -100,8 +100,8 @@ type (
 		List  []ResetSubscribeLog `json:"list"`
 	}
 	UserSubscribeTrafficLog {
-		SubscribeId int64  `json:"subscribe_id"` // Subscribe ID
-		UserId      int64  `json:"user_id"` // User ID
+		SubscribeId int64  `json:"subscribe_id,string"` // Subscribe ID
+		UserId      int64  `json:"user_id,string"` // User ID
 		Upload      int64  `json:"upload"` // Upload traffic in bytes
 		Download    int64  `json:"download"` // Download traffic in bytes
 		Total       int64  `json:"total"` // Total traffic in bytes (Upload + Download)
@@ -118,7 +118,7 @@ type (
 		List  []UserSubscribeTrafficLog `json:"list"`
 	}
 	ServerTrafficLog {
-		ServerId int64  `json:"server_id"` // Server ID
+		ServerId int64  `json:"server_id,string"` // Server ID
 		Upload   int64  `json:"upload"` // Upload traffic in bytes
 		Download int64  `json:"download"` // Download traffic in bytes
 		Total    int64  `json:"total"` // Total traffic in bytes (Upload + Download)
@@ -151,9 +151,9 @@ type (
 	}
 	GiftLog {
 		Type        uint16 `json:"type"`
-		userId      int64  `json:"user_id"`
+		userId      int64  `json:"user_id,string"`
 		OrderNo     string `json:"order_no"`
-		SubscribeId int64  `json:"subscribe_id"`
+		SubscribeId int64  `json:"subscribe_id,string"`
 		Amount      int64  `json:"amount"`
 		Balance     int64  `json:"balance"`
 		Remark      string `json:"remark,omitempty"`
@@ -168,10 +168,10 @@ type (
 		List  []GiftLog `json:"list"`
 	}
 	TrafficLogDetails {
-		Id          int64 `json:"id"`
-		ServerId    int64 `json:"server_id"`
-		UserId      int64 `json:"user_id"`
-		SubscribeId int64 `json:"subscribe_id"`
+		Id          int64 `json:"id,string"`
+		ServerId    int64 `json:"server_id,string"`
+		UserId      int64 `json:"user_id,string"`
+		SubscribeId int64 `json:"subscribe_id,string"`
 		Download    int64 `json:"download"`
 		Upload      int64 `json:"upload"`
 		Timestamp   int64 `json:"timestamp"`

@@ -41,13 +41,13 @@ type (
 		ExpiredAt int64  `json:"expired_at"`
 	}
 	PreUnsubscribeRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	PreUnsubscribeResponse {
 		DeductionAmount int64 `json:"deduction_amount"`
 	}
 	UnsubscribeRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	BindOAuthRequest {
 		Method   string `json:"method"`
@@ -99,10 +99,10 @@ type (
 		Total int64        `json:"total"`
 	}
 	UnbindDeviceRequest {
-		Id int64 `json:"id" validate:"required"`
+		Id int64 `json:"id,string" validate:"required"`
 	}
 	UpdateUserSubscribeNoteRequest {
-		UserSubscribeId int64  `json:"user_subscribe_id" validate:"required"`
+		UserSubscribeId int64  `json:"user_subscribe_id,string" validate:"required"`
 		Note            string `json:"note" validate:"max=500"`
 	}
 	UpdateUserRulesRequest {
@@ -113,8 +113,8 @@ type (
 		Content string `json:"content"`
 	}
 	WithdrawalLog {
-		Id        int64  `json:"id"`
-		UserId    int64  `json:"user_id"`
+		Id        int64  `json:"id,string"`
+		UserId    int64  `json:"user_id,string"`
 		Amount    int64  `json:"amount"`
 		Content   string `json:"content"`
 		Status    uint8  `json:"status"`

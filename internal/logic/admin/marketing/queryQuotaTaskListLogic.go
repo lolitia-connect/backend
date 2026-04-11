@@ -7,6 +7,7 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/tool"
 )
 
 type QueryQuotaTaskListLogic struct {
@@ -58,7 +59,7 @@ func (l *QueryQuotaTaskListLogic) QueryQuotaTaskList(req *types.QueryQuotaTaskLi
 		}
 		list = append(list, types.QuotaTask{
 			Id:           item.Id,
-			Subscribers:  scopeInfo.Subscribers,
+			Subscribers:  tool.Int64SliceToStringSlice(scopeInfo.Subscribers),
 			IsActive:     scopeInfo.IsActive,
 			StartTime:    scopeInfo.StartTime,
 			EndTime:      scopeInfo.EndTime,
@@ -66,7 +67,7 @@ func (l *QueryQuotaTaskListLogic) QueryQuotaTaskList(req *types.QueryQuotaTaskLi
 			Days:         contentInfo.Days,
 			GiftType:     contentInfo.GiftType,
 			GiftValue:    contentInfo.GiftValue,
-			Objects:      scopeInfo.Objects,
+			Objects:      tool.Int64SliceToStringSlice(scopeInfo.Objects),
 			Status:       uint8(item.Status),
 			Total:        int64(item.Total),
 			Current:      int64(item.Current),

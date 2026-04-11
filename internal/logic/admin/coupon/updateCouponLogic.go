@@ -33,7 +33,7 @@ func (l *UpdateCouponLogic) UpdateCoupon(req *types.UpdateCouponRequest) error {
 	couponInfo := &coupon.Coupon{}
 	// update coupon
 	tool.DeepCopy(couponInfo, req)
-	couponInfo.Subscribe = tool.Int64SliceToString(req.Subscribe)
+	couponInfo.Subscribe = tool.Int64SliceToString(tool.StringSliceToInt64Slice(req.Subscribe))
 	err := l.svcCtx.CouponModel.Update(l.ctx, couponInfo)
 	if err != nil {
 		l.Errorw("[UpdateCoupon] Database Error", logger.Field("error", err.Error()))

@@ -29,11 +29,11 @@ type (
 		Id int64 `form:"id" validate:"required"`
 	}
 	UpdateUserTicketStatusRequest {
-		Id     int64  `json:"id" validate:"required"`
+		Id     int64  `json:"id,string" validate:"required"`
 		Status *uint8 `json:"status" validate:"required"`
 	}
 	CreateUserTicketFollowRequest {
-		TicketId int64  `json:"ticket_id"`
+		TicketId int64  `json:"ticket_id,string"`
 		From     string `json:"from"`
 		Type     uint8  `json:"type"`
 		Content  string `json:"content"`

@@ -12,7 +12,7 @@ import "../types.api"
 
 type (
 	CreateOrderRequest {
-		UserId         int64  `json:"user_id" validate:"required"`
+		UserId         int64  `json:"user_id,string" validate:"required"`
 		Type           uint8  `json:"type" validate:"required"`
 		Quantity       int64  `json:"quantity,omitempty" validate:"omitempty,lte=1000"`
 		Price          int64  `json:"price" validate:"required,gte=0,lte=2000000000"`
@@ -22,15 +22,15 @@ type (
 		CouponDiscount int64  `json:"coupon_discount,omitempty" validate:"omitempty,gte=0,lte=2000000000"`
 		Commission     int64  `json:"commission" validate:"gte=0,lte=2000000000"`
 		FeeAmount      int64  `json:"fee_amount" validate:"required,gte=0,lte=2000000000"`
-		PaymentId      int64  `json:"payment_id" validate:"required"`
+		PaymentId      int64  `json:"payment_id,string" validate:"required"`
 		TradeNo        string `json:"trade_no,omitempty"`
 		Status         uint8  `json:"status,omitempty"`
-		SubscribeId    int64  `json:"subscribe_id,omitempty"`
+		SubscribeId    int64  `json:"subscribe_id,omitempty,string"`
 	}
 	UpdateOrderStatusRequest {
-		Id        int64  `json:"id" validate:"required"`
+		Id        int64  `json:"id,string" validate:"required"`
 		Status    uint8  `json:"status" validate:"required"`
-		PaymentId int64  `json:"payment_id,omitempty"`
+		PaymentId int64  `json:"payment_id,omitempty,string"`
 		TradeNo   string `json:"trade_no,omitempty"`
 	}
 	GetOrderListRequest {

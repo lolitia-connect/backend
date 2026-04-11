@@ -19,7 +19,7 @@ type (
 		Description string `json:"description"`
 	}
 	UpdateSubscribeGroupRequest {
-		Id          int64  `json:"id" validate:"required"`
+		Id          int64  `json:"id,string" validate:"required"`
 		Name        string `json:"name" validate:"required"`
 		Description string `json:"description"`
 	}
@@ -28,10 +28,10 @@ type (
 		Total int64            `json:"total"`
 	}
 	DeleteSubscribeGroupRequest {
-		Id int64 `json:"id" validate:"required"`
+		Id int64 `json:"id,string" validate:"required"`
 	}
 	BatchDeleteSubscribeGroupRequest {
-		Ids []int64 `json:"ids" validate:"required"`
+		Ids []string `json:"ids" validate:"required"`
 	}
 	CreateSubscribeRequest {
 		Name              string              `json:"name" validate:"required"`
@@ -48,8 +48,8 @@ type (
 		Quota             int64               `json:"quota"`
 		Nodes             []int64             `json:"nodes"`
 		NodeTags          []string            `json:"node_tags"`
-		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
-		NodeGroupId       int64               `json:"node_group_id"`
+		NodeGroupIds      []string             `json:"node_group_ids,omitempty"`
+		NodeGroupId       int64               `json:"node_group_id,string"`
 		TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 		Show              *bool               `json:"show"`
 		Sell              *bool               `json:"sell"`
@@ -61,7 +61,7 @@ type (
 		AutoCreateGroup   bool                `json:"auto_create_group"`
 	}
 	UpdateSubscribeRequest {
-		Id                int64               `json:"id" validate:"required"`
+		Id                int64               `json:"id,string" validate:"required"`
 		Name              string              `json:"name" validate:"required"`
 		Language          string              `json:"language"`
 		Description       string              `json:"description"`
@@ -76,8 +76,8 @@ type (
 		Quota             int64               `json:"quota"`
 		Nodes             []int64             `json:"nodes"`
 		NodeTags          []string            `json:"node_tags"`
-		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
-		NodeGroupId       int64               `json:"node_group_id"`
+		NodeGroupIds      []string             `json:"node_group_ids,omitempty"`
+		NodeGroupId       int64               `json:"node_group_id,string"`
 		TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 		Show              *bool               `json:"show"`
 		Sell              *bool               `json:"sell"`
@@ -107,10 +107,10 @@ type (
 		Total int64           `json:"total"`
 	}
 	DeleteSubscribeRequest {
-		Id int64 `json:"id" validate:"required"`
+		Id int64 `json:"id,string" validate:"required"`
 	}
 	BatchDeleteSubscribeRequest {
-		Ids []int64 `json:"ids" validate:"required"`
+		Ids []string `json:"ids" validate:"required"`
 	}
 	ResetAllSubscribeTokenResponse {
 		Success bool `json:"success"`

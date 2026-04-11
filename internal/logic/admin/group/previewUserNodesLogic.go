@@ -333,7 +333,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					Protocol:     ng.Node.Protocol,
 					Enabled:      ng.Node.Enabled,
 					Sort:         ng.Node.Sort,
-					NodeGroupIds: []int64(ng.Node.NodeGroupIds),
+					NodeGroupIds: tool.Int64SliceToStringSlice([]int64(ng.Node.NodeGroupIds)),
 					CreatedAt:    ng.Node.CreatedAt.Unix(),
 					UpdatedAt:    ng.Node.UpdatedAt.Unix(),
 				}
@@ -362,7 +362,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					Protocol:     ng.Node.Protocol,
 					Enabled:      ng.Node.Enabled,
 					Sort:         ng.Node.Sort,
-					NodeGroupIds: []int64(ng.Node.NodeGroupIds),
+					NodeGroupIds: tool.Int64SliceToStringSlice([]int64(ng.Node.NodeGroupIds)),
 					CreatedAt:    ng.Node.CreatedAt.Unix(),
 					UpdatedAt:    ng.Node.UpdatedAt.Unix(),
 				}
@@ -485,7 +485,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 				Protocol:     n.Protocol,
 				Enabled:      n.Enabled,
 				Sort:         n.Sort,
-				NodeGroupIds: []int64(n.NodeGroupIds),
+				NodeGroupIds: tool.Int64SliceToStringSlice([]int64(n.NodeGroupIds)),
 				CreatedAt:    n.CreatedAt.Unix(),
 				UpdatedAt:    n.UpdatedAt.Unix(),
 			}
@@ -545,7 +545,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					Protocol:     n.Protocol,
 					Enabled:      n.Enabled,
 					Sort:         n.Sort,
-					NodeGroupIds: []int64(n.NodeGroupIds),
+					NodeGroupIds: tool.Int64SliceToStringSlice([]int64(n.NodeGroupIds)),
 					CreatedAt:    n.CreatedAt.Unix(),
 					UpdatedAt:    n.UpdatedAt.Unix(),
 				})

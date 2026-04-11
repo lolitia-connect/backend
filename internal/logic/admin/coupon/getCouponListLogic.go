@@ -39,7 +39,7 @@ func (l *GetCouponListLogic) GetCouponList(req *types.GetCouponListRequest) (res
 	for _, coupon := range list {
 		couponInfo := types.Coupon{}
 		tool.DeepCopy(&couponInfo, coupon)
-		couponInfo.Subscribe = tool.StringToInt64Slice(coupon.Subscribe)
+		couponInfo.Subscribe = tool.Int64SliceToStringSlice(tool.StringToInt64Slice(coupon.Subscribe))
 		resp.List = append(resp.List, couponInfo)
 	}
 	return

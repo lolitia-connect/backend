@@ -29,12 +29,13 @@ func NewBatchDeleteUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *B
 
 func (l *BatchDeleteUserLogic) BatchDeleteUser(req *types.BatchDeleteUserRequest) error {
 	isDemo := strings.ToLower(os.Getenv("PPANEL_MODE")) == "demo"
+	ids := tool.StringSliceToInt64Slice(req.Ids)
 
-	if tool.Contains(req.Ids, 2) && isDemo {
+	if tool.Contains(ids, int64(2)) && isDemo {
 		return errors.Wrapf(xerr.NewErrCodeMsg(503, "Demo mode does not allow deletion of the admin user"), "BatchDeleteUser failed: cannot delete admin user in demo mode")
 	}
 
-	err := l.svcCtx.UserModel.BatchDeleteUser(l.ctx, req.Ids)
+	err := l.svcCtx.UserModel.BatchDeleteUser(l.ctx, ids)
 	if err != nil {
 		l.Logger.Error("[BatchDeleteUserLogic] BatchDeleteUser failed: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "BatchDeleteUser failed: %v", err.Error())

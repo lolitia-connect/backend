@@ -6,6 +6,7 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 )
@@ -27,7 +28,7 @@ func NewBatchDeleteCouponLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 
 func (l *BatchDeleteCouponLogic) BatchDeleteCoupon(req *types.BatchDeleteCouponRequest) error {
 	// batch delete coupon by ids
-	err := l.svcCtx.CouponModel.BatchDelete(l.ctx, req.Ids)
+	err := l.svcCtx.CouponModel.BatchDelete(l.ctx, tool.StringSliceToInt64Slice(req.Ids))
 	if err != nil {
 		l.Errorw("[BatchDeleteCoupon] Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "batch delete coupon error: %v", err.Error())

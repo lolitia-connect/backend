@@ -21,7 +21,7 @@ type (
 		Limit             uint64 `json:"limit,omitempty"`
 	}
 	BatchSendEmailTask {
-		Id                int64  `json:"id"`
+		Id                int64  `json:"id,string"`
 		Subject           string `json:"subject"`
 		Content           string `json:"content"`
 		Recipients        string `json:"recipients"`
@@ -50,7 +50,7 @@ type (
 		List  []BatchSendEmailTask `json:"list"`
 	}
 	StopBatchSendEmailTaskRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	GetPreSendEmailCountRequest {
 		Scope             int8  `json:"scope"`
@@ -61,7 +61,7 @@ type (
 		Count int64 `json:"count"`
 	}
 	GetBatchSendEmailTaskStatusRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	GetBatchSendEmailTaskStatusResponse {
 		Status  uint8  `json:"status"`
@@ -70,7 +70,7 @@ type (
 		Errors  string `json:"errors"`
 	}
 	CreateQuotaTaskRequest {
-		Subscribers  []int64 `json:"subscribers"`
+		Subscribers  []string `json:"subscribers"`
 		IsActive     *bool   `json:"is_active"`
 		StartTime    int64   `json:"start_time"`
 		EndTime      int64   `json:"end_time"`
@@ -80,8 +80,8 @@ type (
 		GiftValue    uint64  `json:"gift_value"`
 	}
 	QuotaTask {
-		Id           int64   `json:"id"`
-		Subscribers  []int64 `json:"subscribers"`
+		Id           int64   `json:"id,string"`
+		Subscribers  []string `json:"subscribers"`
 		IsActive     *bool   `json:"is_active"`
 		StartTime    int64   `json:"start_time"`
 		EndTime      int64   `json:"end_time"`
@@ -89,7 +89,7 @@ type (
 		Days         uint64  `json:"days"`
 		GiftType     uint8   `json:"gift_type"`
 		GiftValue    uint64  `json:"gift_value"`
-		Objects      []int64 `json:"objects"` // UserSubscribe IDs
+		Objects      []string `json:"objects"` // UserSubscribe IDs
 		Status       uint8   `json:"status"`
 		Total        int64   `json:"total"`
 		Current      int64   `json:"current"`
@@ -98,7 +98,7 @@ type (
 		UpdatedAt    int64   `json:"updated_at"`
 	}
 	QueryQuotaTaskPreCountRequest {
-		Subscribers []int64 `json:"subscribers"`
+		Subscribers []string `json:"subscribers"`
 		IsActive    *bool   `json:"is_active"`
 		StartTime   int64   `json:"start_time"`
 		EndTime     int64   `json:"end_time"`
@@ -116,7 +116,7 @@ type (
 		List  []QuotaTask `json:"list"`
 	}
 	QueryQuotaTaskStatusRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	QueryQuotaTaskStatusResponse {
 		Status  uint8  `json:"status"`

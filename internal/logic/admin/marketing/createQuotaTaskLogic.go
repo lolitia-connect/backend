@@ -11,6 +11,7 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queueType "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
@@ -33,9 +34,10 @@ func NewCreateQuotaTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *C
 
 func (l *CreateQuotaTaskLogic) CreateQuotaTask(req *types.CreateQuotaTaskRequest) error {
 	var subs []*user.Subscribe
+	subscribeIDs := tool.StringSliceToInt64Slice(req.Subscribers)
 	query := l.svcCtx.DB.WithContext(l.ctx).Model(&user.Subscribe{})
-	if len(req.Subscribers) > 0 {
-		query = query.Where("`subscribe_id` IN ?", req.Subscribers)
+	if len(subscribeIDs) > 0 {
+		query = query.Where("`subscribe_id` IN ?", subscribeIDs)
 	}
 
 	if req.IsActive != nil && *req.IsActive {
@@ -63,7 +65,7 @@ func (l *CreateQuotaTaskLogic) CreateQuotaTask(req *types.CreateQuotaTaskRequest
 	}
 
 	scopeInfo := task.QuotaScope{
-		Subscribers: req.Subscribers,
+		Subscribers: subscribeIDs,
 		IsActive:    req.IsActive,
 		StartTime:   req.StartTime,
 		EndTime:     req.EndTime,

@@ -34,7 +34,7 @@ type (
 		Id int64 `form:"id" validate:"required"`
 	}
 	UpdateUserBasiceInfoRequest {
-		UserId             int64  `json:"user_id" validate:"required"`
+		UserId             int64  `json:"user_id,string" validate:"required"`
 		Password           string `json:"password"`
 		Avatar             string `json:"avatar"`
 		Balance            int64  `json:"balance"`
@@ -44,12 +44,12 @@ type (
 		GiftAmount         int64  `json:"gift_amount"`
 		Telegram           int64  `json:"telegram"`
 		ReferCode          string `json:"refer_code"`
-		RefererId          int64  `json:"referer_id"`
+		RefererId          int64  `json:"referer_id,string"`
 		Enable             bool   `json:"enable"`
 		IsAdmin            bool   `json:"is_admin"`
 	}
 	UpdateUserNotifySettingRequest {
-		UserId                int64 `json:"user_id" validate:"required"`
+		UserId                int64 `json:"user_id,string" validate:"required"`
 		EnableBalanceNotify   bool  `json:"enable_balance_notify"`
 		EnableLoginNotify     bool  `json:"enable_login_notify"`
 		EnableSubscribeNotify bool  `json:"enable_subscribe_notify"`
@@ -60,7 +60,7 @@ type (
 		Telephone          string `json:"telephone"`
 		TelephoneAreaCode  string `json:"telephone_area_code"`
 		Password           string `json:"password"`
-		ProductId          int64  `json:"product_id"`
+		ProductId          int64  `json:"product_id,string"`
 		Duration           int64  `json:"duration"`
 		ReferralPercentage uint8  `json:"referral_percentage"`
 		OnlyFirstPurchase  bool   `json:"only_first_purchase"`
@@ -72,13 +72,13 @@ type (
 		IsAdmin            bool   `json:"is_admin"`
 	}
 	UserSubscribeDetail {
-		Id          int64     `json:"id"`
-		UserId      int64     `json:"user_id"`
+		Id          int64     `json:"id,string"`
+		UserId      int64     `json:"user_id,string"`
 		User        User      `json:"user"`
-		OrderId     int64     `json:"order_id"`
-		SubscribeId int64     `json:"subscribe_id"`
+		OrderId     int64     `json:"order_id,string"`
+		SubscribeId int64     `json:"subscribe_id,string"`
 		Subscribe   Subscribe `json:"subscribe"`
-		NodeGroupId int64     `json:"node_group_id"`
+		NodeGroupId int64     `json:"node_group_id,string"`
 		GroupLocked bool      `json:"group_locked"`
 		StartTime   int64     `json:"start_time"`
 		ExpireTime  int64     `json:"expire_time"`
@@ -92,30 +92,30 @@ type (
 		UpdatedAt   int64     `json:"updated_at"`
 	}
 	BatchDeleteUserRequest {
-		Ids []int64 `json:"ids" validate:"required"`
+		Ids []string `json:"ids" validate:"required"`
 	}
 	DeleteUserDeivceRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	KickOfflineRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	CreateUserAuthMethodRequest {
-		UserId         int64  `json:"user_id"`
+		UserId         int64  `json:"user_id,string"`
 		AuthType       string `json:"auth_type"`
 		AuthIdentifier string `json:"auth_identifier"`
 	}
 	DeleteUserAuthMethodRequest {
-		UserId   int64  `json:"user_id"`
+		UserId   int64  `json:"user_id,string"`
 		AuthType string `json:"auth_type"`
 	}
 	UpdateUserAuthMethodRequest {
-		UserId         int64  `json:"user_id"`
+		UserId         int64  `json:"user_id,string"`
 		AuthType       string `json:"auth_type"`
 		AuthIdentifier string `json:"auth_identifier"`
 	}
 	GetUserAuthMethodRequest {
-		UserId int64 `json:"user_id"`
+		UserId int64 `json:"user_id,string"`
 	}
 	GetUserAuthMethodResponse {
 		AuthMethods []UserAuthMethod `json:"auth_methods"`
@@ -150,14 +150,14 @@ type (
 		Total int64        `json:"total"`
 	}
 	CreateUserSubscribeRequest {
-		UserId      int64 `json:"user_id"`
+		UserId      int64 `json:"user_id,string"`
 		ExpiredAt   int64 `json:"expired_at"`
 		Traffic     int64 `json:"traffic"`
-		SubscribeId int64 `json:"subscribe_id"`
+		SubscribeId int64 `json:"subscribe_id,string"`
 	}
 	UpdateUserSubscribeRequest {
-		UserSubscribeId int64 `json:"user_subscribe_id"`
-		SubscribeId     int64 `json:"subscribe_id"`
+		UserSubscribeId int64 `json:"user_subscribe_id,string"`
+		SubscribeId     int64 `json:"subscribe_id,string"`
 		Traffic         int64 `json:"traffic"`
 		ExpiredAt       int64 `json:"expired_at"`
 		Upload          int64 `json:"upload"`
@@ -188,10 +188,10 @@ type (
 		Id int64 `form:"id" validate:"required"`
 	}
 	ToggleUserSubscribeStatusRequest {
-		UserSubscribeId int64 `json:"user_subscribe_id"`
+		UserSubscribeId int64 `json:"user_subscribe_id,string"`
 	}
 	ResetUserSubscribeTrafficRequest {
-		UserSubscribeId int64 `json:"user_subscribe_id"`
+		UserSubscribeId int64 `json:"user_subscribe_id,string"`
 	}
 )
 

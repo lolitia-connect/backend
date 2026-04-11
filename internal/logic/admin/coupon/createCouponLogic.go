@@ -39,7 +39,7 @@ func (l *CreateCouponLogic) CreateCoupon(req *types.CreateCouponRequest) error {
 	}
 	couponInfo := &coupon.Coupon{}
 	tool.DeepCopy(couponInfo, req)
-	couponInfo.Subscribe = tool.Int64SliceToString(req.Subscribe)
+	couponInfo.Subscribe = tool.Int64SliceToString(tool.StringSliceToInt64Slice(req.Subscribe))
 	err := l.svcCtx.CouponModel.Insert(l.ctx, couponInfo)
 	if err != nil {
 		l.Errorw("[CreateCoupon] Database Error", logger.Field("error", err.Error()))

@@ -14,7 +14,7 @@ import (
 
 type (
 	UpdateAuthMethodConfigRequest {
-		Id      int64       `json:"id"`
+		Id      int64       `json:"id,string"`
 		Method  string      `json:"method"`
 		Config  interface{} `json:"config"`
 		Enabled *bool       `json:"enabled"`

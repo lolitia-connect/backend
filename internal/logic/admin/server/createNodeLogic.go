@@ -38,7 +38,7 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 		Protocol:     req.Protocol,
 		NodeType:     req.NodeType,
 		IsHidden:     req.IsHidden,
-		NodeGroupIds: node.JSONInt64Slice(req.NodeGroupIds),
+		NodeGroupIds: node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds)),
 	}
 	err := l.svcCtx.NodeModel.InsertNode(l.ctx, &data)
 	if err != nil {

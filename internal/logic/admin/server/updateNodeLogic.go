@@ -42,7 +42,7 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 	data.Enabled = req.Enabled
 	data.NodeType = req.NodeType
 	data.IsHidden = req.IsHidden
-	data.NodeGroupIds = node.JSONInt64Slice(req.NodeGroupIds)
+	data.NodeGroupIds = node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds))
 	err = l.svcCtx.NodeModel.UpdateNode(l.ctx, data)
 	if err != nil {
 		l.Errorw("[UpdateNode] Update Database Error: ", logger.Field("error", err.Error()))

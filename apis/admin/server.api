@@ -17,9 +17,9 @@ type (
 	}
 	ServerOnlineUser {
 		IP          []ServerOnlineIP `json:"ip"`
-		UserId      int64            `json:"user_id"`
+		UserId      int64            `json:"user_id,string"`
 		Subscribe   string           `json:"subscribe"`
-		SubscribeId int64            `json:"subscribe_id"`
+		SubscribeId int64            `json:"subscribe_id,string"`
 		Traffic     int64            `json:"traffic"`
 		ExpiredAt   int64            `json:"expired_at"`
 	}
@@ -32,7 +32,7 @@ type (
 		Status   string             `json:"status"`
 	}
 	Server {
-		Id             int64        `json:"id"`
+		Id             int64        `json:"id,string"`
 		Name           string       `json:"name"`
 		Country        string       `json:"country"`
 		City           string       `json:"city"`
@@ -53,7 +53,7 @@ type (
 		Protocols []Protocol `json:"protocols"`
 	}
 	UpdateServerRequest {
-		Id        int64      `json:"id"`
+		Id        int64      `json:"id,string"`
 		Name      string     `json:"name"`
 		Country   string     `json:"country,omitempty"`
 		City      string     `json:"city,omitempty"`
@@ -62,7 +62,7 @@ type (
 		Protocols []Protocol `json:"protocols"`
 	}
 	DeleteServerRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	FilterServerListRequest {
 		Page   int    `form:"page"`
@@ -80,19 +80,19 @@ type (
 		Protocols []Protocol `json:"protocols"`
 	}
 	Node {
-		Id           int64    `json:"id"`
+		Id           int64    `json:"id,string"`
 		Name         string   `json:"name"`
 		Tags         []string `json:"tags"`
 		Port         uint16   `json:"port"`
 		Address      string   `json:"address"`
-		ServerId     int64    `json:"server_id"`
+		ServerId     int64    `json:"server_id,string"`
 		Protocol     string   `json:"protocol"`
 		Enabled      *bool    `json:"enabled"`
 		NodeType     string   `json:"node_type"` // front: 前置节点, landing: 落地节点
 		IsHidden     *bool    `json:"is_hidden"`
 		Sort         int      `json:"sort,omitempty"`
-		NodeGroupId  int64    `json:"node_group_id,omitempty"`
-		NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+		NodeGroupId  int64    `json:"node_group_id,omitempty,string"`
+		NodeGroupIds []string  `json:"node_group_ids,omitempty"`
 		CreatedAt    int64    `json:"created_at"`
 		UpdatedAt    int64    `json:"updated_at"`
 	}
@@ -101,32 +101,32 @@ type (
 		Tags         []string `json:"tags,omitempty"`
 		Port         uint16   `json:"port"`
 		Address      string   `json:"address"`
-		ServerId     int64    `json:"server_id"`
+		ServerId     int64    `json:"server_id,string"`
 		Protocol     string   `json:"protocol"`
 		Enabled      *bool    `json:"enabled"`
 		NodeType     string   `json:"node_type,omitempty"`
 		IsHidden     *bool    `json:"is_hidden,omitempty"`
-		NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+		NodeGroupIds []string  `json:"node_group_ids,omitempty"`
 	}
 	UpdateNodeRequest {
-		Id           int64    `json:"id"`
+		Id           int64    `json:"id,string"`
 		Name         string   `json:"name"`
 		Tags         []string `json:"tags,omitempty"`
 		Port         uint16   `json:"port"`
 		Address      string   `json:"address"`
-		ServerId     int64    `json:"server_id"`
+		ServerId     int64    `json:"server_id,string"`
 		Protocol     string   `json:"protocol"`
 		Enabled      *bool    `json:"enabled"`
 		NodeType     string   `json:"node_type,omitempty"`
 		IsHidden     *bool    `json:"is_hidden,omitempty"`
-		NodeGroupIds []int64  `json:"node_group_ids,omitempty"`
+		NodeGroupIds []string  `json:"node_group_ids,omitempty"`
 	}
 	ToggleNodeStatusRequest {
-		Id     int64 `json:"id"`
+		Id     int64 `json:"id,string"`
 		Enable *bool `json:"enable"`
 	}
 	DeleteNodeRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	FilterNodeListRequest {
 		Page        int    `form:"page"`

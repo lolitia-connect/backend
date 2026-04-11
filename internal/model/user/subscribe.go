@@ -120,6 +120,15 @@ func (m *defaultUserModel) UpdateSubscribe(ctx context.Context, data *Subscribe,
 		return err
 	}
 
+	if data.GroupLocked == nil {
+		if old.GroupLocked != nil {
+			data.GroupLocked = old.GroupLocked
+		} else {
+			groupLocked := false
+			data.GroupLocked = &groupLocked
+		}
+	}
+
 	// 使用 defer 确保更新后清理缓存
 	defer func() {
 		if clearErr := m.ClearSubscribeCacheByModels(ctx, old, data); clearErr != nil {

@@ -61,7 +61,7 @@ func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (
 			NodeType:     datum.NodeType,
 			IsHidden:     datum.IsHidden,
 			Sort:         datum.Sort,
-			NodeGroupIds: []int64(datum.NodeGroupIds),
+			NodeGroupIds: tool.Int64SliceToStringSlice([]int64(datum.NodeGroupIds)),
 			CreatedAt:    datum.CreatedAt.UnixMilli(),
 			UpdatedAt:    datum.UpdatedAt.UnixMilli(),
 		})

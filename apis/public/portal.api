@@ -15,8 +15,8 @@ type (
 		AuthType       string `json:"auth_type"`
 		Identifier     string `json:"identifier"`
 		Password       string `json:"password,omitempty"`
-		Payment        int64  `json:"payment"`
-		SubscribeId    int64  `json:"subscribe_id"`
+		Payment        int64  `json:"payment,string"`
+		SubscribeId    int64  `json:"subscribe_id,string"`
 		Quantity       int64  `json:"quantity"`
 		Coupon         string `json:"coupon,omitempty"`
 		InviteCode     string `json:"invite_code,omitempty"`
@@ -32,8 +32,8 @@ type (
 		List []Subscribe `json:"list"`
 	}
 	PrePurchaseOrderRequest {
-		Payment     int64  `json:"payment,omitempty"`
-		SubscribeId int64  `json:"subscribe_id"`
+		Payment     int64  `json:"payment,omitempty,string"`
+		SubscribeId int64  `json:"subscribe_id,string"`
 		Quantity    int64  `json:"quantity"`
 		Coupon      string `json:"coupon,omitempty"`
 	}

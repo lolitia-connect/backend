@@ -20,12 +20,12 @@ type (
 		StartTime  int64   `json:"start_time" validate:"required"`
 		ExpireTime int64   `json:"expire_time" validate:"required"`
 		UserLimit  int64   `json:"user_limit,omitempty"`
-		Subscribe  []int64 `json:"subscribe,omitempty"`
+		Subscribe  []string `json:"subscribe,omitempty"`
 		UsedCount  int64   `json:"used_count,omitempty"`
 		Enable     *bool   `json:"enable,omitempty"`
 	}
 	UpdateCouponRequest {
-		Id         int64   `json:"id" validate:"required"`
+		Id         int64   `json:"id,string" validate:"required"`
 		Name       string  `json:"name" validate:"required"`
 		Code       string  `json:"code,omitempty"`
 		Count      int64   `json:"count,omitempty"`
@@ -34,15 +34,15 @@ type (
 		StartTime  int64   `json:"start_time" validate:"required"`
 		ExpireTime int64   `json:"expire_time" validate:"required"`
 		UserLimit  int64   `json:"user_limit,omitempty"`
-		Subscribe  []int64 `json:"subscribe,omitempty"`
+		Subscribe  []string `json:"subscribe,omitempty"`
 		UsedCount  int64   `json:"used_count,omitempty"`
 		Enable     *bool   `json:"enable,omitempty"`
 	}
 	DeleteCouponRequest {
-		Id int64 `json:"id" validate:"required"`
+		Id int64 `json:"id,string" validate:"required"`
 	}
 	BatchDeleteCouponRequest {
-		Ids []int64 `json:"ids" validate:"required"`
+		Ids []string `json:"ids" validate:"required"`
 	}
 	GetCouponListRequest {
 		Page      int64  `form:"page" validate:"required"`

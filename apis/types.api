@@ -10,7 +10,7 @@ info (
 
 type (
 	User {
-		Id                    int64            `json:"id"`
+		Id                    int64            `json:"id,string"`
 		Avatar                string           `json:"avatar"`
 		Balance               int64            `json:"balance"`
 		Commission            int64            `json:"commission"`
@@ -19,7 +19,7 @@ type (
 		GiftAmount            int64            `json:"gift_amount"`
 		Telegram              int64            `json:"telegram"`
 		ReferCode             string           `json:"refer_code"`
-		RefererId             int64            `json:"referer_id"`
+		RefererId             int64            `json:"referer_id,string"`
 		Enable                bool             `json:"enable"`
 		IsAdmin               bool             `json:"is_admin,omitempty"`
 		EnableBalanceNotify   bool             `json:"enable_balance_notify"`
@@ -35,18 +35,18 @@ type (
 		IsDel                 bool             `json:"is_del,omitempty"`
 	}
 	Follow {
-		Id        int64  `json:"id"`
-		TicketId  int64  `json:"ticket_id"`
+		Id        int64  `json:"id,string"`
+		TicketId  int64  `json:"ticket_id,string"`
 		From      string `json:"from"`
 		Type      uint8  `json:"type"`
 		Content   string `json:"content"`
 		CreatedAt int64  `json:"created_at"`
 	}
 	Ticket {
-		Id          int64    `json:"id"`
+		Id          int64    `json:"id,string"`
 		Title       string   `json:"title"`
 		Description string   `json:"description"`
-		UserId      int64    `json:"user_id"`
+		UserId      int64    `json:"user_id,string"`
 		Follows     []Follow `json:"follow,omitempty"`
 		Status      uint8    `json:"status"`
 		CreatedAt   int64    `json:"created_at"`
@@ -81,14 +81,14 @@ type (
 		SubscribeTypes []string `json:"subscribe_types"`
 	}
 	Application {
-		Id            int64  `json:"id"`
+		Id            int64  `json:"id,string"`
 		Icon          string `json:"icon"`
 		Name          string `json:"name"`
 		Description   string `json:"description"`
 		SubscribeType string `json:"subscribe_type"`
 	}
 	ApplicationVersion {
-		Id          int64  `json:"id"`
+		Id          int64  `json:"id,string"`
 		Url         string `json:"url"`
 		Version     string `json:"version" validate:"required"`
 		Description string `json:"description"`
@@ -98,7 +98,7 @@ type (
 		Applications []ApplicationResponseInfo `json:"applications"`
 	}
 	ApplicationResponseInfo {
-		Id            int64               `json:"id"`
+		Id            int64               `json:"id,string"`
 		Name          string              `json:"name"`
 		Icon          string              `json:"icon"`
 		Description   string              `json:"description"`
@@ -145,7 +145,7 @@ type (
 	RegisterConfig {
 		StopRegister            bool   `json:"stop_register"`
 		EnableTrial             bool   `json:"enable_trial"`
-		TrialSubscribe          int64  `json:"trial_subscribe"`
+		TrialSubscribe          int64  `json:"trial_subscribe,string"`
 		TrialTime               int64  `json:"trial_time"`
 		TrialTimeUnit           string `json:"trial_time_unit"`
 		EnableIpRegisterLimit   bool   `json:"enable_ip_register_limit"`
@@ -218,7 +218,7 @@ type (
 		SpeedLimit   int64  `json:"speed_limit"`
 	}
 	Subscribe {
-		Id                int64               `json:"id"`
+		Id                int64               `json:"id,string"`
 		Name              string              `json:"name"`
 		Language          string              `json:"language"`
 		Description       string              `json:"description"`
@@ -233,8 +233,8 @@ type (
 		Quota             int64               `json:"quota"`
 		Nodes             []int64             `json:"nodes"`
 		NodeTags          []string            `json:"node_tags"`
-		NodeGroupIds      []int64             `json:"node_group_ids,omitempty"`
-		NodeGroupId       int64               `json:"node_group_id"`
+		NodeGroupIds      []string             `json:"node_group_ids,omitempty"`
+		NodeGroupId       int64               `json:"node_group_id,string"`
 		TrafficLimit      []TrafficLimit      `json:"traffic_limit"`
 		Show              bool                `json:"show"`
 		Sell              bool                `json:"sell"`
@@ -248,7 +248,7 @@ type (
 		UpdatedAt         int64               `json:"updated_at"`
 	}
 	SubscribeGroup {
-		Id          int64  `json:"id"`
+		Id          int64  `json:"id,string"`
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		CreatedAt   int64  `json:"created_at"`
@@ -347,14 +347,14 @@ type (
 	//  UpdatedAt int64       `json:"updated_at"`
 	// }
 	ServerGroup {
-		Id          int64  `json:"id"`
+		Id          int64  `json:"id,string"`
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		CreatedAt   int64  `json:"created_at"`
 		UpdatedAt   int64  `json:"updated_at"`
 	}
 	PaymentMethod {
-		Id          int64  `json:"id"`
+		Id          int64  `json:"id,string"`
 		Name        string `json:"name"`
 		Platform    string `json:"platform"`
 		Description string `json:"description"`
@@ -365,7 +365,7 @@ type (
 		Sort        int64  `json:"sort"`
 	}
 	PaymentConfig {
-		Id          int64       `json:"id" validate:"required"`
+		Id          int64       `json:"id,string" validate:"required"`
 		Name        string      `json:"name" validate:"required"`
 		Platform    string      `json:"platform" validate:"required"`
 		Description string      `json:"description"`
@@ -379,7 +379,7 @@ type (
 		Enable      *bool       `json:"enable" validate:"required"`
 	}
 	PaymentMethodDetail {
-		Id          int64       `json:"id"`
+		Id          int64       `json:"id,string"`
 		Name        string      `json:"name"`
 		Platform    string      `json:"platform"`
 		Description string      `json:"description"`
@@ -394,8 +394,8 @@ type (
 		NotifyURL   string      `json:"notify_url"`
 	}
 	Order {
-		Id             int64         `json:"id"`
-		UserId         int64         `json:"user_id"`
+		Id             int64         `json:"id,string"`
+		UserId         int64         `json:"user_id,string"`
 		OrderNo        string        `json:"order_no"`
 		Type           uint8         `json:"type"`
 		Quantity       int64         `json:"quantity"`
@@ -410,13 +410,13 @@ type (
 		FeeAmount      int64         `json:"fee_amount"`
 		TradeNo        string        `json:"trade_no"`
 		Status         uint8         `json:"status"`
-		SubscribeId    int64         `json:"subscribe_id"`
+		SubscribeId    int64         `json:"subscribe_id,string"`
 		CreatedAt      int64         `json:"created_at"`
 		UpdatedAt      int64         `json:"updated_at"`
 	}
 	OrderDetail {
-		Id             int64         `json:"id"`
-		UserId         int64         `json:"user_id"`
+		Id             int64         `json:"id,string"`
+		UserId         int64         `json:"user_id,string"`
 		OrderNo        string        `json:"order_no"`
 		Type           uint8         `json:"type"`
 		Quantity       int64         `json:"quantity"`
@@ -432,13 +432,13 @@ type (
 		FeeAmount      int64         `json:"fee_amount"`
 		TradeNo        string        `json:"trade_no"`
 		Status         uint8         `json:"status"`
-		SubscribeId    int64         `json:"subscribe_id"`
+		SubscribeId    int64         `json:"subscribe_id,string"`
 		Subscribe      Subscribe     `json:"subscribe"`
 		CreatedAt      int64         `json:"created_at"`
 		UpdatedAt      int64         `json:"updated_at"`
 	}
 	Document {
-		Id        int64    `json:"id"`
+		Id        int64    `json:"id,string"`
 		Title     string   `json:"title"`
 		Content   string   `json:"content"`
 		Tags      []string `json:"tags"`
@@ -447,7 +447,7 @@ type (
 		UpdatedAt int64    `json:"updated_at"`
 	}
 	Coupon {
-		Id         int64   `json:"id"`
+		Id         int64   `json:"id,string"`
 		Name       string  `json:"name"`
 		Code       string  `json:"code"`
 		Count      int64   `json:"count"`
@@ -456,18 +456,18 @@ type (
 		StartTime  int64   `json:"start_time"`
 		ExpireTime int64   `json:"expire_time"`
 		UserLimit  int64   `json:"user_limit"`
-		Subscribe  []int64 `json:"subscribe"`
+		Subscribe  []string `json:"subscribe"`
 		UsedCount  int64   `json:"used_count"`
 		Enable     bool    `json:"enable"`
 		CreatedAt  int64   `json:"created_at"`
 		UpdatedAt  int64   `json:"updated_at"`
 	}
 	RedemptionCode {
-		Id            int64  `json:"id"`
+		Id            int64  `json:"id,string"`
 		Code          string `json:"code"`
 		TotalCount    int64  `json:"total_count"`
 		UsedCount     int64  `json:"used_count"`
-		SubscribePlan int64  `json:"subscribe_plan"`
+		SubscribePlan int64  `json:"subscribe_plan,string"`
 		UnitTime      string `json:"unit_time"`
 		Quantity      int64  `json:"quantity"`
 		Status        int64  `json:"status"`
@@ -475,17 +475,17 @@ type (
 		UpdatedAt     int64  `json:"updated_at"`
 	}
 	RedemptionRecord {
-		Id               int64  `json:"id"`
-		RedemptionCodeId int64  `json:"redemption_code_id"`
-		UserId           int64  `json:"user_id"`
-		SubscribeId      int64  `json:"subscribe_id"`
+		Id               int64  `json:"id,string"`
+		RedemptionCodeId int64  `json:"redemption_code_id,string"`
+		UserId           int64  `json:"user_id,string"`
+		SubscribeId      int64  `json:"subscribe_id,string"`
 		UnitTime         string `json:"unit_time"`
 		Quantity         int64  `json:"quantity"`
 		RedeemedAt       int64  `json:"redeemed_at"`
 		CreatedAt        int64  `json:"created_at"`
 	}
 	Announcement {
-		Id        int64  `json:"id"`
+		Id        int64  `json:"id,string"`
 		Title     string `json:"title"`
 		Content   string `json:"content"`
 		Show      *bool  `json:"show"`
@@ -495,13 +495,13 @@ type (
 		UpdatedAt int64  `json:"updated_at"`
 	}
 	UserSubscribe {
-		Id          int64     `json:"id"`
+		Id          int64     `json:"id,string"`
 		IdStr       string    `json:"id_str"`
-		UserId      int64     `json:"user_id"`
-		OrderId     int64     `json:"order_id"`
-		SubscribeId int64     `json:"subscribe_id"`
+		UserId      int64     `json:"user_id,string"`
+		OrderId     int64     `json:"order_id,string"`
+		SubscribeId int64     `json:"subscribe_id,string"`
 		Subscribe   Subscribe `json:"subscribe"`
-		NodeGroupId int64     `json:"node_group_id"`
+		NodeGroupId int64     `json:"node_group_id,string"`
 		GroupLocked bool      `json:"group_locked"`
 		StartTime   int64     `json:"start_time"`
 		ExpireTime  int64     `json:"expire_time"`
@@ -523,7 +523,7 @@ type (
 		Enable       bool   `json:"enable"`
 	}
 	SortItem {
-		Id   int64 `json:"id" validate:"required"`
+		Id   int64 `json:"id,string" validate:"required"`
 		Sort int64 `json:"sort" validate:"required"`
 	}
 	TimePeriod {
@@ -537,7 +537,7 @@ type (
 		Prefix string `json:"prefix"`
 	}
 	UserDevice {
-		Id         int64  `json:"id"`
+		Id         int64  `json:"id,string"`
 		Ip         string `json:"ip"`
 		Identifier string `json:"identifier"`
 		UserAgent  string `json:"user_agent"`
@@ -552,22 +552,22 @@ type (
 		Verified       bool   `json:"verified"`
 	}
 	AuthMethodConfig {
-		Id      int64       `json:"id"`
+		Id      int64       `json:"id,string"`
 		Method  string      `json:"method"`
 		Config  interface{} `json:"config"`
 		Enabled bool        `json:"enabled"`
 	}
 	TrafficLog {
-		Id          int64 `json:"id"`
-		ServerId    int64 `json:"server_id"`
-		UserId      int64 `json:"user_id"`
-		SubscribeId int64 `json:"subscribe_id"`
+		Id          int64 `json:"id,string"`
+		ServerId    int64 `json:"server_id,string"`
+		UserId      int64 `json:"user_id,string"`
+		SubscribeId int64 `json:"subscribe_id,string"`
 		Download    int64 `json:"download"`
 		Upload      int64 `json:"upload"`
 		Timestamp   int64 `json:"timestamp"`
 	}
 	ServerRuleGroup {
-		Id        int64    `json:"id"`
+		Id        int64    `json:"id,string"`
 		Icon      string   `json:"icon"`
 		Name      string   `json:"name" validate:"required"`
 		Type      string   `json:"type"`
@@ -579,24 +579,24 @@ type (
 		UpdatedAt int64    `json:"updated_at"`
 	}
 	UserSubscribeLog {
-		Id              int64  `json:"id"`
-		UserId          int64  `json:"user_id"`
-		UserSubscribeId int64  `json:"user_subscribe_id"`
+		Id              int64  `json:"id,string"`
+		UserId          int64  `json:"user_id,string"`
+		UserSubscribeId int64  `json:"user_subscribe_id,string"`
 		Token           string `json:"token"`
 		IP              string `json:"ip"`
 		UserAgent       string `json:"user_agent"`
 		Timestamp       int64  `json:"timestamp"`
 	}
 	UserLoginLog {
-		Id        int64  `json:"id"`
-		UserId    int64  `json:"user_id"`
+		Id        int64  `json:"id,string"`
+		UserId    int64  `json:"user_id,string"`
 		LoginIP   string `json:"login_ip"`
 		UserAgent string `json:"user_agent"`
 		Success   bool   `json:"success"`
 		Timestamp int64  `json:"timestamp"`
 	}
 	MessageLog {
-		Id        int64       `json:"id"`
+		Id        int64       `json:"id,string"`
 		Type      uint8       `json:"type"`
 		Platform  string      `json:"platform"`
 		To        string      `json:"to"`
@@ -620,9 +620,9 @@ type (
 	}
 	//public order
 	PurchaseOrderRequest {
-		SubscribeId int64  `json:"subscribe_id"`
+		SubscribeId int64  `json:"subscribe_id,string"`
 		Quantity    int64  `json:"quantity" validate:"required,gt=0,lte=1000"`
-		Payment     int64  `json:"payment,omitempty"`
+		Payment     int64  `json:"payment,omitempty,string"`
 		Coupon      string `json:"coupon,omitempty"`
 	}
 	PreOrderResponse {
@@ -638,24 +638,24 @@ type (
 		OrderNo string `json:"order_no"`
 	}
 	RenewalOrderRequest {
-		UserSubscribeID int64  `json:"user_subscribe_id"`
+		UserSubscribeID int64  `json:"user_subscribe_id,string"`
 		Quantity        int64  `json:"quantity" validate:"lte=1000"`
-		Payment         int64  `json:"payment"`
+		Payment         int64  `json:"payment,string"`
 		Coupon          string `json:"coupon,omitempty"`
 	}
 	RenewalOrderResponse {
 		OrderNo string `json:"order_no"`
 	}
 	ResetTrafficOrderRequest {
-		UserSubscribeID int64 `json:"user_subscribe_id"`
-		Payment         int64 `json:"payment"`
+		UserSubscribeID int64 `json:"user_subscribe_id,string"`
+		Payment         int64 `json:"payment,string"`
 	}
 	ResetTrafficOrderResponse {
 		OrderNo string `json:"order_no"`
 	}
 	RechargeOrderRequest {
 		Amount  int64 `json:"amount" validate:"required,gt=0,lte=2000000000"`
-		Payment int64 `json:"payment"`
+		Payment int64 `json:"payment,string"`
 	}
 	RechargeOrderResponse {
 		OrderNo string `json:"order_no"`
@@ -776,7 +776,7 @@ type (
 		TotalCommission int64 `json:"total_commission"`
 	}
 	AppUserSubcbribe {
-		Id          int64                   `json:"id"`
+		Id          int64                   `json:"id,string"`
 		Name        string                  `json:"name"`
 		Upload      int64                   `json:"upload"`
 		Traffic     int64                   `json:"traffic"`
@@ -787,7 +787,7 @@ type (
 		List        []AppUserSubscbribeNode `json:"list"`
 	}
 	AppUserSubscbribeNode {
-		Id           int64    `json:"id"`
+		Id           int64    `json:"id,string"`
 		Name         string   `json:"name"`
 		Uuid         string   `json:"uuid"`
 		Protocol     string   `json:"protocol"`
@@ -816,15 +816,15 @@ type (
 		Harmony string `json:"harmony,omitempty"`
 	}
 	ResetSubscribeTrafficLog {
-		Id              int64  `json:"id"`
+		Id              int64  `json:"id,string"`
 		Type            uint16 `json:"type"`
-		UserSubscribeId int64  `json:"user_subscribe_id"`
+		UserSubscribeId int64  `json:"user_subscribe_id,string"`
 		OrderNo         string `json:"order_no,omitempty"`
 		Timestamp       int64  `json:"timestamp"`
 	}
 	BalanceLog {
 		Type      uint16 `json:"type"`
-		UserId    int64  `json:"user_id"`
+		UserId    int64  `json:"user_id,string"`
 		Amount    int64  `json:"amount"`
 		OrderNo   string `json:"order_no,omitempty"`
 		Balance   int64  `json:"balance"`
@@ -832,7 +832,7 @@ type (
 	}
 	CommissionLog {
 		Type      uint16 `json:"type"`
-		UserId    int64  `json:"user_id"`
+		UserId    int64  `json:"user_id,string"`
 		Amount    int64  `json:"amount"`
 		OrderNo   string `json:"order_no"`
 		Timestamp int64  `json:"timestamp"`
@@ -888,12 +888,12 @@ type (
 	}
 	// reset user subscribe token
 	ResetUserSubscribeTokenRequest {
-		UserSubscribeId int64 `json:"user_subscribe_id"`
+		UserSubscribeId int64 `json:"user_subscribe_id,string"`
 	}
 	// ===== 分组功能类型定义 =====
 	// NodeGroup 节点组
 	NodeGroup {
-		Id                  int64  `json:"id"`
+		Id                  int64  `json:"id,string"`
 		Name                string `json:"name"`
 		Type                string `json:"type"`
 		Description         string `json:"description"`
@@ -911,7 +911,7 @@ type (
 	}
 	// GroupHistory 分组历史记录
 	GroupHistory {
-		Id           int64  `json:"id"`
+		Id           int64  `json:"id,string"`
 		GroupMode    string `json:"group_mode"`
 		TriggerType  string `json:"trigger_type"`
 		TotalUsers   int    `json:"total_users"`

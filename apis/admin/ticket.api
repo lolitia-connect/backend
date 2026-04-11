@@ -12,7 +12,7 @@ import "../types.api"
 
 type (
 	UpdateTicketStatusRequest {
-		Id     int64  `json:"id" validate:"required"`
+		Id     int64  `json:"id,string" validate:"required"`
 		Status *uint8 `json:"status" validate:"required"`
 	}
 	GetTicketListRequest {
@@ -30,7 +30,7 @@ type (
 		Id int64 `form:"id" validate:"required"`
 	}
 	CreateTicketFollowRequest {
-		TicketId int64  `json:"ticket_id" validate:"required"`
+		TicketId int64  `json:"ticket_id,string" validate:"required"`
 		From     string `json:"from" validate:"required"`
 		Type     uint8  `json:"type" validate:"required"`
 		Content  string `json:"content" validate:"required"`

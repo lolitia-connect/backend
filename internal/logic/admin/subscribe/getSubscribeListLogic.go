@@ -70,11 +70,11 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 		}
 		sub.Nodes = tool.StringToInt64Slice(item.Nodes)
 		sub.NodeTags = strings.Split(item.NodeTags, ",")
-		// Handle NodeGroupIds - convert from JSONInt64Slice to []int64
+		// Handle NodeGroupIds - convert from JSONInt64Slice to []string
 		if item.NodeGroupIds != nil {
-			sub.NodeGroupIds = []int64(item.NodeGroupIds)
+			sub.NodeGroupIds = tool.Int64SliceToStringSlice([]int64(item.NodeGroupIds))
 		} else {
-			sub.NodeGroupIds = []int64{}
+			sub.NodeGroupIds = []string{}
 		}
 		// NodeGroupId is already int64, should be copied by DeepCopy
 		sub.NodeGroupId = item.NodeGroupId

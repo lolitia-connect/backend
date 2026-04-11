@@ -12,7 +12,7 @@ import "../types.api"
 
 type (
 	SubscribeApplication {
-		Id                int64        `json:"id"`
+		Id                int64        `json:"id,string"`
 		Name              string       `json:"name"`
 		Description       string       `json:"description,omitempty"`
 		Icon              string       `json:"icon,omitempty"`
@@ -41,7 +41,7 @@ type (
 		DownloadLink      DownloadLink `json:"download_link"`
 	}
 	UpdateSubscribeApplicationRequest {
-		Id                int64        `json:"id"`
+		Id                int64        `json:"id,string"`
 		Name              string       `json:"name"`
 		Description       string       `json:"description,omitempty"`
 		Icon              string       `json:"icon,omitempty"`
@@ -53,7 +53,7 @@ type (
 		DownloadLink      DownloadLink `json:"download_link,omitempty"`
 	}
 	DeleteSubscribeApplicationRequest {
-		Id int64 `json:"id"`
+		Id int64 `json:"id,string"`
 	}
 	GetSubscribeApplicationListRequest {
 		Page int `form:"page"`

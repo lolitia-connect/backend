@@ -16,6 +16,7 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/alipay"
+	"github.com/perfect-panel/server/pkg/payment/alipayplus"
 )
 
 type CloseOrderLogic struct {
@@ -168,6 +169,10 @@ func (l *CloseOrderLogic) confirmationPayment(order *order.Order) bool {
 		if l.queryAlipay(paymentConfig, order.TradeNo) {
 			return true
 		}
+	case AlipayPlus:
+		if l.queryAlipayPlus(paymentConfig, order.TradeNo) {
+			return true
+		}
 	case StripeAlipay:
 		if l.queryStripe(paymentConfig, order.TradeNo) {
 			return true
@@ -203,6 +208,35 @@ func (l *CloseOrderLogic) queryAlipay(paymentConfig *payment.Payment, TradeNo st
 		return false
 	}
 	if status == alipay.Success || status == alipay.Finished {
+		return true
+	}
+	return false
+}
+
+// queryAlipayPlus Query AlipayPlus payment status
+//
+//nolint:unused
+func (l *CloseOrderLogic) queryAlipayPlus(paymentConfig *payment.Payment, TradeNo string) bool {
+	config := payment.AlipayPlusConfig{}
+	if err := json.Unmarshal([]byte(paymentConfig.Config), &config); err != nil {
+		l.Errorw("[CloseOrder] Unmarshal payment config failed", logger.Field("error", err.Error()), logger.Field("config", paymentConfig.Config))
+		return false
+	}
+	client := alipayplus.NewClient(alipayplus.Config{
+		ClientId:        config.ClientId,
+		MerchantId:      config.MerchantId,
+		PrivateKey:      config.PrivateKey,
+		AlipayPublicKey: config.AlipayPublicKey,
+		GatewayUrl:      config.GatewayUrl,
+		Currency:        config.Currency,
+		InvoiceName:     config.InvoiceName,
+	})
+	status, err := client.QueryTrade(l.ctx, TradeNo)
+	if err != nil {
+		l.Errorw("[CloseOrder] Query trade failed", logger.Field("error", err.Error()), logger.Field("TradeNo", TradeNo))
+		return false
+	}
+	if status == alipayplus.Success {
 		return true
 	}
 	return false

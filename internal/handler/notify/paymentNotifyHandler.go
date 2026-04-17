@@ -56,6 +56,14 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
 			// Return success to alipay
 			c.String(http.StatusOK, "%s", "success")
 
+		case payment.AlipayPlus:
+			l := notify.NewAlipayPlusNotifyLogic(c.Request.Context(), svcCtx)
+			if err := l.AlipayPlusNotify(c.Request); err != nil {
+				result.HttpResult(c, nil, err)
+				return
+			}
+			c.String(http.StatusOK, "%s", "success")
+
 		default:
 			logger.WithContext(c.Request.Context()).Errorf("platform %s not support", platform)
 		}

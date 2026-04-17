@@ -24,6 +24,7 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/alipay"
+	"github.com/perfect-panel/server/pkg/payment/alipayplus"
 	"github.com/perfect-panel/server/pkg/payment/epay"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -105,6 +106,17 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		}
 		resp = &types.CheckoutOrderResponse{
 			Type:        "qr", // Client should display QR code
+			CheckoutUrl: url,
+		}
+
+	case paymentPlatform.AlipayPlus:
+		url, err := l.alipayPlusPayment(paymentConfig, orderInfo, req.ReturnUrl)
+		if err != nil {
+			l.Errorw("[PurchaseCheckout] alipayPlusPayment error", logger.Field("error", err.Error()))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "alipayPlusPayment error: %v", err.Error())
+		}
+		resp = &types.CheckoutOrderResponse{
+			Type:        "url",
 			CheckoutUrl: url,
 		}
 
@@ -198,6 +210,76 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "PreCreateTrade error: %s", err.Error())
 	}
 	return QRCode, nil
+}
+
+func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *order.Order, returnURL string) (string, error) {
+	config := &payment.AlipayPlusConfig{}
+	if err := config.Unmarshal([]byte(pay.Config)); err != nil {
+		l.Errorw("[PurchaseCheckout] Unmarshal AlipayPlus config error", logger.Field("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
+	}
+
+	// Build notification URL for payment status callbacks
+	isGatewayMod := report.IsGatewayMode()
+	notifyURL := ""
+	if pay.Domain != "" {
+		notifyURL = pay.Domain
+		if isGatewayMod {
+			notifyURL += "/api"
+		}
+		notifyURL += "/v1/notify/" + pay.Platform + "/" + pay.Token
+	} else {
+		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
+		if !ok {
+			host = l.svcCtx.Config.Host
+		}
+		notifyURL = "https://" + host
+		if isGatewayMod {
+			notifyURL += "/api"
+		}
+		notifyURL += "/v1/notify/" + pay.Platform + "/" + pay.Token
+	}
+
+	client := alipayplus.NewClient(alipayplus.Config{
+		ClientId:        config.ClientId,
+		MerchantId:      config.MerchantId,
+		PrivateKey:      config.PrivateKey,
+		AlipayPublicKey: config.AlipayPublicKey,
+		GatewayUrl:      config.GatewayUrl,
+		Currency:        config.Currency,
+		InvoiceName:     config.InvoiceName,
+		NotifyURL:       notifyURL,
+		RedirectURL:     returnURL,
+	})
+
+	targetCurrency := config.Currency
+	if targetCurrency == "" {
+		targetCurrency = l.svcCtx.Config.Currency.Unit
+	}
+
+	amount, err := l.queryExchangeRate(targetCurrency, info.Amount)
+	if err != nil {
+		l.Errorw("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryExchangeRate error: %s", err.Error())
+	}
+	convertAmount := int64(amount * 100)
+
+	payload, err := client.PreCreateTrade(l.ctx, alipayplus.Order{
+		OrderNo: info.OrderNo,
+		Amount:  convertAmount,
+	})
+	if err != nil {
+		l.Errorw("[PurchaseCheckout] AlipayPlus PreCreateTrade error", logger.Field("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "PreCreateTrade error: %s", err.Error())
+	}
+
+	info.TradeNo = info.OrderNo
+	if err := l.svcCtx.OrderModel.Update(l.ctx, info); err != nil {
+		l.Errorw("[PurchaseCheckout] Update order error", logger.Field("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
+	}
+
+	return payload, nil
 }
 
 // stripePayment processes Stripe payment by creating a payment sheet

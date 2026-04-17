@@ -7,6 +7,7 @@ type Platform int
 const (
 	Stripe Platform = iota
 	AlipayF2F
+	AlipayPlus
 	EPay
 	Balance
 	CryptoSaaS
@@ -17,6 +18,7 @@ var platformNames = map[string]Platform{
 	"CryptoSaaS":  CryptoSaaS,
 	"Stripe":      Stripe,
 	"AlipayF2F":   AlipayF2F,
+	"AlipayPlus":  AlipayPlus,
 	"EPay":        EPay,
 	"balance":     Balance,
 	"unsupported": UNSUPPORTED,
@@ -59,6 +61,19 @@ func GetSupportedPlatforms() []types.PlatformInfo {
 				"public_key":   "Public Key",
 				"invoice_name": "Invoice Name",
 				"sandbox":      "Sandbox Mode",
+			},
+		},
+		{
+			Platform:    AlipayPlus.String(),
+			PlatformUrl: "https://alipayplus.com/",
+			PlatformFieldDescription: map[string]string{
+				"client_id":         "Client ID",
+				"merchant_id":       "Merchant ID",
+				"private_key":       "Private Key",
+				"alipay_public_key": "Alipay Public Key",
+				"gateway_url":       "Gateway URL",
+				"currency":          "Currency Code",
+				"invoice_name":      "Invoice Name",
 			},
 		},
 		{

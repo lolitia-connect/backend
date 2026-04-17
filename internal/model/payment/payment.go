@@ -96,6 +96,31 @@ func (l *AlipayF2FConfig) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, &aux)
 }
 
+type AlipayPlusConfig struct {
+	ClientId        string `json:"client_id"`
+	MerchantId      string `json:"merchant_id"`
+	PrivateKey      string `json:"private_key"`
+	AlipayPublicKey string `json:"alipay_public_key"`
+	GatewayUrl      string `json:"gateway_url"`
+	Currency        string `json:"currency"`
+	InvoiceName     string `json:"invoice_name"`
+}
+
+func (l *AlipayPlusConfig) Marshal() ([]byte, error) {
+	type Alias AlipayPlusConfig
+	return json.Marshal(&struct {
+		*Alias
+	}{
+		Alias: (*Alias)(l),
+	})
+}
+
+func (l *AlipayPlusConfig) Unmarshal(data []byte) error {
+	type Alias AlipayPlusConfig
+	aux := (*Alias)(l)
+	return json.Unmarshal(data, &aux)
+}
+
 type EPayConfig struct {
 	Pid  string `json:"pid"`
 	Url  string `json:"url"`

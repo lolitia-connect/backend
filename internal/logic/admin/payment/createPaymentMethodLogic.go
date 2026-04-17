@@ -128,6 +128,8 @@ func parsePaymentPlatformConfig(ctx context.Context, platform payment.Platform, 
 		return handleConfig("Stripe", &paymentModel.StripeConfig{})
 	case payment.AlipayF2F:
 		return handleConfig("Alipay", &paymentModel.AlipayF2FConfig{})
+	case payment.AlipayPlus:
+		return handleConfig("AlipayPlus", &paymentModel.AlipayPlusConfig{})
 	case payment.EPay:
 		return handleConfig("Epay", &paymentModel.EPayConfig{})
 	case payment.CryptoSaaS:

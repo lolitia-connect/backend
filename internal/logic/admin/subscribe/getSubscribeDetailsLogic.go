@@ -50,5 +50,11 @@ func (l *GetSubscribeDetailsLogic) GetSubscribeDetails(req *types.GetSubscribeDe
 	}
 	resp.Nodes = tool.StringToInt64Slice(sub.Nodes)
 	resp.NodeTags = strings.Split(sub.NodeTags, ",")
+	if sub.NodeGroupIds != nil {
+		resp.NodeGroupIds = tool.Int64SliceToStringSlice([]int64(sub.NodeGroupIds))
+	} else {
+		resp.NodeGroupIds = []string{}
+	}
+	resp.NodeGroupId = sub.NodeGroupId
 	return resp, nil
 }

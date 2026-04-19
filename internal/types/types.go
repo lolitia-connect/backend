@@ -436,7 +436,7 @@ type CreateSubscribeRequest struct {
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
-	Nodes             []int64             `json:"nodes"`
+	Nodes             []string            `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id,string"`
@@ -2793,7 +2793,7 @@ type UpdateSubscribeRequest struct {
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
-	Nodes             []int64             `json:"nodes"`
+	Nodes             []string            `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id,string"`

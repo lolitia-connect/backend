@@ -98,6 +98,21 @@ func TestPreCreateTrade_RequestFollowsCashierDocs(t *testing.T) {
 		if payReq["productCode"] != "CASHIER_PAYMENT" {
 			t.Fatalf("unexpected productCode: %+v", payReq["productCode"])
 		}
+		env, ok := payReq["env"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected top-level env payload: %+v", payReq["env"])
+		}
+		if env["terminalType"] != "WEB" {
+			t.Fatalf("unexpected top-level terminalType: %+v", env)
+		}
+
+		paymentAmount, ok := payReq["paymentAmount"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected paymentAmount payload: %+v", payReq["paymentAmount"])
+		}
+		if paymentAmount["value"] != "1234" || paymentAmount["currency"] != "HKD" {
+			t.Fatalf("unexpected paymentAmount: %+v", paymentAmount)
+		}
 
 		paymentMethod, ok := payReq["paymentMethod"].(map[string]any)
 		if !ok {
@@ -126,15 +141,15 @@ func TestPreCreateTrade_RequestFollowsCashierDocs(t *testing.T) {
 		if order["referenceOrderId"] != orderNo {
 			t.Fatalf("unexpected referenceOrderId: %+v", order)
 		}
-		env, ok := order["env"].(map[string]any)
+		orderEnv, ok := order["env"].(map[string]any)
 		if !ok {
 			t.Fatalf("unexpected env payload: %+v", order["env"])
 		}
-		if env["terminalType"] != "WEB" {
-			t.Fatalf("unexpected terminalType: %+v", env)
+		if orderEnv["terminalType"] != "WEB" {
+			t.Fatalf("unexpected terminalType: %+v", orderEnv)
 		}
-		if _, exists := env["osType"]; exists {
-			t.Fatalf("osType should be omitted for WEB terminalType: %+v", env)
+		if _, exists := orderEnv["osType"]; exists {
+			t.Fatalf("osType should be omitted for WEB terminalType: %+v", orderEnv)
 		}
 
 		respBody, err := json.Marshal(map[string]any{
@@ -272,7 +287,6 @@ func TestPreCreateTrade_RequireConfiguredPaymentMethod(t *testing.T) {
 
 func TestPreCreateTrade_RequireConfiguredCurrency(t *testing.T) {
 	privateKey, publicKey := generateTestKeys(t)
-
 	client := NewClient(Config{
 		ClientId:        "test-client-id",
 		MerchantId:      "test-merchant-id",
@@ -294,6 +308,50 @@ func TestPreCreateTrade_RequireConfiguredCurrency(t *testing.T) {
 	}
 	if err.Error() != "currency is empty" {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDecodeNotification_PaymentPendingTreatedAsPending(t *testing.T) {
+	privateKey, publicKey := generateTestKeys(t)
+	const (
+		clientID    = "test-client-id"
+		orderNo     = "ORDER_20260417_PENDING"
+		requestTime = "1710000000003"
+	)
+
+	body, err := json.Marshal(map[string]any{
+		"notifyType": "PAYMENT_PENDING",
+		"result": map[string]any{
+			"resultCode":    "SUCCESS",
+			"resultStatus":  "S",
+			"resultMessage": "pending",
+		},
+		"paymentRequestId": orderNo,
+		"paymentAmount": map[string]any{
+			"value":    "1234",
+			"currency": "CNY",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal notify body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "https://example.com/v1/notify/AlipayPlus/token", strings.NewReader(string(body)))
+	sign, err := tools.GenSign(http.MethodPost, req.URL.Path, clientID, requestTime, string(body), privateKey)
+	if err != nil {
+		t.Fatalf("sign notify body: %v", err)
+	}
+	req.Header.Set("Client-Id", clientID)
+	req.Header.Set("Request-Time", requestTime)
+	req.Header.Set("Signature", "algorithm=RSA256,keyVersion=1,signature="+sign)
+
+	client := NewClient(Config{ClientId: clientID, PrivateKey: privateKey, AlipayPublicKey: publicKey})
+	notify, err := client.DecodeNotification(req)
+	if err != nil {
+		t.Fatalf("DecodeNotification returned error: %v", err)
+	}
+	if notify.Status != Pending {
+		t.Fatalf("unexpected status: %s", notify.Status)
 	}
 }
 

@@ -3,6 +3,7 @@ package notify
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/perfect-panel/server/pkg/constant"
 
@@ -62,7 +63,17 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
 				result.HttpResult(c, nil, err)
 				return
 			}
-			c.String(http.StatusOK, "%s", "success")
+			c.Header("response-time", time.Now().Format(time.RFC3339))
+			if clientID := c.GetHeader("Client-Id"); clientID != "" {
+				c.Header("client-id", clientID)
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"result": gin.H{
+					"resultCode":    "SUCCESS",
+					"resultStatus":  "S",
+					"resultMessage": "Success",
+				},
+			})
 
 		default:
 			logger.WithContext(c.Request.Context()).Errorf("platform %s not support", platform)

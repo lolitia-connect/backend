@@ -221,11 +221,11 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 	}
 
 	targetCurrency := strings.ToUpper(strings.TrimSpace(config.Currency))
+	paymentMethod := strings.ToUpper(strings.TrimSpace(config.PaymentMethod))
 	if targetCurrency == "" {
 		l.Errorw("[PurchaseCheckout] AlipayPlus currency is empty")
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "AlipayPlus currency is empty")
 	}
-	paymentMethod := strings.ToUpper(strings.TrimSpace(config.PaymentMethod))
 	if paymentMethod == "" {
 		l.Errorw("[PurchaseCheckout] AlipayPlus payment method is empty")
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "AlipayPlus payment method is empty")

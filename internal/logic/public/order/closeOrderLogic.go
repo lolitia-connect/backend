@@ -229,6 +229,7 @@ func (l *CloseOrderLogic) queryAlipayPlus(paymentConfig *payment.Payment, TradeN
 		AlipayPublicKey: config.AlipayPublicKey,
 		GatewayUrl:      config.GatewayUrl,
 		Currency:        config.Currency,
+		PaymentMethod:   config.PaymentMethod,
 		InvoiceName:     config.InvoiceName,
 	})
 	status, err := client.QueryTrade(l.ctx, TradeNo)

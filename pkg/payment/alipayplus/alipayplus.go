@@ -40,6 +40,8 @@ type Notification struct {
 type Status string
 
 const (
+	notifyTypePaymentPending = "PAYMENT_PENDING"
+
 	Success Status = "SUCCESS"
 	Pending Status = "PROCESSING"
 	Closed  Status = "CANCELLED"
@@ -67,6 +69,8 @@ type payResultNotify struct {
 }
 
 func NewClient(c Config) *Client {
+	c = normalizeConfig(c)
+
 	apiClient := defaultAlipayClient.NewDefaultAlipayClient(
 		c.GatewayUrl,
 		c.ClientId,
@@ -84,19 +88,24 @@ func (c *Client) PreCreateTrade(ctx context.Context, order Order) (string, error
 	_ = ctx
 
 	currency := strings.ToUpper(strings.TrimSpace(c.Currency))
-	if currency == "" {
-		return "", errors.New("currency is empty")
-	}
 	paymentMethod := strings.ToUpper(strings.TrimSpace(c.PaymentMethod))
 	if paymentMethod == "" {
 		return "", errors.New("paymentMethod is empty")
 	}
+	if currency == "" {
+		return "", errors.New("currency is empty")
+	}
+	if paymentMethod == string(model.ProductCodeType_CASHIER_PAYMENT) {
+		return "", errors.New("paymentMethod is invalid: use wallet type like ALIPAY_HK or ALIPAY_CN, not CASHIER_PAYMENT")
+	}
 
 	req, payReq := requestPay.NewAlipayPayRequest()
 	amount := model.NewAmount(formatAmount(order.Amount), currency)
+	env := buildWebEnv()
 	payReq.PaymentRequestId = order.OrderNo
 	payReq.ProductCode = model.ProductCodeType_CASHIER_PAYMENT
 	payReq.PaymentAmount = amount
+	payReq.Env = env
 	payReq.PaymentMethod = &model.PaymentMethod{
 		PaymentMethodType: paymentMethod,
 	}
@@ -113,9 +122,7 @@ func (c *Client) PreCreateTrade(ctx context.Context, order Order) (string, error
 		ReferenceOrderId: order.OrderNo,
 		OrderDescription: c.InvoiceName,
 		OrderAmount:      amount,
-		Env: &model.Env{
-			TerminalType: model.TerminalType_WEB,
-		},
+		Env:              env,
 	}
 	if referenceBuyerID := strings.TrimSpace(order.ReferenceBuyerId); referenceBuyerID != "" {
 		payReq.Order.Buyer = &model.Buyer{ReferenceBuyerId: referenceBuyerID}
@@ -138,7 +145,7 @@ func (c *Client) PreCreateTrade(ctx context.Context, order Order) (string, error
 	}
 
 	if !isPayResponseSuccess(resp) {
-		return "", errors.New("pay failed: " + responseMessage(resp))
+		return "", buildPayResponseError(resp)
 	}
 
 	if payload := resolvePaymentPayload(resp); payload != "" {
@@ -171,6 +178,8 @@ func (c *Client) QueryTrade(ctx context.Context, orderNo string) (Status, error)
 	case model.TransactionStatusType_SUCCESS:
 		return Success, nil
 	case model.TransactionStatusType_PROCESSING:
+		fallthrough
+	case model.TransactionStatusType_PENDING:
 		return Pending, nil
 	case model.TransactionStatusType_FAIL:
 		return Failed, nil
@@ -205,7 +214,7 @@ func (c *Client) DecodeNotification(req *http.Request) (*Notification, error) {
 		return nil, err
 	}
 
-	status := mapResultStatus(notify.Result.ResultStatus)
+	status := mapResultStatus(notify.NotifyType, notify.Result.ResultStatus)
 	amount, err := parseAmountToCent(notify.PaymentAmount)
 	if err != nil {
 		return nil, err
@@ -219,7 +228,7 @@ func (c *Client) DecodeNotification(req *http.Request) (*Notification, error) {
 }
 
 func formatAmount(amount int64) string {
-	return fmt.Sprintf("%.2f", float64(amount)/100.0)
+	return strconv.FormatInt(amount, 10)
 }
 
 func parseAmountToCent(amount *model.Amount) (int64, error) {
@@ -227,17 +236,32 @@ func parseAmountToCent(amount *model.Amount) (int64, error) {
 		return 0, nil
 	}
 
-	value, err := strconv.ParseFloat(amount.Value, 64)
+	value := strings.TrimSpace(amount.Value)
+	if value == "" {
+		return 0, nil
+	}
+	if strings.Contains(value, ".") {
+		floatValue, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return 0, errors.Wrap(err, "invalid amount value")
+		}
+		return int64(floatValue*100 + 0.5), nil
+	}
+
+	centValue, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return 0, errors.Wrap(err, "invalid amount value")
 	}
 
-	return int64(value*100 + 0.5), nil
+	return centValue, nil
 }
 
-func mapResultStatus(status string) Status {
+func mapResultStatus(notifyType string, status string) Status {
 	switch status {
 	case "S":
+		if strings.EqualFold(notifyType, notifyTypePaymentPending) {
+			return Pending
+		}
 		return Success
 	case "U":
 		return Pending
@@ -296,12 +320,43 @@ func responseMessage(resp any) string {
 	}
 }
 
+func buildPayResponseError(resp *responsePay.AlipayPayResponse) error {
+	if resp == nil {
+		return errors.New("pay failed: empty response")
+	}
+
+	resultStatus := resp.AlipayResponse.Result.ResultStatus
+	resultCode := resp.AlipayResponse.Result.ResultCode
+	resultMessage := resp.AlipayResponse.Result.ResultMessage
+
+	if resp.Result != nil {
+		if resp.Result.ResultStatus != "" {
+			resultStatus = string(resp.Result.ResultStatus)
+		}
+		if resp.Result.ResultCode != "" {
+			resultCode = resp.Result.ResultCode
+		}
+		if resp.Result.ResultMessage != "" {
+			resultMessage = resp.Result.ResultMessage
+		}
+	}
+
+	if resultStatus == "" && resultCode == "" && resultMessage == "" {
+		return errors.New("pay failed: unknown exception")
+	}
+
+	return fmt.Errorf("pay failed: resultStatus=%s, resultCode=%s, resultMessage=%s", resultStatus, resultCode, resultMessage)
+}
+
 func resolvePaymentPayload(resp *responsePay.AlipayPayResponse) string {
 	if resp == nil {
 		return ""
 	}
 	if resp.NormalUrl != "" {
 		return resp.NormalUrl
+	}
+	if resp.RedirectActionForm != nil && resp.RedirectActionForm.RedirectUrl != "" {
+		return resp.RedirectActionForm.RedirectUrl
 	}
 	if resp.SchemeUrl != "" {
 		return resp.SchemeUrl
@@ -310,6 +365,9 @@ func resolvePaymentPayload(resp *responsePay.AlipayPayResponse) string {
 		return resp.ApplinkUrl
 	}
 	if resp.PaymentActionForm != "" {
+		if redirectURL := resolveRedirectURLFromPaymentActionForm(resp.PaymentActionForm); redirectURL != "" {
+			return redirectURL
+		}
 		return resp.PaymentActionForm
 	}
 	if resp.PaymentData != "" {
@@ -323,4 +381,35 @@ func resolvePaymentPayload(resp *responsePay.AlipayPayResponse) string {
 		}
 	}
 	return ""
+}
+
+func resolveRedirectURLFromPaymentActionForm(paymentActionForm string) string {
+	type redirectPayload struct {
+		RedirectURL string `json:"redirectUrl"`
+	}
+
+	var payload redirectPayload
+	if err := json.Unmarshal([]byte(paymentActionForm), &payload); err == nil && strings.TrimSpace(payload.RedirectURL) != "" {
+		return payload.RedirectURL
+	}
+
+	var dynamicPayload map[string]any
+	if err := json.Unmarshal([]byte(paymentActionForm), &dynamicPayload); err != nil {
+		return ""
+	}
+
+	redirectURL, _ := dynamicPayload["redirectUrl"].(string)
+	return strings.TrimSpace(redirectURL)
+}
+
+func normalizeConfig(c Config) Config {
+	c.GatewayUrl = strings.TrimSpace(c.GatewayUrl)
+	c.PaymentMethod = strings.ToUpper(strings.TrimSpace(c.PaymentMethod))
+	c.Currency = strings.ToUpper(strings.TrimSpace(c.Currency))
+
+	return c
+}
+
+func buildWebEnv() *model.Env {
+	return &model.Env{TerminalType: model.TerminalType_WEB}
 }

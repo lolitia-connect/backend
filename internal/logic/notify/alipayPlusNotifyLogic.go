@@ -50,6 +50,7 @@ func (l *AlipayPlusNotifyLogic) AlipayPlusNotify(r *http.Request) error {
 		AlipayPublicKey: config.AlipayPublicKey,
 		GatewayUrl:      config.GatewayUrl,
 		Currency:        config.Currency,
+		PaymentMethod:   config.PaymentMethod,
 		InvoiceName:     config.InvoiceName,
 	})
 
@@ -59,8 +60,13 @@ func (l *AlipayPlusNotifyLogic) AlipayPlusNotify(r *http.Request) error {
 		return err
 	}
 
+	if notify.Status == alipayplus.Pending {
+		l.Logger.Infow("[AlipayPlusNotify] Notify status pending", logger.Field("status", string(notify.Status)), logger.Field("orderNo", notify.OrderNo))
+		return nil
+	}
+
 	if notify.Status != alipayplus.Success {
-		l.Logger.Error("[AlipayPlusNotify] Notify status failed", logger.Field("status", string(notify.Status)))
+		l.Logger.Infow("[AlipayPlusNotify] Notify status is not success", logger.Field("status", string(notify.Status)), logger.Field("orderNo", notify.OrderNo))
 		return nil
 	}
 
@@ -69,7 +75,7 @@ func (l *AlipayPlusNotifyLogic) AlipayPlusNotify(r *http.Request) error {
 		l.Logger.Error("[AlipayPlusNotify] Find order failed", logger.Field("error", err.Error()), logger.Field("orderNo", notify.OrderNo))
 		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
 	}
-	if orderInfo.Status == 5 {
+	if orderInfo.Status != 1 {
 		return nil
 	}
 

@@ -62,7 +62,7 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		SpeedLimit:        req.SpeedLimit,
 		DeviceLimit:       req.DeviceLimit,
 		Quota:             req.Quota,
-		Nodes:             tool.Int64SliceToString(req.Nodes),
+		Nodes:             tool.Int64SliceToString(tool.StringSliceToInt64Slice(req.Nodes)),
 		NodeTags:          tool.StringSliceToString(req.NodeTags),
 		NodeGroupIds:      subscribe.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds)),
 		NodeGroupId:       req.NodeGroupId,

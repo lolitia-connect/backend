@@ -103,6 +103,7 @@ type AlipayPlusConfig struct {
 	AlipayPublicKey string `json:"alipay_public_key"`
 	GatewayUrl      string `json:"gateway_url"`
 	Currency        string `json:"currency"`
+	PaymentMethod   string `json:"payment_method"`
 	InvoiceName     string `json:"invoice_name"`
 }
 

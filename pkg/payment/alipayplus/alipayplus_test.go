@@ -7,26 +7,58 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
-	requestPay "github.com/alipay/global-open-sdk-go/com/alipay/api/request/pay"
 	"github.com/alipay/global-open-sdk-go/com/alipay/api/tools"
 )
 
+// 填入真实 Alipay+ 配置后，可直接执行 TestPreCreateTrade 请求对应网关。
+const (
+	integrationGatewayURL       = ""
+	integrationClientID         = ""
+	integrationMerchantID       = ""
+	integrationPrivateKey       = ""
+	integrationAlipayPublicKey  = ""
+	integrationCurrency         = ""
+	integrationPaymentMethod    = "" // 例如 ALIPAY_HK / ALIPAY_CN
+	integrationNotifyURL        = ""
+	integrationRedirectURL      = ""
+	integrationInvoiceName      = "Perfect Panel"
+	integrationReferenceBuyerID = ""
+)
+
 func TestPreCreateTrade(t *testing.T) {
+	client := NewClient(loadIntegrationConfig(t))
+	orderNo := fmt.Sprintf("ORDER_%d", time.Now().UnixNano())
+
+	payload, err := client.PreCreateTrade(context.Background(), Order{
+		OrderNo:          orderNo,
+		Amount:           1234,
+		ReferenceBuyerId: integrationReferenceBuyerID,
+	})
+	if err != nil {
+		t.Fatalf("PreCreateTrade returned error: %v", err)
+	}
+	if strings.TrimSpace(payload) == "" {
+		t.Fatal("expected non-empty payload")
+	}
+}
+
+func TestPreCreateTrade_RequestFollowsCashierDocs(t *testing.T) {
 	privateKey, publicKey := generateTestKeys(t)
 	const (
 		clientID       = "test-client-id"
 		merchantID     = "test-merchant-id"
-		orderNo        = "ORDER_20260417_001"
+		orderNo        = "ORDER_20260417_DOCS"
 		notifyURL      = "https://example.com/notify"
 		redirectURL    = "https://example.com/payment/return"
-		expectedURL    = "https://cashier.alipayplus.test/checkout/session"
-		expectedAmount = "12.34"
+		expectedNormal = "https://cashier.alipayplus.test/checkout/session"
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,46 +80,71 @@ func TestPreCreateTrade(t *testing.T) {
 			t.Fatalf("read request body: %v", err)
 		}
 
-		var payReq requestPay.AlipayPayRequest
+		var payReq map[string]any
 		if err := json.Unmarshal(body, &payReq); err != nil {
 			t.Fatalf("unmarshal request: %v", err)
 		}
-		if payReq.PaymentRequestId != orderNo {
-			t.Fatalf("unexpected paymentRequestId: %s", payReq.PaymentRequestId)
+		if payReq["paymentRequestId"] != orderNo {
+			t.Fatalf("unexpected paymentRequestId: %v", payReq["paymentRequestId"])
 		}
-		if payReq.PaymentNotifyUrl != notifyURL {
-			t.Fatalf("unexpected notify url: %s", payReq.PaymentNotifyUrl)
+		if payReq["paymentNotifyUrl"] != notifyURL {
+			t.Fatalf("unexpected notify url: %v", payReq["paymentNotifyUrl"])
 		}
-		if payReq.PaymentRedirectUrl != redirectURL {
-			t.Fatalf("unexpected redirect url: %s", payReq.PaymentRedirectUrl)
+		if payReq["paymentRedirectUrl"] != redirectURL {
+			t.Fatalf("unexpected redirect url: %v", payReq["paymentRedirectUrl"])
 		}
-		if payReq.Order == nil || payReq.Order.Merchant == nil {
-			t.Fatal("missing order merchant info")
+		if _, ok := payReq["productCode"]; ok {
 		}
-		if payReq.Order.ReferenceOrderId != orderNo {
-			t.Fatalf("unexpected referenceOrderId: %s", payReq.Order.ReferenceOrderId)
+		if payReq["productCode"] != "CASHIER_PAYMENT" {
+			t.Fatalf("unexpected productCode: %+v", payReq["productCode"])
 		}
-		if payReq.Order.Merchant.ReferenceMerchantId != merchantID {
-			t.Fatalf("unexpected merchant id: %s", payReq.Order.Merchant.ReferenceMerchantId)
+
+		paymentMethod, ok := payReq["paymentMethod"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected payment method payload: %+v", payReq["paymentMethod"])
 		}
-		if payReq.PaymentAmount == nil || payReq.PaymentAmount.Value != expectedAmount || payReq.PaymentAmount.Currency != "USD" {
-			t.Fatalf("unexpected payment amount: %+v", payReq.PaymentAmount)
+		if paymentMethod["paymentMethodType"] != "ALIPAY_HK" {
+			t.Fatalf("unexpected payment method type: %+v", paymentMethod)
 		}
-		if payReq.ProductCode != "CASHIER_PAYMENT" {
-			t.Fatalf("unexpected product code: %s", payReq.ProductCode)
+
+		if _, ok := payReq["paymentFactor"]; ok {
+			t.Fatalf("paymentFactor should not be sent in sdk/demo style request: %+v", payReq["paymentFactor"])
 		}
-		if payReq.Order.Env == nil || string(payReq.Order.Env.TerminalType) != "WEB" {
-			t.Fatalf("unexpected env: %+v", payReq.Order.Env)
+
+		settlementStrategy, ok := payReq["settlementStrategy"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected settlement strategy payload: %+v", payReq["settlementStrategy"])
+		}
+		if settlementStrategy["settlementCurrency"] != "HKD" {
+			t.Fatalf("unexpected settlementStrategy: %+v", settlementStrategy)
+		}
+
+		order, ok := payReq["order"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected order payload: %+v", payReq["order"])
+		}
+		if order["referenceOrderId"] != orderNo {
+			t.Fatalf("unexpected referenceOrderId: %+v", order)
+		}
+		env, ok := order["env"].(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected env payload: %+v", order["env"])
+		}
+		if env["terminalType"] != "WEB" {
+			t.Fatalf("unexpected terminalType: %+v", env)
+		}
+		if _, exists := env["osType"]; exists {
+			t.Fatalf("osType should be omitted for WEB terminalType: %+v", env)
 		}
 
 		respBody, err := json.Marshal(map[string]any{
 			"result": map[string]any{
-				"resultCode":    "SUCCESS",
-				"resultStatus":  "S",
-				"resultMessage": "Success",
+				"resultCode":    "PAYMENT_IN_PROCESS",
+				"resultStatus":  "U",
+				"resultMessage": "Payment in process",
 			},
 			"paymentRequestId": orderNo,
-			"normalUrl": expectedURL,
+			"normalUrl":        expectedNormal,
 		})
 		if err != nil {
 			t.Fatalf("marshal response: %v", err)
@@ -115,21 +172,128 @@ func TestPreCreateTrade(t *testing.T) {
 		PrivateKey:      privateKey,
 		AlipayPublicKey: publicKey,
 		GatewayUrl:      server.URL,
-		Currency:        "USD",
+		Currency:        "HKD",
+		PaymentMethod:   "ALIPAY_HK",
 		InvoiceName:     "Perfect Panel",
 		NotifyURL:       notifyURL,
 		RedirectURL:     redirectURL,
 	})
 
 	payload, err := client.PreCreateTrade(context.Background(), Order{
-		OrderNo: orderNo,
-		Amount:  1234,
+		OrderNo:          orderNo,
+		Amount:           1234,
+		ReferenceBuyerId: "user-1",
 	})
 	if err != nil {
 		t.Fatalf("PreCreateTrade returned error: %v", err)
 	}
-	if payload != expectedURL {
+	if payload != expectedNormal {
 		t.Fatalf("unexpected payload: %s", payload)
+	}
+}
+
+func loadIntegrationConfig(t *testing.T) Config {
+	t.Helper()
+
+	cfg := Config{
+		ClientId:        integrationClientID,
+		MerchantId:      integrationMerchantID,
+		PrivateKey:      integrationPrivateKey,
+		AlipayPublicKey: integrationAlipayPublicKey,
+		GatewayUrl:      integrationGatewayURL,
+		Currency:        integrationCurrency,
+		PaymentMethod:   integrationPaymentMethod,
+		InvoiceName:     integrationInvoiceName,
+		NotifyURL:       integrationNotifyURL,
+		RedirectURL:     integrationRedirectURL,
+	}
+
+	missing := make([]string, 0, 8)
+	if strings.TrimSpace(cfg.GatewayUrl) == "" {
+		missing = append(missing, "integrationGatewayURL")
+	}
+	if strings.TrimSpace(cfg.ClientId) == "" {
+		missing = append(missing, "integrationClientID")
+	}
+	if strings.TrimSpace(cfg.MerchantId) == "" {
+		missing = append(missing, "integrationMerchantID")
+	}
+	if strings.TrimSpace(cfg.PrivateKey) == "" {
+		missing = append(missing, "integrationPrivateKey")
+	}
+	if strings.TrimSpace(cfg.AlipayPublicKey) == "" {
+		missing = append(missing, "integrationAlipayPublicKey")
+	}
+	if strings.TrimSpace(cfg.Currency) == "" {
+		missing = append(missing, "integrationCurrency")
+	}
+	if strings.TrimSpace(cfg.PaymentMethod) == "" {
+		missing = append(missing, "integrationPaymentMethod")
+	}
+	if strings.TrimSpace(cfg.NotifyURL) == "" {
+		missing = append(missing, "integrationNotifyURL")
+	}
+	if strings.TrimSpace(cfg.RedirectURL) == "" {
+		missing = append(missing, "integrationRedirectURL")
+	}
+	if len(missing) > 0 {
+		t.Skipf("fill AlipayPlus integration test config first: %s", strings.Join(missing, ", "))
+	}
+
+	return cfg
+}
+
+func TestPreCreateTrade_RequireConfiguredPaymentMethod(t *testing.T) {
+	privateKey, publicKey := generateTestKeys(t)
+
+	client := NewClient(Config{
+		ClientId:        "test-client-id",
+		MerchantId:      "test-merchant-id",
+		PrivateKey:      privateKey,
+		AlipayPublicKey: publicKey,
+		GatewayUrl:      "https://example.com",
+		Currency:        "CNY",
+		InvoiceName:     "Perfect Panel",
+		NotifyURL:       "https://example.com/notify",
+		RedirectURL:     "https://example.com/payment/return",
+	})
+
+	_, err := client.PreCreateTrade(context.Background(), Order{
+		OrderNo: "ORDER_20260417_002",
+		Amount:  2000,
+	})
+	if err == nil {
+		t.Fatal("expected error when payment method is not configured")
+	}
+	if err.Error() != "paymentMethod is empty" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPreCreateTrade_RequireConfiguredCurrency(t *testing.T) {
+	privateKey, publicKey := generateTestKeys(t)
+
+	client := NewClient(Config{
+		ClientId:        "test-client-id",
+		MerchantId:      "test-merchant-id",
+		PrivateKey:      privateKey,
+		AlipayPublicKey: publicKey,
+		GatewayUrl:      "https://example.com",
+		PaymentMethod:   "ALIPAY_CN",
+		InvoiceName:     "Perfect Panel",
+		NotifyURL:       "https://example.com/notify",
+		RedirectURL:     "https://example.com/payment/return",
+	})
+
+	_, err := client.PreCreateTrade(context.Background(), Order{
+		OrderNo: "ORDER_20260417_003",
+		Amount:  2000,
+	})
+	if err == nil {
+		t.Fatal("expected error when currency is not configured")
+	}
+	if err.Error() != "currency is empty" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

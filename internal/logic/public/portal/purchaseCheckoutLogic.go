@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
@@ -219,6 +220,17 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 
+	targetCurrency := strings.ToUpper(strings.TrimSpace(config.Currency))
+	if targetCurrency == "" {
+		l.Errorw("[PurchaseCheckout] AlipayPlus currency is empty")
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "AlipayPlus currency is empty")
+	}
+	paymentMethod := strings.ToUpper(strings.TrimSpace(config.PaymentMethod))
+	if paymentMethod == "" {
+		l.Errorw("[PurchaseCheckout] AlipayPlus payment method is empty")
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "AlipayPlus payment method is empty")
+	}
+
 	// Build notification URL for payment status callbacks
 	isGatewayMod := report.IsGatewayMode()
 	notifyURL := ""
@@ -246,16 +258,12 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		PrivateKey:      config.PrivateKey,
 		AlipayPublicKey: config.AlipayPublicKey,
 		GatewayUrl:      config.GatewayUrl,
-		Currency:        config.Currency,
+		Currency:        targetCurrency,
+		PaymentMethod:   paymentMethod,
 		InvoiceName:     config.InvoiceName,
 		NotifyURL:       notifyURL,
 		RedirectURL:     returnURL,
 	})
-
-	targetCurrency := config.Currency
-	if targetCurrency == "" {
-		targetCurrency = l.svcCtx.Config.Currency.Unit
-	}
 
 	amount, err := l.queryExchangeRate(targetCurrency, info.Amount)
 	if err != nil {
@@ -265,8 +273,9 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 	convertAmount := int64(amount * 100)
 
 	payload, err := client.PreCreateTrade(l.ctx, alipayplus.Order{
-		OrderNo: info.OrderNo,
-		Amount:  convertAmount,
+		OrderNo:          info.OrderNo,
+		Amount:           convertAmount,
+		ReferenceBuyerId: strconv.FormatInt(info.UserId, 10),
 	})
 	if err != nil {
 		l.Errorw("[PurchaseCheckout] AlipayPlus PreCreateTrade error", logger.Field("error", err.Error()))

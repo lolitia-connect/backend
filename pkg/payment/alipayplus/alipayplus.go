@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	defaultAlipayClient "github.com/alipay/global-open-sdk-go/com/alipay/api"
 	"github.com/alipay/global-open-sdk-go/com/alipay/api/model"
@@ -22,8 +23,9 @@ type Config struct {
 	MerchantId      string
 	PrivateKey      string
 	AlipayPublicKey string
-	GatewayUrl      string // 例如 https://open-sea.alipayplus.com
-	Currency        string // 例如 "USD"
+	GatewayUrl      string
+	Currency        string // USD, EUR 等
+	PaymentMethod   string // ALIPAY_CN, ALIPAY_HK
 	InvoiceName     string
 	NotifyURL       string
 	RedirectURL     string
@@ -46,8 +48,10 @@ const (
 )
 
 type Order struct {
-	OrderNo string
-	Amount  int64
+	OrderNo           string
+	Amount            int64
+	ReferenceBuyerId  string
+	PaymentExpiryTime string
 }
 
 type Client struct {
@@ -79,25 +83,48 @@ func NewClient(c Config) *Client {
 func (c *Client) PreCreateTrade(ctx context.Context, order Order) (string, error) {
 	_ = ctx
 
-	req, payReq := requestPay.NewAlipayPayRequest()
-	amount := model.NewAmount(formatAmount(order.Amount), c.Currency)
+	currency := strings.ToUpper(strings.TrimSpace(c.Currency))
+	if currency == "" {
+		return "", errors.New("currency is empty")
+	}
+	paymentMethod := strings.ToUpper(strings.TrimSpace(c.PaymentMethod))
+	if paymentMethod == "" {
+		return "", errors.New("paymentMethod is empty")
+	}
 
+	req, payReq := requestPay.NewAlipayPayRequest()
+	amount := model.NewAmount(formatAmount(order.Amount), currency)
 	payReq.PaymentRequestId = order.OrderNo
 	payReq.ProductCode = model.ProductCodeType_CASHIER_PAYMENT
 	payReq.PaymentAmount = amount
+	payReq.PaymentMethod = &model.PaymentMethod{
+		PaymentMethodType: paymentMethod,
+	}
+	payReq.SettlementStrategy = &model.SettlementStrategy{
+		SettlementCurrency: currency,
+	}
 	payReq.PaymentNotifyUrl = c.NotifyURL
 	payReq.PaymentRedirectUrl = c.RedirectURL
+	if paymentExpiryTime := strings.TrimSpace(order.PaymentExpiryTime); paymentExpiryTime != "" {
+		payReq.PaymentExpiryTime = paymentExpiryTime
+	}
+
 	payReq.Order = &model.Order{
 		ReferenceOrderId: order.OrderNo,
 		OrderDescription: c.InvoiceName,
 		OrderAmount:      amount,
-		Merchant: &model.Merchant{
-			ReferenceMerchantId: c.MerchantId,
-			MerchantName:        c.InvoiceName,
-		},
 		Env: &model.Env{
 			TerminalType: model.TerminalType_WEB,
 		},
+	}
+	if referenceBuyerID := strings.TrimSpace(order.ReferenceBuyerId); referenceBuyerID != "" {
+		payReq.Order.Buyer = &model.Buyer{ReferenceBuyerId: referenceBuyerID}
+	}
+	if strings.TrimSpace(c.MerchantId) != "" || strings.TrimSpace(c.InvoiceName) != "" {
+		payReq.Order.Merchant = &model.Merchant{
+			ReferenceMerchantId: c.MerchantId,
+			MerchantName:        c.InvoiceName,
+		}
 	}
 
 	result, err := c.apiClient.Execute(req)
@@ -225,10 +252,15 @@ func isPayResponseSuccess(resp *responsePay.AlipayPayResponse) bool {
 	if resp == nil {
 		return false
 	}
-	if resp.Result != nil && resp.Result.ResultStatus == model.ResultStatusType_S {
+	if resp.Result != nil && isAcceptedPayResult(string(resp.Result.ResultStatus), resp.Result.ResultCode) {
 		return true
 	}
-	return resp.AlipayResponse.Result.ResultStatus == "S"
+	return isAcceptedPayResult(resp.AlipayResponse.Result.ResultStatus, resp.AlipayResponse.Result.ResultCode)
+}
+
+func isAcceptedPayResult(resultStatus, resultCode string) bool {
+	return resultStatus == string(model.ResultStatusType_S) ||
+		(resultStatus == string(model.ResultStatusType_U) && resultCode == "PAYMENT_IN_PROCESS")
 }
 
 func isPayQueryResponseSuccess(resp *responsePay.AlipayPayQueryResponse) bool {

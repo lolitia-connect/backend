@@ -20,8 +20,7 @@ func ParseAuthDataJson(content []byte) (*AuthData, error) {
 
 // ParseAuthDataBase64 decodes provided content from base64 and parses result for AuthData
 func ParseAuthDataBase64(content []byte) (*AuthData, error) {
-
-	decodedBytes, err := base64.RawStdEncoding.DecodeString(string(content))
+	decodedBytes, err := base64.StdEncoding.DecodeString(string(content))
 	if err != nil && len(decodedBytes) == 0 {
 		return nil, fmt.Errorf("base64 decoding error: %w", err)
 	}

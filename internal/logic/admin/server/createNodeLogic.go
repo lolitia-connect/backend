@@ -40,7 +40,7 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 		IsHidden:     req.IsHidden,
 		NodeGroupIds: node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds)),
 	}
-	err := l.svcCtx.NodeModel.InsertNode(l.ctx, &data)
+	err := l.svcCtx.Store.Node().InsertNode(l.ctx, &data)
 	if err != nil {
 		l.Errorw("[CreateNode] Insert Database Error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "[CreateNode] Insert Database Error")

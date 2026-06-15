@@ -30,7 +30,7 @@ func NewDeleteNodeGroupLogic(ctx context.Context, svcCtx *svc.ServiceContext) *D
 func (l *DeleteNodeGroupLogic) DeleteNodeGroup(req *types.DeleteNodeGroupRequest) error {
 	// 查询节点组信息
 	var nodeGroup group.NodeGroup
-	if err := l.svcCtx.DB.Where("id = ?", req.Id).First(&nodeGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("id = ?", req.Id).First(&nodeGroup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("node group not found")
 		}
@@ -40,7 +40,7 @@ func (l *DeleteNodeGroupLogic) DeleteNodeGroup(req *types.DeleteNodeGroupRequest
 
 	// 检查是否有关联节点（使用JSON_CONTAINS查询node_group_ids数组）
 	var nodeCount int64
-	if err := l.svcCtx.DB.Model(&node.Node{}).Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroup.Id)).Count(&nodeCount).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Model(&node.Node{}).Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroup.Id)).Count(&nodeCount).Error; err != nil {
 		logger.Errorf("failed to count nodes in group: %v", err)
 		return err
 	}
@@ -49,7 +49,7 @@ func (l *DeleteNodeGroupLogic) DeleteNodeGroup(req *types.DeleteNodeGroupRequest
 	}
 
 	// 使用 GORM Transaction 删除节点组
-	return l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	return l.svcCtx.Store.DB().Transaction(func(tx *gorm.DB) error {
 		// 删除节点组
 		if err := tx.Where("id = ?", req.Id).Delete(&group.NodeGroup{}).Error; err != nil {
 			logger.Errorf("failed to delete node group: %v", err)

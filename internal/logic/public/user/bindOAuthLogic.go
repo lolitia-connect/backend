@@ -60,7 +60,7 @@ func (l *BindOAuthLogic) BindOAuth(req *types.BindOAuthRequest) (resp *types.Bin
 }
 
 func (l *BindOAuthLogic) google(req *types.BindOAuthRequest) (string, error) {
-	authMethod, err := l.svcCtx.AuthModel.FindOneByMethod(l.ctx, "google")
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "google")
 	if err != nil {
 		return "", err
 	}
@@ -90,7 +90,7 @@ func (l *BindOAuthLogic) facebook() (string, error) {
 	return "", nil
 }
 func (l *BindOAuthLogic) apple(req *types.BindOAuthRequest) (string, error) {
-	authMethod, err := l.svcCtx.AuthModel.FindOneByMethod(l.ctx, "apple")
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "apple")
 	if err != nil {
 		return "", err
 	}
@@ -115,18 +115,16 @@ func (l *BindOAuthLogic) github() (string, error) {
 }
 
 func (l *BindOAuthLogic) telegram(req *types.BindOAuthRequest) (string, error) {
-	authMethod, err := l.svcCtx.AuthModel.FindOneByMethod(l.ctx, "telegram")
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "telegram")
 	if err != nil {
 		return "", err
 	}
-
 	var cfg auth.TelegramAuthConfig
 	err = cfg.Unmarshal(authMethod.Config)
 	if err != nil {
 		l.Errorw("error unmarshal telegram config", logger.Field("config", authMethod.Config), logger.Field("error", err.Error()))
 		return "", err
 	}
-
 	code := random.KeyNew(8, 1)
 	return telegram.GenerateTelegramOAuthURL(cfg.BotToken, code, req.Redirect), nil
 }

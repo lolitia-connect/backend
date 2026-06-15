@@ -30,7 +30,7 @@ func NewUpdateNodeGroupLogic(ctx context.Context, svcCtx *svc.ServiceContext) *U
 func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest) error {
 	// 检查节点组是否存在
 	var nodeGroup group.NodeGroup
-	if err := l.svcCtx.DB.Where("id = ?", req.Id).First(&nodeGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("id = ?", req.Id).First(&nodeGroup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("node group not found")
 		}
@@ -41,7 +41,7 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 	// 验证:系统中只能有一个过期节点组
 	if req.IsExpiredGroup != nil && *req.IsExpiredGroup {
 		var count int64
-		err := l.svcCtx.DB.Model(&group.NodeGroup{}).
+		err := l.svcCtx.Store.DB().Model(&group.NodeGroup{}).
 			Where("is_expired_group = ? AND id != ?", true, req.Id).
 			Count(&count).Error
 		if err != nil {
@@ -54,7 +54,7 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 
 		// 验证:被订阅商品设置为默认节点组的不能设置为过期节点组
 		var subscribeCount int64
-		err = l.svcCtx.DB.Model(&subscribe.Subscribe{}).
+		err = l.svcCtx.Store.DB().Model(&subscribe.Subscribe{}).
 			Where("node_group_id = ?", req.Id).
 			Count(&subscribeCount).Error
 		if err != nil {
@@ -124,7 +124,7 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 	}
 
 	// 执行更新
-	if err := l.svcCtx.DB.Model(&nodeGroup).Updates(updates).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Model(&nodeGroup).Updates(updates).Error; err != nil {
 		logger.Errorf("failed to update node group: %v", err)
 		return err
 	}
@@ -157,7 +157,7 @@ func (l *UpdateNodeGroupLogic) validateTrafficRange(currentNodeGroupId int, newM
 
 	// 查询所有其他设置了流量区间的节点组
 	var otherGroups []group.NodeGroup
-	if err := l.svcCtx.DB.
+	if err := l.svcCtx.Store.DB().
 		Where("id != ?", currentNodeGroupId).
 		Where("(min_traffic_gb > 0 OR max_traffic_gb > 0)").
 		Find(&otherGroups).Error; err != nil {

@@ -30,7 +30,7 @@ func NewGetServerNodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 
 func (l *GetServerNodeListLogic) GetServerNodeList() (resp *types.GetServerNodeListResponse, err error) {
 	// Query all servers (no pagination, get all)
-	_, servers, err := l.svcCtx.NodeModel.FilterServerList(l.ctx, &node.FilterParams{
+	_, servers, err := l.svcCtx.Store.Node().FilterServerList(l.ctx, &node.FilterParams{
 		Page: 1,
 		Size: 1000,
 	})
@@ -67,7 +67,7 @@ func (l *GetServerNodeListLogic) GetServerNodeList() (resp *types.GetServerNodeL
 
 		// Get server status from cache
 		var cpu, mem float64
-		nodeStatus, err := l.svcCtx.NodeModel.StatusCache(l.ctx, server.Id)
+		nodeStatus, err := l.svcCtx.Store.Node().StatusCache(l.ctx, server.Id)
 		if err != nil && !errors.Is(err, redis.Nil) {
 			l.Errorw("[GetServerNodeList] Get StatusCache Error: ", logger.Field("error", err.Error()), logger.Field("server_id", server.Id))
 		} else {
@@ -122,7 +122,7 @@ func (l *GetServerNodeListLogic) countOnlineUsers(serverId int64, protocols []no
 		if !p.Enable {
 			continue
 		}
-		data, err := l.svcCtx.NodeModel.OnlineUserSubscribe(l.ctx, serverId, p.Type)
+		data, err := l.svcCtx.Store.Node().OnlineUserSubscribe(l.ctx, serverId, p.Type)
 		if err != nil {
 			if !errors.Is(err, redis.Nil) {
 				l.Errorw("[GetServerNodeList] OnlineUserSubscribe Error: ", logger.Field("error", err.Error()), logger.Field("server_id", serverId), logger.Field("protocol", p.Type))

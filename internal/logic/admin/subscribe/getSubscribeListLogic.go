@@ -30,20 +30,17 @@ func NewGetSubscribeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 }
 
 func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequest) (resp *types.GetSubscribeListResponse, err error) {
-	// Build filter params
-	filterParams := &subscribe.FilterParams{
-		Page:     int(req.Page),
-		Size:     int(req.Size),
-		Language: req.Language,
-		Search:   req.Search,
-	}
-
-	// Add NodeGroupId filter if provided
+	var nodeGroupId *int64
 	if req.NodeGroupId > 0 {
-		filterParams.NodeGroupId = &req.NodeGroupId
+		nodeGroupId = &req.NodeGroupId
 	}
-
-	total, list, err := l.svcCtx.SubscribeModel.FilterList(l.ctx, filterParams)
+	total, list, err := l.svcCtx.Store.Subscribe().FilterList(l.ctx, &subscribe.FilterParams{
+		Page:        int(req.Page),
+		Size:        int(req.Size),
+		Language:    req.Language,
+		Search:      req.Search,
+		NodeGroupId: nodeGroupId,
+	})
 	if err != nil {
 		l.Logger.Error("[GetSubscribeListLogic] get subscribe list failed: ", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get subscribe list failed: %v", err.Error())
@@ -62,13 +59,7 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 				l.Logger.Error("[GetSubscribeListLogic] JSON unmarshal failed: ", logger.Field("error", err.Error()), logger.Field("discount", item.Discount))
 			}
 		}
-		if item.TrafficLimit != "" {
-			err = json.Unmarshal([]byte(item.TrafficLimit), &sub.TrafficLimit)
-			if err != nil {
-				l.Logger.Error("[GetSubscribeListLogic] JSON unmarshal failed: ", logger.Field("error", err.Error()), logger.Field("traffic_limit", item.TrafficLimit))
-			}
-		}
-		sub.Nodes = tool.StringToInt64Slice(item.Nodes)
+		sub.Nodes = types.StringInt64Slice(tool.StringToInt64Slice(item.Nodes))
 		sub.NodeTags = strings.Split(item.NodeTags, ",")
 		// Handle NodeGroupIds - convert from JSONInt64Slice to []string
 		if item.NodeGroupIds != nil {
@@ -81,7 +72,7 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 		resultList = append(resultList, sub)
 	}
 
-	subscribeMaps, err := l.svcCtx.UserModel.QueryActiveSubscriptions(l.ctx, subscribeIdList...)
+	subscribeMaps, err := l.svcCtx.Store.User().QueryActiveSubscriptions(l.ctx, subscribeIdList...)
 	if err != nil {
 		l.Logger.Error("[GetSubscribeListLogic] get user subscribe failed: ", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get user subscribe failed: %v", err.Error())

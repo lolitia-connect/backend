@@ -1,6 +1,7 @@
 package subscribe
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/perfect-panel/server/internal/model/user"
 
-	"github.com/gin-gonic/gin"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -26,28 +26,37 @@ import (
 
 //goland:noinspection GoNameStartsWithPackageName
 type SubscribeLogic struct {
-	ctx *gin.Context
-	svc *svc.ServiceContext
+	ctx     context.Context
+	svc     *svc.ServiceContext
+	request RequestMeta
 	logger.Logger
 }
 
-func NewSubscribeLogic(ctx *gin.Context, svc *svc.ServiceContext) *SubscribeLogic {
+type RequestMeta struct {
+	Host       string
+	RequestURI string
+	UserAgent  string
+	ClientIP   string
+}
+
+func NewSubscribeLogic(ctx context.Context, svc *svc.ServiceContext, request RequestMeta) *SubscribeLogic {
 	return &SubscribeLogic{
-		ctx:    ctx,
-		svc:    svc,
-		Logger: logger.WithContext(ctx.Request.Context()),
+		ctx:     ctx,
+		svc:     svc,
+		request: request,
+		Logger:  logger.WithContext(ctx),
 	}
 }
 
 func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.SubscribeResponse, err error) {
 	// query client list
-	clients, err := l.svc.ClientModel.List(l.ctx.Request.Context())
+	clients, err := l.svc.Store.Client().List(l.ctx)
 	if err != nil {
 		l.Errorw("[SubscribeLogic] Query client list failed", logger.Field("error", err.Error()))
 		return nil, err
 	}
 
-	userAgent := strings.ToLower(l.ctx.Request.UserAgent())
+	userAgent := strings.ToLower(l.request.UserAgent)
 
 	var targetApp, defaultApp *client.SubscribeApplication
 
@@ -85,7 +94,7 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 		l.logSubscribeActivity(subscribeStatus, userSubscribe, req)
 	}()
 	// find subscribe info
-	subscribeInfo, err := l.svc.SubscribeModel.FindOne(l.ctx.Request.Context(), userSubscribe.SubscribeId)
+	subscribeInfo, err := l.svc.Store.Subscribe().FindOne(l.ctx, userSubscribe.SubscribeId)
 	if err != nil {
 		l.Errorw("[SubscribeLogic] Find subscribe info failed", logger.Field("error", err.Error()), logger.Field("subscribeId", userSubscribe.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find subscribe info failed: %v", err.Error())
@@ -129,11 +138,11 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 
 	var formats = []string{"json", "yaml", "conf"}
 
+	headers := make(map[string]string)
 	for _, format := range formats {
 		if format == strings.ToLower(targetApp.OutputFormat) {
-			l.ctx.Header("content-disposition", fmt.Sprintf("attachment;filename*=UTF-8''%s.%s", url.QueryEscape(l.svc.Config.Site.SiteName), format))
-			l.ctx.Header("Content-Type", "application/octet-stream; charset=UTF-8")
-
+			headers["Content-Disposition"] = fmt.Sprintf("attachment;filename*=UTF-8''%s.%s", url.QueryEscape(l.svc.Config.Site.SiteName), format)
+			headers["Content-Type"] = "application/octet-stream; charset=UTF-8"
 		}
 	}
 
@@ -143,6 +152,7 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 			"upload=%d;download=%d;total=%d;expire=%d",
 			userSubscribe.Upload, userSubscribe.Download, userSubscribe.Traffic, userSubscribe.ExpireTime.Unix(),
 		),
+		Headers: headers,
 	}
 	subscribeStatus = true
 	return
@@ -150,7 +160,7 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 
 func (l *SubscribeLogic) getSubscribeV2URL() string {
 
-	uri := l.ctx.Request.RequestURI
+	uri := l.request.RequestURI
 	// is gateway mode, add /sub prefix
 	if report.IsGatewayMode() {
 		uri = "/sub" + uri
@@ -161,20 +171,42 @@ func (l *SubscribeLogic) getSubscribeV2URL() string {
 		return fmt.Sprintf("https://%s%s", domains[0], uri)
 	}
 	// use current request host
-	return fmt.Sprintf("https://%s%s", l.ctx.Request.Host, uri)
+	return fmt.Sprintf("https://%s%s", l.request.Host, uri)
 }
 
+// getUserSubscribe 是本次修改的核心部分
 func (l *SubscribeLogic) getUserSubscribe(token string) (*user.Subscribe, error) {
-	userSub, err := l.svc.UserModel.FindOneSubscribeByToken(l.ctx.Request.Context(), token)
+	userSub, err := l.svc.Store.User().FindOneSubscribeByToken(l.ctx, token)
 	if err != nil {
 		l.Infow("[Generate Subscribe]find subscribe error: %v", logger.Field("error", err.Error()), logger.Field("token", token))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 
+	// =========================================================
+	// 修复开始：添加空指针检查 (Fix start)
+	// =========================================================
+	if userSub == nil {
+		l.Infow("[Generate Subscribe] token invalid or user not found", logger.Field("token", token))
+		return nil, errors.New("subscribe token invalid")
+	}
+	// =========================================================
+	// Check if user is enabled
+	userInfo, err := l.svc.Store.User().FindOne(l.ctx, userSub.UserId)
+	if err != nil {
+		l.Infow("[Generate Subscribe] failed to get user info", logger.Field("error", err.Error()), logger.Field("userId", userSub.UserId))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "failed to get user info: %v", err.Error())
+	}
+	if !*userInfo.Enable {
+		l.Infow("[Generate Subscribe] user account is disabled", logger.Field("userId", userSub.UserId))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserDisabled), "User account is disabled")
+	}
+	// 修复结束 (Fix end)
+	// =========================================================
+
 	//  Ignore expiration check
 	//if userSub.Status > 1 {
-	//	l.Infow("[Generate Subscribe]subscribe is not available", logger.Field("status", int(userSub.Status)), logger.Field("token", token))
-	//	return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe is not available")
+	// l.Infow("[Generate Subscribe]subscribe is not available", logger.Field("status", int(userSub.Status)), logger.Field("token", token))
+	// return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe is not available")
 	//}
 
 	return userSub, nil
@@ -188,13 +220,13 @@ func (l *SubscribeLogic) logSubscribeActivity(subscribeStatus bool, userSub *use
 	subscribeLog := log.Subscribe{
 		Token:           req.Token,
 		UserAgent:       req.UA,
-		ClientIP:        l.ctx.ClientIP(),
+		ClientIP:        l.request.ClientIP,
 		UserSubscribeId: userSub.Id,
 	}
 
 	content, _ := subscribeLog.Marshal()
 
-	err := l.svc.LogModel.Insert(l.ctx.Request.Context(), &log.SystemLog{
+	err := l.svc.Store.Log().Insert(l.ctx, &log.SystemLog{
 		Type:     log.TypeSubscribe.Uint8(),
 		ObjectID: userSub.UserId, // log user id
 		Date:     time.Now().Format(time.DateOnly),
@@ -223,7 +255,7 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 		return l.createExpiredServers(), nil
 	}
 
-	subDetails, err := l.svc.SubscribeModel.FindOne(l.ctx.Request.Context(), userSub.SubscribeId)
+	subDetails, err := l.svc.Store.Subscribe().FindOne(l.ctx, userSub.SubscribeId)
 	if err != nil {
 		l.Errorw("[Generate Subscribe]find subscribe details error: %v", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe details error: %v", err.Error())
@@ -280,7 +312,7 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 				IsHidden:     &isHidden,
 				Preload:      true,
 			}
-			_, groupNodes, err = l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), params)
+			_, groupNodes, err = l.svc.Store.Node().FilterNodeList(l.ctx, params)
 
 			if err != nil {
 				l.Errorw("[Generate Subscribe]filter nodes by group error", logger.Field("error", err.Error()))
@@ -290,7 +322,7 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 		}
 
 		// 2. 获取公共节点（NodeGroupIds 为空的节点）
-		_, allNodes, err := l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
+		_, allNodes, err := l.svc.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 			Page:     0,
 			Size:     1000,
 			Enabled:  &enable,
@@ -356,16 +388,14 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 	}
 
 	enable := true
-	isHidden := false
 	var nodes []*node.Node
-	_, nodes, err = l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
-		Page:     1,
-		Size:     1000,
-		NodeId:   nodeIds,
-		Tag:      tool.RemoveDuplicateElements(tags...),
-		Preload:  true,
-		Enabled:  &enable,
-		IsHidden: &isHidden,
+	_, nodes, err = l.svc.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
+		Page:    1,
+		Size:    1000,
+		NodeId:  nodeIds,
+		Tag:     tool.RemoveDuplicateElements(tags...),
+		Preload: true,
+		Enabled: &enable, // Only get enabled nodes
 	})
 
 	if err != nil {
@@ -427,7 +457,7 @@ func (l *SubscribeLogic) getFirstHostLine() string {
 // isGroupEnabled 判断分组功能是否启用
 func (l *SubscribeLogic) isGroupEnabled() bool {
 	var value string
-	err := l.svc.DB.Table("system").
+	err := l.svc.Store.DB().Table("system").
 		Where("`category` = ? AND `key` = ?", "group", "enabled").
 		Select("value").
 		Scan(&value).Error
@@ -442,7 +472,7 @@ func (l *SubscribeLogic) isGroupEnabled() bool {
 func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.Node, error) {
 	// 1. 查询过期节点组
 	var expiredGroup group.NodeGroup
-	err := l.svc.DB.Where("is_expired_group = ?", true).First(&expiredGroup).Error
+	err := l.svc.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error
 	if err != nil {
 		l.Debugw("[SubscribeLogic]no expired node group configured", logger.Field("error", err.Error()))
 		return nil, err
@@ -471,7 +501,7 @@ func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.
 	// 4. 查询过期节点组的节点
 	enable := true
 	isHidden := false
-	_, nodes, err := l.svc.NodeModel.FilterNodeList(l.ctx.Request.Context(), &node.FilterNodeParams{
+	_, nodes, err := l.svc.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:         0,
 		Size:         1000,
 		NodeGroupIds: []int64{expiredGroup.Id},
@@ -499,7 +529,7 @@ func (l *SubscribeLogic) getAccessibleNodeGroup(nodeGroupId int64, accessType st
 	}
 
 	var nodeGroup group.NodeGroup
-	if err := l.svc.DB.Select("id, name, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
+	if err := l.svc.Store.DB().Select("id, name, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
 		l.Infow("[Generate Subscribe]node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
 		return nil
 	}

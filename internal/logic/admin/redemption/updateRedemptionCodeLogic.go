@@ -26,7 +26,7 @@ func NewUpdateRedemptionCodeLogic(ctx context.Context, svcCtx *svc.ServiceContex
 }
 
 func (l *UpdateRedemptionCodeLogic) UpdateRedemptionCode(req *types.UpdateRedemptionCodeRequest) error {
-	redemptionCode, err := l.svcCtx.RedemptionCodeModel.FindOne(l.ctx, req.Id)
+	redemptionCode, err := l.svcCtx.Store.RedemptionCode().FindOne(l.ctx, req.Id)
 	if err != nil {
 		l.Errorw("[UpdateRedemptionCode] Find Redemption Code Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find redemption code error: %v", err.Error())
@@ -55,7 +55,7 @@ func (l *UpdateRedemptionCodeLogic) UpdateRedemptionCode(req *types.UpdateRedemp
 		redemptionCode.Quantity = req.Quantity
 	}
 
-	err = l.svcCtx.RedemptionCodeModel.Update(l.ctx, redemptionCode)
+	err = l.svcCtx.Store.RedemptionCode().Update(l.ctx, redemptionCode)
 	if err != nil {
 		l.Errorw("[UpdateRedemptionCode] Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update redemption code error: %v", err.Error())

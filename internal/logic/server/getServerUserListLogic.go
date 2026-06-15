@@ -1,17 +1,16 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/model/user"
-
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -22,30 +21,94 @@ import (
 
 type GetServerUserListLogic struct {
 	logger.Logger
-	ctx    *gin.Context
-	svcCtx *svc.ServiceContext
+	ctx      context.Context
+	svcCtx   *svc.ServiceContext
+	request  RequestMeta
+	response ResponseMeta
 }
 
 // NewGetServerUserListLogic Get user list
-func NewGetServerUserListLogic(ctx *gin.Context, svcCtx *svc.ServiceContext) *GetServerUserListLogic {
+func NewGetServerUserListLogic(ctx context.Context, svcCtx *svc.ServiceContext, request RequestMeta) *GetServerUserListLogic {
 	return &GetServerUserListLogic{
-		Logger: logger.WithContext(ctx.Request.Context()),
-		ctx:    ctx,
-		svcCtx: svcCtx,
+		Logger:   logger.WithContext(ctx),
+		ctx:      ctx,
+		svcCtx:   svcCtx,
+		request:  request,
+		response: NewResponseMeta(),
 	}
 }
 
+func (l *GetServerUserListLogic) ResponseMeta() ResponseMeta {
+	return l.response
+}
+
+func placeholderServerUser(serverID int64, protocol, secret string) types.ServerUser {
+	name := fmt.Sprintf("ppanel:server-user-placeholder:%d:%s:%s", serverID, strings.TrimSpace(protocol), secret)
+	return types.ServerUser{
+		Id:   1,
+		UUID: uuidx.NewDeterministicUUID(name).String(),
+	}
+}
+
+func mergeSubscribeLists(lists ...[]*subscribe.Subscribe) []*subscribe.Subscribe {
+	seen := make(map[int64]struct{})
+	result := make([]*subscribe.Subscribe, 0)
+	for _, list := range lists {
+		for _, item := range list {
+			if item == nil {
+				continue
+			}
+			if _, ok := seen[item.Id]; ok {
+				continue
+			}
+			seen[item.Id] = struct{}{}
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func (l *GetServerUserListLogic) queryMatchedSubscribes(nodeIds []int64, nodeTags []string) ([]*subscribe.Subscribe, error) {
+	var lists [][]*subscribe.Subscribe
+	if len(nodeIds) > 0 {
+		_, subs, err := l.svcCtx.Store.Subscribe().FilterList(l.ctx, &subscribe.FilterParams{
+			Page: 1,
+			Size: 9999,
+			Node: nodeIds,
+		})
+		if err != nil {
+			return nil, err
+		}
+		lists = append(lists, subs)
+	}
+
+	nodeTags = tool.RemoveDuplicateElements(nodeTags...)
+	if len(nodeTags) > 0 {
+		_, subs, err := l.svcCtx.Store.Subscribe().FilterList(l.ctx, &subscribe.FilterParams{
+			Page: 1,
+			Size: 9999,
+			Tags: nodeTags,
+		})
+		if err != nil {
+			return nil, err
+		}
+		lists = append(lists, subs)
+	}
+
+	return mergeSubscribeLists(lists...), nil
+}
+
 func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListRequest) (resp *types.GetServerUserListResponse, err error) {
-	cacheKey := fmt.Sprintf("%s%d", node.ServerUserListCacheKey, req.ServerId)
+	cacheKey := fmt.Sprintf("%s%d:%s", node.ServerUserListCacheKey, req.ServerId, req.Protocol)
 	cache, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 	if cache != "" {
 		etag := tool.GenerateETag([]byte(cache))
 		resp = &types.GetServerUserListResponse{}
 		//  Check If-None-Match header
-		if match := l.ctx.GetHeader("If-None-Match"); match == etag {
+		if match := l.request.IfNoneMatch; match == etag {
 			return nil, xerr.StatusNotModified
 		}
-		l.ctx.Header("ETag", etag)
+		l.response.SetHeader("ETag", etag)
 		err = json.Unmarshal([]byte(cache), resp)
 		if err != nil {
 			l.Errorw("[ServerUserListCacheKey] json unmarshal error", logger.Field("error", err.Error()))
@@ -53,13 +116,12 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 		}
 		return resp, nil
 	}
-	server, err := l.svcCtx.NodeModel.FindOneServer(l.ctx, req.ServerId)
+	server, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.ServerId)
 	if err != nil {
 		return nil, err
 	}
 
-	// 查询该服务器上该协议的所有节点（包括属于节点组的节点）
-	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
+	_, nodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:     1,
 		Size:     1000,
 		ServerId: []int64{server.Id},
@@ -101,19 +163,18 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 		}
 	}
 
-	// 获取所有节点组 ID
-	nodeGroupIds := make([]int64, 0, len(nodeGroupMap))
-	for gid := range nodeGroupMap {
-		nodeGroupIds = append(nodeGroupIds, gid)
-	}
-
 	// 查询订阅：
 	// 1. 如果有节点组，查询匹配这些节点组的订阅
 	// 2. 如果没有节点组，查询使用节点 ID 或 tags 的订阅
 	var subs []*subscribe.Subscribe
+	// 将 nodeGroupMap 转换为 slice
+	var nodeGroupIds []int64
+	for gid := range nodeGroupMap {
+		nodeGroupIds = append(nodeGroupIds, gid)
+	}
 	if len(nodeGroupIds) > 0 {
 		// 节点组模式：查询 node_group_id 或 node_group_ids 匹配的订阅
-		_, subs, err = l.svcCtx.SubscribeModel.FilterListByNodeGroups(l.ctx, &subscribe.FilterByNodeGroupsParams{
+		_, subs, err = l.svcCtx.Store.Subscribe().FilterListByNodeGroups(l.ctx, &subscribe.FilterByNodeGroupsParams{
 			Page:         1,
 			Size:         9999,
 			NodeGroupIds: nodeGroupIds,
@@ -125,7 +186,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	} else {
 		// 传统模式：查询匹配节点 ID 或 tags 的订阅
 		nodeTags = tool.RemoveDuplicateElements(nodeTags...)
-		_, subs, err = l.svcCtx.SubscribeModel.FilterList(l.ctx, &subscribe.FilterParams{
+		_, subs, err = l.svcCtx.Store.Subscribe().FilterList(l.ctx, &subscribe.FilterParams{
 			Page: 1,
 			Size: 9999,
 			Node: nodeIds,
@@ -139,17 +200,15 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	
 	if len(subs) == 0 {
 		return &types.GetServerUserListResponse{
-			Users: []types.ServerUser{
-				{
-					Id:   1,
-					UUID: uuidx.NewUUID().String(),
-				},
-			},
+			Users: []types.ServerUser{placeholderServerUser(req.ServerId, req.Protocol, l.svcCtx.Config.Node.NodeSecret)},
 		}, nil
 	}
 	users := make([]types.ServerUser, 0)
 	for _, sub := range subs {
-		data, err := l.svcCtx.UserModel.FindUsersSubscribeBySubscribeId(l.ctx, sub.Id)
+		if err := l.svcCtx.Store.User().ActivatePendingSubscribesBySubscribeId(l.ctx, sub.Id); err != nil {
+			return nil, err
+		}
+		data, err := l.svcCtx.Store.User().FindUsersSubscribeBySubscribeId(l.ctx, sub.Id)
 		if err != nil {
 			return nil, err
 		}
@@ -182,23 +241,20 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	}
 
 	if len(users) == 0 {
-		users = append(users, types.ServerUser{
-			Id:   1,
-			UUID: uuidx.NewUUID().String(),
-		})
+		users = append(users, placeholderServerUser(req.ServerId, req.Protocol, l.svcCtx.Config.Node.NodeSecret))
 	}
 	resp = &types.GetServerUserListResponse{
 		Users: users,
 	}
 	val, _ := json.Marshal(resp)
 	etag := tool.GenerateETag(val)
-	l.ctx.Header("ETag", etag)
-	err = l.svcCtx.Redis.Set(l.ctx, cacheKey, string(val), -1).Err()
+	l.response.SetHeader("ETag", etag)
+	err = l.svcCtx.Redis.Set(l.ctx, cacheKey, string(val), node.ServerCacheTTL).Err()
 	if err != nil {
 		l.Errorw("[ServerUserListCacheKey] redis set error", logger.Field("error", err.Error()))
 	}
 	//  Check If-None-Match header
-	if match := l.ctx.GetHeader("If-None-Match"); match == etag {
+	if match := l.request.IfNoneMatch; match == etag {
 		return nil, xerr.StatusNotModified
 	}
 	return resp, nil
@@ -218,7 +274,7 @@ func (l *GetServerUserListLogic) shouldIncludeServerUser(userSub *user.Subscribe
 
 func (l *GetServerUserListLogic) getExpiredUsers(serverNodeGroupIds []int64) ([]types.ServerUser, int64) {
 	var expiredGroup group.NodeGroup
-	if err := l.svcCtx.DB.Where("is_expired_group = ?", true).First(&expiredGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error; err != nil {
 		return nil, 0
 	}
 
@@ -227,7 +283,7 @@ func (l *GetServerUserListLogic) getExpiredUsers(serverNodeGroupIds []int64) ([]
 	}
 
 	var expiredSubs []*user.Subscribe
-	if err := l.svcCtx.DB.Where("status = ?", 3).Find(&expiredSubs).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("status = ?", 3).Find(&expiredSubs).Error; err != nil {
 		l.Errorw("query expired subscriptions failed", logger.Field("error", err.Error()))
 		return nil, 0
 	}
@@ -269,7 +325,7 @@ func (l *GetServerUserListLogic) checkExpiredUserEligibility(userSub *user.Subsc
 
 func (l *GetServerUserListLogic) canUseExpiredNodeGroup(userSub *user.Subscribe, serverNodeGroupIds []int64) bool {
 	var expiredGroup group.NodeGroup
-	if err := l.svcCtx.DB.Where("is_expired_group = ?", true).First(&expiredGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error; err != nil {
 		return false
 	}
 
@@ -343,7 +399,7 @@ func (l *GetServerUserListLogic) calculateEffectiveSpeedLimit(sub *subscribe.Sub
 			Upload   int64
 			Download int64
 		}
-		err := l.svcCtx.DB.WithContext(l.ctx.Request.Context()).
+		err := l.svcCtx.Store.DB().WithContext(l.ctx).
 			Table("traffic_log").
 			Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
 			Where("user_id = ? AND subscribe_id = ? AND timestamp >= ? AND timestamp < ?",

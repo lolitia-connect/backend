@@ -31,7 +31,7 @@ func (l *AdminGenerateCaptchaLogic) AdminGenerateCaptcha() (resp *types.Generate
 	resp = &types.GenerateCaptchaResponse{}
 
 	// Get verify config from database
-	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
 		l.Logger.Error("[AdminGenerateCaptchaLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())

@@ -51,7 +51,7 @@ func (l *AdminLoginLogic) AdminLogin(req *types.UserLoginRequest) (resp *types.L
 				Timestamp: time.Now().UnixMilli(),
 			}
 			content, _ := loginLog.Marshal()
-			if err := l.svcCtx.LogModel.Insert(l.ctx, &log.SystemLog{
+			if err := l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
 				Type:     log.TypeLogin.Uint8(),
 				Date:     time.Now().Format("2006-01-02"),
 				ObjectID: userInfo.Id,
@@ -71,7 +71,7 @@ func (l *AdminLoginLogic) AdminLogin(req *types.UserLoginRequest) (resp *types.L
 		return nil, err
 	}
 
-	userInfo, err = l.svcCtx.UserModel.FindOneByEmail(l.ctx, req.Email)
+	userInfo, err = l.svcCtx.Store.User().FindOneByEmail(l.ctx, req.Email)
 
 	if userInfo.DeletedAt.Valid {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email deleted: %v", req.Email)
@@ -137,7 +137,7 @@ func (l *AdminLoginLogic) AdminLogin(req *types.UserLoginRequest) (resp *types.L
 }
 
 func (l *AdminLoginLogic) verifyCaptcha(req *types.UserLoginRequest) error {
-	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
 		l.Logger.Error("[AdminLoginLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())

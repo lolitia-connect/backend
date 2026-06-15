@@ -11,6 +11,7 @@ import (
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/captcha"
@@ -89,7 +90,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	}
 
 	// Check if the user exists
-	_, err = l.svcCtx.UserModel.FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
+	_, err = l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		l.Errorw("FindOneByTelephone Error", logger.Field("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
@@ -104,7 +105,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		}
 	} else {
 		// Check if the invite code is valid
-		referer, err = l.svcCtx.UserModel.FindOneByReferCode(l.ctx, req.Invite)
+		referer, err = l.svcCtx.Store.User().FindOneByReferCode(l.ctx, req.Invite)
 		if err != nil {
 			l.Errorw("FindOneByReferCode Error", logger.Field("error", err))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InviteCodeError), "invite code is invalid")
@@ -130,23 +131,22 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	if referer != nil {
 		userInfo.RefererId = referer.Id
 	}
-	err = l.svcCtx.UserModel.Transaction(l.ctx, func(db *gorm.DB) error {
+	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
 		// Save user information
-		if err := db.Create(userInfo).Error; err != nil {
+		if err := store.User().Insert(l.ctx, userInfo); err != nil {
 			return err
 		}
 		// Generate ReferCode
 		userInfo.ReferCode = uuidx.UserInviteCode(userInfo.Id)
 		// Update ReferCode
-		if err := db.Model(&user.User{}).Where("id = ?", userInfo.Id).Update("refer_code", userInfo.ReferCode).Error; err != nil {
+		if err := store.User().Update(l.ctx, userInfo); err != nil {
 			return err
 		}
 		if l.svcCtx.Config.Register.EnableTrial {
 			// Active trial
-			var trialErr error
-			trialSubscribe, trialErr = l.activeTrial(userInfo.Id)
-			if trialErr != nil {
-				return trialErr
+			trialSubscribe, err = l.activeTrial(store, userInfo.Id)
+			if err != nil {
+				return err
 			}
 		}
 		return nil
@@ -154,25 +154,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	if err != nil {
 		return nil, err
 	}
-
-	// Clear cache after transaction success
-	if l.svcCtx.Config.Register.EnableTrial && trialSubscribe != nil {
-		// Clear user subscription cache
-		if err = l.svcCtx.UserModel.ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
-			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", trialSubscribe.Id))
-			// Don't return error, just log it
-		}
-		// Clear subscription cache
-		if err = l.svcCtx.SubscribeModel.ClearCache(l.ctx, trialSubscribe.SubscribeId); err != nil {
-			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", trialSubscribe.SubscribeId))
-			// Don't return error, just log it
-		}
-		// Clear all server cache
-		if err = l.svcCtx.NodeModel.ClearServerAllCache(l.ctx); err != nil {
-			l.Errorf("ClearServerAllCache error: %v", err.Error())
-			// Don't return error, just log it
-		}
-	}
+	clearTrialSubscribeCache(l.ctx, l.svcCtx, trialSubscribe)
 
 	// Bind device to user if identifier is provided
 	if req.Identifier != "" {
@@ -220,7 +202,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 				Timestamp: time.Now().UnixMilli(),
 			}
 			content, _ := loginLog.Marshal()
-			if err := l.svcCtx.LogModel.Insert(l.ctx, &log.SystemLog{
+			if err := l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
 				Id:       0,
 				Type:     log.TypeLogin.Uint8(),
 				Date:     time.Now().Format("2006-01-02"),
@@ -243,7 +225,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 				Timestamp:  time.Now().UnixMilli(),
 			}
 			content, _ = registerLog.Marshal()
-			if err := l.svcCtx.LogModel.Insert(l.ctx, &log.SystemLog{
+			if err := l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
 				Type:     log.TypeRegister.Uint8(),
 				ObjectID: userInfo.Id,
 				Date:     time.Now().Format("2006-01-02"),
@@ -261,8 +243,8 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	}, nil
 }
 
-func (l *TelephoneUserRegisterLogic) activeTrial(uid int64) (*user.Subscribe, error) {
-	sub, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, l.svcCtx.Config.Register.TrialSubscribe)
+func (l *TelephoneUserRegisterLogic) activeTrial(store repository.Store, uid int64) (*user.Subscribe, error) {
+	sub, err := store.Subscribe().FindOne(l.ctx, l.svcCtx.Config.Register.TrialSubscribe)
 	if err != nil {
 		return nil, err
 	}
@@ -276,19 +258,15 @@ func (l *TelephoneUserRegisterLogic) activeTrial(uid int64) (*user.Subscribe, er
 		Traffic:     sub.Traffic,
 		Download:    0,
 		Upload:      0,
-		Token:       uuidx.SubscribeToken(fmt.Sprintf("Trial-%v", uid)),
+		Token:       uuidx.SubscribeToken(fmt.Sprintf("Trial-%v-%s", uid, uuidx.NewUUID().String())),
 		UUID:        uuidx.NewUUID().String(),
 		Status:      1,
 	}
-	err = l.svcCtx.UserModel.InsertSubscribe(l.ctx, userSub)
-	if err != nil {
-		return nil, err
-	}
-	return userSub, nil
+	return userSub, store.User().InsertSubscribe(l.ctx, userSub)
 }
 
 func (l *TelephoneUserRegisterLogic) verifyCaptcha(req *types.TelephoneRegisterRequest) error {
-	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
 		l.Logger.Error("[TelephoneUserRegisterLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/pkg/tool"
 
 	"github.com/perfect-panel/server/pkg/constant"
@@ -38,6 +37,7 @@ func NewPreCreateOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Pr
 // without actually creating an order. It validates subscription plans, coupons, and payment methods
 // to provide accurate pricing information for the frontend order preview.
 func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (resp *types.PreOrderResponse, err error) {
+	store := l.svcCtx.Store
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
 		logger.Error("current user is not found in context")
@@ -50,24 +50,17 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 	}
 
 	// find subscribe plan
-	sub, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, req.SubscribeId)
+	sub, err := store.Subscribe().FindOne(l.ctx, req.SubscribeId)
 	if err != nil {
 		l.Errorw("[PreCreateOrder] Database query error", logger.Field("error", err.Error()), logger.Field("subscribe_id", req.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 
-	// check subscribe plan quota limit
 	if sub.Quota > 0 {
-		userSub, err := l.svcCtx.UserModel.QueryUserSubscribe(l.ctx, u.Id)
+		count, err := store.User().CountUserSubscribesByUserAndSubscribe(l.ctx, u.Id, req.SubscribeId)
 		if err != nil {
-			l.Errorw("[PreCreateOrder] Database query error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user subscription error: %v", err.Error())
-		}
-		var count int64
-		for _, v := range userSub {
-			if v.SubscribeId == req.SubscribeId {
-				count++
-			}
+			l.Errorw("[PreCreateOrder] Database query error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id), logger.Field("subscribe_id", req.SubscribeId))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "count user subscribe error: %v", err.Error())
 		}
 		if count >= sub.Quota {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeQuotaLimit), "quota limit")
@@ -86,21 +79,20 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 	discountAmount := price - amount
 	var couponAmount int64
 	if req.Coupon != "" {
-		couponInfo, err := l.svcCtx.CouponModel.FindOneByCode(l.ctx, req.Coupon)
+		couponInfo, err := store.Coupon().FindOneByCode(l.ctx, req.Coupon)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil, errors.Wrapf(xerr.NewErrCode(xerr.CouponNotExist), "coupon not found")
 			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())
 		}
+		if err := ensureCouponEnabled(couponInfo); err != nil {
+			return nil, err
+		}
 		if couponInfo.Count > 0 && couponInfo.Count <= couponInfo.UsedCount {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.CouponAlreadyUsed), "coupon used")
 		}
-		var count int64
-		err = l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
-			return tx.Model(&order.Order{}).Where("user_id = ? and coupon = ?", u.Id, req.Coupon).Count(&count).Error
-		})
-
+		count, err := store.Order().CountUserCouponUsage(l.ctx, u.Id, req.Coupon)
 		if err != nil {
 			l.Errorw("[PreCreateOrder] Database query error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id), logger.Field("coupon", req.Coupon))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())
@@ -117,9 +109,10 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 		couponAmount = calculateCoupon(amount, couponInfo)
 	}
 	amount -= couponAmount
+
 	var feeAmount int64
 	if req.Payment != 0 {
-		payment, err := l.svcCtx.PaymentModel.FindOne(l.ctx, req.Payment)
+		payment, err := store.Payment().FindOne(l.ctx, req.Payment)
 		if err != nil {
 			l.Errorw("[PreCreateOrder] Database query error", logger.Field("error", err.Error()), logger.Field("payment", req.Payment))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())

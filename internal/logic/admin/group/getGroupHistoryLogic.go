@@ -28,7 +28,7 @@ func (l *GetGroupHistoryLogic) GetGroupHistory(req *types.GetGroupHistoryRequest
 	var total int64
 
 	// 构建查询
-	query := l.svcCtx.DB.Model(&group.GroupHistory{})
+	query := l.svcCtx.Store.DB().Model(&group.GroupHistory{})
 
 	// 添加过滤条件
 	if req.GroupMode != "" {

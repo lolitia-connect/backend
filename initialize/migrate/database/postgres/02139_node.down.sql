@@ -1,0 +1,1 @@
+-- (empty down migration - columns added conditionally)

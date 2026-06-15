@@ -39,7 +39,7 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 		// 导出指定历史的详细结果
 		// 1. 查询分组历史详情
 		var details []group.GroupHistoryDetail
-		if err := l.svcCtx.DB.Where("history_id = ?", *req.HistoryId).Find(&details).Error; err != nil {
+		if err := l.svcCtx.Store.DB().Where("history_id = ?", *req.HistoryId).Find(&details).Error; err != nil {
 			logger.Errorf("failed to get group history details: %v", err)
 			return nil, "", err
 		}
@@ -52,7 +52,7 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 				Email string `json:"email"`
 			}
 			var users []UserInfo
-			if err := l.svcCtx.DB.Raw("SELECT * FROM JSON_ARRAY(?)", detail.UserData).Scan(&users).Error; err != nil {
+			if err := l.svcCtx.Store.DB().Raw("SELECT * FROM JSON_ARRAY(?)", detail.UserData).Scan(&users).Error; err != nil {
 				// 如果解析失败，尝试用标准 JSON 解析
 				logger.Errorf("failed to parse user data: %v", err)
 				continue
@@ -60,7 +60,7 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 
 			// 查询节点组名称
 			var nodeGroup group.NodeGroup
-			l.svcCtx.DB.Where("id = ?", detail.NodeGroupId).First(&nodeGroup)
+			l.svcCtx.Store.DB().Where("id = ?", detail.NodeGroupId).First(&nodeGroup)
 
 			// 为每个用户生成记录
 			for _, user := range users {
@@ -78,7 +78,7 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 			NodeGroupId int64 `json:"node_group_id"`
 		}
 		var userSubscribes []UserNodeGroupInfo
-		if err := l.svcCtx.DB.Model(&user.Subscribe{}).
+		if err := l.svcCtx.Store.DB().Model(&user.Subscribe{}).
 			Select("DISTINCT user_id as id, node_group_id").
 			Where("node_group_id > ?", 0).
 			Find(&userSubscribes).Error; err != nil {
@@ -90,7 +90,7 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 		for _, us := range userSubscribes {
 			// 查询节点组信息
 			var nodeGroup group.NodeGroup
-			if err := l.svcCtx.DB.Where("id = ?", us.NodeGroupId).First(&nodeGroup).Error; err != nil {
+			if err := l.svcCtx.Store.DB().Where("id = ?", us.NodeGroupId).First(&nodeGroup).Error; err != nil {
 				logger.Errorf("failed to find node group: %v", err)
 				// 跳过该用户
 				continue

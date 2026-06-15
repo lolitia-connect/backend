@@ -55,7 +55,7 @@ func (l *RecalculateGroupLogic) RecalculateGroup(req *types.RecalculateGroupRequ
 	history.StartTime = &now
 
 	// 使用 GORM Transaction 执行分组重算
-	err := l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	err := l.svcCtx.Store.DB().Transaction(func(tx *gorm.DB) error {
 		// 创建历史记录
 		if err := tx.Create(history).Error; err != nil {
 			l.Errorw("failed to create group history", logger.Field("error", err.Error()))
@@ -114,7 +114,7 @@ func (l *RecalculateGroupLogic) RecalculateGroup(req *types.RecalculateGroupRequ
 
 	if err != nil {
 		// 如果失败，更新历史记录状态为 failed
-		updateErr := l.svcCtx.DB.Model(history).Updates(map[string]interface{}{
+		updateErr := l.svcCtx.Store.DB().Model(history).Updates(map[string]interface{}{
 			"state":         "failed",
 			"error_message": err.Error(),
 			"end_time":      time.Now(),

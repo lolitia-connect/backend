@@ -53,7 +53,7 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 		Id     int64
 		UserId int64
 	}
-	err = l.svcCtx.DB.WithContext(l.ctx).
+	err = l.svcCtx.Store.DB().WithContext(l.ctx).
 		Table("user_subscribe").
 		Select("id, user_id").
 		Where("id = ?", userSubscribeId).
@@ -104,7 +104,7 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 		}
 
 		// 直接使用 model 的查询方法
-		err := l.svcCtx.DB.WithContext(l.ctx).
+		err := l.svcCtx.Store.DB().WithContext(l.ctx).
 			Table("traffic_log").
 			Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
 			Where("user_id = ? AND subscribe_id = ? AND timestamp BETWEEN ? AND ?",

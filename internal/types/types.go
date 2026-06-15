@@ -436,7 +436,7 @@ type CreateSubscribeRequest struct {
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
-	Nodes             []string            `json:"nodes"`
+	Nodes             StringInt64Slice    `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id,string"`
@@ -1480,12 +1480,56 @@ type NodeGroupItem struct {
 }
 
 type NodeOutbound struct {
-	Name     string   `json:"name"`
-	Protocol string   `json:"protocol"`
-	Address  string   `json:"address"`
-	Port     int64    `json:"port"`
-	Password string   `json:"password"`
-	Rules    []string `json:"rules"`
+	Name                 string   `json:"name"`
+	Protocol             string   `json:"protocol"`
+	Address              string   `json:"address"`
+	Port                 int64    `json:"port"`
+	User                 string   `json:"user,omitempty"`
+	Password             string   `json:"password"`
+	UUID                 string   `json:"uuid,omitempty"`
+	Cipher               string   `json:"cipher,omitempty"`
+	Security             string   `json:"security,omitempty"`
+	SNI                  string   `json:"sni,omitempty"`
+	AllowInsecure        bool     `json:"allow_insecure,omitempty"`
+	Fingerprint          string   `json:"fingerprint,omitempty"`
+	Transport            string   `json:"transport,omitempty"`
+	Host                 string   `json:"host,omitempty"`
+	Path                 string   `json:"path,omitempty"`
+	ServiceName          string   `json:"service_name,omitempty"`
+	Flow                 string   `json:"flow,omitempty"`
+	UoT                  bool     `json:"uot,omitempty"`
+	UoTVersion           int      `json:"uot_version,omitempty"`
+	CongestionController string   `json:"congestion_controller,omitempty"`
+	UDPStream            bool     `json:"udp_stream,omitempty"`
+	ReduceRtt            bool     `json:"reduce_rtt,omitempty"`
+	Heartbeat            int      `json:"heartbeat,omitempty"`
+	RealityPublicKey     string   `json:"reality_public_key,omitempty"`
+	RealityShortId       string   `json:"reality_short_id,omitempty"`
+	SpiderX              string   `json:"spider_x,omitempty"`
+	Settings             string   `json:"settings,omitempty"`
+	StreamSettings       string   `json:"stream_settings,omitempty"`
+	Rules                []string `json:"rules"`
+}
+
+type ServerNodeConfigValues struct {
+	IPStrategy string         `json:"ip_strategy"`
+	DNS        []NodeDNS      `json:"dns"`
+	Block      []string       `json:"block"`
+	Outbound   []NodeOutbound `json:"outbound"`
+}
+
+type ServerNodeConfigOverride struct {
+	InheritIPStrategy bool   `json:"inherit_ip_strategy"`
+	IPStrategy        string `json:"ip_strategy"`
+
+	InheritDNS bool      `json:"inherit_dns"`
+	DNS        []NodeDNS `json:"dns"`
+
+	InheritBlock bool     `json:"inherit_block"`
+	Block        []string `json:"block"`
+
+	InheritOutbound bool           `json:"inherit_outbound"`
+	Outbound        []NodeOutbound `json:"outbound"`
 }
 
 type NodeRelay struct {
@@ -1749,6 +1793,8 @@ type Protocol struct {
 	EncryptionPrivateKey    string  `json:"encryption_private_key,omitempty"`    // encryption private key
 	EncryptionClientPadding string  `json:"encryption_client_padding,omitempty"` // encryption client padding
 	EncryptionPassword      string  `json:"encryption_password,omitempty"`       // encryption password
+	EchEnable               bool    `json:"ech_enable,omitempty"`                // ECH enable
+	EchServerName           string  `json:"ech_server_name,omitempty"`           // ECH server name
 	Ratio                   float64 `json:"ratio,omitempty"`                     // Traffic ratio, default is 1
 	CertMode                string  `json:"cert_mode,omitempty"`                 // Certificate mode, `none`｜`http`｜`dns`｜`self`
 	CertDNSProvider         string  `json:"cert_dns_provider,omitempty"`         // DNS provider for certificate
@@ -1895,6 +1941,21 @@ type QueryServerConfigResponse struct {
 	Outbound               []NodeOutbound `json:"outbound"`
 	Protocols              []Protocol     `json:"protocols"`
 	Total                  int64          `json:"total"`
+}
+
+type GetServerNodeConfigRequest struct {
+	ServerID int64 `form:"server_id" validate:"required"`
+}
+
+type GetServerNodeConfigResponse struct {
+	Global    ServerNodeConfigValues   `json:"global"`
+	Override  ServerNodeConfigOverride `json:"override"`
+	Effective ServerNodeConfigValues   `json:"effective"`
+}
+
+type UpdateServerNodeConfigRequest struct {
+	ServerID int64 `json:"server_id" validate:"required"`
+	ServerNodeConfigOverride
 }
 
 type QuerySubscribeGroupListResponse struct {
@@ -2346,7 +2407,7 @@ type Subscribe struct {
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
-	Nodes             []int64             `json:"nodes"`
+	Nodes             StringInt64Slice    `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id,string"`
@@ -2395,6 +2456,7 @@ type SubscribeConfig struct {
 	PanDomain       bool   `json:"pan_domain"`
 	UserAgentLimit  bool   `json:"user_agent_limit"`
 	UserAgentList   string `json:"user_agent_list"`
+	ShowTutorial    bool   `json:"show_tutorial"`
 }
 
 type SubscribeDiscount struct {
@@ -2793,7 +2855,7 @@ type UpdateSubscribeRequest struct {
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
-	Nodes             []string            `json:"nodes"`
+	Nodes             StringInt64Slice    `json:"nodes"`
 	NodeTags          []string            `json:"node_tags"`
 	NodeGroupIds      []string            `json:"node_group_ids,omitempty"`
 	NodeGroupId       int64               `json:"node_group_id,string"`

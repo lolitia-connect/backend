@@ -1,16 +1,17 @@
 package auth
 
 import (
-	"github.com/gin-gonic/gin"
+
 	"github.com/perfect-panel/server/internal/logic/auth"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/result"
 )
 
 // User Telephone register
-func TelephoneUserRegisterHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
-	return func(c *gin.Context) {
+func TelephoneUserRegisterHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
+	return func(c *hertzx.Context) {
 		var req types.TelephoneRegisterRequest
 		_ = c.ShouldBind(&req)
 		validateErr := svcCtx.Validate(&req)

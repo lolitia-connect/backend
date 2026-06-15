@@ -29,7 +29,7 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 	var enabledConfig struct {
 		Value string `gorm:"column:value"`
 	}
-	err := l.svc.DB.Table("system").
+	err := l.svc.Store.DB().Table("system").
 		Where("`category` = ? AND `key` = ?", "group", "enabled").
 		Select("value").
 		First(&enabledConfig).Error
@@ -48,7 +48,7 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 	var modeConfig struct {
 		Value string `gorm:"column:value"`
 	}
-	err = l.svc.DB.Table("system").
+	err = l.svc.Store.DB().Table("system").
 		Where("`category` = ? AND `key` = ?", "group", "mode").
 		Select("value").
 		First(&modeConfig).Error

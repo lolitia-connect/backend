@@ -36,7 +36,7 @@ func (l *UpdateGroupConfigLogic) UpdateGroupConfig(req *types.UpdateGroupConfigR
 	}
 
 	// 使用 GORM Transaction 更新配置
-	err := l.svcCtx.DB.Transaction(func(tx *gorm.DB) error {
+	err := l.svcCtx.Store.DB().Transaction(func(tx *gorm.DB) error {
 		// 更新 enabled 配置（使用 Upsert 逻辑）
 		enabledValue := "false"
 		if req.Enabled {

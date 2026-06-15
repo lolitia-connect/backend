@@ -16,12 +16,11 @@ import (
 
 func Telegram(svc *svc.ServiceContext) {
 
-	method, err := svc.AuthModel.FindOneByMethod(context.Background(), "telegram")
+	method, err := svc.Store.Auth().FindOneByMethod(context.Background(), "telegram")
 	if err != nil {
 		logger.Errorf("[Init Telegram Config] Get Telegram Config Error: %s", err.Error())
 		return
 	}
-
 	tgConfig := new(auth.TelegramAuthConfig)
 	if err = tgConfig.Unmarshal(method.Config); err != nil {
 		logger.Errorf("[Init Telegram Config] Unmarshal Telegram Config Error: %s", err.Error())

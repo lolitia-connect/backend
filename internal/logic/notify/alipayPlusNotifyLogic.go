@@ -70,7 +70,7 @@ func (l *AlipayPlusNotifyLogic) AlipayPlusNotify(r *http.Request) error {
 		return nil
 	}
 
-	orderInfo, err := l.svcCtx.OrderModel.FindOneByOrderNo(l.ctx, notify.OrderNo)
+	orderInfo, err := l.svcCtx.Store.Order().FindOneByOrderNo(l.ctx, notify.OrderNo)
 	if err != nil {
 		l.Logger.Error("[AlipayPlusNotify] Find order failed", logger.Field("error", err.Error()), logger.Field("orderNo", notify.OrderNo))
 		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
@@ -79,7 +79,7 @@ func (l *AlipayPlusNotifyLogic) AlipayPlusNotify(r *http.Request) error {
 		return nil
 	}
 
-	if err := l.svcCtx.OrderModel.UpdateOrderStatus(l.ctx, notify.OrderNo, 2); err != nil {
+	if err := l.svcCtx.Store.Order().UpdateOrderStatus(l.ctx, notify.OrderNo, 2); err != nil {
 		l.Logger.Error("[AlipayPlusNotify] Update order status failed", logger.Field("error", err.Error()), logger.Field("orderNo", notify.OrderNo))
 		return err
 	}

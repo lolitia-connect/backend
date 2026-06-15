@@ -31,19 +31,19 @@ func (l *DeviceOnlineStatisticsLogic) DeviceOnlineStatistics() (resp *types.GetD
 	u := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	//获取历史最长在线时间
 	var OnlineSeconds int64
-	if err := l.svcCtx.DB.Model(user.DeviceOnlineRecord{}).Where("user_id = ?", u.Id).Select("online_seconds").Order("online_seconds desc").Limit(1).Scan(&OnlineSeconds).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Model(user.DeviceOnlineRecord{}).Where("user_id = ?", u.Id).Select("online_seconds").Order("online_seconds desc").Limit(1).Scan(&OnlineSeconds).Error; err != nil {
 		l.Logger.Error(err)
 	}
 
 	//获取历史连续最长在线天数
 	var DurationDays int64
-	if err := l.svcCtx.DB.Model(user.DeviceOnlineRecord{}).Where("user_id = ?", u.Id).Select("duration_days").Order("duration_days desc").Limit(1).Scan(&DurationDays).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Model(user.DeviceOnlineRecord{}).Where("user_id = ?", u.Id).Select("duration_days").Order("duration_days desc").Limit(1).Scan(&DurationDays).Error; err != nil {
 		l.Logger.Error(err)
 	}
 
 	//获取近七天在线情况
 	var userOnlineRecord []user.DeviceOnlineRecord
-	if err := l.svcCtx.DB.Model(&userOnlineRecord).Where("user_id = ? and created_at >= ?", u.Id, time.Now().AddDate(0, 0, -7).Format(time.DateTime)).Order("created_at desc").Find(&userOnlineRecord).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Model(&userOnlineRecord).Where("user_id = ? and created_at >= ?", u.Id, time.Now().AddDate(0, 0, -7).Format(time.DateTime)).Order("created_at desc").Find(&userOnlineRecord).Error; err != nil {
 		l.Logger.Error(err)
 	}
 

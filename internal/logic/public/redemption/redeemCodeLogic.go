@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -20,6 +21,23 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
 )
+
+// unitTimeMapping maps lowercase API values to the format expected by tool.AddTime
+var unitTimeMapping = map[string]string{
+	"day":       "Day",
+	"month":     "Month",
+	"quarter":   "Quarter",
+	"half_year": "HalfYear",
+	"year":      "Year",
+}
+
+// normalizeUnitTime converts lowercase unit_time to the proper capitalized format
+func normalizeUnitTime(unit string) string {
+	if normalized, ok := unitTimeMapping[strings.ToLower(unit)]; ok {
+		return normalized
+	}
+	return unit
+}
 
 type RedeemCodeLogic struct {
 	logger.Logger
@@ -178,7 +196,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	cacheKey := fmt.Sprintf("redemption_order:%s", orderInfo.OrderNo)
 	cacheData := map[string]interface{}{
 		"redemption_code_id": redemptionCode.Id,
-		"unit_time":          redemptionCode.UnitTime,
+		"unit_time":          normalizeUnitTime(redemptionCode.UnitTime),
 		"quantity":           redemptionCode.Quantity,
 	}
 	jsonData, _ := json.Marshal(cacheData)

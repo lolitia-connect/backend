@@ -1,0 +1,22 @@
+syntax = "v1"
+
+info (
+	title:   "Server API"
+	desc:    "Public server node API for ppanel"
+	author:  "Tension"
+	email:   "tension@ppanel.com"
+	version: "0.0.1"
+)
+
+import "../types.api"
+
+@server (
+	prefix:     v1/public/server
+	group:      public/server
+	middleware: AuthMiddleware,DeviceMiddleware
+)
+service ppanel {
+	@doc "Get all enabled server node list"
+	@handler GetServerNodeList
+	get /list returns (GetServerNodeListResponse)
+}

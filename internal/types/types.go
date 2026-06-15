@@ -3178,3 +3178,25 @@ type WithdrawalLog struct {
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
 }
+
+type ServerInfo struct {
+	Id          int64               `json:"id,string"`
+	Name        string              `json:"name"`
+	Country     string              `json:"country"`
+	City        string              `json:"city"`
+	Address     string              `json:"address"`
+	Status      string              `json:"status"`
+	Cpu         float64             `json:"cpu"`
+	Mem         float64             `json:"mem"`
+	OnlineUsers int64               `json:"online_users"`
+	Protocols   []ServerNodeProtocol `json:"protocols"`
+}
+
+type ServerNodeProtocol struct {
+	Type  string  `json:"type"`
+	Ratio float64 `json:"ratio"`
+}
+
+type GetServerNodeListResponse struct {
+	List []ServerInfo `json:"list"`
+}

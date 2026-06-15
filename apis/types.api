@@ -928,5 +928,28 @@ type (
 		GroupHistory
 		ConfigSnapshot map[string]interface{} `json:"config_snapshot,omitempty"`
 	}
+	// ServerInfo 用户侧节点服务器信息
+	ServerInfo {
+		Id           int64               `json:"id,string"`
+		Name         string              `json:"name"`
+		Country      string              `json:"country"`
+		City         string              `json:"city"`
+		Address      string              `json:"address"`
+		Status       string              `json:"status"`
+		Cpu          float64             `json:"cpu"`
+		Mem          float64             `json:"mem"`
+		OnlineUsers  int64               `json:"online_users"`
+		Protocols    []ServerNodeProtocol `json:"protocols"`
+	}
+	// ServerNodeProtocol 用户侧节点协议信息
+	ServerNodeProtocol {
+		Type  string  `json:"type"`
+		Ratio float64 `json:"ratio"`
+	}
+	// GetServerNodeListResponse 获取节点服务器列表响应
+	GetServerNodeListResponse {
+		List []ServerInfo `json:"list"`
+	}
+	}
 )
 

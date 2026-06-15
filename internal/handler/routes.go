@@ -33,6 +33,7 @@ import (
 	publicOrder "github.com/perfect-panel/server/internal/handler/public/order"
 	publicPayment "github.com/perfect-panel/server/internal/handler/public/payment"
 	publicPortal "github.com/perfect-panel/server/internal/handler/public/portal"
+	publicServer "github.com/perfect-panel/server/internal/handler/public/server"
 	publicRedemption "github.com/perfect-panel/server/internal/handler/public/redemption"
 	publicSubscribe "github.com/perfect-panel/server/internal/handler/public/subscribe"
 	publicTicket "github.com/perfect-panel/server/internal/handler/public/ticket"
@@ -847,6 +848,14 @@ func RegisterHandlers(router *gin.Engine, serverCtx *svc.ServiceContext) {
 
 		// Get Subscription
 		publicPortalGroupRouter.GET("/subscribe", publicPortal.GetSubscriptionHandler(serverCtx))
+	}
+
+	publicServerGroupRouter := router.Group("/v1/public/server")
+	publicServerGroupRouter.Use(middleware.AuthMiddleware(serverCtx), middleware.DeviceMiddleware(serverCtx))
+
+	{
+		// Get all enabled server node list
+		publicServerGroupRouter.GET("/list", publicServer.GetServerNodeListHandler(serverCtx))
 	}
 
 	publicRedemptionGroupRouter := router.Group("/v1/public/redemption")

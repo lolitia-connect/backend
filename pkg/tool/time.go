@@ -16,6 +16,10 @@ func AddTime(unit string, quantity int64, baseTime ...time.Time) time.Time {
 		return basic.AddDate(int(quantity), 0, 0)
 	case "Month":
 		return basic.AddDate(0, int(quantity), 0)
+	case "Quarter":
+		return basic.AddDate(0, int(quantity*3), 0)
+	case "HalfYear":
+		return basic.AddDate(0, int(quantity*6), 0)
 	case "Day":
 		return basic.AddDate(0, 0, int(quantity))
 	case "Hour":

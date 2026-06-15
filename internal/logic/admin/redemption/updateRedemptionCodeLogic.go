@@ -49,7 +49,7 @@ func (l *UpdateRedemptionCodeLogic) UpdateRedemptionCode(req *types.UpdateRedemp
 		redemptionCode.SubscribePlan = req.SubscribePlan
 	}
 	if req.UnitTime != "" {
-		redemptionCode.UnitTime = req.UnitTime
+		redemptionCode.UnitTime = normalizeUnitTime(req.UnitTime)
 	}
 	if req.Quantity != 0 {
 		redemptionCode.Quantity = req.Quantity

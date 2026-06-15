@@ -999,7 +999,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 
 			// 重置流量（如果套餐有流量限制）
 			if sub.Traffic > 0 {
-				existingSubscribe.Traffic = sub.Traffic * 1024 * 1024 * 1024
+				existingSubscribe.Traffic = sub.Traffic
 				existingSubscribe.Download = 0
 				existingSubscribe.Upload = 0
 			}
@@ -1039,7 +1039,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 			expireTime := tool.AddTime(redemptionData.UnitTime, redemptionData.Quantity, now)
 			traffic := int64(0)
 			if sub.Traffic > 0 {
-				traffic = sub.Traffic * 1024 * 1024 * 1024
+				traffic = sub.Traffic
 			}
 
 			newSubscribe := &user.Subscribe{

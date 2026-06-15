@@ -98,7 +98,7 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 			TotalCount:    req.TotalCount,
 			UsedCount:     0,
 			SubscribePlan: req.SubscribePlan,
-			UnitTime:      req.UnitTime,
+			UnitTime:      normalizeUnitTime(req.UnitTime),
 			Quantity:      req.Quantity,
 			Status:        1, // Default to enabled
 		}

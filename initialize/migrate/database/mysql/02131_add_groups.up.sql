@@ -4,7 +4,6 @@
 -- Updated: 2025-03-06
 
 -- ===== Create node_group table =====
-DROP TABLE IF EXISTS `node_group`;
 CREATE TABLE IF NOT EXISTS `node_group` (
     `id` bigint NOT NULL AUTO_INCREMENT,
     `name` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT 'Name',
@@ -20,7 +19,6 @@ CREATE TABLE IF NOT EXISTS `node_group` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='Node Groups';
 
 -- ===== Create group_history table =====
-DROP TABLE IF EXISTS `group_history`;
 CREATE TABLE IF NOT EXISTS `group_history` (
     `id` bigint NOT NULL AUTO_INCREMENT,
     `group_mode` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT 'Group Mode: average/subscribe/traffic',
@@ -43,7 +41,6 @@ CREATE TABLE IF NOT EXISTS `group_history` (
 
 -- ===== Create group_history_detail table =====
 -- Note: user_group_id column removed, using user_data JSON field instead
-DROP TABLE IF EXISTS `group_history_detail`;
 CREATE TABLE IF NOT EXISTS `group_history_detail` (
     `id` bigint NOT NULL AUTO_INCREMENT,
     `history_id` bigint NOT NULL COMMENT 'History ID',
@@ -121,10 +118,7 @@ EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
 -- ===== Insert system configuration entries =====
-INSERT INTO `system` (`category`, `key`, `value`, `desc`) VALUES
+INSERT IGNORE INTO `system` (`category`, `key`, `value`, `desc`) VALUES
     ('group', 'enabled', 'false', 'Group Management Enabled'),
     ('group', 'mode', 'average', 'Group Mode: average/subscribe/traffic'),
-    ('group', 'auto_create_group', 'false', 'Auto-create user group when creating subscribe product')
-ON DUPLICATE KEY UPDATE
-    `value` = VALUES(`value`),
-    `desc` = VALUES(`desc`);
+    ('group', 'auto_create_group', 'false', 'Auto-create user group when creating subscribe product');

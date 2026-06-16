@@ -116,7 +116,6 @@ func (l *AlipayF2FConfig) Unmarshal(data []byte) error {
 	return json.Unmarshal(convertedData, (*Alias)(l))
 }
 
-
 type EPayConfig struct {
 	Pid  string `json:"pid"`
 	Url  string `json:"url"`

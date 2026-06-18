@@ -32,7 +32,7 @@ func NewServerPushUserTrafficLogic(ctx context.Context, svcCtx *svc.ServiceConte
 
 func (l *ServerPushUserTrafficLogic) ServerPushUserTraffic(req *types.ServerPushUserTrafficRequest) error {
 	// Find server info
-	serverInfo, err := l.svcCtx.NodeModel.FindOneServer(l.ctx, req.ServerId)
+	serverInfo, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.ServerId)
 	if err != nil {
 		l.Errorw("[PushOnlineUsers] FindOne error", logger.Field("error", err))
 		return errors.New("server not found")
@@ -55,10 +55,10 @@ func (l *ServerPushUserTrafficLogic) ServerPushUserTraffic(req *types.ServerPush
 	}
 
 	// Update server last reported time
-	now := time.Now()
+	now := time.Now().UTC() // Use UTC explicitly to avoid timezone mismatch with PostgreSQL session timezone (#146)
 	serverInfo.LastReportedAt = &now
 
-	err = l.svcCtx.NodeModel.UpdateServer(l.ctx, serverInfo)
+	err = l.svcCtx.Store.Node().UpdateServer(l.ctx, serverInfo)
 	if err != nil {
 		l.Errorw("[ServerPushUserTraffic] UpdateServer error", logger.Field("error", err))
 		return nil

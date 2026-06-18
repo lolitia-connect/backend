@@ -26,7 +26,7 @@ func NewGetRedemptionCodeListLogic(ctx context.Context, svcCtx *svc.ServiceConte
 }
 
 func (l *GetRedemptionCodeListLogic) GetRedemptionCodeList(req *types.GetRedemptionCodeListRequest) (resp *types.GetRedemptionCodeListResponse, err error) {
-	total, list, err := l.svcCtx.RedemptionCodeModel.QueryRedemptionCodeListByPage(
+	total, list, err := l.svcCtx.Store.RedemptionCode().QueryRedemptionCodeListByPage(
 		l.ctx,
 		int(req.Page),
 		int(req.Size),

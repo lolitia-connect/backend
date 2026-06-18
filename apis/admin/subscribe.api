@@ -175,4 +175,3 @@ service ppanel {
 	@handler ResetAllSubscribeToken
 	post /reset_all_token returns (ResetAllSubscribeTokenResponse)
 }
-

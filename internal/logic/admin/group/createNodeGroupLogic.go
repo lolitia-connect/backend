@@ -34,7 +34,7 @@ func (l *CreateNodeGroupLogic) CreateNodeGroup(req *types.CreateNodeGroupRequest
 	// 验证:系统中只能有一个过期节点组
 	if req.IsExpiredGroup != nil && *req.IsExpiredGroup {
 		var count int64
-		err = l.svcCtx.DB.Model(&group.NodeGroup{}).
+		err = l.svcCtx.Store.DB().Model(&group.NodeGroup{}).
 			Where("is_expired_group = ?", true).
 			Count(&count).Error
 		if err != nil {
@@ -77,7 +77,7 @@ func (l *CreateNodeGroupLogic) CreateNodeGroup(req *types.CreateNodeGroupRequest
 		}
 	}
 
-	if err := l.svcCtx.DB.Create(nodeGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Create(nodeGroup).Error; err != nil {
 		logger.Errorf("failed to create node group: %v", err)
 		return err
 	}

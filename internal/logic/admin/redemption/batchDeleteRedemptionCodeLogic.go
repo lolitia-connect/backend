@@ -27,7 +27,7 @@ func NewBatchDeleteRedemptionCodeLogic(ctx context.Context, svcCtx *svc.ServiceC
 }
 
 func (l *BatchDeleteRedemptionCodeLogic) BatchDeleteRedemptionCode(req *types.BatchDeleteRedemptionCodeRequest) error {
-	err := l.svcCtx.RedemptionCodeModel.BatchDelete(l.ctx, tool.StringSliceToInt64Slice(req.Ids))
+	err := l.svcCtx.Store.RedemptionCode().BatchDelete(l.ctx, tool.StringSliceToInt64Slice(req.Ids))
 	if err != nil {
 		l.Errorw("[BatchDeleteRedemptionCode] Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "batch delete redemption code error: %v", err.Error())

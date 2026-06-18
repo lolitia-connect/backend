@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,9 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 )
+
+const consoleRevenueStatisticsCacheKey = "console:revenue_statistics"
+const consoleRevenueStatisticsCacheTTL = 60 * time.Second
 
 type QueryRevenueStatisticsLogic struct {
 	logger.Logger
@@ -33,10 +37,19 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		return l.mockRevenueStatistics(), nil
 	}
 
+	// Try cache first
+	cached, cacheErr := l.svcCtx.Redis.Get(l.ctx, consoleRevenueStatisticsCacheKey).Result()
+	if cacheErr == nil && cached != "" {
+		var result types.RevenueStatisticsResponse
+		if json.Unmarshal([]byte(cached), &result) == nil {
+			return &result, nil
+		}
+	}
+
 	var today, monthly, all types.OrdersStatistics
 	now := time.Now()
 	// Get today's revenue statistics
-	todayData, err := l.svcCtx.OrderModel.QueryDateOrders(l.ctx, now)
+	todayData, err := l.svcCtx.Store.Order().QueryDateOrders(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryRevenueStatisticsLogic] QueryDateOrders error", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryDateOrders error: %v", err)
@@ -48,7 +61,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		}
 	}
 	// Get monthly's revenue statistics
-	monthlyData, err := l.svcCtx.OrderModel.QueryMonthlyOrders(l.ctx, now)
+	monthlyData, err := l.svcCtx.Store.Order().QueryMonthlyOrders(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrders error", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryMonthlyOrders error: %v", err)
@@ -62,7 +75,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	}
 
 	// Get monthly daily list for the current month (from 1st to current date)
-	monthlyListData, err := l.svcCtx.OrderModel.QueryDailyOrdersList(l.ctx, now)
+	monthlyListData, err := l.svcCtx.Store.Order().QueryDailyOrdersList(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryRevenueStatisticsLogic] QueryDailyOrdersList error", logger.Field("error", err.Error()))
 		// Don't return error, just log it and continue with empty list
@@ -80,7 +93,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	}
 
 	// Get all revenue statistics
-	allData, err := l.svcCtx.OrderModel.QueryTotalOrders(l.ctx)
+	allData, err := l.svcCtx.Store.Order().QueryTotalOrders(l.ctx)
 	if err != nil {
 		l.Errorw("[QueryRevenueStatisticsLogic] QueryTotalOrders error", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryTotalOrders error: %v", err)
@@ -94,7 +107,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	}
 
 	// Get all monthly list for the past 6 months
-	allListData, err := l.svcCtx.OrderModel.QueryMonthlyOrdersList(l.ctx, now)
+	allListData, err := l.svcCtx.Store.Order().QueryMonthlyOrdersList(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrdersList error", logger.Field("error", err.Error()))
 		// Don't return error, just log it and continue with empty list
@@ -111,11 +124,18 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		all.List = allList
 	}
 
-	return &types.RevenueStatisticsResponse{
+	resp = &types.RevenueStatisticsResponse{
 		Today:   today,
 		Monthly: monthly,
 		All:     all,
-	}, nil
+	}
+
+	// Cache the result
+	if data, marshalErr := json.Marshal(resp); marshalErr == nil {
+		l.svcCtx.Redis.Set(l.ctx, consoleRevenueStatisticsCacheKey, data, consoleRevenueStatisticsCacheTTL)
+	}
+
+	return resp, nil
 }
 
 // mockRevenueStatistics is a mock function to simulate revenue statistics data.

@@ -1,11 +1,11 @@
 package auth
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/perfect-panel/server/internal/logic/auth"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/captcha"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/result"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -13,8 +13,8 @@ import (
 )
 
 // Reset password
-func TelephoneResetPasswordHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
-	return func(c *gin.Context) {
+func TelephoneResetPasswordHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
+	return func(c *hertzx.Context) {
 		var req types.TelephoneResetPasswordRequest
 		_ = c.ShouldBind(&req)
 		validateErr := svcCtx.Validate(&req)
@@ -26,7 +26,7 @@ func TelephoneResetPasswordHandler(svcCtx *svc.ServiceContext) func(c *gin.Conte
 		req.IP = c.ClientIP()
 
 		// Get verify config from database
-		verifyCfg, err := svcCtx.SystemModel.GetVerifyConfig(c.Request.Context())
+		verifyCfg, err := svcCtx.Store.System().GetVerifyConfig(c.Request.Context())
 		if err != nil {
 			result.HttpResult(c, nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get verify config failed: %v", err))
 			return

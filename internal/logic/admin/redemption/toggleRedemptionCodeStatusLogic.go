@@ -28,7 +28,7 @@ func NewToggleRedemptionCodeStatusLogic(ctx context.Context, svcCtx *svc.Service
 
 func (l *ToggleRedemptionCodeStatusLogic) ToggleRedemptionCodeStatus(req *types.ToggleRedemptionCodeStatusRequest) error {
 	// Find redemption code
-	codeInfo, err := l.svcCtx.RedemptionCodeModel.FindOne(l.ctx, req.Id)
+	codeInfo, err := l.svcCtx.Store.RedemptionCode().FindOne(l.ctx, req.Id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			l.Errorw("[ToggleRedemptionCodeStatus] Redemption code not found", logger.Field("id", req.Id))
@@ -41,7 +41,7 @@ func (l *ToggleRedemptionCodeStatusLogic) ToggleRedemptionCodeStatus(req *types.
 	// Update status
 	codeInfo.Status = req.Status
 
-	err = l.svcCtx.RedemptionCodeModel.Update(l.ctx, codeInfo)
+	err = l.svcCtx.Store.RedemptionCode().Update(l.ctx, codeInfo)
 	if err != nil {
 		l.Errorw("[ToggleRedemptionCodeStatus] Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update redemption code status error: %v", err.Error())

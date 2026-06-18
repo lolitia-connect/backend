@@ -314,4 +314,3 @@ service ppanel {
 	@handler ResetUserSubscribeTraffic
 	post /subscribe/reset/traffic (ResetUserSubscribeTrafficRequest)
 }
-

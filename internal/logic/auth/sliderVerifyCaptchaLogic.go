@@ -31,7 +31,7 @@ func (l *SliderVerifyCaptchaLogic) SliderVerifyCaptcha(req *types.SliderVerifyCa
 	var config struct {
 		CaptchaType string `json:"captcha_type"`
 	}
-	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}

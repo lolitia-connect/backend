@@ -29,7 +29,7 @@ func NewAdminSliderVerifyCaptchaLogic(ctx context.Context, svcCtx *svc.ServiceCo
 
 func (l *AdminSliderVerifyCaptchaLogic) AdminSliderVerifyCaptcha(req *types.SliderVerifyCaptchaRequest) (resp *types.SliderVerifyCaptchaResponse, err error) {
 	// Get verify config from database
-	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
 		l.Logger.Error("[AdminSliderVerifyCaptchaLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())

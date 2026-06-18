@@ -5,9 +5,9 @@ import (
 	sysErr "errors"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/constant"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
@@ -31,7 +31,7 @@ func NewDeviceWsConnectLogic(ctx context.Context, svcCtx *svc.ServiceContext) *D
 	}
 }
 
-func (l *DeviceWsConnectLogic) DeviceWsConnect(c *gin.Context) error {
+func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 
 	value := l.ctx.Value(constant.CtxKeyIdentifier)
 	if value == nil || value.(string) == "" {
@@ -42,7 +42,7 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *gin.Context) error {
 		}
 	}
 	identifier := value.(string)
-	_, err := l.svcCtx.UserModel.FindOneDeviceByIdentifier(l.ctx, identifier)
+	_, err := l.svcCtx.Store.User().FindOneDeviceByIdentifier(l.ctx, identifier)
 	if err != nil && !sysErr.Is(err, gorm.ErrRecordNotFound) {
 		l.Errorf("DeviceWsConnectLogic DeviceWsConnect FindOneDeviceByIdentifier err: %v", err)
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), err.Error())
@@ -63,7 +63,7 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *gin.Context) error {
 			Online:     true,
 			Enabled:    true,
 		}
-		err := l.svcCtx.UserModel.InsertDevice(l.ctx, &device)
+		err := l.svcCtx.Store.User().InsertDevice(l.ctx, &device)
 		if err != nil {
 			l.Errorf("DeviceWsConnectLogic DeviceWsConnect InsertDevice err: %v", err)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), err.Error())
@@ -71,7 +71,7 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *gin.Context) error {
 	}
 	//默认在线设备1
 	maxDevice := 3
-	subscribe, err := l.svcCtx.UserModel.QueryUserSubscribe(l.ctx, userInfo.Id, 1, 2)
+	subscribe, err := l.svcCtx.Store.User().QueryUserSubscribe(l.ctx, userInfo.Id, 1, 2)
 	if err == nil {
 		for _, sub := range subscribe {
 			if time.Now().Before(sub.ExpireTime) {

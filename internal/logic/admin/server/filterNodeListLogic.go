@@ -29,17 +29,10 @@ func NewFilterNodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Fi
 }
 
 func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (resp *types.FilterNodeListResponse, err error) {
-	// Convert NodeGroupId to []int64 for model
-	var nodeGroupIds []int64
-	if req.NodeGroupId != nil {
-		nodeGroupIds = []int64{*req.NodeGroupId}
-	}
-
-	total, data, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:         req.Page,
-		Size:         req.Size,
-		Search:       req.Search,
-		NodeGroupIds: nodeGroupIds,
+	total, data, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
+		Page:   req.Page,
+		Size:   req.Size,
+		Search: req.Search,
 	})
 
 	if err != nil {

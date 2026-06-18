@@ -35,17 +35,17 @@ func (l *DeleteCurrentUserAccountLogic) DeleteCurrentUserAccount() (err error) {
 		return nil
 	}
 
-	userInfo, err = l.svcCtx.UserModel.FindOne(l.ctx, userInfo.Id)
+	userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
 	if err != nil {
 		l.Errorw("FindOne Error", logger.Field("error", err))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth methods failed: %v", err.Error())
 	}
 
-	err = l.svcCtx.UserModel.Transaction(l.ctx, func(tx *gorm.DB) error {
+	err = l.svcCtx.Store.User().Transaction(l.ctx, func(tx *gorm.DB) error {
 		//delete user devices
 		if len(userInfo.UserDevices) > 0 {
 			for _, device := range userInfo.UserDevices {
-				if err = l.svcCtx.UserModel.DeleteDevice(l.ctx, device.Id, tx); err != nil {
+				if err = l.svcCtx.Store.User().DeleteDevice(l.ctx, device.Id, tx); err != nil {
 					return err
 				}
 			}
@@ -54,7 +54,7 @@ func (l *DeleteCurrentUserAccountLogic) DeleteCurrentUserAccount() (err error) {
 		// delete user auth methods
 		if len(userInfo.AuthMethods) > 0 {
 			for _, authMethod := range userInfo.AuthMethods {
-				if err = l.svcCtx.UserModel.DeleteUserAuthMethods(l.ctx, userInfo.Id, authMethod.AuthType); err != nil {
+				if err = l.svcCtx.Store.User().DeleteUserAuthMethods(l.ctx, userInfo.Id, authMethod.AuthType); err != nil {
 					return err
 				}
 			}
@@ -62,17 +62,17 @@ func (l *DeleteCurrentUserAccountLogic) DeleteCurrentUserAccount() (err error) {
 
 		// delete user subscribes
 		var subscribes []*user.SubscribeDetails
-		subscribes, err = l.svcCtx.UserModel.QueryUserSubscribe(l.ctx, userInfo.Id)
+		subscribes, err = l.svcCtx.Store.User().QueryUserSubscribe(l.ctx, userInfo.Id)
 		if err != nil {
 			return err
 		}
 		for _, subscribe := range subscribes {
-			if err = l.svcCtx.UserModel.DeleteSubscribe(l.ctx, subscribe.Token, tx); err != nil {
+			if err = l.svcCtx.Store.User().DeleteSubscribe(l.ctx, subscribe.Token, tx); err != nil {
 				return err
 			}
 		}
 		// delete user account
-		return l.svcCtx.UserModel.BatchDeleteUser(l.ctx, []int64{userInfo.Id}, tx)
+		return l.svcCtx.Store.User().BatchDeleteUser(l.ctx, []int64{userInfo.Id}, tx)
 	})
 	if err != nil {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "find user auth methods failed: %v", err.Error())

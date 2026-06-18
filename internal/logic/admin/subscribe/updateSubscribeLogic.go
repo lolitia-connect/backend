@@ -32,7 +32,7 @@ func NewUpdateSubscribeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *U
 
 func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest) error {
 	// Query the database to get the subscribe information
-	_, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, req.Id)
+	_, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, req.Id)
 	if err != nil {
 		l.Logger.Error("[UpdateSubscribe] Database query error", logger.Field("error", err.Error()), logger.Field("subscribe_id", req.Id))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get subscribe error: %v", err.Error())
@@ -42,11 +42,10 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		val, _ := json.Marshal(req.Discount)
 		discount = string(val)
 	}
-
-	trafficLimit := ""
-	if len(req.TrafficLimit) > 0 {
-		val, _ := json.Marshal(req.TrafficLimit)
-		trafficLimit = string(val)
+	// When NodeTags is set, clear Nodes to avoid AND-combined query returning wrong results (#94)
+	nodes := tool.Int64SliceToString(req.Nodes.Int64s())
+	if len(req.NodeTags) > 0 {
+		nodes = ""
 	}
 	sub := &subscribe.Subscribe{
 		Id:                req.Id,
@@ -62,11 +61,17 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		SpeedLimit:        req.SpeedLimit,
 		DeviceLimit:       req.DeviceLimit,
 		Quota:             req.Quota,
-		Nodes:             tool.Int64SliceToString(tool.StringSliceToInt64Slice(req.Nodes)),
+		Nodes:             nodes,
 		NodeTags:          tool.StringSliceToString(req.NodeTags),
 		NodeGroupIds:      subscribe.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds)),
 		NodeGroupId:       req.NodeGroupId,
-		TrafficLimit:      trafficLimit,
+		TrafficLimit:      func() string {
+			if len(req.TrafficLimit) > 0 {
+				val, _ := json.Marshal(req.TrafficLimit)
+				return string(val)
+			}
+			return ""
+		}(),
 		Show:              req.Show,
 		Sell:              req.Sell,
 		Sort:              req.Sort,
@@ -76,7 +81,7 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		RenewalReset:      req.RenewalReset,
 		ShowOriginalPrice: req.ShowOriginalPrice,
 	}
-	err = l.svcCtx.SubscribeModel.Update(l.ctx, sub)
+	err = l.svcCtx.Store.Subscribe().Update(l.ctx, sub)
 	if err != nil {
 		l.Logger.Error("[UpdateSubscribe] update subscribe failed", logger.Field("error", err.Error()), logger.Field("subscribe", sub))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update subscribe error: %v", err.Error())

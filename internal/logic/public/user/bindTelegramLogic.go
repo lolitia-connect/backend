@@ -38,7 +38,6 @@ func (l *BindTelegramLogic) BindTelegram() (resp *types.BindTelegramResponse, er
 		l.Errorw("bind telegram failed: telegram bot is not initialized")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "telegram bot is not configured")
 	}
-
 	return &types.BindTelegramResponse{
 		Url:       fmt.Sprintf("https://t.me/%s?start=%s", l.svcCtx.Config.Telegram.BotName, session),
 		ExpiredAt: time.Now().Add(300 * time.Second).UnixMilli(),

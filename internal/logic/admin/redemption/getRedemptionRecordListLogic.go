@@ -26,7 +26,7 @@ func NewGetRedemptionRecordListLogic(ctx context.Context, svcCtx *svc.ServiceCon
 }
 
 func (l *GetRedemptionRecordListLogic) GetRedemptionRecordList(req *types.GetRedemptionRecordListRequest) (resp *types.GetRedemptionRecordListResponse, err error) {
-	total, list, err := l.svcCtx.RedemptionRecordModel.QueryRedemptionRecordListByPage(
+	total, list, err := l.svcCtx.Store.RedemptionRecord().QueryRedemptionRecordListByPage(
 		l.ctx,
 		int(req.Page),
 		int(req.Size),

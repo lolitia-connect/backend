@@ -29,7 +29,7 @@ func NewGetRecalculationStatusLogic(ctx context.Context, svcCtx *svc.ServiceCont
 func (l *GetRecalculationStatusLogic) GetRecalculationStatus() (resp *types.RecalculationState, err error) {
 	// 返回最近的一条 GroupHistory 记录
 	var history group.GroupHistory
-	err = l.svcCtx.DB.Order("id desc").First(&history).Error
+	err = l.svcCtx.Store.DB().Order("id desc").First(&history).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 如果没有历史记录，返回空闲状态

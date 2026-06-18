@@ -27,13 +27,13 @@ func (*Payment) TableName() string {
 	return "payment"
 }
 
-func (p *Payment) BeforeCreate(tx *gorm.DB) error {
-	if p.Sort == 0 {
+func (l *Payment) BeforeCreate(tx *gorm.DB) error {
+	if l.Sort == 0 {
 		var maxSort int64
 		if err := tx.Model(&Payment{}).Select("COALESCE(MAX(sort), 0)").Scan(&maxSort).Error; err != nil {
 			return err
 		}
-		p.Sort = maxSort + 1
+		l.Sort = maxSort + 1
 	}
 	return nil
 }
@@ -91,35 +91,29 @@ func (l *AlipayF2FConfig) Marshal() ([]byte, error) {
 }
 
 func (l *AlipayF2FConfig) Unmarshal(data []byte) error {
+	// First try to unmarshal into a map to handle string "true"/"false" for sandbox
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(data, &rawMap); err != nil {
+		return err
+	}
+	
+	// Convert sandbox field if it's a string
+	if sandboxVal, ok := rawMap["sandbox"]; ok {
+		switch v := sandboxVal.(type) {
+		case string:
+			rawMap["sandbox"] = v == "true" || v == "1"
+		case bool:
+			// Already a bool, no conversion needed
+		}
+	}
+	
+	// Re-marshal and unmarshal into the struct
+	convertedData, err := json.Marshal(rawMap)
+	if err != nil {
+		return err
+	}
 	type Alias AlipayF2FConfig
-	aux := (*Alias)(l)
-	return json.Unmarshal(data, &aux)
-}
-
-type AlipayPlusConfig struct {
-	ClientId        string `json:"client_id"`
-	MerchantId      string `json:"merchant_id"`
-	PrivateKey      string `json:"private_key"`
-	AlipayPublicKey string `json:"alipay_public_key"`
-	GatewayUrl      string `json:"gateway_url"`
-	Currency        string `json:"currency"`
-	PaymentMethod   string `json:"payment_method"`
-	InvoiceName     string `json:"invoice_name"`
-}
-
-func (l *AlipayPlusConfig) Marshal() ([]byte, error) {
-	type Alias AlipayPlusConfig
-	return json.Marshal(&struct {
-		*Alias
-	}{
-		Alias: (*Alias)(l),
-	})
-}
-
-func (l *AlipayPlusConfig) Unmarshal(data []byte) error {
-	type Alias AlipayPlusConfig
-	aux := (*Alias)(l)
-	return json.Unmarshal(data, &aux)
+	return json.Unmarshal(convertedData, (*Alias)(l))
 }
 
 type EPayConfig struct {
@@ -162,6 +156,34 @@ func (l *CryptoSaaSConfig) Marshal() ([]byte, error) {
 
 func (l *CryptoSaaSConfig) Unmarshal(data []byte) error {
 	type Alias CryptoSaaSConfig
+	aux := (*Alias)(l)
+	return json.Unmarshal(data, &aux)
+}
+
+type AlipayPlusConfig struct {
+	ClientId        string `json:"client_id"`
+	MerchantId      string `json:"merchant_id"`
+	PrivateKey      string `json:"private_key"`
+	AlipayPublicKey string `json:"alipay_public_key"`
+	GatewayUrl      string `json:"gateway_url"`
+	Currency        string `json:"currency"`
+	PaymentMethod   string `json:"payment_method"`
+	InvoiceName     string `json:"invoice_name"`
+	NotifyURL       string `json:"notify_url"`
+	RedirectURL     string `json:"redirect_url"`
+}
+
+func (l *AlipayPlusConfig) Marshal() ([]byte, error) {
+	type Alias AlipayPlusConfig
+	return json.Marshal(&struct {
+		*Alias
+	}{
+		Alias: (*Alias)(l),
+	})
+}
+
+func (l *AlipayPlusConfig) Unmarshal(data []byte) error {
+	type Alias AlipayPlusConfig
 	aux := (*Alias)(l)
 	return json.Unmarshal(data, &aux)
 }

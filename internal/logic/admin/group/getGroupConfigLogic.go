@@ -37,12 +37,12 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 	var trafficConfig system.System
 
 	// 从 system_config 表读取配置
-	if err := l.svcCtx.DB.Where("`category` = 'group' and `key` = ?", "enabled").First(&enabledConfig).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "enabled").First(&enabledConfig).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		l.Errorw("failed to get group enabled config", logger.Field("error", err.Error()))
 		return nil, err
 	}
 
-	if err := l.svcCtx.DB.Where("`category` = 'group' and `key` = ?", "mode").First(&modeConfig).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "mode").First(&modeConfig).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		l.Errorw("failed to get group mode config", logger.Field("error", err.Error()))
 		return nil, err
 	}
@@ -50,21 +50,21 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 	// 读取 JSON 配置
 	config := make(map[string]interface{})
 
-	if err := l.svcCtx.DB.Where("`category` = 'group' and `key` = ?", "average_config").First(&averageConfig).Error; err == nil {
+	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "average_config").First(&averageConfig).Error; err == nil {
 		var averageCfg map[string]interface{}
 		if err := json.Unmarshal([]byte(averageConfig.Value), &averageCfg); err == nil {
 			config["average_config"] = averageCfg
 		}
 	}
 
-	if err := l.svcCtx.DB.Where("`category` = 'group' and `key` = ?", "subscribe_config").First(&subscribeConfig).Error; err == nil {
+	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "subscribe_config").First(&subscribeConfig).Error; err == nil {
 		var subscribeCfg map[string]interface{}
 		if err := json.Unmarshal([]byte(subscribeConfig.Value), &subscribeCfg); err == nil {
 			config["subscribe_config"] = subscribeCfg
 		}
 	}
 
-	if err := l.svcCtx.DB.Where("`category` = 'group' and `key` = ?", "traffic_config").First(&trafficConfig).Error; err == nil {
+	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "traffic_config").First(&trafficConfig).Error; err == nil {
 		var trafficCfg map[string]interface{}
 		if err := json.Unmarshal([]byte(trafficConfig.Value), &trafficCfg); err == nil {
 			config["traffic_config"] = trafficCfg
@@ -103,7 +103,7 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 // getRecalculationState 获取重算状态
 func (l *GetGroupConfigLogic) getRecalculationState() (*types.RecalculationState, error) {
 	var history group.GroupHistory
-	err := l.svcCtx.DB.Order("id desc").First(&history).Error
+	err := l.svcCtx.Store.DB().Order("id desc").First(&history).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return &types.RecalculationState{

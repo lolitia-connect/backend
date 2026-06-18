@@ -1,16 +1,16 @@
 package admin
 
 import (
-	"github.com/gin-gonic/gin"
 	adminLogic "github.com/perfect-panel/server/internal/logic/auth/admin"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/result"
 )
 
 // Admin login
-func AdminLoginHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
-	return func(c *gin.Context) {
+func AdminLoginHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
+	return func(c *hertzx.Context) {
 		var req types.UserLoginRequest
 		_ = c.ShouldBind(&req)
 		// get client ip

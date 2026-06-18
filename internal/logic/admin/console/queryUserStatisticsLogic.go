@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -10,6 +11,9 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
 )
+
+const consoleUserStatisticsCacheKey = "console:user_statistics"
+const consoleUserStatisticsCacheTTL = 60 * time.Second
 
 type QueryUserStatisticsLogic struct {
 	logger.Logger
@@ -30,17 +34,27 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 	if strings.ToLower(os.Getenv("PPANEL_MODE")) == "demo" {
 		return l.mockRevenueStatistics(), nil
 	}
+
+	// Try cache first
+	cached, cacheErr := l.svcCtx.Redis.Get(l.ctx, consoleUserStatisticsCacheKey).Result()
+	if cacheErr == nil && cached != "" {
+		var result types.UserStatisticsResponse
+		if json.Unmarshal([]byte(cached), &result) == nil {
+			return &result, nil
+		}
+	}
+
 	resp = &types.UserStatisticsResponse{}
 	now := time.Now()
 	// query today user register count
-	todayUserResisterCount, err := l.svcCtx.UserModel.QueryResisterUserTotalByDate(l.ctx, now)
+	todayUserResisterCount, err := l.svcCtx.Store.User().QueryResisterUserTotalByDate(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryResisterUserTotalByDate error", logger.Field("error", err.Error()))
 	} else {
 		resp.Today.Register = todayUserResisterCount
 	}
 	// query today user purchase count
-	newToday, renewalToday, err := l.svcCtx.OrderModel.QueryDateUserCounts(l.ctx, now)
+	newToday, renewalToday, err := l.svcCtx.Store.Order().QueryDateUserCounts(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryDateUserCounts error", logger.Field("error", err.Error()))
 	} else {
@@ -48,14 +62,14 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 		resp.Today.RenewalOrderUsers = renewalToday
 	}
 	// query month user register count
-	monthUserResisterCount, err := l.svcCtx.UserModel.QueryResisterUserTotalByMonthly(l.ctx, now)
+	monthUserResisterCount, err := l.svcCtx.Store.User().QueryResisterUserTotalByMonthly(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryResisterUserTotalByMonthly error", logger.Field("error", err.Error()))
 	} else {
 		resp.Monthly.Register = monthUserResisterCount
 	}
 	// query month user purchase count
-	newMonth, renewalMonth, err := l.svcCtx.OrderModel.QueryMonthlyUserCounts(l.ctx, now)
+	newMonth, renewalMonth, err := l.svcCtx.Store.Order().QueryMonthlyUserCounts(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryMonthlyUserCounts error", logger.Field("error", err.Error()))
 	} else {
@@ -64,7 +78,7 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 	}
 
 	// Get monthly daily user statistics list for the current month (from 1st to current date)
-	monthlyListData, err := l.svcCtx.UserModel.QueryDailyUserStatisticsList(l.ctx, now)
+	monthlyListData, err := l.svcCtx.Store.User().QueryDailyUserStatisticsList(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryDailyUserStatisticsList error", logger.Field("error", err.Error()))
 		// Don't return error, just log it and continue with empty list
@@ -82,7 +96,7 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 	}
 
 	// query all user count
-	allUserCount, err := l.svcCtx.UserModel.QueryResisterUserTotal(l.ctx)
+	allUserCount, err := l.svcCtx.Store.User().QueryResisterUserTotal(l.ctx)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryResisterUserTotal error", logger.Field("error", err.Error()))
 	} else {
@@ -90,7 +104,7 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 	}
 
 	// query all user order counts
-	allNewOrderUsers, allRenewalOrderUsers, err := l.svcCtx.OrderModel.QueryTotalUserCounts(l.ctx)
+	allNewOrderUsers, allRenewalOrderUsers, err := l.svcCtx.Store.Order().QueryTotalUserCounts(l.ctx)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryTotalUserCounts error", logger.Field("error", err.Error()))
 	} else {
@@ -99,7 +113,7 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 	}
 
 	// Get all monthly user statistics list for the past 6 months
-	allListData, err := l.svcCtx.UserModel.QueryMonthlyUserStatisticsList(l.ctx, now)
+	allListData, err := l.svcCtx.Store.User().QueryMonthlyUserStatisticsList(l.ctx, now)
 	if err != nil {
 		l.Errorw("[QueryUserStatisticsLogic] QueryMonthlyUserStatisticsList error", logger.Field("error", err.Error()))
 		// Don't return error, just log it and continue with empty list
@@ -114,6 +128,11 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 			}
 		}
 		resp.All.List = allList
+	}
+
+	// Cache the result
+	if data, marshalErr := json.Marshal(resp); marshalErr == nil {
+		l.svcCtx.Redis.Set(l.ctx, consoleUserStatisticsCacheKey, data, consoleUserStatisticsCacheTTL)
 	}
 
 	return

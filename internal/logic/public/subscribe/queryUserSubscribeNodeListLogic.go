@@ -39,7 +39,7 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
-	userSubscribes, err := l.svcCtx.UserModel.QueryUserSubscribe(l.ctx, u.Id, 0, 1, 2, 3)
+	userSubscribes, err := l.svcCtx.Store.User().QueryUserSubscribe(l.ctx, u.Id, 1, 2)
 	if err != nil {
 		logger.Errorw("failed to query user subscribe", logger.Field("error", err.Error()), logger.Field("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "DB_ERROR")
@@ -92,34 +92,28 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 		return l.createExpiredServers(userSub), nil
 	}
 
-	// Check if group management is enabled
-	var groupEnabled string
-	err = l.svcCtx.DB.Table("system").
-		Where("`category` = ? AND `key` = ?", "group", "enabled").
-		Select("value").Scan(&groupEnabled).Error
-
+	subDetails, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, userSub.SubscribeId)
 	if err != nil {
 		l.Debugw("[GetServers] Failed to check group enabled", logger.Field("error", err.Error()))
 		// Continue with tag-based filtering
 	}
-
-	isGroupEnabled := (groupEnabled == "true" || groupEnabled == "1")
-
-	var nodes []*node.Node
-	if isGroupEnabled {
-		// Group mode: use group_ids to filter nodes
-		nodes, err = l.getNodesByGroup(userSub)
-		if err != nil {
-			l.Errorw("[GetServers] Failed to get nodes by group", logger.Field("error", err.Error()))
-			return nil, err
+	nodeIds := tool.StringToInt64Slice(subDetails.Nodes)
+	tags := strings.Split(subDetails.NodeTags, ",")
+	cleanTags := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			cleanTags = append(cleanTags, tag)
 		}
-	} else {
-		// Tag mode: use node_ids and tags to filter nodes
-		nodes, err = l.getNodesByTag(userSub)
-		if err != nil {
-			l.Errorw("[GetServers] Failed to get nodes by tag", logger.Field("error", err.Error()))
-			return nil, err
-		}
+	}
+	tags = cleanTags
+
+	enable := true
+
+	nodes, err := l.filterSubscribeNodes(nodeIds, tags, enable)
+	if err != nil {
+		l.Errorw("[Generate Subscribe]find server details error: %v", logger.Field("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server details error: %v", err.Error())
 	}
 
 	// Process nodes and create response
@@ -133,7 +127,7 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 			serverIds = append(serverIds, k)
 		}
 
-		servers, err := l.svcCtx.NodeModel.QueryServerList(l.ctx, serverIds)
+		servers, err := l.svcCtx.Store.Node().QueryServerList(l.ctx, serverIds)
 		if err != nil {
 			l.Errorw("[Generate Subscribe]find server details error: %v", logger.Field("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server details error: %v", err.Error())
@@ -170,155 +164,61 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 	}
 
 	l.Debugf("[Query Subscribe]found servers: %v", len(nodes))
+	logger.Debugf("[Generate Subscribe]found servers: %v", len(nodes))
 	return userSubscribeNodes, nil
 }
 
-// getNodesByGroup gets nodes based on user subscription node_group_id with priority fallback
-func (l *QueryUserSubscribeNodeListLogic) getNodesByGroup(userSub *user.Subscribe) ([]*node.Node, error) {
-	// 按优先级获取 node_group_id：user_subscribe.node_group_id > subscribe.node_group_id > subscribe.node_group_ids[0]
-	nodeGroupId := int64(0)
-	source := ""
-	var directNodeIds []int64
-
-	// 优先级1: user_subscribe.node_group_id
-	if userSub.NodeGroupId != 0 {
-		nodeGroupId = userSub.NodeGroupId
-		source = "user_subscribe.node_group_id"
-	}
-
-	// 获取 subscribe 详情（用于获取 node_group_id 和直接分配的节点）
-	subDetails, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, userSub.SubscribeId)
-	if err != nil {
-		l.Errorw("[GetNodesByGroup] find subscribe details error", logger.Field("error", err.Error()))
-		return nil, err
-	}
-
-	// 获取直接分配的节点ID
-	directNodeIds = tool.StringToInt64Slice(subDetails.Nodes)
-	l.Debugf("[GetNodesByGroup] direct nodes: %v", directNodeIds)
-
-	// 如果 user_subscribe 没有 node_group_id，从 subscribe 获取
-	if nodeGroupId == 0 {
-		// 优先级2: subscribe.node_group_id
-		if subDetails.NodeGroupId != 0 {
-			nodeGroupId = subDetails.NodeGroupId
-			source = "subscribe.node_group_id"
-		} else if len(subDetails.NodeGroupIds) > 0 {
-			// 优先级3: subscribe.node_group_ids[0]
-			nodeGroupId = subDetails.NodeGroupIds[0]
-			source = "subscribe.node_group_ids[0]"
-		}
-	}
-
-	l.Debugf("[GetNodesByGroup] Using %s: %v", source, nodeGroupId)
-	if nodeGroupId > 0 {
-		if l.getAccessibleNodeGroup(nodeGroupId, group.NodeGroupAccessApp) == nil {
-			l.Debugf("[GetNodesByGroup] node group %d from %s is not accessible for app output", nodeGroupId, source)
-			nodeGroupId = 0
-		}
-	}
-
-	// 查询所有启用的节点
-	enable := true
-	isHidden := false
-	_, allNodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:     0,
-		Size:     10000,
-		Enabled:  &enable,
-		IsHidden: &isHidden,
-	})
-	if err != nil {
-		l.Errorw("[GetNodesByGroup] FilterNodeList error", logger.Field("error", err.Error()))
-		return nil, err
-	}
-
-	// 过滤节点
-	var resultNodes []*node.Node
-	nodeIdMap := make(map[int64]bool)
-
-	for _, n := range allNodes {
-		// 1. 公共节点（node_group_ids 为空），所有人可见
-		if len(n.NodeGroupIds) == 0 {
-			if !nodeIdMap[n.Id] {
-				resultNodes = append(resultNodes, n)
-				nodeIdMap[n.Id] = true
+func (l *QueryUserSubscribeNodeListLogic) filterSubscribeNodes(nodeIds []int64, tags []string, enable bool) ([]*node.Node, error) {
+	addNodes := func(result []*node.Node, seen map[int64]struct{}, items []*node.Node) []*node.Node {
+		for _, item := range items {
+			if item == nil {
+				continue
 			}
-			continue
-		}
-
-		// 2. 如果有节点组，检查节点是否属于该节点组
-		if nodeGroupId != 0 {
-			for _, gid := range n.NodeGroupIds {
-				if gid == nodeGroupId {
-					if !nodeIdMap[n.Id] {
-						resultNodes = append(resultNodes, n)
-						nodeIdMap[n.Id] = true
-					}
-					break
-				}
+			if _, ok := seen[item.Id]; ok {
+				continue
 			}
+			seen[item.Id] = struct{}{}
+			result = append(result, item)
 		}
+		return result
 	}
 
-	// 3. 添加直接分配的节点
-	if len(directNodeIds) > 0 {
-		for _, n := range allNodes {
-			if tool.Contains(directNodeIds, n.Id) && !nodeIdMap[n.Id] {
-				resultNodes = append(resultNodes, n)
-				nodeIdMap[n.Id] = true
-			}
+	if len(nodeIds) == 0 && len(tags) == 0 {
+		_, nodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
+			Page:    0,
+			Size:    1000,
+			Enabled: &enable,
+		})
+		return nodes, err
+	}
+
+	seen := make(map[int64]struct{})
+	nodes := make([]*node.Node, 0)
+	if len(nodeIds) > 0 {
+		_, directNodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
+			Page:    0,
+			Size:    1000,
+			NodeId:  nodeIds,
+			Enabled: &enable,
+		})
+		if err != nil {
+			return nil, err
 		}
+		nodes = addNodes(nodes, seen, directNodes)
 	}
-
-	l.Debugf("[GetNodesByGroup] Found %d nodes (group=%d, direct=%d)", len(resultNodes), nodeGroupId, len(directNodeIds))
-	return resultNodes, nil
-}
-
-// getNodesByTag gets nodes based on subscribe node_ids and tags
-func (l *QueryUserSubscribeNodeListLogic) getNodesByTag(userSub *user.Subscribe) ([]*node.Node, error) {
-	subDetails, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, userSub.SubscribeId)
-	if err != nil {
-		l.Errorw("[Generate Subscribe]find subscribe details error: %v", logger.Field("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe details error: %v", err.Error())
-	}
-
-	nodeIds := tool.StringToInt64Slice(subDetails.Nodes)
-	tags := strings.Split(subDetails.NodeTags, ",")
-	newTags := make([]string, 0)
-	for _, t := range tags {
-		if t != "" {
-			newTags = append(newTags, t)
+	if len(tags) > 0 {
+		_, tagNodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
+			Page:    0,
+			Size:    1000,
+			Tag:     tags,
+			Enabled: &enable,
+		})
+		if err != nil {
+			return nil, err
 		}
+		nodes = addNodes(nodes, seen, tagNodes)
 	}
-	tags = newTags
-	l.Debugf("[Generate Subscribe]nodes: %v, NodeTags: %v", nodeIds, tags)
-
-	enable := true
-	isHidden := false
-	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:     0,
-		Size:     1000,
-		NodeId:   nodeIds,
-		Tag:      tags,
-		Enabled:  &enable, // Only get enabled nodes
-		IsHidden: &isHidden,
-	})
-
-	return nodes, err
-}
-
-// getAllNodes returns all enabled nodes
-func (l *QueryUserSubscribeNodeListLogic) getAllNodes() ([]*node.Node, error) {
-	enable := true
-	isHidden := false
-	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:     0,
-		Size:     1000,
-		Enabled:  &enable,
-		IsHidden: &isHidden,
-	})
-
-	return nodes, err
+	return nodes, nil
 }
 
 func (l *QueryUserSubscribeNodeListLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
@@ -328,7 +228,7 @@ func (l *QueryUserSubscribeNodeListLogic) isSubscriptionExpired(userSub *user.Su
 func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Subscribe) []*types.UserSubscribeNodeInfo {
 	// 1. 查询过期节点组
 	var expiredGroup group.NodeGroup
-	err := l.svcCtx.DB.Where("is_expired_group = ?", true).First(&expiredGroup).Error
+	err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error
 	if err != nil {
 		l.Debugw("no expired node group configured", logger.Field("error", err))
 		return nil
@@ -357,7 +257,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 	// 4. 查询过期节点组的节点
 	enable := true
 	isHidden := false
-	_, nodes, err := l.svcCtx.NodeModel.FilterNodeList(l.ctx, &node.FilterNodeParams{
+	_, nodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:         0,
 		Size:         1000,
 		NodeGroupIds: []int64{expiredGroup.Id},
@@ -384,7 +284,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 		serverIds = append(serverIds, k)
 	}
 
-	servers, err := l.svcCtx.NodeModel.QueryServerList(l.ctx, serverIds)
+	servers, err := l.svcCtx.Store.Node().QueryServerList(l.ctx, serverIds)
 	if err != nil {
 		l.Errorw("failed to query servers", logger.Field("error", err))
 		return nil
@@ -431,7 +331,7 @@ func (l *QueryUserSubscribeNodeListLogic) getAccessibleNodeGroup(nodeGroupId int
 	}
 
 	var nodeGroup group.NodeGroup
-	if err := l.svcCtx.DB.Select("id, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Select("id, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
 		l.Debugw("[GetNodesByGroup] node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
 		return nil
 	}
@@ -453,7 +353,7 @@ func (l *QueryUserSubscribeNodeListLogic) getFirstHostLine() string {
 	return host
 }
 func (l *QueryUserSubscribeNodeListLogic) getUserSubscribe(token string) (*user.Subscribe, error) {
-	userSub, err := l.svcCtx.UserModel.FindOneSubscribeByToken(l.ctx, token)
+	userSub, err := l.svcCtx.Store.User().FindOneSubscribeByToken(l.ctx, token)
 	if err != nil {
 		l.Infow("[Generate Subscribe]find subscribe error: %v", logger.Field("error", err.Error()), logger.Field("token", token))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())

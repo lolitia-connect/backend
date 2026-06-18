@@ -48,7 +48,7 @@ func (l *CreateRedemptionCodeLogic) generateUniqueCode() (string, error) {
 		codeStr := string(code)
 
 		// Check if code already exists
-		_, err := l.svcCtx.RedemptionCodeModel.FindOneByCode(l.ctx, codeStr)
+		_, err := l.svcCtx.Store.RedemptionCode().FindOneByCode(l.ctx, codeStr)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return codeStr, nil
 		} else if err != nil {
@@ -68,7 +68,7 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 	}
 
 	// Verify subscribe plan exists
-	_, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, req.SubscribePlan)
+	_, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, req.SubscribePlan)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			l.Errorw("[CreateRedemptionCode] Subscribe plan not found", logger.Field("subscribe_plan", req.SubscribePlan))
@@ -103,7 +103,7 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 			Status:        1, // Default to enabled
 		}
 
-		err = l.svcCtx.RedemptionCodeModel.Insert(l.ctx, redemptionCode)
+		err = l.svcCtx.Store.RedemptionCode().Insert(l.ctx, redemptionCode)
 		if err != nil {
 			l.Errorw("[CreateRedemptionCode] Database Error", logger.Field("error", err.Error()))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create redemption code error: %v", err.Error())

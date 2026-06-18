@@ -3,16 +3,16 @@ package group
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/result"
 )
 
 // Export group result
-func ExportGroupResultHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
-	return func(c *gin.Context) {
+func ExportGroupResultHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
+	return func(c *hertzx.Context) {
 		var req types.ExportGroupResultRequest
 		_ = c.ShouldBind(&req)
 		validateErr := svcCtx.Validate(&req)
@@ -29,8 +29,9 @@ func ExportGroupResultHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
 		}
 
 		// 设置响应头
-		c.Header("Content-Type", "text/csv")
-		c.Header("Content-Disposition", "attachment; filename="+filename)
-		c.Data(http.StatusOK, "text/csv", data)
+		c.Writer.Header().Set("Content-Type", "text/csv")
+		c.Writer.Header().Set("Content-Disposition", "attachment; filename="+filename)
+		c.Writer.WriteHeader(http.StatusOK)
+		_, _ = c.Writer.Write(data)
 	}
 }

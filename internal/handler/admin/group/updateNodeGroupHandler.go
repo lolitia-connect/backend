@@ -1,16 +1,16 @@
 package group
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/result"
 )
 
 // Update node group
-func UpdateNodeGroupHandler(svcCtx *svc.ServiceContext) func(c *gin.Context) {
-	return func(c *gin.Context) {
+func UpdateNodeGroupHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
+	return func(c *hertzx.Context) {
 		var req types.UpdateNodeGroupRequest
 		if err := c.ShouldBindUri(&req); err != nil {
 			result.ParamErrorResult(c, err)

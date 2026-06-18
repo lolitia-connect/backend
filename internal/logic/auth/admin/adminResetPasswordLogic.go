@@ -56,7 +56,7 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 				Timestamp: time.Now().UnixMilli(),
 			}
 			content, _ := loginLog.Marshal()
-			if err := l.svcCtx.LogModel.Insert(l.ctx, &log.SystemLog{
+			if err := l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
 				Id:       0,
 				Type:     log.TypeLogin.Uint8(),
 				Date:     time.Now().Format("2006-01-02"),
@@ -95,7 +95,7 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 	}
 
 	// Check user
-	authMethod, err := l.svcCtx.UserModel.FindUserAuthMethodByOpenID(l.ctx, "email", req.Email)
+	authMethod, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "email", req.Email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email not exist: %v", req.Email)
@@ -103,7 +103,7 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user by email error: %v", err.Error())
 	}
 
-	userInfo, err = l.svcCtx.UserModel.FindOne(l.ctx, authMethod.UserId)
+	userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, authMethod.UserId)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email not exist: %v", req.Email)
@@ -119,7 +119,7 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 	// Update password
 	userInfo.Password = tool.EncodePassWord(req.Password)
 	userInfo.Algo = "default"
-	if err = l.svcCtx.UserModel.Update(l.ctx, userInfo); err != nil {
+	if err = l.svcCtx.Store.User().Update(l.ctx, userInfo); err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update user info failed: %v", err.Error())
 	}
 
@@ -165,7 +165,7 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 }
 
 func (l *AdminResetPasswordLogic) verifyCaptcha(req *types.ResetPasswordRequest) error {
-	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
 		l.Logger.Error("[AdminResetPasswordLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())

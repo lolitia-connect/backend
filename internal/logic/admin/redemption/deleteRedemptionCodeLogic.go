@@ -26,7 +26,7 @@ func NewDeleteRedemptionCodeLogic(ctx context.Context, svcCtx *svc.ServiceContex
 }
 
 func (l *DeleteRedemptionCodeLogic) DeleteRedemptionCode(req *types.DeleteRedemptionCodeRequest) error {
-	err := l.svcCtx.RedemptionCodeModel.Delete(l.ctx, req.Id)
+	err := l.svcCtx.Store.RedemptionCode().Delete(l.ctx, req.Id)
 	if err != nil {
 		l.Errorw("[DeleteRedemptionCode] Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "delete redemption code error: %v", err.Error())

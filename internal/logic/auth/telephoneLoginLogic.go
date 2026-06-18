@@ -49,21 +49,22 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 	}
 	loginStatus := false
 
-	authMethodInfo, err := l.svcCtx.UserModel.FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
+	authMethodInfo, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
 	if err != nil {
-		if errors.As(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user telephone not exist: %v", req.Telephone)
 		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	}
 
-	userInfo, err := l.svcCtx.UserModel.FindOne(l.ctx, authMethodInfo.UserId)
+	userInfo, err := l.svcCtx.Store.User().FindOne(l.ctx, authMethodInfo.UserId)
 	if err != nil {
-		if errors.As(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user telephone not exist: %v", req.Telephone)
 		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	}
+
 	// Record login status
 	defer func(svcCtx *svc.ServiceContext) {
 		if userInfo.Id != 0 {
@@ -75,7 +76,7 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 				Timestamp: time.Now().UnixMilli(),
 			}
 			content, _ := loginLog.Marshal()
-			if err := l.svcCtx.LogModel.Insert(l.ctx, &log.SystemLog{
+			if err := l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
 				Id:       0,
 				Type:     log.TypeLogin.Uint8(),
 				Date:     time.Now().Format("2006-01-02"),
@@ -172,7 +173,7 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 }
 
 func (l *TelephoneLoginLogic) verifyCaptcha(req *types.TelephoneLoginRequest) error {
-	verifyCfg, err := l.svcCtx.SystemModel.GetVerifyConfig(l.ctx)
+	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
 		l.Logger.Error("[TelephoneLoginLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())

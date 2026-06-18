@@ -78,7 +78,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	defer l.svcCtx.Redis.Del(l.ctx, lockKey)
 
 	// Find redemption code by code
-	redemptionCode, err := l.svcCtx.RedemptionCodeModel.FindOneByCode(l.ctx, req.Code)
+	redemptionCode, err := l.svcCtx.Store.RedemptionCode().FindOneByCode(l.ctx, req.Code)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			l.Errorw("[RedeemCode] Redemption code not found", logger.Field("code", req.Code))
@@ -106,7 +106,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	}
 
 	// Check if user has already redeemed this code
-	userRecords, err := l.svcCtx.RedemptionRecordModel.FindByUserId(l.ctx, u.Id)
+	userRecords, err := l.svcCtx.Store.RedemptionRecord().FindByUserId(l.ctx, u.Id)
 	if err != nil {
 		l.Errorw("[RedeemCode] Database Error", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find redemption records error: %v", err.Error())
@@ -121,7 +121,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	}
 
 	// Find subscribe plan from redemption code
-	subscribePlan, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, redemptionCode.SubscribePlan)
+	subscribePlan, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, redemptionCode.SubscribePlan)
 	if err != nil {
 		l.Errorw("[RedeemCode] Subscribe plan not found",
 			logger.Field("subscribe_plan", redemptionCode.SubscribePlan),
@@ -138,10 +138,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 
 	// 检查配额限制（预检查，队列任务中会再次检查）
 	if subscribePlan.Quota > 0 {
-		var count int64
-		err = l.svcCtx.DB.Model(&user.Subscribe{}).
-			Where("user_id = ? AND subscribe_id = ?", u.Id, redemptionCode.SubscribePlan).
-			Count(&count).Error
+		count, err := l.svcCtx.Store.User().CountUserSubscribesByUserAndSubscribe(l.ctx, u.Id, redemptionCode.SubscribePlan)
 		if err != nil {
 			l.Errorw("[RedeemCode] Check quota failed", logger.Field("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "check quota failed")
@@ -157,7 +154,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	}
 
 	// 判断是否首次购买
-	isNew, err := l.svcCtx.OrderModel.IsUserEligibleForNewOrder(l.ctx, u.Id)
+	isNew, err := l.svcCtx.Store.Order().IsUserEligibleForNewOrder(l.ctx, u.Id)
 	if err != nil {
 		l.Errorw("[RedeemCode] Check user order failed", logger.Field("error", err.Error()))
 		// 可以继续，默认为false
@@ -186,7 +183,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	}
 
 	// 保存Order到数据库
-	err = l.svcCtx.OrderModel.Insert(l.ctx, orderInfo)
+	err = l.svcCtx.Store.Order().Insert(l.ctx, orderInfo)
 	if err != nil {
 		l.Errorw("[RedeemCode] Create order failed", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create order failed")
@@ -204,7 +201,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	if err != nil {
 		l.Errorw("[RedeemCode] Cache redemption data failed", logger.Field("error", err.Error()))
 		// 缓存失败，删除已创建的Order避免孤儿记录
-		if delErr := l.svcCtx.OrderModel.Delete(l.ctx, orderInfo.Id); delErr != nil {
+		if delErr := l.svcCtx.Store.Order().Delete(l.ctx, orderInfo.Id); delErr != nil {
 			l.Errorw("[RedeemCode] Delete order failed after cache error",
 				logger.Field("order_id", orderInfo.Id),
 				logger.Field("error", delErr.Error()))
@@ -223,7 +220,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 		l.Errorw("[RedeemCode] Enqueue task failed", logger.Field("error", err.Error()))
 		// 入队失败，删除Order和Redis缓存
 		l.svcCtx.Redis.Del(l.ctx, cacheKey)
-		if delErr := l.svcCtx.OrderModel.Delete(l.ctx, orderInfo.Id); delErr != nil {
+		if delErr := l.svcCtx.Store.Order().Delete(l.ctx, orderInfo.Id); delErr != nil {
 			l.Errorw("[RedeemCode] Delete order failed after enqueue error",
 				logger.Field("order_id", orderInfo.Id),
 				logger.Field("error", delErr.Error()))

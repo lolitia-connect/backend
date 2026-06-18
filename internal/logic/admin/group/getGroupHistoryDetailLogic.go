@@ -29,7 +29,7 @@ func NewGetGroupHistoryDetailLogic(ctx context.Context, svcCtx *svc.ServiceConte
 func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHistoryDetailRequest) (resp *types.GetGroupHistoryDetailResponse, err error) {
 	// 查询分组历史记录
 	var history group.GroupHistory
-	if err := l.svcCtx.DB.Where("id = ?", req.Id).First(&history).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("id = ?", req.Id).First(&history).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("group history not found")
 		}
@@ -39,7 +39,7 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 
 	// 查询分组历史详情
 	var details []group.GroupHistoryDetail
-	if err := l.svcCtx.DB.Where("history_id = ?", req.Id).Find(&details).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("history_id = ?", req.Id).Find(&details).Error; err != nil {
 		logger.Errorf("failed to find group history details: %v", err)
 		return nil, err
 	}
@@ -79,12 +79,12 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 		// 获取配置快照（从 system_config 读取）
 		var configValue string
 		if history.GroupMode == "average" {
-			l.svcCtx.DB.Table("system_config").
+			l.svcCtx.Store.DB().Table("system_config").
 				Where("`key` = ?", "group.average_config").
 				Select("value").
 				Scan(&configValue)
 		} else if history.GroupMode == "traffic" {
-			l.svcCtx.DB.Table("system_config").
+			l.svcCtx.Store.DB().Table("system_config").
 				Where("`key` = ?", "group.traffic_config").
 				Select("value").
 				Scan(&configValue)

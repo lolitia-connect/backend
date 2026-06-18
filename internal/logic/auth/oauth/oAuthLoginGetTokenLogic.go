@@ -10,6 +10,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/jwt"
@@ -342,13 +343,13 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 
 	var userInfo *user.User
 	var trialSubscribe *user.Subscribe
-	err := l.svcCtx.UserModel.Transaction(l.ctx, func(db *gorm.DB) error {
+	err := l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
 		if email != "" {
 			l.Debugw("checking if email already exists",
 				logger.Field("request_id", requestID),
 				logger.Field("email", email),
 			)
-			if err := l.checkEmailExists(db, email, requestID); err != nil {
+			if err := l.checkEmailExists(store, email, requestID); err != nil {
 				return err
 			}
 		}
@@ -359,7 +360,7 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 		)
 
 		userInfo = &user.User{Avatar: avatar, OnlyFirstPurchase: &l.svcCtx.Config.Invite.OnlyFirstPurchase}
-		if err := db.Create(userInfo).Error; err != nil {
+		if err := store.User().Insert(l.ctx, userInfo); err != nil {
 			l.Errorw("failed to create user record",
 				logger.Field("request_id", requestID),
 				logger.Field("error", err.Error()),
@@ -374,7 +375,7 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 			logger.Field("refer_code", userInfo.ReferCode),
 		)
 
-		if err := db.Model(&user.User{}).Where("id = ?", userInfo.Id).Update("refer_code", userInfo.ReferCode).Error; err != nil {
+		if err := store.User().Update(l.ctx, userInfo); err != nil {
 			l.Errorw("failed to update refer code",
 				logger.Field("request_id", requestID),
 				logger.Field("user_id", userInfo.Id),
@@ -383,12 +384,12 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update refer code failed: %v", err)
 		}
 
-		if err := l.createAuthMethod(db, userInfo.Id, method, openid, requestID); err != nil {
+		if err := l.createAuthMethod(store, userInfo.Id, method, openid, requestID); err != nil {
 			return err
 		}
 
 		if email != "" {
-			if err := l.createAuthMethod(db, userInfo.Id, AuthEmail, email, requestID); err != nil {
+			if err := l.createAuthMethod(store, userInfo.Id, AuthEmail, email, requestID); err != nil {
 				return err
 			}
 		}
@@ -399,7 +400,7 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 				logger.Field("user_id", userInfo.Id),
 			)
 			var trialErr error
-			trialSubscribe, trialErr = l.activeTrial(userInfo.Id, requestID)
+			trialSubscribe, trialErr = l.activeTrial(store, userInfo.Id, requestID)
 			if trialErr != nil {
 				return trialErr
 			}
@@ -417,21 +418,22 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 		)
 		return userInfo, err
 	}
+	clearTrialSubscribeCache(l.ctx, l.svcCtx, trialSubscribe)
 
 	// Clear cache after transaction success
 	if l.svcCtx.Config.Register.EnableTrial && trialSubscribe != nil {
 		// Clear user subscription cache
-		if err = l.svcCtx.UserModel.ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
+		if err = l.svcCtx.Store.User().ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
 			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", trialSubscribe.Id))
 			// Don't return error, just log it
 		}
 		// Clear subscription cache
-		if err = l.svcCtx.SubscribeModel.ClearCache(l.ctx, trialSubscribe.SubscribeId); err != nil {
+		if err = l.svcCtx.Store.Subscribe().ClearCache(l.ctx, trialSubscribe.SubscribeId); err != nil {
 			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", trialSubscribe.SubscribeId))
 			// Don't return error, just log it
 		}
 		// Clear all server cache
-		if err = l.svcCtx.NodeModel.ClearServerAllCache(l.ctx); err != nil {
+		if err = l.svcCtx.Store.Node().ClearServerAllCache(l.ctx); err != nil {
 			l.Errorf("ClearServerAllCache error: %v", err.Error())
 			// Don't return error, just log it
 		}
@@ -456,7 +458,7 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 	}
 	content, _ := registerLog.Marshal()
 
-	err = l.svcCtx.LogModel.Insert(l.ctx, &log.SystemLog{
+	err = l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
 		Type:     log.TypeRegister.Uint8(),
 		Date:     time.Now().Format("2006-01-02"),
 		ObjectID: userInfo.Id,
@@ -474,9 +476,8 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 	return userInfo, err
 }
 
-func (l *OAuthLoginGetTokenLogic) checkEmailExists(db *gorm.DB, email, requestID string) error {
-	var methodInfo user.AuthMethods
-	err := db.Model(&user.AuthMethods{}).Where("auth_identifier = ?", email).First(&methodInfo).Error
+func (l *OAuthLoginGetTokenLogic) checkEmailExists(store repository.Store, email, requestID string) error {
+	userInfo, err := store.User().FindOneByEmail(l.ctx, email)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		l.Errorw("failed to check email existence",
 			logger.Field("request_id", requestID),
@@ -485,11 +486,11 @@ func (l *OAuthLoginGetTokenLogic) checkEmailExists(db *gorm.DB, email, requestID
 		)
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "check email exists failed: %v", err)
 	}
-	if methodInfo.UserId != 0 {
+	if err == nil && userInfo != nil && userInfo.Id != 0 {
 		l.Errorw("email already exists for another user",
 			logger.Field("request_id", requestID),
 			logger.Field("email", email),
-			logger.Field("existing_user_id", methodInfo.UserId),
+			logger.Field("existing_user_id", userInfo.Id),
 		)
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "user email exist: %v", email)
 	}
@@ -500,7 +501,7 @@ func (l *OAuthLoginGetTokenLogic) checkEmailExists(db *gorm.DB, email, requestID
 	return nil
 }
 
-func (l *OAuthLoginGetTokenLogic) createAuthMethod(db *gorm.DB, userID int64, authType, identifier, requestID string) error {
+func (l *OAuthLoginGetTokenLogic) createAuthMethod(store repository.Store, userID int64, authType, identifier, requestID string) error {
 	l.Debugw("creating auth method",
 		logger.Field("request_id", requestID),
 		logger.Field("user_id", userID),
@@ -514,7 +515,7 @@ func (l *OAuthLoginGetTokenLogic) createAuthMethod(db *gorm.DB, userID int64, au
 		AuthIdentifier: identifier,
 		Verified:       true,
 	}
-	if err := db.Create(authMethod).Error; err != nil {
+	if err := store.User().InsertUserAuthMethods(l.ctx, authMethod); err != nil {
 		l.Errorw("failed to create auth method",
 			logger.Field("request_id", requestID),
 			logger.Field("user_id", userID),
@@ -545,7 +546,7 @@ func (l *OAuthLoginGetTokenLogic) recordLoginStatus(loginStatus bool, userInfo *
 			Timestamp: time.Now().UnixMilli(),
 		}
 		content, _ := loginLog.Marshal()
-		if err := l.svcCtx.LogModel.Insert(l.ctx, &log.SystemLog{
+		if err := l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
 			Type:     log.TypeLogin.Uint8(),
 			Date:     time.Now().Format("2006-01-02"),
 			ObjectID: userInfo.Id,
@@ -663,7 +664,7 @@ func (l *OAuthLoginGetTokenLogic) getGoogleConfig(requestID string) (*auth.Googl
 		logger.Field("provider", OAuthGoogle),
 	)
 
-	authMethod, err := l.svcCtx.AuthModel.FindOneByMethod(l.ctx, OAuthGoogle)
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, OAuthGoogle)
 	if err != nil {
 		l.Errorw("failed to find google auth method",
 			logger.Field("request_id", requestID),
@@ -698,7 +699,7 @@ func (l *OAuthLoginGetTokenLogic) getAppleConfig(requestID string) (*auth.AppleA
 		logger.Field("provider", OAuthApple),
 	)
 
-	authMethod, err := l.svcCtx.AuthModel.FindOneByMethod(l.ctx, OAuthApple)
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, OAuthApple)
 	if err != nil {
 		l.Errorw("failed to find apple auth method",
 			logger.Field("request_id", requestID),
@@ -734,7 +735,7 @@ func (l *OAuthLoginGetTokenLogic) getTelegramConfig(requestID string) (*auth.Tel
 		logger.Field("provider", OAuthTelegram),
 	)
 
-	authMethod, err := l.svcCtx.AuthModel.FindOneByMethod(l.ctx, OAuthTelegram)
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, OAuthTelegram)
 	if err != nil {
 		l.Errorw("failed to find telegram auth method",
 			logger.Field("request_id", requestID),
@@ -770,7 +771,7 @@ func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, av
 		logger.Field("email", email),
 	)
 
-	userAuthMethod, err := l.svcCtx.UserModel.FindUserAuthMethodByOpenID(l.ctx, authType, openID)
+	userAuthMethod, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, authType, openID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			l.Infow("user not found, starting registration",
@@ -796,7 +797,7 @@ func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, av
 		logger.Field("user_id", userAuthMethod.UserId),
 	)
 
-	userInfo, err := l.svcCtx.UserModel.FindOne(l.ctx, userAuthMethod.UserId)
+	userInfo, err := l.svcCtx.Store.User().FindOne(l.ctx, userAuthMethod.UserId)
 	if err != nil {
 		l.Errorw("failed to find user by id",
 			logger.Field("request_id", requestID),
@@ -815,14 +816,14 @@ func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, av
 	return userInfo, nil
 }
 
-func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) (*user.Subscribe, error) {
+func (l *OAuthLoginGetTokenLogic) activeTrial(store repository.Store, uid int64, requestID string) (*user.Subscribe, error) {
 	l.Debugw("fetching trial subscription template",
 		logger.Field("request_id", requestID),
 		logger.Field("user_id", uid),
 		logger.Field("trial_subscribe_id", l.svcCtx.Config.Register.TrialSubscribe),
 	)
 
-	sub, err := l.svcCtx.SubscribeModel.FindOne(l.ctx, l.svcCtx.Config.Register.TrialSubscribe)
+	sub, err := store.Subscribe().FindOne(l.ctx, l.svcCtx.Config.Register.TrialSubscribe)
 	if err != nil {
 		l.Errorw("failed to find trial subscription template",
 			logger.Field("request_id", requestID),
@@ -835,7 +836,7 @@ func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) (*use
 
 	startTime := time.Now()
 	expireTime := tool.AddTime(l.svcCtx.Config.Register.TrialTimeUnit, l.svcCtx.Config.Register.TrialTime, startTime)
-	subscribeToken := uuidx.SubscribeToken(fmt.Sprintf("Trial-%v", uid))
+	subscribeToken := uuidx.SubscribeToken(fmt.Sprintf("Trial-%v-%s", uid, uuidx.NewUUID().String()))
 	subscribeUUID := uuidx.NewUUID().String()
 
 	l.Debugw("creating trial subscription",
@@ -864,7 +865,7 @@ func (l *OAuthLoginGetTokenLogic) activeTrial(uid int64, requestID string) (*use
 		Status:      1,
 	}
 
-	if err := l.svcCtx.UserModel.InsertSubscribe(l.ctx, userSub); err != nil {
+	if err := store.User().InsertSubscribe(l.ctx, userSub); err != nil {
 		l.Errorw("failed to insert trial subscription",
 			logger.Field("request_id", requestID),
 			logger.Field("user_id", uid),

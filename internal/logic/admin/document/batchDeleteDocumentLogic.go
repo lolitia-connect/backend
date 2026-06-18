@@ -2,11 +2,11 @@ package document
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
-	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 )
@@ -27,8 +27,12 @@ func NewBatchDeleteDocumentLogic(ctx context.Context, svcCtx *svc.ServiceContext
 }
 
 func (l *BatchDeleteDocumentLogic) BatchDeleteDocument(req *types.BatchDeleteDocumentRequest) error {
-	for _, id := range tool.StringSliceToInt64Slice(req.Ids) {
-		if err := l.svcCtx.DocumentModel.Delete(l.ctx, id); err != nil {
+	for _, id := range req.Ids {
+		intId, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "invalid document id: %v", id)
+		}
+		if err := l.svcCtx.Store.Document().Delete(l.ctx, intId); err != nil {
 			l.Errorw("[BatchDeleteDocument] Database Error", logger.Field("error", err.Error()))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "failed to delete document: %v", err.Error())
 		}

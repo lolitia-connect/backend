@@ -30,7 +30,7 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 	var total int64
 
 	// 构建查询
-	query := l.svcCtx.DB.Model(&group.NodeGroup{})
+	query := l.svcCtx.Store.DB().Model(&group.NodeGroup{})
 
 	// 获取总数
 	if err := query.Count(&total).Error; err != nil {
@@ -50,7 +50,7 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 	for _, ng := range nodeGroups {
 		// 统计该组的节点数（JSON数组查询）
 		var nodeCount int64
-		l.svcCtx.DB.Model(&node.Node{}).Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", ng.Id)).Count(&nodeCount)
+		l.svcCtx.Store.DB().Model(&node.Node{}).Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", ng.Id)).Count(&nodeCount)
 
 		// 处理指针类型的字段
 		var forCalculation bool

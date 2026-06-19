@@ -121,4 +121,7 @@ DEALLOCATE PREPARE stmt;
 INSERT IGNORE INTO `system` (`category`, `key`, `value`, `desc`) VALUES
     ('group', 'enabled', 'false', 'Group Management Enabled'),
     ('group', 'mode', 'average', 'Group Mode: average/subscribe/traffic'),
-    ('group', 'auto_create_group', 'false', 'Auto-create user group when creating subscribe product');
+    ('group', 'auto_create_group', 'false', 'Auto-create user group when creating subscribe product'),
+    ('group', 'average_config', '{}', 'Average Group Config'),
+    ('group', 'subscribe_config', '{}', 'Subscribe Group Config'),
+    ('group', 'traffic_config', '{}', 'Traffic Group Config');

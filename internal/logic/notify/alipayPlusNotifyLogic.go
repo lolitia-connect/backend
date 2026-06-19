@@ -49,9 +49,8 @@ func (l *AlipayPlusNotifyLogic) AlipayPlusNotify(r *http.Request) error {
 		PrivateKey:      config.PrivateKey,
 		AlipayPublicKey: config.AlipayPublicKey,
 		GatewayUrl:      config.GatewayUrl,
-		Currency:        config.Currency,
+		Currency:        data.CurrencyUnit,
 		PaymentMethod:   config.PaymentMethod,
-		InvoiceName:     config.InvoiceName,
 	})
 
 	notify, err := client.DecodeNotification(r)

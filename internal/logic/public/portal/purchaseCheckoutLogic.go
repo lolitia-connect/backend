@@ -3,6 +3,7 @@ package portal
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -89,7 +90,7 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 
 	case paymentPlatform.Stripe:
 		// Process Stripe payment - creates payment sheet for client-side processing
-		stripePayment, err := l.stripePayment(paymentConfig.Config, orderInfo, "")
+		stripePayment, err := l.stripePayment(paymentConfig, orderInfo, "")
 		if err != nil {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "stripePayment error: %v", err.Error())
 		}
@@ -185,20 +186,28 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 	}
 
 	// Initialize Alipay client with configuration
+	// Use resolved bill desc if available, otherwise fall back to config's InvoiceName
+	invoiceName := f2FConfig.InvoiceName
+	if pay.BillDesc != "" {
+		resolved := l.resolveBillDesc(pay.BillDesc, info, "")
+		if resolved != "" {
+			invoiceName = resolved
+		}
+	}
 	client := alipay.NewClient(alipay.Config{
 		AppId:       f2FConfig.AppId,
 		PrivateKey:  f2FConfig.PrivateKey,
 		PublicKey:   f2FConfig.PublicKey,
-		InvoiceName: f2FConfig.InvoiceName,
+		InvoiceName: invoiceName,
 		NotifyURL:   notifyUrl,
 		Sandbox:     f2FConfig.Sandbox,
 	})
 
 	// Convert order amount to CNY using current exchange rate
-	amount, err := l.queryExchangeRate("CNY", info.Amount)
+	amount, err := l.queryPaymentMethodExchangeRate(pay, info.Amount, "CNY")
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryExchangeRate error: %s", err.Error())
+		l.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", err.Error())
 	}
 	convertAmount := int64(amount * 100) // Convert to cents for API
 
@@ -221,7 +230,7 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 
-	targetCurrency := strings.ToUpper(strings.TrimSpace(config.Currency))
+	targetCurrency := strings.ToUpper(strings.TrimSpace(pay.CurrencyUnit))
 	paymentMethod := strings.ToUpper(strings.TrimSpace(config.PaymentMethod))
 	if targetCurrency == "" {
 		l.Errorw("[PurchaseCheckout] AlipayPlus currency is empty")
@@ -253,6 +262,9 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		notifyURL += "/v1/notify/" + pay.Platform + "/" + pay.Token
 	}
 
+	// Use resolved bill desc as invoice name
+	invoiceName := l.resolveBillDesc(pay.BillDesc, info, "")
+
 	client := alipayplus.NewClient(alipayplus.Config{
 		ClientId:        config.ClientId,
 		MerchantId:      config.MerchantId,
@@ -261,15 +273,15 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		GatewayUrl:      config.GatewayUrl,
 		Currency:        targetCurrency,
 		PaymentMethod:   paymentMethod,
-		InvoiceName:     config.InvoiceName,
+		InvoiceName:     invoiceName,
 		NotifyURL:       notifyURL,
 		RedirectURL:     returnURL,
 	})
 
-	amount, err := l.queryExchangeRate(targetCurrency, info.Amount)
+	amount, err := l.queryPaymentMethodExchangeRate(pay, info.Amount, targetCurrency)
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryExchangeRate error: %s", err.Error())
+		l.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", err.Error())
 	}
 	convertAmount := int64(amount * 100)
 
@@ -294,11 +306,11 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 
 // stripePayment processes Stripe payment by creating a payment sheet
 // It supports various payment methods including WeChat Pay and Alipay through Stripe
-func (l *PurchaseCheckoutLogic) stripePayment(config string, info *order.Order, identifier string) (*types.StripePayment, error) {
+func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.Order, identifier string) (*types.StripePayment, error) {
 	// Parse Stripe configuration from payment settings
 	stripeConfig := &payment.StripeConfig{}
 
-	if err := stripeConfig.Unmarshal([]byte(config)); err != nil {
+	if err := stripeConfig.Unmarshal([]byte(pay.Config)); err != nil {
 		l.Errorw("[PurchaseCheckout] Unmarshal Stripe config error", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
@@ -310,13 +322,32 @@ func (l *PurchaseCheckoutLogic) stripePayment(config string, info *order.Order, 
 		WebhookSecret: stripeConfig.WebhookSecret,
 	})
 
+	// Determine Stripe currency: use payment method's CurrencyUnit if set, otherwise fall back to system currency
+	stripeCurrency := strings.ToLower(l.svcCtx.Config.Currency.Unit)
+	if pay.CurrencyUnit != "" {
+		stripeCurrency = strings.ToLower(pay.CurrencyUnit)
+	}
+
+	// Apply exchange rate conversion
+	convertedAmount, convertErr := l.queryPaymentMethodExchangeRate(pay, info.Amount, "")
+	if convertErr != nil {
+		l.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", convertErr.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", convertErr.Error())
+	}
+	// Convert back to cents for Stripe API
+	stripeAmount := int64(convertedAmount * 100)
+
+	// Resolve billing description template
+	statementDescriptorSuffix := l.resolveBillDesc(pay.BillDesc, info, "")
+
 	// Create Stripe payment sheet for client-side processing
 	result, err := client.CreatePaymentSheet(&stripe.Order{
-		OrderNo:   info.OrderNo,
-		Subscribe: strconv.FormatInt(info.SubscribeId, 10),
-		Amount:    info.Amount,
-		Currency:  strings.ToLower(l.svcCtx.Config.Currency.Unit),
-		Payment:   stripeConfig.Payment,
+		OrderNo:                   info.OrderNo,
+		Subscribe:                 strconv.FormatInt(info.SubscribeId, 10),
+		Amount:                    stripeAmount,
+		Currency:                  stripeCurrency,
+		Payment:                   stripeConfig.Payment,
+		StatementDescriptorSuffix: statementDescriptorSuffix,
 	},
 		&stripe.User{
 			Email: identifier,
@@ -356,7 +387,15 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 	// Initialize EPay client with merchant credentials
 	client := epay.NewClient(epayConfig.Pid, epayConfig.Url, epayConfig.Key, epayConfig.Type)
 	var amount float64
-	if l.svcCtx.Config.Currency.Unit != "CNY" {
+	if config.CurrencyUnit != "" && !strings.EqualFold(config.CurrencyUnit, l.svcCtx.Config.Currency.Unit) {
+		// Use per-payment exchange rate
+		converted, convertErr := l.queryPaymentMethodExchangeRate(config, info.Amount, "CNY")
+		if convertErr != nil {
+			l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", convertErr.Error()))
+			return "", convertErr
+		}
+		amount = converted
+	} else if l.svcCtx.Config.Currency.Unit != "CNY" {
 		// Convert order amount to CNY using current exchange rate
 		amount, err = l.queryExchangeRate("CNY", info.Amount)
 		if err != nil {
@@ -390,9 +429,18 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
 	}
 
+	// Use resolved bill desc if available, otherwise fall back to site name
+	payName := l.svcCtx.Config.Site.SiteName
+	if config.BillDesc != "" {
+		resolved := l.resolveBillDesc(config.BillDesc, info, "")
+		if resolved != "" {
+			payName = resolved
+		}
+	}
+
 	// Create payment URL for user redirection
 	url := client.CreatePayUrl(epay.Order{
-		Name:      l.svcCtx.Config.Site.SiteName,
+		Name:      payName,
 		Amount:    amount,
 		OrderNo:   info.OrderNo,
 		SignType:  "MD5",
@@ -417,7 +465,14 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 
 	var amount float64
 
-	if l.svcCtx.Config.Currency.Unit != "CNY" {
+	if config.CurrencyUnit != "" && !strings.EqualFold(config.CurrencyUnit, l.svcCtx.Config.Currency.Unit) {
+		// Use per-payment exchange rate
+		converted, convertErr := l.queryPaymentMethodExchangeRate(config, info.Amount, "CNY")
+		if convertErr != nil {
+			return "", convertErr
+		}
+		amount = converted
+	} else if l.svcCtx.Config.Currency.Unit != "CNY" {
 		// Convert order amount to CNY using current exchange rate
 		amount, err = l.queryExchangeRate("CNY", info.Amount)
 		if err != nil {
@@ -451,9 +506,18 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
 	}
 
+	// Use resolved bill desc if available, otherwise fall back to site name
+	payName := l.svcCtx.Config.Site.SiteName
+	if config.BillDesc != "" {
+		resolved := l.resolveBillDesc(config.BillDesc, info, "")
+		if resolved != "" {
+			payName = resolved
+		}
+	}
+
 	// Create payment URL for user redirection
 	url := client.CreatePayUrl(epay.Order{
-		Name:      l.svcCtx.Config.Site.SiteName,
+		Name:      payName,
 		Amount:    amount,
 		OrderNo:   info.OrderNo,
 		SignType:  "MD5",
@@ -470,7 +534,7 @@ func (l *PurchaseCheckoutLogic) queryExchangeRate(to string, src int64) (amount 
 	amount = float64(src) / float64(100)
 
 	// No conversion needed if target currency matches system currency
-	if to == l.svcCtx.Config.Currency.Unit {
+	if strings.EqualFold(to, l.svcCtx.Config.Currency.Unit) {
 		return amount, nil
 	}
 
@@ -492,6 +556,65 @@ func (l *PurchaseCheckoutLogic) queryExchangeRate(to string, src int64) (amount 
 	}
 	l.svcCtx.ExchangeRate = result
 	return result * amount, nil
+}
+
+// queryPaymentMethodExchangeRate converts the order amount using the payment method's currency settings.
+// If the payment method has a CurrencyUnit and ExchangeRate set, those are used directly.
+// Otherwise, falls back to the global queryExchangeRate with the given target currency.
+func (l *PurchaseCheckoutLogic) queryPaymentMethodExchangeRate(pay *payment.Payment, src int64, fallbackTo string) (amount float64, err error) {
+	// Convert cents to decimal amount
+	amount = float64(src) / float64(100)
+
+	// Use per-payment currency settings if available
+	if pay.CurrencyUnit != "" {
+		// Use the per-payment exchange rate if set, regardless of currency match
+		if pay.ExchangeRate > 0 && pay.ExchangeRate != 1 {
+			return amount * pay.ExchangeRate, nil
+		}
+		// No conversion needed if target currency matches system currency
+		if strings.EqualFold(pay.CurrencyUnit, l.svcCtx.Config.Currency.Unit) {
+			return amount, nil
+		}
+		// Try to auto-fetch exchange rate
+		if l.svcCtx.Config.Currency.AccessKey != "" {
+			result, fetchErr := exchangeRate.GetExchangeRete(l.svcCtx.Config.Currency.Unit, strings.ToUpper(pay.CurrencyUnit), l.svcCtx.Config.Currency.AccessKey, 1)
+			if fetchErr != nil {
+				l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate auto-fetch error", logger.Field("error", fetchErr.Error()))
+				return amount, nil // Fallback to 1:1
+			}
+			return result * amount, nil
+		}
+		return amount, nil // Fallback to 1:1
+	}
+
+	// Fall back to the global exchange rate query
+	return l.queryExchangeRate(fallbackTo, src)
+}
+
+// resolveBillDesc resolves the billing description template with order variables.
+// Supported variables: {order_no}, {item_name}, {amount}, {trade_no}
+func (l *PurchaseCheckoutLogic) resolveBillDesc(template string, info *order.Order, tradeNo string) string {
+	if template == "" {
+		return ""
+	}
+
+	itemName := ""
+	if info.SubscribeId > 0 {
+		sub, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, info.SubscribeId)
+		if err == nil && sub != nil {
+			itemName = sub.Name
+		}
+	}
+
+	amountStr := fmt.Sprintf("%.2f", float64(info.Amount)/100)
+
+	result := template
+	result = strings.ReplaceAll(result, "{order_no}", info.OrderNo)
+	result = strings.ReplaceAll(result, "{item_name}", itemName)
+	result = strings.ReplaceAll(result, "{amount}", amountStr)
+	result = strings.ReplaceAll(result, "{trade_no}", tradeNo)
+
+	return result
 }
 
 // balancePayment processes balance payment with gift amount priority logic

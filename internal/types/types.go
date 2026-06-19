@@ -365,17 +365,20 @@ type CreateOrderRequest struct {
 }
 
 type CreatePaymentMethodRequest struct {
-	Name        string      `json:"name" validate:"required"`
-	Platform    string      `json:"platform" validate:"required"`
-	Description string      `json:"description"`
-	Icon        string      `json:"icon,omitempty"`
-	Domain      string      `json:"domain,omitempty"`
-	Config      interface{} `json:"config" validate:"required"`
-	FeeMode     uint        `json:"fee_mode"`
-	FeePercent  int64       `json:"fee_percent,omitempty"`
-	FeeAmount   int64       `json:"fee_amount,omitempty"`
-	Sort        int64       `json:"sort,omitempty"`
-	Enable      *bool       `json:"enable" validate:"required"`
+	Name         string      `json:"name" validate:"required"`
+	Platform     string      `json:"platform" validate:"required"`
+	Description  string      `json:"description"`
+	Icon         string      `json:"icon,omitempty"`
+	Domain       string      `json:"domain,omitempty"`
+	Config       interface{} `json:"config" validate:"required"`
+	FeeMode      uint        `json:"fee_mode"`
+	FeePercent   int64       `json:"fee_percent,omitempty"`
+	FeeAmount    int64       `json:"fee_amount,omitempty"`
+	Sort         int64       `json:"sort,omitempty"`
+	Enable       *bool       `json:"enable" validate:"required"`
+	CurrencyUnit string      `json:"currency_unit,omitempty"`
+	ExchangeRate float64     `json:"exchange_rate,omitempty"`
+	BillDesc     string      `json:"bill_desc,omitempty"`
 }
 
 type CreateQuotaTaskRequest struct {
@@ -1617,46 +1620,55 @@ type OrdersStatistics struct {
 }
 
 type PaymentConfig struct {
-	Id          int64       `json:"id,string" validate:"required"`
-	Name        string      `json:"name" validate:"required"`
-	Platform    string      `json:"platform" validate:"required"`
-	Description string      `json:"description"`
-	Icon        string      `json:"icon,omitempty"`
-	Domain      string      `json:"domain,omitempty"`
-	Config      interface{} `json:"config" validate:"required"`
-	FeeMode     uint        `json:"fee_mode"`
-	FeePercent  int64       `json:"fee_percent,omitempty"`
-	FeeAmount   int64       `json:"fee_amount,omitempty"`
-	Sort        int64       `json:"sort,omitempty"`
-	Enable      *bool       `json:"enable" validate:"required"`
+	Id           int64       `json:"id,string" validate:"required"`
+	Name         string      `json:"name" validate:"required"`
+	Platform     string      `json:"platform" validate:"required"`
+	Description  string      `json:"description"`
+	Icon         string      `json:"icon,omitempty"`
+	Domain       string      `json:"domain,omitempty"`
+	Config       interface{} `json:"config" validate:"required"`
+	FeeMode      uint        `json:"fee_mode"`
+	FeePercent   int64       `json:"fee_percent,omitempty"`
+	FeeAmount    int64       `json:"fee_amount,omitempty"`
+	Sort         int64       `json:"sort,omitempty"`
+	Enable       *bool       `json:"enable" validate:"required"`
+	CurrencyUnit string      `json:"currency_unit,omitempty"`
+	ExchangeRate float64     `json:"exchange_rate,omitempty"`
+	BillDesc     string      `json:"bill_desc,omitempty"`
 }
 
 type PaymentMethod struct {
-	Id          int64  `json:"id,string"`
-	Name        string `json:"name"`
-	Platform    string `json:"platform"`
-	Description string `json:"description"`
-	Icon        string `json:"icon"`
-	FeeMode     uint   `json:"fee_mode"`
-	FeePercent  int64  `json:"fee_percent"`
-	FeeAmount   int64  `json:"fee_amount"`
-	Sort        int64  `json:"sort"`
+	Id           int64  `json:"id,string"`
+	Name         string `json:"name"`
+	Platform     string `json:"platform"`
+	Description  string `json:"description"`
+	Icon         string `json:"icon"`
+	FeeMode      uint   `json:"fee_mode"`
+	FeePercent   int64  `json:"fee_percent"`
+	FeeAmount    int64  `json:"fee_amount"`
+	Sort         int64  `json:"sort"`
+	CurrencyUnit string  `json:"currency_unit"`
+	ExchangeRate float64 `json:"exchange_rate"`
+	BillDesc     string  `json:"bill_desc"`
 }
 
 type PaymentMethodDetail struct {
-	Id          int64       `json:"id,string"`
-	Name        string      `json:"name"`
-	Platform    string      `json:"platform"`
-	Description string      `json:"description"`
-	Icon        string      `json:"icon"`
-	Domain      string      `json:"domain"`
-	Config      interface{} `json:"config"`
-	FeeMode     uint        `json:"fee_mode"`
-	FeePercent  int64       `json:"fee_percent"`
-	FeeAmount   int64       `json:"fee_amount"`
-	Sort        int64       `json:"sort"`
-	Enable      bool        `json:"enable"`
-	NotifyURL   string      `json:"notify_url"`
+	Id           int64       `json:"id,string"`
+	Name         string      `json:"name"`
+	Platform     string      `json:"platform"`
+	Description  string      `json:"description"`
+	Icon         string      `json:"icon"`
+	Domain       string      `json:"domain"`
+	Config       interface{} `json:"config"`
+	FeeMode      uint        `json:"fee_mode"`
+	FeePercent   int64       `json:"fee_percent"`
+	FeeAmount    int64       `json:"fee_amount"`
+	Sort         int64       `json:"sort"`
+	Enable       bool        `json:"enable"`
+	NotifyURL    string      `json:"notify_url"`
+	CurrencyUnit string      `json:"currency_unit"`
+	ExchangeRate float64     `json:"exchange_rate"`
+	BillDesc     string      `json:"bill_desc"`
 }
 
 type PlatformInfo struct {
@@ -2789,18 +2801,21 @@ type UpdateOrderStatusRequest struct {
 }
 
 type UpdatePaymentMethodRequest struct {
-	Id          int64       `json:"id,string" validate:"required"`
-	Name        string      `json:"name" validate:"required"`
-	Platform    string      `json:"platform" validate:"required"`
-	Description string      `json:"description"`
-	Icon        string      `json:"icon,omitempty"`
-	Domain      string      `json:"domain,omitempty"`
-	Config      interface{} `json:"config" validate:"required"`
-	FeeMode     uint        `json:"fee_mode"`
-	FeePercent  int64       `json:"fee_percent,omitempty"`
-	FeeAmount   int64       `json:"fee_amount,omitempty"`
-	Sort        int64       `json:"sort,omitempty"`
-	Enable      *bool       `json:"enable" validate:"required"`
+	Id           int64       `json:"id,string" validate:"required"`
+	Name         string      `json:"name" validate:"required"`
+	Platform     string      `json:"platform" validate:"required"`
+	Description  string      `json:"description"`
+	Icon         string      `json:"icon,omitempty"`
+	Domain       string      `json:"domain,omitempty"`
+	Config       interface{} `json:"config" validate:"required"`
+	FeeMode      uint        `json:"fee_mode"`
+	FeePercent   int64       `json:"fee_percent,omitempty"`
+	FeeAmount    int64       `json:"fee_amount,omitempty"`
+	Sort         int64       `json:"sort,omitempty"`
+	Enable       *bool       `json:"enable" validate:"required"`
+	CurrencyUnit string      `json:"currency_unit,omitempty"`
+	ExchangeRate float64     `json:"exchange_rate,omitempty"`
+	BillDesc     string      `json:"bill_desc,omitempty"`
 }
 
 type UpdateRedemptionCodeRequest struct {

@@ -12,31 +12,37 @@ import "../types.api"
 
 type (
 	CreatePaymentMethodRequest {
-		Name        string      `json:"name" validate:"required"`
-		Platform    string      `json:"platform" validate:"required"`
-		Description string      `json:"description"`
-		Icon        string      `json:"icon,omitempty"`
-		Domain      string      `json:"domain,omitempty"`
-		Config      interface{} `json:"config" validate:"required"`
-		FeeMode     uint        `json:"fee_mode"`
-		FeePercent  int64       `json:"fee_percent,omitempty"`
-		FeeAmount   int64       `json:"fee_amount,omitempty"`
-		Sort        int64       `json:"sort,omitempty"`
-		Enable      *bool       `json:"enable" validate:"required"`
+		Name         string      `json:"name" validate:"required"`
+		Platform     string      `json:"platform" validate:"required"`
+		Description  string      `json:"description"`
+		Icon         string      `json:"icon,omitempty"`
+		Domain       string      `json:"domain,omitempty"`
+		Config       interface{} `json:"config" validate:"required"`
+		FeeMode      uint        `json:"fee_mode"`
+		FeePercent   int64       `json:"fee_percent,omitempty"`
+		FeeAmount    int64       `json:"fee_amount,omitempty"`
+		Sort         int64       `json:"sort,omitempty"`
+		Enable       *bool       `json:"enable" validate:"required"`
+		CurrencyUnit string      `json:"currency_unit,omitempty"`
+		ExchangeRate float64     `json:"exchange_rate,omitempty"`
+		BillDesc     string      `json:"bill_desc,omitempty"`
 	}
 	UpdatePaymentMethodRequest {
-		Id          int64       `json:"id,string" validate:"required"`
-		Name        string      `json:"name" validate:"required"`
-		Platform    string      `json:"platform" validate:"required"`
-		Description string      `json:"description"`
-		Icon        string      `json:"icon,omitempty"`
-		Domain      string      `json:"domain,omitempty"`
-		Config      interface{} `json:"config" validate:"required"`
-		FeeMode     uint        `json:"fee_mode"`
-		FeePercent  int64       `json:"fee_percent,omitempty"`
-		FeeAmount   int64       `json:"fee_amount,omitempty"`
-		Sort        int64       `json:"sort,omitempty"`
-		Enable      *bool       `json:"enable" validate:"required"`
+		Id           int64       `json:"id,string" validate:"required"`
+		Name         string      `json:"name" validate:"required"`
+		Platform     string      `json:"platform" validate:"required"`
+		Description  string      `json:"description"`
+		Icon         string      `json:"icon,omitempty"`
+		Domain       string      `json:"domain,omitempty"`
+		Config       interface{} `json:"config" validate:"required"`
+		FeeMode      uint        `json:"fee_mode"`
+		FeePercent   int64       `json:"fee_percent,omitempty"`
+		FeeAmount    int64       `json:"fee_amount,omitempty"`
+		Sort         int64       `json:"sort,omitempty"`
+		Enable       *bool       `json:"enable" validate:"required"`
+		CurrencyUnit string      `json:"currency_unit,omitempty"`
+		ExchangeRate float64     `json:"exchange_rate,omitempty"`
+		BillDesc     string      `json:"bill_desc,omitempty"`
 	}
 	DeletePaymentMethodRequest {
 		Id int64 `json:"id,string" validate:"required"`

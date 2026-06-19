@@ -1638,15 +1638,15 @@ type PaymentConfig struct {
 }
 
 type PaymentMethod struct {
-	Id           int64  `json:"id,string"`
-	Name         string `json:"name"`
-	Platform     string `json:"platform"`
-	Description  string `json:"description"`
-	Icon         string `json:"icon"`
-	FeeMode      uint   `json:"fee_mode"`
-	FeePercent   int64  `json:"fee_percent"`
-	FeeAmount    int64  `json:"fee_amount"`
-	Sort         int64  `json:"sort"`
+	Id           int64   `json:"id,string"`
+	Name         string  `json:"name"`
+	Platform     string  `json:"platform"`
+	Description  string  `json:"description"`
+	Icon         string  `json:"icon"`
+	FeeMode      uint    `json:"fee_mode"`
+	FeePercent   int64   `json:"fee_percent"`
+	FeeAmount    int64   `json:"fee_amount"`
+	Sort         int64   `json:"sort"`
 	CurrencyUnit string  `json:"currency_unit"`
 	ExchangeRate float64 `json:"exchange_rate"`
 	BillDesc     string  `json:"bill_desc"`
@@ -3257,15 +3257,15 @@ type WithdrawalLog struct {
 }
 
 type ServerInfo struct {
-	Id          int64               `json:"id,string"`
-	Name        string              `json:"name"`
-	Country     string              `json:"country"`
-	City        string              `json:"city"`
-	Address     string              `json:"address"`
-	Status      string              `json:"status"`
-	Cpu         float64             `json:"cpu"`
-	Mem         float64             `json:"mem"`
-	OnlineUsers int64               `json:"online_users"`
+	Id          int64                `json:"id,string"`
+	Name        string               `json:"name"`
+	Country     string               `json:"country"`
+	City        string               `json:"city"`
+	Address     string               `json:"address"`
+	Status      string               `json:"status"`
+	Cpu         float64              `json:"cpu"`
+	Mem         float64              `json:"mem"`
+	OnlineUsers int64                `json:"online_users"`
 	Protocols   []ServerNodeProtocol `json:"protocols"`
 }
 

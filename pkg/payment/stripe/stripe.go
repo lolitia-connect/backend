@@ -37,11 +37,11 @@ type NotifyResult struct {
 	Amount    int64
 }
 type Order struct {
-	OrderNo                  string
-	Subscribe                string
-	Amount                   int64
-	Currency                 string
-	Payment                  string
+	OrderNo                   string
+	Subscribe                 string
+	Amount                    int64
+	Currency                  string
+	Payment                   string
 	StatementDescriptorSuffix string
 }
 
@@ -101,6 +101,7 @@ func (c *Client) CreatePaymentSheet(order *Order, user *User) (*PaymentSheet, er
 	}
 	if order.StatementDescriptorSuffix != "" {
 		params.StatementDescriptorSuffix = stripe.String(order.StatementDescriptorSuffix)
+		params.Description = stripe.String(order.StatementDescriptorSuffix)
 	}
 	result, err := paymentintent.New(params)
 	if err != nil {

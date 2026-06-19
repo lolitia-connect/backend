@@ -72,9 +72,7 @@ func GetSupportedPlatforms() []types.PlatformInfo {
 				"private_key":       "Private Key",
 				"alipay_public_key": "Alipay Public Key",
 				"gateway_url":       "Gateway URL",
-				"currency":          "Currency Code",
 				"payment_method":    "Payment Method，例如 ALIPAY_CN / ALIPAY_HK",
-				"invoice_name":      "Invoice Name",
 			},
 		},
 		{

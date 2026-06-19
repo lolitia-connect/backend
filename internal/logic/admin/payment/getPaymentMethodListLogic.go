@@ -74,19 +74,22 @@ func (l *GetPaymentMethodListLogic) GetPaymentMethodList(req *types.GetPaymentMe
 			}
 		}
 		resp.List[i] = types.PaymentMethodDetail{
-			Id:          v.Id,
-			Name:        v.Name,
-			Platform:    v.Platform,
-			Icon:        v.Icon,
-			Domain:      v.Domain,
-			Config:      config,
-			FeeMode:     v.FeeMode,
-			FeePercent:  v.FeePercent,
-			FeeAmount:   v.FeeAmount,
-			Sort:        v.Sort,
-			Enable:      *v.Enable,
-			NotifyURL:   notifyUrl,
-			Description: v.Description,
+			Id:           v.Id,
+			Name:         v.Name,
+			Platform:     v.Platform,
+			Icon:         v.Icon,
+			Domain:       v.Domain,
+			Config:       config,
+			FeeMode:      v.FeeMode,
+			FeePercent:   v.FeePercent,
+			FeeAmount:    v.FeeAmount,
+			Sort:         v.Sort,
+			Enable:       *v.Enable,
+			NotifyURL:    notifyUrl,
+			Description:  v.Description,
+			CurrencyUnit: v.CurrencyUnit,
+			ExchangeRate: v.ExchangeRate,
+			BillDesc:     v.BillDesc,
 		}
 	}
 	return

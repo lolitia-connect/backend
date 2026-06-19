@@ -1,0 +1,4 @@
+ALTER TABLE "payment"
+    ADD COLUMN "currency_unit" VARCHAR(10) NOT NULL DEFAULT '',
+    ADD COLUMN "exchange_rate" DECIMAL(16, 8) NOT NULL DEFAULT 0,
+    ADD COLUMN "bill_desc" VARCHAR(255) NOT NULL DEFAULT '';

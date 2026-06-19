@@ -10,6 +10,7 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	exchangeRateAPI "github.com/perfect-panel/server/pkg/exchangeRate"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
@@ -40,19 +41,40 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 		return nil, errors.Wrapf(xerr.NewErrCodeMsg(400, "UNSUPPORTED_PAYMENT_PLATFORM"), "unsupported payment platform: %s", req.Platform)
 	}
 	config := parsePaymentPlatformConfig(l.ctx, payment.ParsePlatform(req.Platform), req.Config)
+
+	// Auto-calculate exchange rate if CurrencyUnit is set and differs from system currency
+	exchangeRate := req.ExchangeRate
+	if req.CurrencyUnit != "" && !strings.EqualFold(req.CurrencyUnit, l.svcCtx.Config.Currency.Unit) {
+		if exchangeRate == 0 && l.svcCtx.Config.Currency.AccessKey != "" {
+			rate, err := exchangeRateAPI.GetExchangeRete(l.svcCtx.Config.Currency.Unit, strings.ToUpper(req.CurrencyUnit), l.svcCtx.Config.Currency.AccessKey, 1)
+			if err != nil {
+				l.Errorw("[CreatePaymentMethod] auto-calculate exchange rate error", logger.Field("error", err.Error()))
+				// Fall back to provided rate or 1:1
+				if req.ExchangeRate == 0 {
+					exchangeRate = 1
+				}
+			} else {
+				exchangeRate = rate
+			}
+		}
+	}
+
 	var paymentMethod = &paymentModel.Payment{
-		Name:        req.Name,
-		Platform:    req.Platform,
-		Icon:        req.Icon,
-		Domain:      req.Domain,
-		Description: req.Description,
-		Config:      config,
-		FeeMode:     req.FeeMode,
-		FeePercent:  req.FeePercent,
-		FeeAmount:   req.FeeAmount,
-		Sort:        req.Sort,
-		Enable:      req.Enable,
-		Token:       random.KeyNew(8, 1),
+		Name:         req.Name,
+		Platform:     req.Platform,
+		Icon:         req.Icon,
+		Domain:       req.Domain,
+		Description:  req.Description,
+		Config:       config,
+		FeeMode:      req.FeeMode,
+		FeePercent:   req.FeePercent,
+		FeeAmount:    req.FeeAmount,
+		Sort:         req.Sort,
+		Enable:       req.Enable,
+		Token:        random.KeyNew(8, 1),
+		CurrencyUnit: strings.ToUpper(req.CurrencyUnit),
+		ExchangeRate: exchangeRate,
+		BillDesc:     req.BillDesc,
 	}
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
 		if req.Platform == "Stripe" {

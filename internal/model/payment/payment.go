@@ -8,19 +8,22 @@ import (
 )
 
 type Payment struct {
-	Id          int64  `gorm:"primaryKey"`
-	Name        string `gorm:"type:varchar(100);not null;default:'';comment:Payment Name"`
-	Platform    string `gorm:"<-:create;type:varchar(100);not null;comment:Payment Platform"`
-	Icon        string `gorm:"type:varchar(255);default:'';comment:Payment Icon"`
-	Domain      string `gorm:"type:varchar(255);default:'';comment:Notification Domain"`
-	Config      string `gorm:"type:text;not null;comment:Payment Configuration"`
-	Description string `gorm:"type:text;comment:Payment Description"`
-	FeeMode     uint   `gorm:"type:tinyint(1);not null;default:0;comment:Fee Mode: 0: No Fee 1: Percentage 2: Fixed Amount 3: Percentage + Fixed Amount"`
-	FeePercent  int64  `gorm:"type:int;default:0;comment:Fee Percentage"`
-	FeeAmount   int64  `gorm:"type:int;default:0;comment:Fixed Fee Amount"`
-	Sort        int64  `gorm:"type:int;not null;default:0;comment:Sort"`
-	Enable      *bool  `gorm:"type:tinyint(1);not null;default:0;comment:Is Enabled"`
-	Token       string `gorm:"type:varchar(255);unique;not null;default:'';comment:Payment Token"`
+	Id           int64   `gorm:"primaryKey"`
+	Name         string  `gorm:"type:varchar(100);not null;default:'';comment:Payment Name"`
+	Platform     string  `gorm:"<-:create;type:varchar(100);not null;comment:Payment Platform"`
+	Icon         string  `gorm:"type:varchar(255);default:'';comment:Payment Icon"`
+	Domain       string  `gorm:"type:varchar(255);default:'';comment:Notification Domain"`
+	Config       string  `gorm:"type:text;not null;comment:Payment Configuration"`
+	Description  string  `gorm:"type:text;comment:Payment Description"`
+	FeeMode      uint    `gorm:"type:tinyint(1);not null;default:0;comment:Fee Mode: 0: No Fee 1: Percentage 2: Fixed Amount 3: Percentage + Fixed Amount"`
+	FeePercent   int64   `gorm:"type:int;default:0;comment:Fee Percentage"`
+	FeeAmount    int64   `gorm:"type:int;default:0;comment:Fixed Fee Amount"`
+	Sort         int64   `gorm:"type:int;not null;default:0;comment:Sort"`
+	Enable       *bool   `gorm:"type:tinyint(1);not null;default:0;comment:Is Enabled"`
+	Token        string  `gorm:"type:varchar(255);unique;not null;default:'';comment:Payment Token"`
+	CurrencyUnit string  `gorm:"type:varchar(10);default:'';comment:Payment Channel Currency Unit"`
+	ExchangeRate float64 `gorm:"type:decimal(16,8);not null;default:0;comment:Exchange Rate from System Currency to Channel Currency"`
+	BillDesc     string  `gorm:"type:varchar(255);default:'';comment:Bill Description Template, supports {order_no}, {item_name}, {amount}, {trade_no}"`
 }
 
 func (*Payment) TableName() string {
@@ -166,9 +169,7 @@ type AlipayPlusConfig struct {
 	PrivateKey      string `json:"private_key"`
 	AlipayPublicKey string `json:"alipay_public_key"`
 	GatewayUrl      string `json:"gateway_url"`
-	Currency        string `json:"currency"`
 	PaymentMethod   string `json:"payment_method"`
-	InvoiceName     string `json:"invoice_name"`
 	NotifyURL       string `json:"notify_url"`
 	RedirectURL     string `json:"redirect_url"`
 }

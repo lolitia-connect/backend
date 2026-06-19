@@ -3,9 +3,11 @@ package payment
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	exchangeRateAPI "github.com/perfect-panel/server/pkg/exchangeRate"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment"
 	"github.com/perfect-panel/server/pkg/tool"
@@ -45,6 +47,23 @@ func (l *UpdatePaymentMethodLogic) UpdatePaymentMethod(req *types.UpdatePaymentM
 	config := parsePaymentPlatformConfig(l.ctx, payment.ParsePlatform(req.Platform), req.Config)
 	tool.DeepCopy(method, req, tool.CopyWithIgnoreEmpty(false))
 	method.Config = config
+
+	// Auto-calculate exchange rate if CurrencyUnit changed and differs from system currency
+	if req.CurrencyUnit != "" && !strings.EqualFold(req.CurrencyUnit, l.svcCtx.Config.Currency.Unit) {
+		if req.ExchangeRate == 0 && l.svcCtx.Config.Currency.AccessKey != "" {
+			rate, rateErr := exchangeRateAPI.GetExchangeRete(l.svcCtx.Config.Currency.Unit, strings.ToUpper(req.CurrencyUnit), l.svcCtx.Config.Currency.AccessKey, 1)
+			if rateErr != nil {
+				l.Errorw("[UpdatePaymentMethod] auto-calculate exchange rate error", logger.Field("error", rateErr.Error()))
+				if method.ExchangeRate == 0 {
+					method.ExchangeRate = 1
+				}
+			} else {
+				method.ExchangeRate = rate
+			}
+		}
+	}
+	method.CurrencyUnit = strings.ToUpper(method.CurrencyUnit)
+
 	if err := paymentStore.Update(l.ctx, method); err != nil {
 		l.Errorw("update payment method error", logger.Field("id", req.Id), logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update payment method error: %s", err.Error())

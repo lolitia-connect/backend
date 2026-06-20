@@ -89,7 +89,11 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (userSubscribeNodes []*types.UserSubscribeNodeInfo, err error) {
 	userSubscribeNodes = make([]*types.UserSubscribeNodeInfo, 0)
 	if l.isSubscriptionExpired(userSub) {
-		return l.createExpiredServers(userSub), nil
+		nodes, err := l.createExpiredServers(userSub)
+		if err != nil {
+			return nil, err
+		}
+		return nodes, nil
 	}
 
 	subDetails, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, userSub.SubscribeId)
@@ -225,24 +229,28 @@ func (l *QueryUserSubscribeNodeListLogic) isSubscriptionExpired(userSub *user.Su
 	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
 }
 
-func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Subscribe) []*types.UserSubscribeNodeInfo {
+func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Subscribe) ([]*types.UserSubscribeNodeInfo, error) {
 	// 1. 查询过期节点组
 	var expiredGroup group.NodeGroup
-	err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error
+	err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error
 	if err != nil {
 		l.Debugw("no expired node group configured", logger.Field("error", err))
-		return nil
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
+	}
+	if expiredGroup.Id == 0 {
+		l.Debugw("no expired node group configured")
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 	if !group.IsNodeGroupTypeAccessible(expiredGroup.Type, group.NodeGroupAccessApp) {
 		l.Debugf("expired node group %d is not accessible for app output", expiredGroup.Id)
-		return nil
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	// 2. 检查用户是否在过期天数限制内
 	expiredDays := int(time.Since(userSub.ExpireTime).Hours() / 24)
 	if expiredDays > expiredGroup.ExpiredDaysLimit {
 		l.Debugf("user subscription expired %d days, exceeds limit %d days", expiredDays, expiredGroup.ExpiredDaysLimit)
-		return nil
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	// 3. 检查用户已使用流量是否超过限制(仅使用过期期间的流量)
@@ -250,7 +258,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 		usedTrafficGB := (userSub.ExpiredDownload + userSub.ExpiredUpload) / (1024 * 1024 * 1024)
 		if usedTrafficGB >= *expiredGroup.MaxTrafficGBExpired {
 			l.Debugf("user expired traffic %d GB, exceeds expired group limit %d GB", usedTrafficGB, *expiredGroup.MaxTrafficGBExpired)
-			return nil
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 		}
 	}
 
@@ -266,12 +274,12 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 	})
 	if err != nil {
 		l.Errorw("failed to query expired group nodes", logger.Field("error", err))
-		return nil
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	if len(nodes) == 0 {
 		l.Debug("no nodes found in expired group")
-		return nil
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	// 5. 查询服务器信息
@@ -287,7 +295,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 	servers, err := l.svcCtx.Store.Node().QueryServerList(l.ctx, serverIds)
 	if err != nil {
 		l.Errorw("failed to query servers", logger.Field("error", err))
-		return nil
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	for _, s := range servers {
@@ -322,7 +330,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 	}
 
 	l.Infof("returned %d nodes from expired group for user %d (expired %d days)", len(userSubscribeNodes), userSub.UserId, expiredDays)
-	return userSubscribeNodes
+	return userSubscribeNodes, nil
 }
 
 func (l *QueryUserSubscribeNodeListLogic) getAccessibleNodeGroup(nodeGroupId int64, accessType string) *group.NodeGroup {
@@ -344,19 +352,15 @@ func (l *QueryUserSubscribeNodeListLogic) getAccessibleNodeGroup(nodeGroupId int
 	return &nodeGroup
 }
 
-func (l *QueryUserSubscribeNodeListLogic) getFirstHostLine() string {
-	host := l.svcCtx.Config.Host
-	lines := strings.Split(host, "\n")
-	if len(lines) > 0 {
-		return lines[0]
-	}
-	return host
-}
 func (l *QueryUserSubscribeNodeListLogic) getUserSubscribe(token string) (*user.Subscribe, error) {
 	userSub, err := l.svcCtx.Store.User().FindOneSubscribeByToken(l.ctx, token)
 	if err != nil {
 		l.Infow("[Generate Subscribe]find subscribe error: %v", logger.Field("error", err.Error()), logger.Field("token", token))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
+	}
+	if userSub == nil {
+		l.Infow("[Generate Subscribe]subscribe token not found", logger.Field("token", token))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe token not found")
 	}
 
 	//  Ignore expiration check

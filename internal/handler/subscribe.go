@@ -11,6 +11,8 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"github.com/perfect-panel/server/pkg/xerr"
+	"github.com/pkg/errors"
 )
 
 func SubscribeHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
@@ -85,7 +87,20 @@ func writeSubscribeResponse(c context.Context, ctx *app.RequestContext, svcCtx *
 	})
 	resp, err := l.Handler(&req)
 	if err != nil {
-		ctx.String(consts.StatusInternalServerError, "Internal Server")
+		statusCode := consts.StatusInternalServerError
+		errMsg := "Internal Server Error"
+		var e *xerr.CodeError
+		if errors.As(errors.Cause(err), &e) {
+			switch e.GetErrCode() {
+			case xerr.SubscribeNotAvailable:
+				statusCode = consts.StatusNotFound
+				errMsg = "Not Found"
+			case xerr.SubscribeExpired:
+				statusCode = consts.StatusForbidden
+				errMsg = "Forbidden"
+			}
+		}
+		ctx.String(statusCode, errMsg)
 		return
 	}
 	for key, value := range resp.Headers {

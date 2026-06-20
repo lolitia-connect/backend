@@ -181,16 +181,10 @@ func (l *SubscribeLogic) getUserSubscribe(token string) (*user.Subscribe, error)
 		l.Infow("[Generate Subscribe]find subscribe error: %v", logger.Field("error", err.Error()), logger.Field("token", token))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
-
-	// =========================================================
-	// 修复开始：添加空指针检查 (Fix start)
-	// =========================================================
 	if userSub == nil {
-		l.Infow("[Generate Subscribe] token invalid or user not found", logger.Field("token", token))
-		return nil, errors.New("subscribe token invalid")
+		l.Infow("[Generate Subscribe]subscribe token not found", logger.Field("token", token))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe token not found")
 	}
-	// =========================================================
-	// Check if user is enabled
 	userInfo, err := l.svc.Store.User().FindOne(l.ctx, userSub.UserId)
 	if err != nil {
 		l.Infow("[Generate Subscribe] failed to get user info", logger.Field("error", err.Error()), logger.Field("userId", userSub.UserId))
@@ -200,8 +194,6 @@ func (l *SubscribeLogic) getUserSubscribe(token string) (*user.Subscribe, error)
 		l.Infow("[Generate Subscribe] user account is disabled", logger.Field("userId", userSub.UserId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserDisabled), "User account is disabled")
 	}
-	// 修复结束 (Fix end)
-	// =========================================================
 
 	//  Ignore expiration check
 	//if userSub.Status > 1 {
@@ -243,16 +235,16 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 		expiredNodes, err := l.getExpiredGroupNodes(userSub)
 		if err != nil {
 			l.Errorw("[Generate Subscribe]get expired group nodes error", logger.Field("error", err.Error()))
-			return l.createExpiredServers(), nil
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 		}
 		// 如果有符合条件的过期节点组节点，返回它们
 		if len(expiredNodes) > 0 {
 			l.Debugf("[Generate Subscribe]user %d can use expired node group, nodes count: %d", userSub.UserId, len(expiredNodes))
 			return expiredNodes, nil
 		}
-		// 否则返回假的过期节点
-		l.Debugf("[Generate Subscribe]user %d cannot use expired node group, return fake expired nodes", userSub.UserId)
-		return l.createExpiredServers(), nil
+		// 没有配置过期节点组或不符合条件，返回 404
+		l.Debugf("[Generate Subscribe]user %d cannot use expired node group, return 404", userSub.UserId)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	subDetails, err := l.svc.Store.Subscribe().FindOne(l.ctx, userSub.SubscribeId)
@@ -411,49 +403,6 @@ func (l *SubscribeLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
 	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
 }
 
-func (l *SubscribeLogic) createExpiredServers() []*node.Node {
-	enable := true
-	host := l.getFirstHostLine()
-
-	return []*node.Node{
-		{
-			Name:    "Subscribe Expired",
-			Tags:    "",
-			Port:    18080,
-			Address: "127.0.0.1",
-			Server: &node.Server{
-				Id:        1,
-				Name:      "Subscribe Expired",
-				Protocols: "[{\"type\":\"shadowsocks\",\"cipher\":\"aes-256-gcm\",\"port\":1}]",
-			},
-			Protocol: "shadowsocks",
-			Enabled:  &enable,
-		},
-		{
-			Name:    host,
-			Tags:    "",
-			Port:    18080,
-			Address: "127.0.0.1",
-			Server: &node.Server{
-				Id:        1,
-				Name:      "Subscribe Expired",
-				Protocols: "[{\"type\":\"shadowsocks\",\"cipher\":\"aes-256-gcm\",\"port\":1}]",
-			},
-			Protocol: "shadowsocks",
-			Enabled:  &enable,
-		},
-	}
-}
-
-func (l *SubscribeLogic) getFirstHostLine() string {
-	host := l.svc.Config.Host
-	lines := strings.Split(host, "\n")
-	if len(lines) > 0 {
-		return lines[0]
-	}
-	return host
-}
-
 // isGroupEnabled 判断分组功能是否启用
 func (l *SubscribeLogic) isGroupEnabled() bool {
 	var value string
@@ -472,10 +421,14 @@ func (l *SubscribeLogic) isGroupEnabled() bool {
 func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.Node, error) {
 	// 1. 查询过期节点组
 	var expiredGroup group.NodeGroup
-	err := l.svc.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error
+	err := l.svc.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error
 	if err != nil {
 		l.Debugw("[SubscribeLogic]no expired node group configured", logger.Field("error", err.Error()))
 		return nil, err
+	}
+	if expiredGroup.Id == 0 {
+		l.Debugw("[SubscribeLogic]no expired node group configured")
+		return nil, nil
 	}
 	if !group.IsNodeGroupTypeAccessible(expiredGroup.Type, group.NodeGroupAccessSubscribe) {
 		l.Debugf("[SubscribeLogic]expired node group %d is not accessible for subscribe output", expiredGroup.Id)

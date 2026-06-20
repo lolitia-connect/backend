@@ -197,7 +197,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 			return nil, err
 		}
 	}
-	
+
 	if len(subs) == 0 {
 		return &types.GetServerUserListResponse{
 			Users: []types.ServerUser{placeholderServerUser(req.ServerId, req.Protocol, l.svcCtx.Config.Node.NodeSecret)},
@@ -274,7 +274,10 @@ func (l *GetServerUserListLogic) shouldIncludeServerUser(userSub *user.Subscribe
 
 func (l *GetServerUserListLogic) getExpiredUsers(serverNodeGroupIds []int64) ([]types.ServerUser, int64) {
 	var expiredGroup group.NodeGroup
-	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error; err != nil {
+		return nil, 0
+	}
+	if expiredGroup.Id == 0 {
 		return nil, 0
 	}
 
@@ -325,7 +328,10 @@ func (l *GetServerUserListLogic) checkExpiredUserEligibility(userSub *user.Subsc
 
 func (l *GetServerUserListLogic) canUseExpiredNodeGroup(userSub *user.Subscribe, serverNodeGroupIds []int64) bool {
 	var expiredGroup group.NodeGroup
-	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).First(&expiredGroup).Error; err != nil {
+	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error; err != nil {
+		return false
+	}
+	if expiredGroup.Id == 0 {
 		return false
 	}
 

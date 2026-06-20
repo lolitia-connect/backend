@@ -156,9 +156,15 @@ func (m *defaultUserModel) FindOneSubscribeByToken(ctx context.Context, token st
 	var data Subscribe
 	key := fmt.Sprintf("%s%s", cacheUserSubscribeTokenPrefix, token)
 	err := m.QueryCtx(ctx, &data, key, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("token = ?", token).First(&data).Error
+		return conn.Model(&Subscribe{}).Where("token = ?", token).Find(&data).Error
 	})
-	return &data, err
+	if err != nil {
+		return nil, err
+	}
+	if data.Id == 0 {
+		return nil, nil
+	}
+	return &data, nil
 }
 
 // UpdateSubscribe updates a record.

@@ -34,7 +34,7 @@ func (l *UpdateUserSubscribeLogic) UpdateUserSubscribe(req *types.UpdateUserSubs
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe failed: %v", err.Error())
 	}
 	expiredAt := time.UnixMilli(req.ExpiredAt)
-	if time.Since(expiredAt).Minutes() > 0 {
+	if req.ExpiredAt != 0 && time.Since(expiredAt).Minutes() > 0 {
 		userSub.Status = 3
 	} else {
 		userSub.Status = 1

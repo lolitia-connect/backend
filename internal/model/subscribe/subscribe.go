@@ -64,6 +64,7 @@ type Subscribe struct {
 	Replacement       int64          `gorm:"type:int;not null;default:0;comment:Replacement"`
 	Inventory         int64          `gorm:"type:int;not null;default:-1;comment:Inventory"`
 	Traffic           int64          `gorm:"type:int;not null;default:0;comment:Traffic"`
+	TrafficUnlimited  bool           `gorm:"type:tinyint(1);not null;default:0;comment:Traffic Unlimited"`
 	SpeedLimit        int64          `gorm:"type:int;not null;default:0;comment:Speed Limit"`
 	DeviceLimit       int64          `gorm:"type:int;not null;default:0;comment:Device Limit"`
 	Quota             int64          `gorm:"type:int;not null;default:0;comment:Quota"`

@@ -57,11 +57,12 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 			return nil, err
 		}
 		userSubscribeInfo := types.UserSubscribeInfo{
-			Id:          userSubscribe.Id,
-			Nodes:       nodes,
-			Traffic:     userSubscribe.Traffic,
-			Upload:      userSubscribe.Upload,
-			Download:    userSubscribe.Download,
+			Id:              userSubscribe.Id,
+			Nodes:           nodes,
+			Traffic:         userSubscribe.Traffic,
+			TrafficUnlimited: userSubscribe.TrafficUnlimited,
+			Upload:          userSubscribe.Upload,
+			Download:        userSubscribe.Download,
 			Token:       userSubscribe.Token,
 			UserId:      userSubscribe.UserId,
 			OrderId:     userSubscribe.OrderId,

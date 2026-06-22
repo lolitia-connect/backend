@@ -88,12 +88,13 @@ type Proxy struct {
 }
 
 type User struct {
-	Password     string
-	ExpiredAt    time.Time
-	Download     int64
-	Upload       int64
-	Traffic      int64
-	SubscribeURL string
+	Password         string
+	ExpiredAt        time.Time
+	Download         int64
+	Upload           int64
+	Traffic          int64
+	TrafficUnlimited bool
+	SubscribeURL     string
 }
 
 type Client struct {

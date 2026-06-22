@@ -351,20 +351,21 @@ func (l *ActivateOrderLogic) getSubscribeInfo(ctx context.Context, subscribeId i
 func (l *ActivateOrderLogic) createUserSubscription(ctx context.Context, orderInfo *order.Order, sub *subscribe.Subscribe) (*user.Subscribe, error) {
 	now := time.Now()
 	userSub := &user.Subscribe{
-		UserId:          orderInfo.UserId,
-		OrderId:         orderInfo.Id,
-		SubscribeId:     orderInfo.SubscribeId,
-		StartTime:       now,
-		ExpireTime:      tool.AddTime(sub.UnitTime, orderInfo.Quantity, now),
-		Traffic:         sub.Traffic,
-		Download:        0,
-		Upload:          0,
-		ExpiredDownload: 0,
-		ExpiredUpload:   0,
-		Token:           uuidx.SubscribeToken(orderInfo.OrderNo),
-		UUID:            uuid.New().String(),
-		Status:          1,
-		NodeGroupId:     sub.NodeGroupId, // Inherit node_group_id from subscription plan
+		UserId:           orderInfo.UserId,
+		OrderId:          orderInfo.Id,
+		SubscribeId:      orderInfo.SubscribeId,
+		StartTime:        now,
+		ExpireTime:       tool.AddTime(sub.UnitTime, orderInfo.Quantity, now),
+		Traffic:          sub.Traffic,
+		TrafficUnlimited: sub.TrafficUnlimited,
+		Download:         0,
+		Upload:           0,
+		ExpiredDownload:  0,
+		ExpiredUpload:    0,
+		Token:            uuidx.SubscribeToken(orderInfo.OrderNo),
+		UUID:             uuid.New().String(),
+		Status:           1,
+		NodeGroupId:      sub.NodeGroupId, // Inherit node_group_id from subscription plan
 	}
 
 	// Check quota limit before creating subscription (final safeguard)
@@ -669,6 +670,7 @@ func (l *ActivateOrderLogic) updateSubscriptionForRenewal(ctx context.Context, u
 
 	userSub.ExpireTime = tool.AddTime(sub.UnitTime, orderInfo.Quantity, userSub.ExpireTime)
 	userSub.Status = 1
+	userSub.TrafficUnlimited = sub.TrafficUnlimited
 	// 续费时重置过期流量字段
 	userSub.ExpiredDownload = 0
 	userSub.ExpiredUpload = 0
@@ -1013,6 +1015,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 			existingSubscribe.OrderId = orderInfo.Id // 设置OrderId用于追溯
 			existingSubscribe.ExpireTime = newExpireTime
 			existingSubscribe.Status = 1
+			existingSubscribe.TrafficUnlimited = sub.TrafficUnlimited
 
 			// 重置流量（如果套餐有流量限制）
 			if sub.Traffic > 0 {
@@ -1060,19 +1063,20 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 			}
 
 			newSubscribe := &user.Subscribe{
-				UserId:      userInfo.Id,
-				OrderId:     orderInfo.Id,
-				SubscribeId: orderInfo.SubscribeId,
-				StartTime:   now,
-				ExpireTime:  expireTime,
-				FinishedAt:  nil,
-				Traffic:     traffic,
-				Download:    0,
-				Upload:      0,
-				Token:       uuidx.SubscribeToken(orderInfo.OrderNo),
-				UUID:        uuid.New().String(),
-				Status:      1,
-				NodeGroupId: sub.NodeGroupId, // Inherit node_group_id from subscription plan
+				UserId:           userInfo.Id,
+				OrderId:          orderInfo.Id,
+				SubscribeId:      orderInfo.SubscribeId,
+				StartTime:        now,
+				ExpireTime:       expireTime,
+				FinishedAt:       nil,
+				Traffic:          traffic,
+				TrafficUnlimited: sub.TrafficUnlimited,
+				Download:         0,
+				Upload:           0,
+				Token:            uuidx.SubscribeToken(orderInfo.OrderNo),
+				UUID:             uuid.New().String(),
+				Status:           1,
+				NodeGroupId:      sub.NodeGroupId, // Inherit node_group_id from subscription plan
 			}
 
 			err = l.svc.Store.User().InsertSubscribe(ctx, newSubscribe, tx)

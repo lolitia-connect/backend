@@ -58,6 +58,7 @@ func (l *UpdateSubscribeLogic) UpdateSubscribe(req *types.UpdateSubscribeRequest
 		Replacement:       req.Replacement,
 		Inventory:         req.Inventory,
 		Traffic:           req.Traffic,
+		TrafficUnlimited:  req.TrafficUnlimited,
 		SpeedLimit:        req.SpeedLimit,
 		DeviceLimit:       req.DeviceLimit,
 		Quota:             req.Quota,

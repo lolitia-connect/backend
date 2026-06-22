@@ -53,6 +53,10 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 		l.Errorw("[ResetTraffic] subscribe not found", logger.Field("UserSubscribeID", req.UserSubscribeID))
 		return nil, errors.New("subscribe not found")
 	}
+	// Check if traffic is unlimited — reset is meaningless
+	if userSubscribe.TrafficUnlimited {
+		return nil, errors.New("traffic reset is not available for unlimited traffic subscriptions")
+	}
 	amount := userSubscribe.Subscribe.Replacement
 	var deductionAmount int64
 	// Check user deduction amount

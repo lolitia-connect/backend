@@ -43,16 +43,17 @@ var (
 )
 
 // Subscribe represents a subscription with time and traffic limits
-type Subscribe struct {
-	StartTime      time.Time // Subscription start time
-	ExpireTime     time.Time // Subscription expiration time
-	Traffic        int64     // Total traffic allowance in bytes
-	Download       int64     // Downloaded traffic in bytes
-	Upload         int64     // Uploaded traffic in bytes
-	UnitTime       string    // Time unit for billing (Year, Month, Day, etc.)
-	UnitPrice      int64     // Price per unit time
-	ResetCycle     int64     // Traffic reset cycle
-	DeductionRatio int64     // Deduction ratio for weighted calculations (0-100)
+	type Subscribe struct {
+	StartTime         time.Time // Subscription start time
+	ExpireTime        time.Time // Subscription expiration time
+	Traffic           int64     // Total traffic allowance in bytes
+	TrafficUnlimited  bool      // Whether traffic is unlimited
+	Download          int64     // Downloaded traffic in bytes
+	Upload            int64     // Uploaded traffic in bytes
+	UnitTime          string    // Time unit for billing (Year, Month, Day, etc.)
+	UnitPrice         int64     // Price per unit time
+	ResetCycle        int64     // Traffic reset cycle
+	DeductionRatio    int64     // Deduction ratio for weighted calculations (0-100)
 }
 
 // Order represents a purchase order for subscription calculation
@@ -67,7 +68,7 @@ func (s *Subscribe) Validate() error {
 		return ErrInvalidTraffic
 	}
 
-	if s.Download+s.Upload > s.Traffic {
+	if !s.TrafficUnlimited && s.Download+s.Upload > s.Traffic {
 		return fmt.Errorf("download + upload (%d) cannot exceed total traffic (%d)", s.Download+s.Upload, s.Traffic)
 	}
 
@@ -238,8 +239,8 @@ func CalculateRemainingAmount(sub Subscribe, order Order) (int64, error) {
 
 // calculateNoLimitAmount calculates refund amount for unlimited time subscriptions
 // based on unused traffic only
-func calculateNoLimitAmount(sub Subscribe, order Order) (int64, error) {
-	if sub.Traffic == 0 {
+	func calculateNoLimitAmount(sub Subscribe, order Order) (int64, error) {
+	if sub.TrafficUnlimited {
 		return 0, nil
 	}
 
@@ -279,7 +280,7 @@ func calculateRemainingUnitTimeAmount(sub Subscribe) (int64, error) {
 		return 0, fmt.Errorf("time amount calculation failed: %w", err)
 	}
 
-	if sub.Traffic == 0 {
+	if sub.TrafficUnlimited {
 		return remainingTimeAmount, nil
 	}
 

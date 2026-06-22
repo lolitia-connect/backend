@@ -135,6 +135,7 @@ type Subscribe struct {
 	ExpireTime      time.Time  `gorm:"default:NULL;comment:Subscription Expire Time"`
 	FinishedAt      *time.Time `gorm:"default:NULL;comment:Finished Time"`
 	Traffic         int64      `gorm:"default:0;comment:Traffic"`
+	TrafficUnlimited bool      `gorm:"default:false;not null;comment:Traffic Unlimited"`
 	Download        int64      `gorm:"default:0;comment:Download Traffic"`
 	Upload          int64      `gorm:"default:0;comment:Upload Traffic"`
 	ExpiredDownload int64      `gorm:"default:0;comment:Expired period download traffic (bytes)"`

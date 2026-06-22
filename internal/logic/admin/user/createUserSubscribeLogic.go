@@ -50,22 +50,19 @@ func (l *CreateUserSubscribeLogic) CreateUserSubscribe(req *types.CreateUserSubs
 		l.Errorw("FindOne error", logger.Field("error", err.Error()), logger.Field("subscribeId", req.SubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOne error: %v", err.Error())
 	}
-	if req.Traffic == 0 {
-		req.Traffic = sub.Traffic
-	}
-
 	userSub := user.Subscribe{
-		UserId:      req.UserId,
-		SubscribeId: req.SubscribeId,
-		StartTime:   time.Now(),
-		ExpireTime:  time.UnixMilli(req.ExpiredAt),
-		Traffic:     req.Traffic,
-		Download:    0,
-		Upload:      0,
-		Token:       uuidx.SubscribeToken(fmt.Sprintf("adminCreate:%d", time.Now().UnixMilli())),
-		UUID:        uuid.New().String(),
-		NodeGroupId: sub.NodeGroupId,
-		Status:      1,
+		UserId:           req.UserId,
+		SubscribeId:      req.SubscribeId,
+		StartTime:        time.Now(),
+		ExpireTime:       time.UnixMilli(req.ExpiredAt),
+		Traffic:          req.Traffic,
+		TrafficUnlimited: req.TrafficUnlimited,
+		Download:         0,
+		Upload:           0,
+		Token:            uuidx.SubscribeToken(fmt.Sprintf("adminCreate:%d", time.Now().UnixMilli())),
+		UUID:             uuid.New().String(),
+		NodeGroupId:      sub.NodeGroupId,
+		Status:           1,
 	}
 	if err = l.svcCtx.Store.User().InsertSubscribe(l.ctx, &userSub); err != nil {
 		l.Errorw("InsertSubscribe error", logger.Field("error", err.Error()))

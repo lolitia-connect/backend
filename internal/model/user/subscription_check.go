@@ -11,7 +11,7 @@ func (m *customUserModel) FindTrafficExceededSubscribes(ctx context.Context) ([]
 	var list []*Subscribe
 	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
 		return conn.Model(&Subscribe{}).
-			Where("upload + download >= traffic AND status IN ? AND traffic > 0", []int64{0, 1}).
+			Where("upload + download >= traffic AND status IN ? AND traffic > 0 AND traffic_unlimited = ?", []int64{0, 1}, false).
 			Find(&list).Error
 	})
 	return list, err

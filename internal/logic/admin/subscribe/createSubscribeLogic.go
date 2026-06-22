@@ -51,6 +51,7 @@ func (l *CreateSubscribeLogic) CreateSubscribe(req *types.CreateSubscribeRequest
 		Replacement:       req.Replacement,
 		Inventory:         req.Inventory,
 		Traffic:           req.Traffic,
+		TrafficUnlimited:  req.TrafficUnlimited,
 		SpeedLimit:        req.SpeedLimit,
 		DeviceLimit:       req.DeviceLimit,
 		Quota:             req.Quota,

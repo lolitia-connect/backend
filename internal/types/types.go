@@ -436,6 +436,7 @@ type CreateSubscribeRequest struct {
 	Replacement       int64               `json:"replacement"`
 	Inventory         int64               `json:"inventory"`
 	Traffic           int64               `json:"traffic"`
+	TrafficUnlimited  bool                `json:"traffic_unlimited"`
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
@@ -485,10 +486,11 @@ type CreateUserRequest struct {
 }
 
 type CreateUserSubscribeRequest struct {
-	UserId      int64 `json:"user_id,string"`
-	ExpiredAt   int64 `json:"expired_at"`
-	Traffic     int64 `json:"traffic"`
-	SubscribeId int64 `json:"subscribe_id,string"`
+	UserId           int64 `json:"user_id,string"`
+	ExpiredAt        int64 `json:"expired_at"`
+	Traffic          int64 `json:"traffic"`
+	TrafficUnlimited bool  `json:"traffic_unlimited"`
+	SubscribeId      int64 `json:"subscribe_id,string"`
 }
 
 type CreateUserTicketFollowRequest struct {
@@ -2416,6 +2418,7 @@ type Subscribe struct {
 	Replacement       int64               `json:"replacement"`
 	Inventory         int64               `json:"inventory"`
 	Traffic           int64               `json:"traffic"`
+	TrafficUnlimited  bool                `json:"traffic_unlimited"`
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
@@ -2867,6 +2870,7 @@ type UpdateSubscribeRequest struct {
 	Replacement       int64               `json:"replacement"`
 	Inventory         int64               `json:"inventory"`
 	Traffic           int64               `json:"traffic"`
+	TrafficUnlimited  bool                `json:"traffic_unlimited"`
 	SpeedLimit        int64               `json:"speed_limit"`
 	DeviceLimit       int64               `json:"device_limit"`
 	Quota             int64               `json:"quota"`
@@ -2941,12 +2945,13 @@ type UpdateUserSubscribeNoteRequest struct {
 }
 
 type UpdateUserSubscribeRequest struct {
-	UserSubscribeId int64 `json:"user_subscribe_id,string"`
-	SubscribeId     int64 `json:"subscribe_id,string"`
-	Traffic         int64 `json:"traffic"`
-	ExpiredAt       int64 `json:"expired_at"`
-	Upload          int64 `json:"upload"`
-	Download        int64 `json:"download"`
+	UserSubscribeId  int64 `json:"user_subscribe_id,string"`
+	SubscribeId      int64 `json:"subscribe_id,string"`
+	Traffic          int64 `json:"traffic"`
+	TrafficUnlimited bool  `json:"traffic_unlimited"`
+	ExpiredAt        int64 `json:"expired_at"`
+	Upload           int64 `json:"upload"`
+	Download         int64 `json:"download"`
 }
 
 type UpdateUserTicketStatusRequest struct {
@@ -3056,61 +3061,64 @@ type UserStatisticsResponse struct {
 }
 
 type UserSubscribe struct {
-	Id          int64     `json:"id,string"`
-	IdStr       string    `json:"id_str"`
-	UserId      int64     `json:"user_id,string"`
-	OrderId     int64     `json:"order_id,string"`
-	SubscribeId int64     `json:"subscribe_id,string"`
-	Subscribe   Subscribe `json:"subscribe"`
-	NodeGroupId int64     `json:"node_group_id,string"`
-	GroupLocked bool      `json:"group_locked"`
-	StartTime   int64     `json:"start_time"`
-	ExpireTime  int64     `json:"expire_time"`
-	FinishedAt  int64     `json:"finished_at"`
-	ResetTime   int64     `json:"reset_time"`
-	Traffic     int64     `json:"traffic"`
-	Download    int64     `json:"download"`
-	Upload      int64     `json:"upload"`
-	Token       string    `json:"token"`
-	Status      uint8     `json:"status"`
-	Short       string    `json:"short"`
-	CreatedAt   int64     `json:"created_at"`
-	UpdatedAt   int64     `json:"updated_at"`
+	Id              int64     `json:"id,string"`
+	IdStr           string    `json:"id_str"`
+	UserId          int64     `json:"user_id,string"`
+	OrderId         int64     `json:"order_id,string"`
+	SubscribeId     int64     `json:"subscribe_id,string"`
+	Subscribe       Subscribe `json:"subscribe"`
+	NodeGroupId     int64     `json:"node_group_id,string"`
+	GroupLocked     bool      `json:"group_locked"`
+	StartTime       int64     `json:"start_time"`
+	ExpireTime      int64     `json:"expire_time"`
+	FinishedAt      int64     `json:"finished_at"`
+	ResetTime       int64     `json:"reset_time"`
+	Traffic         int64     `json:"traffic"`
+	TrafficUnlimited bool     `json:"traffic_unlimited"`
+	Download        int64     `json:"download"`
+	Upload          int64     `json:"upload"`
+	Token           string    `json:"token"`
+	Status          uint8     `json:"status"`
+	Short           string    `json:"short"`
+	CreatedAt       int64     `json:"created_at"`
+	UpdatedAt       int64     `json:"updated_at"`
 }
 
 type UserSubscribeDetail struct {
-	Id          int64     `json:"id,string"`
-	UserId      int64     `json:"user_id,string"`
-	User        User      `json:"user"`
-	OrderId     int64     `json:"order_id,string"`
-	SubscribeId int64     `json:"subscribe_id,string"`
-	Subscribe   Subscribe `json:"subscribe"`
-	NodeGroupId int64     `json:"node_group_id,string"`
-	GroupLocked bool      `json:"group_locked"`
-	StartTime   int64     `json:"start_time"`
-	ExpireTime  int64     `json:"expire_time"`
-	ResetTime   int64     `json:"reset_time"`
-	Traffic     int64     `json:"traffic"`
-	Download    int64     `json:"download"`
-	Upload      int64     `json:"upload"`
-	Token       string    `json:"token"`
-	Status      uint8     `json:"status"`
-	CreatedAt   int64     `json:"created_at"`
-	UpdatedAt   int64     `json:"updated_at"`
+	Id              int64     `json:"id,string"`
+	UserId          int64     `json:"user_id,string"`
+	User            User      `json:"user"`
+	OrderId         int64     `json:"order_id,string"`
+	SubscribeId     int64     `json:"subscribe_id,string"`
+	Subscribe       Subscribe `json:"subscribe"`
+	NodeGroupId     int64     `json:"node_group_id,string"`
+	GroupLocked     bool      `json:"group_locked"`
+	StartTime       int64     `json:"start_time"`
+	ExpireTime      int64     `json:"expire_time"`
+	ResetTime       int64     `json:"reset_time"`
+	Traffic         int64     `json:"traffic"`
+	TrafficUnlimited bool     `json:"traffic_unlimited"`
+	Download        int64     `json:"download"`
+	Upload          int64     `json:"upload"`
+	Token           string    `json:"token"`
+	Status          uint8     `json:"status"`
+	CreatedAt       int64     `json:"created_at"`
+	UpdatedAt       int64     `json:"updated_at"`
 }
 
 type UserSubscribeInfo struct {
-	Id          int64                    `json:"id,string"`
-	UserId      int64                    `json:"user_id,string"`
-	OrderId     int64                    `json:"order_id,string"`
-	SubscribeId int64                    `json:"subscribe_id,string"`
-	StartTime   int64                    `json:"start_time"`
-	ExpireTime  int64                    `json:"expire_time"`
-	FinishedAt  int64                    `json:"finished_at"`
-	ResetTime   int64                    `json:"reset_time"`
-	Traffic     int64                    `json:"traffic"`
-	Download    int64                    `json:"download"`
-	Upload      int64                    `json:"upload"`
+	Id              int64                    `json:"id,string"`
+	UserId          int64                    `json:"user_id,string"`
+	OrderId         int64                    `json:"order_id,string"`
+	SubscribeId     int64                    `json:"subscribe_id,string"`
+	StartTime       int64                    `json:"start_time"`
+	ExpireTime      int64                    `json:"expire_time"`
+	FinishedAt      int64                    `json:"finished_at"`
+	ResetTime       int64                    `json:"reset_time"`
+	Traffic         int64                    `json:"traffic"`
+	TrafficUnlimited bool                    `json:"traffic_unlimited"`
+	Download        int64                    `json:"download"`
+	Upload          int64                    `json:"upload"`
 	Token       string                   `json:"token"`
 	Status      uint8                    `json:"status"`
 	CreatedAt   int64                    `json:"created_at"`

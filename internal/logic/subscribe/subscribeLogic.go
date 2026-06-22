@@ -112,12 +112,13 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 		adapter.WithSubscribeName(subscribeInfo.Name),
 		adapter.WithOutputFormat(targetApp.OutputFormat),
 		adapter.WithUserInfo(adapter.User{
-			Password:     userSubscribe.UUID,
-			ExpiredAt:    userSubscribe.ExpireTime,
-			Download:     userSubscribe.Download,
-			Upload:       userSubscribe.Upload,
-			Traffic:      userSubscribe.Traffic,
-			SubscribeURL: l.getSubscribeV2URL(),
+			Password:         userSubscribe.UUID,
+			ExpiredAt:        userSubscribe.ExpireTime,
+			Download:         userSubscribe.Download,
+			Upload:           userSubscribe.Upload,
+			Traffic:          userSubscribe.Traffic,
+			TrafficUnlimited: userSubscribe.TrafficUnlimited,
+			SubscribeURL:     l.getSubscribeV2URL(),
 		}),
 		adapter.WithParams(req.Params),
 	)
@@ -150,7 +151,14 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 		Config: bytes,
 		Header: fmt.Sprintf(
 			"upload=%d;download=%d;total=%d;expire=%d",
-			userSubscribe.Upload, userSubscribe.Download, userSubscribe.Traffic, userSubscribe.ExpireTime.Unix(),
+			userSubscribe.Upload, userSubscribe.Download,
+			func() int64 {
+				if userSubscribe.TrafficUnlimited {
+					return 0
+				}
+				return userSubscribe.Traffic
+			}(),
+			userSubscribe.ExpireTime.Unix(),
 		),
 		Headers: headers,
 	}

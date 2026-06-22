@@ -34,8 +34,9 @@ type SubscribeDetails struct {
 	StartTime   time.Time            `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
 	ExpireTime  time.Time            `gorm:"default:NULL;comment:Subscription Expire Time"`
 	FinishedAt  *time.Time           `gorm:"default:NULL;comment:Finished Time"`
-	Traffic     int64                `gorm:"default:0;comment:Traffic"`
-	Download    int64                `gorm:"default:0;comment:Download Traffic"`
+	Traffic          int64                `gorm:"default:0;comment:Traffic"`
+	TrafficUnlimited bool                 `gorm:"default:false;not null;comment:Traffic Unlimited"`
+	Download         int64                `gorm:"default:0;comment:Download Traffic"`
 	Upload      int64                `gorm:"default:0;comment:Upload Traffic"`
 	Token       string               `gorm:"index:idx_token;unique;type:varchar(255);default:'';comment:Token"`
 	UUID        string               `gorm:"type:varchar(255);unique;index:idx_uuid;default:'';comment:UUID"`

@@ -43,6 +43,7 @@ type (
 		Replacement       int64               `json:"replacement"`
 		Inventory         int64               `json:"inventory"`
 		Traffic           int64               `json:"traffic"`
+		TrafficUnlimited  bool                `json:"traffic_unlimited"`
 		SpeedLimit        int64               `json:"speed_limit"`
 		DeviceLimit       int64               `json:"device_limit"`
 		Quota             int64               `json:"quota"`
@@ -71,6 +72,7 @@ type (
 		Replacement       int64               `json:"replacement"`
 		Inventory         int64               `json:"inventory"`
 		Traffic           int64               `json:"traffic"`
+		TrafficUnlimited  bool                `json:"traffic_unlimited"`
 		SpeedLimit        int64               `json:"speed_limit"`
 		DeviceLimit       int64               `json:"device_limit"`
 		Quota             int64               `json:"quota"`

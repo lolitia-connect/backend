@@ -477,9 +477,10 @@ func TestCalculateNoLimitAmount(t *testing.T) {
 		{
 			name: "zero traffic",
 			sub: Subscribe{
-				Traffic:  0,
-				Download: 0,
-				Upload:   0,
+				Traffic:          0,
+				TrafficUnlimited: true,
+				Download:         0,
+				Upload:           0,
 			},
 			order: Order{
 				Amount: 1000,

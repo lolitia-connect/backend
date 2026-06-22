@@ -41,19 +41,20 @@ func (l *UpdateUserSubscribeLogic) UpdateUserSubscribe(req *types.UpdateUserSubs
 	}
 
 	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, &user.Subscribe{
-		Id:          userSub.Id,
-		UserId:      userSub.UserId,
-		OrderId:     userSub.OrderId,
-		SubscribeId: req.SubscribeId,
-		StartTime:   userSub.StartTime,
-		ExpireTime:  time.UnixMilli(req.ExpiredAt),
-		Traffic:     req.Traffic,
-		Download:    req.Download,
-		Upload:      req.Upload,
-		Token:       userSub.Token,
-		UUID:        userSub.UUID,
-		Status:      userSub.Status,
-		NodeGroupId: userSub.NodeGroupId,
+		Id:              userSub.Id,
+		UserId:          userSub.UserId,
+		OrderId:         userSub.OrderId,
+		SubscribeId:     req.SubscribeId,
+		StartTime:       userSub.StartTime,
+		ExpireTime:      time.UnixMilli(req.ExpiredAt),
+		Traffic:         req.Traffic,
+		TrafficUnlimited: req.TrafficUnlimited,
+		Download:        req.Download,
+		Upload:          req.Upload,
+		Token:           userSub.Token,
+		UUID:            userSub.UUID,
+		Status:          userSub.Status,
+		NodeGroupId:     userSub.NodeGroupId,
 	})
 
 	if err != nil {

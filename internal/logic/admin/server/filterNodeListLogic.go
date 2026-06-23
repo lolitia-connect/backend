@@ -29,11 +29,15 @@ func NewFilterNodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Fi
 }
 
 func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (resp *types.FilterNodeListResponse, err error) {
-	total, data, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
+	params := &node.FilterNodeParams{
 		Page:   req.Page,
 		Size:   req.Size,
 		Search: req.Search,
-	})
+	}
+	if req.NodeGroupId != nil {
+		params.NodeGroupIds = []int64{*req.NodeGroupId}
+	}
+	total, data, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, params)
 
 	if err != nil {
 		l.Errorw("[FilterNodeList] Query Database Error: ", logger.Field("error", err.Error()))

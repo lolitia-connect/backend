@@ -226,9 +226,8 @@ type CheckoutOrderRequest struct {
 }
 
 type CheckoutOrderResponse struct {
-	Type        string         `json:"type"`
-	CheckoutUrl string         `json:"checkout_url,omitempty"`
-	Stripe      *StripePayment `json:"stripe,omitempty"`
+	Type        string `json:"type"`
+	CheckoutUrl string `json:"checkout_url,omitempty"`
 }
 
 type CloseOrderRequest struct {
@@ -2399,12 +2398,6 @@ type SortItem struct {
 
 type StopBatchSendEmailTaskRequest struct {
 	Id int64 `json:"id,string"`
-}
-
-type StripePayment struct {
-	Method         string `json:"method"`
-	ClientSecret   string `json:"client_secret"`
-	PublishableKey string `json:"publishable_key"`
 }
 
 type Subscribe struct {

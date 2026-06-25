@@ -67,6 +67,11 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 		}
 	}(l.svcCtx)
 
+	// Verify captcha
+	if err := l.verifyCaptcha(req); err != nil {
+		return nil, err
+	}
+
 	userInfo, err = l.svcCtx.Store.User().FindOneByEmail(l.ctx, req.Email)
 
 	if userInfo.DeletedAt.Valid {

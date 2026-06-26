@@ -38,7 +38,7 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 	store := l.svcCtx.Store
 	const MaxBodyBytes = int64(65536)
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
-	payload, err := io.ReadAll(r.Body)
+	webhookPayload, err := io.ReadAll(r.Body)
 	if err != nil {
 		l.Errorw("[StripeNotify] error", logger.Field("errors", err.Error()))
 		return err
@@ -58,41 +58,51 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 		WebhookSecret: config.WebhookSecret,
 	})
 
-	notify, err := client.ParseNotify(payload, signature)
+	notify, err := client.ParseNotify(webhookPayload, signature)
 	if err != nil {
 		l.Errorw("[StripeNotify] error", logger.Field("errors", err.Error()))
 		return err
 	}
+
+	// Skip events that don't need processing (e.g. payment_failed, unhandled types)
+	if notify.EventType != "payment_intent.succeeded" && notify.EventType != "checkout.session.completed" {
+		return nil
+	}
+
+	// Validate order number
+	if notify.OrderNo == "" {
+		l.Errorw("[StripeNotify] order_no is empty in webhook", logger.Field("eventType", notify.EventType), logger.Field("tradeNo", notify.TradeNo))
+		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "order_no is empty in webhook event: %s, trade_no: %s", notify.EventType, notify.TradeNo)
+	}
+
 	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, notify.OrderNo)
 	if err != nil {
 		l.Logger.Error("[StripeNotify] Find order failed", logger.Field("error", err.Error()), logger.Field("orderNo", notify.OrderNo))
 		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
 	}
-	if notify.EventType == "payment_intent.succeeded" || notify.EventType == "checkout.session.completed" {
-		if orderInfo.Status == 5 {
-			return nil
-		}
-		// update order status
-		err = store.Order().UpdateOrderStatus(l.ctx, notify.OrderNo, 2)
-		if err != nil {
-			return err
-		}
-		// create ActivateOrder task
-		payload := types.ForthwithActivateOrderPayload{
-			OrderNo: notify.OrderNo,
-		}
-		bytes, err := json.Marshal(payload)
-		if err != nil {
-			l.Errorw("[StripeNotify] Marshal error", logger.Field("errors", err.Error()), logger.Field("payload", payload))
-			return err
-		}
-		task := asynq.NewTask(types.ForthwithActivateOrder, bytes, asynq.MaxRetry(5))
-		_, err = l.svcCtx.Queue.Enqueue(task)
-		if err != nil {
-			l.Errorw("[StripeNotify] Enqueue error", logger.Field("errors", err.Error()))
-			return err
-		}
-		l.Infow("[StripeNotify] success", logger.Field("orderNo", notify.OrderNo))
+	if orderInfo.Status == 5 {
+		return nil
 	}
+	// update order status
+	err = store.Order().UpdateOrderStatus(l.ctx, notify.OrderNo, 2)
+	if err != nil {
+		return err
+	}
+	// create ActivateOrder task
+	activatePayload := types.ForthwithActivateOrderPayload{
+		OrderNo: notify.OrderNo,
+	}
+	taskBytes, err := json.Marshal(activatePayload)
+	if err != nil {
+		l.Errorw("[StripeNotify] Marshal error", logger.Field("errors", err.Error()), logger.Field("payload", activatePayload))
+		return err
+	}
+	task := asynq.NewTask(types.ForthwithActivateOrder, taskBytes, asynq.MaxRetry(5))
+	_, err = l.svcCtx.Queue.Enqueue(task)
+	if err != nil {
+		l.Errorw("[StripeNotify] Enqueue error", logger.Field("errors", err.Error()))
+		return err
+	}
+	l.Infow("[StripeNotify] success", logger.Field("orderNo", notify.OrderNo))
 	return nil
 }

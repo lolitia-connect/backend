@@ -22,11 +22,11 @@ func TestStripeAlipay(t *testing.T) {
 		UserId: 1,
 		Email:  "tension@ppanel.dev",
 	}
-	result, err := client.CreatePaymentSheet(&order, &user)
+	result, err := client.CreateCheckoutSession(&order, &user, "https://example.com/success", "https://example.com/cancel")
 	if err != nil {
 		t.Error(err.Error())
 	}
-	t.Logf("TradeNo: %s\n", result.ClientSecret)
+	t.Logf("CheckoutURL: %s\n", result.CheckoutURL)
 }
 
 func TestStripeWechat(t *testing.T) {
@@ -47,9 +47,9 @@ func TestStripeWechat(t *testing.T) {
 		UserId: 1,
 		Email:  "tension@ppanel.dev",
 	}
-	result, err := client.CreatePaymentSheet(&order, &user)
+	result, err := client.CreateCheckoutSession(&order, &user, "https://example.com/success", "https://example.com/cancel")
 	if err != nil {
 		t.Error(err.Error())
 	}
-	t.Logf("TradeNo: %s\n", result.ClientSecret)
+	t.Logf("CheckoutURL: %s\n", result.CheckoutURL)
 }

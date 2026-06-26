@@ -49,7 +49,7 @@ func GetSupportedPlatforms() []types.PlatformInfo {
 				"public_key":     "Publishable key",
 				"secret_key":     "Secret key",
 				"webhook_secret": "Webhook secret",
-				"payment":        "Payment Method, only supported card/alipay/wechat_pay",
+				"payment":        "Payment Method (Stripe Checkout Session), e.g. card, alipay, wechat_pay, google_pay, apple_pay, paypal, klarna, etc.",
 			},
 		},
 		{

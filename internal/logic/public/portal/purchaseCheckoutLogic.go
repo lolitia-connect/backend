@@ -89,14 +89,14 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		}
 
 	case paymentPlatform.Stripe:
-		// Process Stripe payment - creates payment sheet for client-side processing
-		stripePayment, err := l.stripePayment(paymentConfig, orderInfo, "")
+		// Process Stripe payment - creates Checkout Session for redirect
+		url, err := l.stripePayment(paymentConfig, orderInfo, "", req.ReturnUrl)
 		if err != nil {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "stripePayment error: %v", err.Error())
 		}
 		resp = &types.CheckoutOrderResponse{
-			Type:   "stripe", // Client should use Stripe SDK
-			Stripe: stripePayment,
+			Type:        "url",
+			CheckoutUrl: url,
 		}
 
 	case paymentPlatform.AlipayF2F:
@@ -304,15 +304,15 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 	return payload, nil
 }
 
-// stripePayment processes Stripe payment by creating a payment sheet
-// It supports various payment methods including WeChat Pay and Alipay through Stripe
-func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.Order, identifier string) (*types.StripePayment, error) {
+// stripePayment processes Stripe payment by creating a Checkout Session
+// It redirects the user to Stripe's hosted payment page
+func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.Order, identifier string, returnUrl string) (string, error) {
 	// Parse Stripe configuration from payment settings
 	stripeConfig := &payment.StripeConfig{}
 
 	if err := stripeConfig.Unmarshal([]byte(pay.Config)); err != nil {
 		l.Errorw("[PurchaseCheckout] Unmarshal Stripe config error", logger.Field("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 
 	// Initialize Stripe client with API credentials
@@ -332,7 +332,7 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	convertedAmount, convertErr := l.queryPaymentMethodExchangeRate(pay, info.Amount, "")
 	if convertErr != nil {
 		l.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", convertErr.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", convertErr.Error())
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", convertErr.Error())
 	}
 	// Convert back to cents for Stripe API
 	stripeAmount := int64(convertedAmount * 100)
@@ -340,8 +340,19 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	// Resolve billing description template
 	statementDescriptorSuffix := l.resolveBillDesc(pay.BillDesc, info, "")
 
-	// Create Stripe payment sheet for client-side processing
-	result, err := client.CreatePaymentSheet(&stripe.Order{
+	// Build success/cancel URLs
+	successURL := returnUrl
+	if successURL == "" {
+		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
+		if !ok {
+			host = l.svcCtx.Config.Host
+		}
+		successURL = "https://" + host
+	}
+	cancelURL := successURL
+
+	// Create Stripe Checkout Session for redirect-based payment
+	result, err := client.CreateCheckoutSession(&stripe.Order{
 		OrderNo:                   info.OrderNo,
 		Subscribe:                 strconv.FormatInt(info.SubscribeId, 10),
 		Amount:                    stripeAmount,
@@ -350,18 +361,15 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 		StatementDescriptorSuffix: statementDescriptorSuffix,
 	},
 		&stripe.User{
-			Email: identifier,
-		})
+			UserId: info.UserId,
+			Email:  identifier,
+		},
+		successURL,
+		cancelURL,
+	)
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] CreatePaymentSheet error", logger.Field("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CreatePaymentSheet error: %s", err.Error())
-	}
-
-	// Prepare response data for client-side Stripe integration
-	stripePayment := &types.StripePayment{
-		PublishableKey: stripeConfig.PublicKey,
-		ClientSecret:   result.ClientSecret,
-		Method:         stripeConfig.Payment,
+		l.Errorw("[PurchaseCheckout] CreateCheckoutSession error", logger.Field("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CreateCheckoutSession error: %s", err.Error())
 	}
 
 	// Save Stripe trade number to order for tracking
@@ -369,9 +377,9 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	err = l.svcCtx.Store.Order().Update(l.ctx, info)
 	if err != nil {
 		l.Errorw("[PurchaseCheckout] Update order error", logger.Field("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
 	}
-	return stripePayment, nil
+	return result.CheckoutURL, nil
 }
 
 // epayPayment processes EPay payment by generating a payment URL for redirect

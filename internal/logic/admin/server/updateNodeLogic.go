@@ -41,6 +41,9 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 	data.Address = req.Address
 	data.Protocol = req.Protocol
 	data.Enabled = req.Enabled
+	data.NodeType = req.NodeType
+	data.IsHidden = req.IsHidden
+	data.NodeGroupIds = node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds))
 	err = nodeStore.UpdateNode(l.ctx, data)
 	if err != nil {
 		l.Errorw("[UpdateNode] Update Database Error: ", logger.Field("error", err.Error()))

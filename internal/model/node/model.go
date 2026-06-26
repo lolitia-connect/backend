@@ -143,11 +143,13 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 		// Filter by node_group_ids using JSON_CONTAINS for each group ID
 		// Multiple group IDs: node must belong to at least one of the groups
 		var conditions []string
+		var args []interface{}
 		for _, gid := range params.NodeGroupIds {
-			conditions = append(conditions, fmt.Sprintf("JSON_CONTAINS(node_group_ids, %d)", gid))
+			conditions = append(conditions, "JSON_CONTAINS(node_group_ids, ?)")
+			args = append(args, fmt.Sprintf("[%d]", gid))
 		}
 		if len(conditions) > 0 {
-			query = query.Where("(" + strings.Join(conditions, " OR ") + ")")
+			query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
 		}
 	}
 	// If no NodeGroupIds specified, return all nodes (including public nodes)

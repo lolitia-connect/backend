@@ -196,6 +196,12 @@ func (c *Client) CreateCheckoutSession(order *Order, user *User, successURL, can
 	// Google Pay and Apple Pay are also automatically available when 'card' is included.
 	paymentTypes := []*string{stripe.String(order.Payment)}
 
+	metadata := map[string]string{
+		"order_no":  order.OrderNo,
+		"user_id":   strconv.FormatInt(user.UserId, 10),
+		"subscribe": order.Subscribe,
+	}
+
 	params := &stripe.CheckoutSessionParams{
 		PaymentMethodTypes: paymentTypes,
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
@@ -214,24 +220,24 @@ func (c *Client) CreateCheckoutSession(order *Order, user *User, successURL, can
 		SuccessURL:        stripe.String(successURL),
 		CancelURL:         stripe.String(cancelURL),
 		ClientReferenceID: stripe.String(order.OrderNo),
-		Metadata: map[string]string{
-			"order_no":  order.OrderNo,
-			"user_id":   strconv.FormatInt(user.UserId, 10),
-			"subscribe": order.Subscribe,
-		},
+		Metadata:          metadata,
+	}
+
+	// Always set PaymentIntentData to ensure metadata is copied to the PaymentIntent.
+	// Some Stripe API versions do not automatically copy Checkout Session metadata to PaymentIntent.
+	intentData := &stripe.CheckoutSessionPaymentIntentDataParams{
+		Metadata: metadata,
 	}
 
 	if order.StatementDescriptorSuffix != "" {
 		// Statement descriptor suffix only applies to card payments
 		if order.Payment == "card" || order.Payment == "google_pay" {
-			// Stripe checkout session doesn't support StatementDescriptorSuffix directly
-			// but we can set it via PaymentIntentData
-			params.PaymentIntentData = &stripe.CheckoutSessionPaymentIntentDataParams{
-				StatementDescriptorSuffix: stripe.String(order.StatementDescriptorSuffix),
-				Description:               stripe.String(order.StatementDescriptorSuffix),
-			}
+			intentData.StatementDescriptorSuffix = stripe.String(order.StatementDescriptorSuffix)
+			intentData.Description = stripe.String(order.StatementDescriptorSuffix)
 		}
 	}
+
+	params.PaymentIntentData = intentData
 
 	result, err := session.New(params)
 	if err != nil {

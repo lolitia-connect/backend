@@ -294,49 +294,48 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 	isGroupMode := l.isGroupEnabled()
 
 	if isGroupMode {
-		// === 分组模式：使用 node_group_id 获取节点 ===
-		// 按优先级获取 node_group_id：user_subscribe.node_group_id > subscribe.node_group_id > subscribe.node_group_ids[0]
-		nodeGroupId := int64(0)
-		source := ""
-
-		// 优先级1: user_subscribe.node_group_id
+		// === 分组模式：使用 node_group_ids 获取节点 ===
+		// 收集所有分组 ID：主节点组 + 备用节点组，自动去重
+		// 优先级：user_subscribe.node_group_id > subscribe.node_group_id + subscribe.node_group_ids
+		allGroupIds := collectGroupIds(userSub.NodeGroupId, subDetails.NodeGroupId, subDetails.NodeGroupIds)
+		source := "subscribe.node_group_id + node_group_ids"
 		if userSub.NodeGroupId != 0 {
-			nodeGroupId = userSub.NodeGroupId
 			source = "user_subscribe.node_group_id"
-		} else {
-			// 优先级2 & 3: 从 subscribe 表获取
-			if subDetails.NodeGroupId != 0 {
-				nodeGroupId = subDetails.NodeGroupId
-				source = "subscribe.node_group_id"
-			} else if len(subDetails.NodeGroupIds) > 0 {
-				// 优先级3: subscribe.node_group_ids[0]
-				nodeGroupId = subDetails.NodeGroupIds[0]
-				source = "subscribe.node_group_ids[0]"
-			}
 		}
 
-		l.Debugf("[Generate Subscribe]group mode, using %s: %v", source, nodeGroupId)
+		l.Debugf("[Generate Subscribe]group mode, using %s: allGroupIds=%v", source, allGroupIds)
 
+		// 过滤掉不可访问的节点组，并找到主节点组（用于标签显示）
 		var currentNodeGroup *group.NodeGroup
-		if nodeGroupId > 0 {
-			currentNodeGroup = l.getAccessibleNodeGroup(nodeGroupId, group.NodeGroupAccessSubscribe)
-			if currentNodeGroup == nil {
-				l.Debugf("[Generate Subscribe]node group %d from %s is not accessible for subscribe output", nodeGroupId, source)
-				nodeGroupId = 0
+		var accessibleGroupIds []int64
+		for _, gid := range allGroupIds {
+			ng := l.getAccessibleNodeGroup(gid, group.NodeGroupAccessSubscribe)
+			if ng != nil {
+				accessibleGroupIds = append(accessibleGroupIds, gid)
+				if currentNodeGroup == nil {
+					currentNodeGroup = ng
+				}
+			} else {
+				l.Debugf("[Generate Subscribe]node group %d is not accessible for subscribe output, skipping", gid)
 			}
 		}
+		allGroupIds = accessibleGroupIds
 
-		// 根据 node_group_id 获取节点
+		if len(allGroupIds) == 0 {
+			l.Debugf("[Generate Subscribe]no accessible node groups found")
+		}
+
+		// 根据所有 node_group_ids 获取节点
 		enable := true
 		isHidden := false
 
-		// 1. 获取分组节点
+		// 1. 获取分组节点（主节点组 + 备用节点组的所有节点，自动去重）
 		var groupNodes []*node.Node
-		if nodeGroupId > 0 {
+		if len(allGroupIds) > 0 {
 			params := &node.FilterNodeParams{
-				Page:         0,
+				Page:         1,
 				Size:         1000,
-				NodeGroupIds: []int64{nodeGroupId},
+				NodeGroupIds: allGroupIds,
 				Enabled:      &enable,
 				IsHidden:     &isHidden,
 				Preload:      true,
@@ -347,12 +346,12 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 				l.Errorw("[Generate Subscribe]filter nodes by group error", logger.Field("error", err.Error()))
 				return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "filter nodes by group error: %v", err.Error())
 			}
-			l.Debugf("[Generate Subscribe]found %d nodes for node_group_id=%d", len(groupNodes), nodeGroupId)
+			l.Debugf("[Generate Subscribe]found %d nodes for node_group_ids=%v", len(groupNodes), allGroupIds)
 		}
 
 		// 2. 获取公共节点（NodeGroupIds 为空的节点）
 		_, allNodes, err := l.svc.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
-			Page:     0,
+			Page:     1,
 			Size:     1000,
 			Enabled:  &enable,
 			IsHidden: &isHidden,
@@ -373,22 +372,8 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 		}
 		l.Debugf("[Generate Subscribe]found %d public nodes (node_group_ids is empty)", len(publicNodes))
 
-		// 3. 合并分组节点和公共节点
-		nodesMap := make(map[int64]*node.Node)
-		for _, n := range groupNodes {
-			nodesMap[n.Id] = n
-		}
-		for _, n := range publicNodes {
-			if _, exists := nodesMap[n.Id]; !exists {
-				nodesMap[n.Id] = n
-			}
-		}
-
-		// 转换为切片
-		var result []*node.Node
-		for _, n := range nodesMap {
-			result = append(result, n)
-		}
+		// 3. 合并分组节点和公共节点（按 Id 去重，分组节点优先）
+		result := mergeGroupAndPublicNodes(groupNodes, publicNodes)
 
 		l.Debugf("[Generate Subscribe]total nodes (group + public): %d (group: %d, public: %d)", len(result), len(groupNodes), len(publicNodes))
 
@@ -505,7 +490,7 @@ func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.
 	enable := true
 	isHidden := false
 	_, nodes, err := l.svc.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:         0,
+		Page:         1,
 		Size:         1000,
 		NodeGroupIds: []int64{expiredGroup.Id},
 		Enabled:      &enable,
@@ -555,4 +540,58 @@ func filterNodesByProtocol(nodes []*node.Node, protocolType string) []*node.Node
 		}
 	}
 	return filtered
+}
+
+// collectGroupIds 收集所有分组 ID：主节点组 + 备用节点组，自动去重
+// 优先级：userSubNodeGroupId > subNodeGroupId（作为主节点组）
+// 始终合并 subNodeGroupIds 中的备用节点组
+func collectGroupIds(userSubNodeGroupId int64, subNodeGroupId int64, subNodeGroupIds []int64) []int64 {
+	var result []int64
+	seen := make(map[int64]bool)
+
+	// 确定主节点组
+	primaryId := subNodeGroupId
+	if userSubNodeGroupId != 0 {
+		primaryId = userSubNodeGroupId
+	}
+	if primaryId != 0 {
+		result = append(result, primaryId)
+		seen[primaryId] = true
+	}
+
+	// 合并所有备用节点组（去重）
+	for _, gid := range subNodeGroupIds {
+		if gid > 0 && !seen[gid] {
+			result = append(result, gid)
+			seen[gid] = true
+		}
+	}
+
+	return result
+}
+
+// mergeGroupAndPublicNodes 合并分组节点和公共节点，按 Id 去重，保持 sort 顺序
+// 分组节点优先：如果同一 Id 同时出现在分组和公共节点中，保留分组版本
+func mergeGroupAndPublicNodes(groupNodes, publicNodes []*node.Node) []*node.Node {
+	nodesMap := make(map[int64]*node.Node)
+	var order []int64
+
+	for _, n := range groupNodes {
+		if _, exists := nodesMap[n.Id]; !exists {
+			order = append(order, n.Id)
+		}
+		nodesMap[n.Id] = n
+	}
+	for _, n := range publicNodes {
+		if _, exists := nodesMap[n.Id]; !exists {
+			order = append(order, n.Id)
+			nodesMap[n.Id] = n
+		}
+	}
+
+	result := make([]*node.Node, 0, len(order))
+	for _, id := range order {
+		result = append(result, nodesMap[id])
+	}
+	return result
 }

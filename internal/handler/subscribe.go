@@ -6,6 +6,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/logic/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -20,10 +21,12 @@ func SubscribeHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 		req := types.SubscribeRequest{
 			Token:  string(ctx.GetHeader("token")),
 			UA:     string(ctx.UserAgent()),
-			Flag:   ctx.Query("flag"),
 			Type:   ctx.Query("type"),
+			Agent:  ctx.Query("agent"),
 			Params: getQueryMap(ctx),
 		}
+		// 筛选协议类型，只允许支持的协议
+		req.Type = filterSupportedProtocol(req.Type)
 		if req.Token == "" {
 			req.Token = ctx.Query("token")
 		}
@@ -71,8 +74,9 @@ func PanDomainSubscribeHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 
 		writeSubscribeResponse(c, ctx, svcCtx, types.SubscribeRequest{
 			Token:  domainArr[0],
-			Flag:   domainArr[1],
 			UA:     ua,
+			Type:   filterSupportedProtocol(ctx.Query("type")),
+			Agent:  ctx.Query("agent"),
 			Params: getQueryMap(ctx),
 		})
 	}
@@ -108,6 +112,32 @@ func writeSubscribeResponse(c context.Context, ctx *app.RequestContext, svcCtx *
 	}
 	ctx.Header("subscription-userinfo", resp.Header)
 	ctx.Data(consts.StatusOK, "text/plain; charset=utf-8", resp.Config)
+}
+
+// supportedProtocols 已支持的协议类型集合
+var supportedProtocols = map[string]bool{
+	string(config.Shadowsocks): true,
+	string(config.Trojan):      true,
+	string(config.Vmess):       true,
+	string(config.Vless):       true,
+	string(config.Hysteria):    true,
+	string(config.Tuic):        true,
+	string(config.AnyTLS):      true,
+	string(config.Socks):       true,
+	string(config.Naive):       true,
+	string(config.HTTP):        true,
+	string(config.Mieru):       true,
+}
+
+// filterSupportedProtocol 筛选协议类型，只返回支持的协议，不支持的返回空字符串
+func filterSupportedProtocol(protocolType string) string {
+	if protocolType == "" {
+		return ""
+	}
+	if supportedProtocols[strings.ToLower(protocolType)] {
+		return strings.ToLower(protocolType)
+	}
+	return ""
 }
 
 func getQueryMap(ctx *app.RequestContext) map[string]string {

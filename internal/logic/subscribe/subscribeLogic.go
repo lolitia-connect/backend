@@ -60,21 +60,45 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 
 	var targetApp, defaultApp *client.SubscribeApplication
 
-	for _, item := range clients {
-		u := strings.ToLower(item.UserAgent)
-		if item.IsDefault {
-			defaultApp = item
-		}
-
-		if strings.Contains(userAgent, u) {
-			// Special handling for Stash
-			if strings.Contains(userAgent, "stash") && !strings.Contains(u, "stash") {
-				continue
+	// If agent parameter is provided, try exact match first
+	if req.Agent != "" {
+		agentLower := strings.ToLower(strings.TrimSpace(req.Agent))
+		for _, item := range clients {
+			if strings.ToLower(item.UserAgent) == agentLower {
+				targetApp = item
+				l.Debugf("[SubscribeLogic] Exact agent match found: %s", item.UserAgent)
+				break
 			}
-			targetApp = item
-			break
 		}
 	}
+
+	// If no exact agent match, fall back to default UA fuzzy matching
+	if targetApp == nil {
+		for _, item := range clients {
+			u := strings.ToLower(item.UserAgent)
+			if item.IsDefault {
+				defaultApp = item
+			}
+
+			if strings.Contains(userAgent, u) {
+				// Special handling for Stash
+				if strings.Contains(userAgent, "stash") && !strings.Contains(u, "stash") {
+					continue
+				}
+				targetApp = item
+				break
+			}
+		}
+	} else {
+		// Still find the default app in case needed
+		for _, item := range clients {
+			if item.IsDefault {
+				defaultApp = item
+				break
+			}
+		}
+	}
+
 	if targetApp == nil {
 		l.Debugf("[SubscribeLogic] No matching client found", logger.Field("userAgent", userAgent))
 		if defaultApp == nil {
@@ -101,7 +125,7 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 	}
 
 	// Find server list by user subscribe
-	servers, err := l.getServers(userSubscribe)
+	servers, err := l.getServers(userSubscribe, req.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +261,7 @@ func (l *SubscribeLogic) logSubscribeActivity(subscribeStatus bool, userSub *use
 	}
 }
 
-func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, error) {
+func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string) ([]*node.Node, error) {
 	if l.isSubscriptionExpired(userSub) {
 		// 尝试获取过期节点组的节点
 		expiredNodes, err := l.getExpiredGroupNodes(userSub)
@@ -247,6 +271,11 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 		}
 		// 如果有符合条件的过期节点组节点，返回它们
 		if len(expiredNodes) > 0 {
+			// 按协议类型过滤节点
+			if protocolType != "" {
+				expiredNodes = filterNodesByProtocol(expiredNodes, protocolType)
+				l.Debugf("[Generate Subscribe]filtered expired nodes by protocol %s, remaining: %d", protocolType, len(expiredNodes))
+			}
 			l.Debugf("[Generate Subscribe]user %d can use expired node group, nodes count: %d", userSub.UserId, len(expiredNodes))
 			return expiredNodes, nil
 		}
@@ -374,6 +403,12 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 			}
 		}
 
+		// 按协议类型过滤节点
+		if protocolType != "" {
+			result = filterNodesByProtocol(result, protocolType)
+			l.Debugf("[Generate Subscribe]filtered by protocol %s, remaining nodes: %d", protocolType, len(result))
+		}
+
 		return result, nil
 	}
 
@@ -404,6 +439,13 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe) ([]*node.Node, erro
 	}
 
 	l.Debugf("[Generate Subscribe]found %d nodes in tag mode", len(nodes))
+
+	// 按协议类型过滤节点
+	if protocolType != "" {
+		nodes = filterNodesByProtocol(nodes, protocolType)
+		l.Debugf("[Generate Subscribe]filtered by protocol %s, remaining nodes: %d", protocolType, len(nodes))
+	}
+
 	return nodes, nil
 }
 
@@ -501,4 +543,16 @@ func (l *SubscribeLogic) getAccessibleNodeGroup(nodeGroupId int64, accessType st
 
 	nodeGroup.Type = group.MustNodeGroupType(nodeGroup.Type)
 	return &nodeGroup
+}
+
+// filterNodesByProtocol 按协议类型过滤节点
+func filterNodesByProtocol(nodes []*node.Node, protocolType string) []*node.Node {
+	protocolLower := strings.ToLower(protocolType)
+	var filtered []*node.Node
+	for _, n := range nodes {
+		if strings.ToLower(n.Protocol) == protocolLower {
+			filtered = append(filtered, n)
+		}
+	}
+	return filtered
 }

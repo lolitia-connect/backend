@@ -35,7 +35,6 @@ func PanDomainMiddleware(svc *svc.ServiceContext) func(c *hertzx.Context) {
 			domainFirst := domainArr[0]
 			request := types.SubscribeRequest{
 				Token: domainFirst,
-				Flag:  domainArr[1],
 				UA:    c.Request.Header.Get("User-Agent"),
 			}
 			l := subscribe.NewSubscribeLogic(c.Request.Context(), svc, subscribe.RequestMeta{

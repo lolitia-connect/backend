@@ -3,6 +3,7 @@ package httpserver
 import (
 	"context"
 	"crypto/tls"
+	"os"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
@@ -43,6 +44,7 @@ func newServer(svc *svc.ServiceContext, opts []config.Option) *Server {
 func (s *Server) Start() {
 	if err := s.h.Run(); err != nil {
 		logger.Errorf("server start error: %s", err.Error())
+		os.Exit(1)
 	}
 }
 

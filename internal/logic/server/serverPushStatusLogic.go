@@ -27,13 +27,8 @@ func NewServerPushStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 }
 
 func (l *ServerPushStatusLogic) ServerPushStatus(req *types.ServerPushStatusRequest) error {
-	// Find server info
-	serverInfo, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.ServerId)
-	if err != nil || serverInfo.Id <= 0 {
-		l.Errorw("[PushOnlineUsers] FindOne error", logger.Field("error", err))
-		return errors.New("server not found")
-	}
-	err = l.svcCtx.Store.Node().UpdateStatusCache(l.ctx, req.ServerId, &node.Status{
+	// Update node status cache
+	err := l.svcCtx.Store.Node().UpdateStatusCache(l.ctx, req.ServerId, &node.Status{
 		Cpu:       req.Cpu,
 		Mem:       req.Mem,
 		Disk:      req.Disk,
@@ -43,13 +38,12 @@ func (l *ServerPushStatusLogic) ServerPushStatus(req *types.ServerPushStatusRequ
 		l.Errorw("[ServerPushStatus] UpdateNodeStatus error", logger.Field("error", err))
 		return errors.New("update node status failed")
 	}
-	now := time.Now().UTC() // Use UTC explicitly to avoid timezone mismatch with PostgreSQL session timezone (#146)
-	serverInfo.LastReportedAt = &now
 
-	err = l.svcCtx.Store.Node().UpdateServer(l.ctx, serverInfo)
-	if err != nil {
-		l.Errorw("[ServerPushStatus] UpdateServer error", logger.Field("error", err))
-		return nil
+	// Update only last_reported_at to avoid optimistic locking conflicts
+	// when multiple nodes report status simultaneously.
+	now := time.Now().UTC() // Use UTC explicitly to avoid timezone mismatch with PostgreSQL session timezone (#146)
+	if err := l.svcCtx.Store.Node().UpdateServerLastReportedAt(l.ctx, req.ServerId, now); err != nil {
+		l.Errorw("[ServerPushStatus] UpdateServerLastReportedAt error", logger.Field("error", err))
 	}
 
 	return nil

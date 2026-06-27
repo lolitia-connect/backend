@@ -11,7 +11,6 @@ import (
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	task "github.com/perfect-panel/server/queue/types"
-	"github.com/pkg/errors"
 )
 
 //goland:noinspection GoNameStartsWithPackageName
@@ -31,16 +30,9 @@ func NewServerPushUserTrafficLogic(ctx context.Context, svcCtx *svc.ServiceConte
 }
 
 func (l *ServerPushUserTrafficLogic) ServerPushUserTraffic(req *types.ServerPushUserTrafficRequest) error {
-	// Find server info
-	serverInfo, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.ServerId)
-	if err != nil {
-		l.Errorw("[PushOnlineUsers] FindOne error", logger.Field("error", err))
-		return errors.New("server not found")
-	}
-
 	// Create traffic task
 	var request task.TrafficStatistics
-	request.ServerId = serverInfo.Id
+	request.ServerId = req.ServerId
 	request.Protocol = req.Protocol
 	tool.DeepCopy(&request.Logs, req.Traffic)
 
@@ -54,14 +46,11 @@ func (l *ServerPushUserTrafficLogic) ServerPushUserTraffic(req *types.ServerPush
 		l.Infow("[ServerPushUserTraffic] Push traffic task success", logger.Field("task", t.Type()), logger.Field("info", string(info.Payload)))
 	}
 
-	// Update server last reported time
+	// Update only last_reported_at to avoid optimistic locking conflicts
 	now := time.Now().UTC() // Use UTC explicitly to avoid timezone mismatch with PostgreSQL session timezone (#146)
-	serverInfo.LastReportedAt = &now
-
-	err = l.svcCtx.Store.Node().UpdateServer(l.ctx, serverInfo)
-	if err != nil {
-		l.Errorw("[ServerPushUserTraffic] UpdateServer error", logger.Field("error", err))
-		return nil
+	if err := l.svcCtx.Store.Node().UpdateServerLastReportedAt(l.ctx, req.ServerId, now); err != nil {
+		l.Errorw("[ServerPushUserTraffic] UpdateServerLastReportedAt error", logger.Field("error", err))
 	}
+
 	return nil
 }

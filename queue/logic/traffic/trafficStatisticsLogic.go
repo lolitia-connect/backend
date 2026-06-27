@@ -11,6 +11,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/traffic"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/queue/types"
 )
@@ -99,32 +100,32 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 		d := int64(float32(log.Download) * ratio * realTimeMultiplier)
 		u := int64(float32(log.Upload) * ratio * realTimeMultiplier)
 		isExpired := sub.Status == 3 // Status 3 = Expired
-		if err := l.svc.Store.User().UpdateUserSubscribeWithTraffic(ctx, sub.Id, d, u, isExpired); err != nil {
-			logger.WithContext(ctx).Error("[TrafficStatistics] Update user subscribe with log failed",
-				logger.Field("sid", log.SID),
-				logger.Field("download", float32(log.Download)*ratio),
-				logger.Field("upload", float32(log.Upload)*ratio),
-				logger.Field("is_expired", isExpired),
-				logger.Field("error", err.Error()),
-			)
-			continue
-		}
 
-		// create log log
-		if err = l.svc.Store.TrafficLog().Insert(ctx, &traffic.TrafficLog{
-			ServerId:    payload.ServerId,
-			SubscribeId: log.SID,
-			UserId:      sub.UserId,
-			Upload:      u,
-			Download:    d,
-			Timestamp:   now,
+		// Wrap update + insert in a transaction to ensure atomicity.
+		// If either operation fails, both are rolled back to keep data consistent.
+		if err := l.svc.Store.InTx(ctx, func(txStore repository.Store) error {
+			if err := txStore.User().UpdateUserSubscribeWithTraffic(ctx, sub.Id, d, u, isExpired); err != nil {
+				return err
+			}
+			if err := txStore.TrafficLog().Insert(ctx, &traffic.TrafficLog{
+				ServerId:    payload.ServerId,
+				SubscribeId: log.SID,
+				UserId:      sub.UserId,
+				Upload:      u,
+				Download:    d,
+				Timestamp:   now,
+			}); err != nil {
+				return err
+			}
+			return nil
 		}); err != nil {
-			logger.WithContext(ctx).Error("[TrafficStatistics] Create log log failed",
+			logger.WithContext(ctx).Error("[TrafficStatistics] Transaction failed",
 				logger.Field("uid", log.SID),
 				logger.Field("download", float32(log.Download)*ratio),
 				logger.Field("upload", float32(log.Upload)*ratio),
 				logger.Field("error", err.Error()),
 			)
+			continue
 		}
 	}
 	return nil

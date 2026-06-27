@@ -19,6 +19,7 @@ type customServerLogicModel interface {
 	QueryServerSorts(ctx context.Context) ([]SortItem, error)
 	UpdateNodeSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerSort(ctx context.Context, id int64, sort int64) error
+	UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error
 	QueryNodeTags(ctx context.Context) ([]string, error)
 	CountEnabledNodes(ctx context.Context) (int64, error)
 	CountServersByReportStatus(ctx context.Context, cutoff time.Time) (int64, int64, error)
@@ -106,6 +107,13 @@ func (m *customServerModel) UpdateServerSort(ctx context.Context, id int64, sort
 	}
 	server.Sort = int(sort)
 	return m.UpdateServer(ctx, server)
+}
+
+// UpdateServerLastReportedAt updates only the last_reported_at field,
+// avoiding full-row updates that cause optimistic locking conflicts
+// when multiple nodes report status simultaneously.
+func (m *customServerModel) UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error {
+	return m.WithContext(ctx).Model(&Server{}).Where("id = ?", id).Update("last_reported_at", t).Error
 }
 
 // FilterNodeList Filter Node List

@@ -23,27 +23,27 @@ const (
 )
 
 type SubscribeDetails struct {
-	Id          int64                `gorm:"primarykey"`
-	UserId      int64                `gorm:"index:idx_user_id;not null;comment:User ID"`
-	User        *User                `gorm:"foreignKey:UserId;references:Id"`
-	OrderId     int64                `gorm:"index:idx_order_id;not null;comment:Order ID"`
-	SubscribeId int64                `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
-	Subscribe   *subscribe.Subscribe `gorm:"foreignKey:SubscribeId;references:Id"`
-	NodeGroupId int64                `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
-	GroupLocked *bool                `gorm:"type:tinyint(1);not null;default:0;comment:Group Locked"`
-	StartTime   time.Time            `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
-	ExpireTime  time.Time            `gorm:"default:NULL;comment:Subscription Expire Time"`
-	FinishedAt  *time.Time           `gorm:"default:NULL;comment:Finished Time"`
+	Id               int64                `gorm:"primarykey"`
+	UserId           int64                `gorm:"index:idx_user_id;not null;comment:User ID"`
+	User             *User                `gorm:"foreignKey:UserId;references:Id"`
+	OrderId          int64                `gorm:"index:idx_order_id;not null;comment:Order ID"`
+	SubscribeId      int64                `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
+	Subscribe        *subscribe.Subscribe `gorm:"foreignKey:SubscribeId;references:Id"`
+	NodeGroupId      int64                `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
+	GroupLocked      *bool                `gorm:"type:tinyint(1);not null;default:0;comment:Group Locked"`
+	StartTime        time.Time            `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
+	ExpireTime       time.Time            `gorm:"default:NULL;comment:Subscription Expire Time"`
+	FinishedAt       *time.Time           `gorm:"default:NULL;comment:Finished Time"`
 	Traffic          int64                `gorm:"default:0;comment:Traffic"`
 	TrafficUnlimited bool                 `gorm:"default:false;not null;comment:Traffic Unlimited"`
 	Download         int64                `gorm:"default:0;comment:Download Traffic"`
-	Upload      int64                `gorm:"default:0;comment:Upload Traffic"`
-	Token       string               `gorm:"index:idx_token;unique;type:varchar(255);default:'';comment:Token"`
-	UUID        string               `gorm:"type:varchar(255);unique;index:idx_uuid;default:'';comment:UUID"`
-	Status      uint8                `gorm:"type:tinyint(1);default:0;comment:Subscription Status: 0: Pending 1: Active 2: Finished 3: Expired; 4: Cancelled"`
-	Note        string               `gorm:"type:varchar(500);default:'';comment:User note for subscription"`
-	CreatedAt   time.Time            `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt   time.Time            `gorm:"comment:Update Time"`
+	Upload           int64                `gorm:"default:0;comment:Upload Traffic"`
+	Token            string               `gorm:"index:idx_token;unique;type:varchar(255);default:'';comment:Token"`
+	UUID             string               `gorm:"type:varchar(255);unique;index:idx_uuid;default:'';comment:UUID"`
+	Status           uint8                `gorm:"type:tinyint(1);default:0;comment:Subscription Status: 0: Pending 1: Active 2: Finished 3: Expired; 4: Cancelled"`
+	Note             string               `gorm:"type:varchar(500);default:'';comment:User note for subscription"`
+	CreatedAt        time.Time            `gorm:"<-:create;comment:Creation Time"`
+	UpdatedAt        time.Time            `gorm:"comment:Update Time"`
 }
 
 type SubscribeLogFilterParams struct {
@@ -368,18 +368,6 @@ func (m *customUserModel) BatchDeleteUser(ctx context.Context, ids []int64, tx .
 }
 
 func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool, tx ...*gorm.DB) error {
-	sub, err := m.FindOneSubscribe(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	// 使用 defer 确保更新后清理缓存
-	defer func() {
-		if clearErr := m.ClearSubscribeCacheByModels(ctx, sub); clearErr != nil {
-			// 记录清理缓存错误
-		}
-	}()
-
 	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
 		if len(tx) > 0 {
 			conn = tx[0]
@@ -388,17 +376,31 @@ func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id
 		// 根据订阅状态更新对应的流量字段
 		if isExpired {
 			// 过期期间,更新过期流量字段
-			return conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
+			if err := conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
 				"expired_download": gorm.Expr("expired_download + ?", download),
 				"expired_upload":   gorm.Expr("expired_upload + ?", upload),
-			}).Error
+			}).Error; err != nil {
+				return err
+			}
 		} else {
 			// 正常期间,更新正常流量字段
-			return conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
+			if err := conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
 				"download": gorm.Expr("download + ?", download),
 				"upload":   gorm.Expr("upload + ?", upload),
-			}).Error
+			}).Error; err != nil {
+				return err
+			}
 		}
+
+		// 更新后清理缓存
+		// 注意：不调用 FindOneSubscribe 避免 PXC 的 SELECT→UPDATE 行级冲突 (Error 1020)
+		// 通过查询 token/user_id 来清理所有维度的缓存
+		var sub Subscribe
+		if err := conn.Model(&Subscribe{}).Where("id = ?", id).Select("token", "user_id").First(&sub).Error; err == nil {
+			sub.Id = id
+			_ = m.ClearSubscribeCacheByModels(ctx, &sub)
+		}
+		return nil
 	})
 }
 

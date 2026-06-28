@@ -27,6 +27,8 @@ type customServerLogicModel interface {
 	QueryEnabledNodeProtocols(ctx context.Context) ([]string, error)
 	ClearNodeCache(ctx context.Context, params *FilterNodeParams) error
 	ClearServerAllCache(ctx context.Context) error
+	SortNodesByName(ctx context.Context) error
+	SortServersByName(ctx context.Context) error
 }
 
 const (
@@ -84,7 +86,8 @@ func (m *customServerModel) FilterServerList(ctx context.Context, params *Filter
 	if len(params.Ids) > 0 {
 		query = query.Where("id IN ?", params.Ids)
 	}
-	err := query.Count(&total).Order("sort ASC").Limit(params.Size).Offset((params.Page - 1) * params.Size).Find(&servers).Error
+
+	err := query.Count(&total).Order("sort ASC, id ASC").Limit(params.Size).Offset((params.Page - 1) * params.Size).Find(&servers).Error
 	return total, servers, err
 }
 
@@ -177,7 +180,7 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 		query = query.Preload("Server")
 	}
 
-	err := query.Count(&total).Order("sort ASC").Limit(params.Size).Offset((params.Page - 1) * params.Size).Find(&nodes).Error
+	err := query.Count(&total).Order("sort ASC, id ASC").Limit(params.Size).Offset((params.Page - 1) * params.Size).Find(&nodes).Error
 	return total, nodes, err
 }
 
@@ -200,6 +203,36 @@ func (m *customServerModel) QueryNodeTags(ctx context.Context) ([]string, error)
 	var tags []string
 	err := m.WithContext(ctx).Model(&Node{}).Pluck("tags", &tags).Error
 	return tags, err
+}
+
+func (m *customServerModel) SortNodesByName(ctx context.Context) error {
+	var nodes []*Node
+	if err := m.WithContext(ctx).Model(&Node{}).Order("name ASC").Find(&nodes).Error; err != nil {
+		return err
+	}
+	for i, n := range nodes {
+		if n.Sort != i {
+			if err := m.WithContext(ctx).Model(&Node{}).Where("id = ?", n.Id).Update("sort", i).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (m *customServerModel) SortServersByName(ctx context.Context) error {
+	var servers []*Server
+	if err := m.WithContext(ctx).Model(&Server{}).Order("name ASC").Find(&servers).Error; err != nil {
+		return err
+	}
+	for i, s := range servers {
+		if s.Sort != i {
+			if err := m.WithContext(ctx).Model(&Server{}).Where("id = ?", s.Id).Update("sort", i).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (m *customServerModel) CountEnabledNodes(ctx context.Context) (int64, error) {

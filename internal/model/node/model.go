@@ -96,7 +96,7 @@ func (m *customServerModel) QueryServerList(ctx context.Context, ids []int64) (s
 
 func (m *customServerModel) QueryServerSorts(ctx context.Context) ([]SortItem, error) {
 	var items []SortItem
-	err := m.WithContext(ctx).Model(&Server{}).Select("id", "sort").Order("sort ASC").Find(&items).Error
+	err := m.WithContext(ctx).Model(&Server{}).Select("id", "sort").Order("sort ASC, id ASC").Find(&items).Error
 	return items, err
 }
 
@@ -183,7 +183,7 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 
 func (m *customServerModel) QueryNodeSorts(ctx context.Context) ([]SortItem, error) {
 	var items []SortItem
-	err := m.WithContext(ctx).Model(&Node{}).Select("id", "sort").Order("sort ASC").Find(&items).Error
+	err := m.WithContext(ctx).Model(&Node{}).Select("id", "sort").Order("sort ASC, id ASC").Find(&items).Error
 	return items, err
 }
 

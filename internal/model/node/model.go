@@ -207,7 +207,7 @@ func (m *customServerModel) QueryNodeTags(ctx context.Context) ([]string, error)
 
 func (m *customServerModel) SortNodesByName(ctx context.Context) error {
 	var nodes []*Node
-	if err := m.WithContext(ctx).Model(&Node{}).Order("name ASC").Find(&nodes).Error; err != nil {
+	if err := m.WithContext(ctx).Model(&Node{}).Order("CONVERT(name USING gbk) ASC").Find(&nodes).Error; err != nil {
 		return err
 	}
 	for i, n := range nodes {
@@ -222,7 +222,7 @@ func (m *customServerModel) SortNodesByName(ctx context.Context) error {
 
 func (m *customServerModel) SortServersByName(ctx context.Context) error {
 	var servers []*Server
-	if err := m.WithContext(ctx).Model(&Server{}).Order("name ASC").Find(&servers).Error; err != nil {
+	if err := m.WithContext(ctx).Model(&Server{}).Order("CONVERT(name USING gbk) ASC").Find(&servers).Error; err != nil {
 		return err
 	}
 	for i, s := range servers {

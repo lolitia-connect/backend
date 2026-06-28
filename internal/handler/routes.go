@@ -32,8 +32,8 @@ import (
 	publicOrder "github.com/perfect-panel/server/internal/handler/public/order"
 	publicPayment "github.com/perfect-panel/server/internal/handler/public/payment"
 	publicPortal "github.com/perfect-panel/server/internal/handler/public/portal"
-	publicServer "github.com/perfect-panel/server/internal/handler/public/server"
 	publicRedemption "github.com/perfect-panel/server/internal/handler/public/redemption"
+	publicServer "github.com/perfect-panel/server/internal/handler/public/server"
 	publicSubscribe "github.com/perfect-panel/server/internal/handler/public/subscribe"
 	publicTicket "github.com/perfect-panel/server/internal/handler/public/ticket"
 	publicUser "github.com/perfect-panel/server/internal/handler/public/user"
@@ -400,6 +400,9 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 		// Reset node sort
 		adminServerGroupRouter.POST("/node/sort", adminServer.ResetSortWithNodeHandler(serverCtx))
 
+		// Sort nodes by name
+		adminServerGroupRouter.POST("/node/sort-by-name", adminServer.SortByNameNodeHandler(serverCtx))
+
 		// Toggle Node Status
 		adminServerGroupRouter.POST("/node/status/toggle", adminServer.ToggleNodeStatusHandler(serverCtx))
 
@@ -420,6 +423,9 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 
 		// Reset server sort
 		adminServerGroupRouter.POST("/server/sort", adminServer.ResetSortWithServerHandler(serverCtx))
+
+		// Sort servers by name
+		adminServerGroupRouter.POST("/server/sort-by-name", adminServer.SortByNameServerHandler(serverCtx))
 
 		// Update Server
 		adminServerGroupRouter.POST("/update", adminServer.UpdateServerHandler(serverCtx))

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"sort"
 
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/repository"
@@ -44,17 +45,27 @@ func (l *ResetSortWithNodeLogic) ResetSortWithNode(req *types.ResetSortRequest) 
 		}
 
 		// Separate non-request items (preserve relative order) and
-		// request items (in the order received from the frontend).
+		// request items (in the new order sent by the frontend).
 		nonReqItems := make([]node.SortItem, 0, len(allSorts))
-		var reqItems []node.SortItem
+		reqIdSet := make(map[int64]bool, len(req.Sort))
+		for _, item := range req.Sort {
+			reqIdSet[item.Id] = true
+		}
 
 		for _, item := range allSorts {
-			if _, ok := reqMap[item.Id]; ok {
-				reqItems = append(reqItems, node.SortItem{Id: item.Id, Sort: reqMap[item.Id]})
-			} else {
+			if !reqIdSet[item.Id] {
 				nonReqItems = append(nonReqItems, item)
 			}
 		}
+
+		// Build request items in the order sent by the frontend (sorted by new sort value).
+		reqItems := make([]node.SortItem, len(req.Sort))
+		for i, item := range req.Sort {
+			reqItems[i] = node.SortItem{Id: item.Id, Sort: item.Sort}
+		}
+		sort.Slice(reqItems, func(i, j int) bool {
+			return reqItems[i].Sort < reqItems[j].Sort
+		})
 
 		// If the frontend sent no items, nothing to do.
 		if len(reqItems) == 0 {

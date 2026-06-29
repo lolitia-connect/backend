@@ -63,7 +63,9 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/mojocn/base64Captcha v1.3.8
 	github.com/oschwald/geoip2-golang v1.13.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/spaolacci/murmur3 v1.1.0
+	github.com/tetratelabs/wazero v1.12.0
 	google.golang.org/grpc v1.64.1
 	google.golang.org/protobuf v1.36.10
 	gorm.io/driver/postgres v1.6.0
@@ -126,7 +128,6 @@ require (
 	github.com/openzipkin/zipkin-go v0.4.2 // indirect
 	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/smartwalle/ncrypto v1.0.4 // indirect
 	github.com/smartwalle/ngx v1.0.9 // indirect
@@ -149,7 +150,7 @@ require (
 	golang.org/x/image v0.23.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240513163218-0867130af1f8 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240513163218-0867130af1f8 // indirect

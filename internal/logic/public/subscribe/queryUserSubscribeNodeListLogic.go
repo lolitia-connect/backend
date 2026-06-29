@@ -89,7 +89,7 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 
 func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (userSubscribeNodes []*types.UserSubscribeNodeInfo, err error) {
 	userSubscribeNodes = make([]*types.UserSubscribeNodeInfo, 0)
-	if l.isSubscriptionExpired(userSub) {
+	if l.isSubscriptionExpired(userSub) || l.isTrafficExhausted(userSub) {
 		nodes, err := l.createExpiredServers(userSub)
 		if err != nil {
 			return nil, err
@@ -228,6 +228,12 @@ func (l *QueryUserSubscribeNodeListLogic) filterSubscribeNodes(nodeIds []int64, 
 
 func (l *QueryUserSubscribeNodeListLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
 	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
+}
+
+// isTrafficExhausted reports whether the subscription has used up its traffic
+// quota (Traffic == 0 means unlimited).
+func (l *QueryUserSubscribeNodeListLogic) isTrafficExhausted(userSub *user.Subscribe) bool {
+	return userSub.Traffic > 0 && userSub.Download+userSub.Upload >= userSub.Traffic
 }
 
 func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Subscribe) ([]*types.UserSubscribeNodeInfo, error) {

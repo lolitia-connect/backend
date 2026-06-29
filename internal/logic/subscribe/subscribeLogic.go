@@ -284,6 +284,10 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
+	if l.isTrafficExhausted(userSub) {
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.TrafficExhausted), "traffic exhausted")
+	}
+
 	subDetails, err := l.svc.Store.Subscribe().FindOne(l.ctx, userSub.SubscribeId)
 	if err != nil {
 		l.Errorw("[Generate Subscribe]find subscribe details error: %v", logger.Field("error", err.Error()))
@@ -509,6 +513,13 @@ func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.
 
 	l.Infof("[SubscribeLogic]returned %d nodes from expired group for user %d (expired %d days)", len(nodes), userSub.UserId, expiredDays)
 	return nodes, nil
+}
+
+// isTrafficExhausted reports whether the subscription has used up its traffic
+// quota. Traffic == 0 means unlimited. Mirrors the condition used by
+// FindTrafficExceededSubscribes (upload + download >= traffic AND traffic > 0).
+func (l *SubscribeLogic) isTrafficExhausted(userSub *user.Subscribe) bool {
+	return userSub.Traffic > 0 && userSub.Download+userSub.Upload >= userSub.Traffic
 }
 
 func (l *SubscribeLogic) getAccessibleNodeGroup(nodeGroupId int64, accessType string) *group.NodeGroup {

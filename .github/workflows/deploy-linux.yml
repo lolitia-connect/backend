@@ -2,7 +2,8 @@ name: Build Linux Binary
 
 on:
   push:
-    branches: [ main, master ]
+    branches:
+      - '**'
     tags:
       - 'v*'
   workflow_dispatch:

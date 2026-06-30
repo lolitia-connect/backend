@@ -10,4 +10,5 @@ const (
 	CtxKeyPayment     CtxKey = "payment"
 	CtxLoginType      CtxKey = "loginType"
 	CtxKeyIdentifier  CtxKey = "identifier"
+	LoginType         CtxKey = "LoginType"
 )

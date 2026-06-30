@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"time"
 
 	"github.com/perfect-panel/server/pkg/logger"
 
@@ -50,21 +51,22 @@ func CalculateRemainingAmount(ctx context.Context, svcCtx *svc.ServiceContext, u
 	// Calculate Remaining Amount
 	remainingAmount, err := deduction.CalculateRemainingAmount(
 		deduction.Subscribe{
-			StartTime:         userSubscribe.StartTime,
-			ExpireTime:        userSubscribe.ExpireTime,
-			Traffic:           userSubscribe.Traffic,
-			TrafficUnlimited:  userSubscribe.TrafficUnlimited,
-			Download:          userSubscribe.Download,
-			Upload:            userSubscribe.Upload,
-			UnitTime:          userSubscribe.Subscribe.UnitTime,
-			UnitPrice:         userSubscribe.Subscribe.UnitPrice,
-			ResetCycle:        userSubscribe.Subscribe.ResetCycle,
-			DeductionRatio:    userSubscribe.Subscribe.DeductionRatio,
+			StartTime:        userSubscribe.StartTime,
+			ExpireTime:       userSubscribe.ExpireTime,
+			Traffic:          userSubscribe.Traffic,
+			TrafficUnlimited: userSubscribe.TrafficUnlimited,
+			Download:         userSubscribe.Download,
+			Upload:           userSubscribe.Upload,
+			UnitTime:         userSubscribe.Subscribe.UnitTime,
+			UnitPrice:        userSubscribe.Subscribe.UnitPrice,
+			ResetCycle:       userSubscribe.Subscribe.ResetCycle,
+			DeductionRatio:   userSubscribe.Subscribe.DeductionRatio,
 		},
 		deduction.Order{
 			Amount:   orderAmount,
 			Quantity: orderQuantity,
 		},
+		time.Now(),
 	)
 	if err != nil {
 		return 0, errors.Wrapf(xerr.NewErrCode(500), "CalculateRemainingAmount failed, userSubscribeId: %d, err: %v", userSubscribeId, err)

@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"math"
 	"time"
-
-	"github.com/perfect-panel/server/pkg/tool"
 )
 
 const (
@@ -147,7 +145,7 @@ func safeDivide(a, b int64) (int64, error) {
 
 // CalculateRemainingAmount calculates the remaining refund amount for a subscription
 // based on unused time and traffic. Returns the amount and any calculation errors.
-func CalculateRemainingAmount(sub Subscribe, order Order) (int64, error) {
+func CalculateRemainingAmount(sub Subscribe, order Order, now time.Time) (int64, error) {
 	if err := sub.Validate(); err != nil {
 		return 0, fmt.Errorf("invalid subscription: %w", err)
 	}
@@ -166,13 +164,18 @@ func CalculateRemainingAmount(sub Subscribe, order Order) (int64, error) {
 	}
 	sub.UnitPrice = unitPrice
 
+	// Note: do NOT convert now to a specific timezone here.
+	// MySQL datetime(3) is stored without timezone and read as UTC by Go.
+	// time.Now() runs on the same server, so both use the same implicit timezone.
+	// Converting now to StartTime's timezone would create a mismatch.
+
 	switch sub.UnitTime {
 	case UnitTimeNoLimit:
 		return calculateNoLimitAmount(sub, order)
 
 	default:
 		// Year, Month, Day: all use the same formula: unitPrice × (remainingDays / totalDays)
-		return calculateRemainingUnitTimeAmount(sub)
+		return calculateRemainingUnitTimeAmount(sub, now)
 	}
 }
 
@@ -200,8 +203,7 @@ func calculateNoLimitAmount(sub Subscribe, order Order) (int64, error) {
 
 // calculateRemainingUnitTimeAmount calculates the remaining amount based on
 // both time and traffic usage, applying deduction ratios when specified
-func calculateRemainingUnitTimeAmount(sub Subscribe) (int64, error) {
-	now := time.Now()
+func calculateRemainingUnitTimeAmount(sub Subscribe, now time.Time) (int64, error) {
 	trafficWeight, timeWeight := calculateWeights(sub.DeductionRatio)
 	remainingDays, totalDays := getRemainingAndTotalDays(sub, now)
 
@@ -247,36 +249,18 @@ func calculateWeights(deductionRatio int64) (float64, float64) {
 }
 
 // getRemainingAndTotalDays calculates remaining and total days based on
-// the subscription's reset cycle configuration.
+// the subscription's actual start and expire times.
+// ResetCycle controls traffic reset frequency, NOT the refund calculation period.
 func getRemainingAndTotalDays(sub Subscribe, now time.Time) (int64, int64) {
-	switch sub.ResetCycle {
-	case ResetCycleNone:
-		remaining := sub.ExpireTime.Sub(now).Hours() / 24
-		total := sub.ExpireTime.Sub(sub.StartTime).Hours() / 24
-		if remaining < 0 {
-			remaining = 0
-		}
-		if total < 0 {
-			total = 0
-		}
-		return int64(remaining), int64(total)
-
-	case ResetCycle1st:
-		return tool.DaysToNextMonth(now), tool.GetLastDayOfMonth(now)
-
-	case ResetCycleMonthly:
-		remaining := tool.DaysToMonthDay(now, sub.StartTime.Day()) - 1
-		total := tool.DaysToMonthDay(now, sub.StartTime.Day())
-		if remaining < 0 {
-			remaining = 0
-		}
-		return remaining, total
-
-	case ResetCycleYear:
-		return tool.DaysToYearDay(now, int(sub.StartTime.Month()), sub.StartTime.Day()),
-			tool.GetYearDays(now, int(sub.StartTime.Month()), sub.StartTime.Day())
+	remaining := sub.ExpireTime.Sub(now).Hours() / 24
+	total := sub.ExpireTime.Sub(sub.StartTime).Hours() / 24
+	if remaining < 0 {
+		remaining = 0
 	}
-	return 0, 0
+	if total < 0 {
+		total = 0
+	}
+	return int64(remaining), int64(total)
 }
 
 // calculateWeightedAmount applies weighted calculation combining both time and traffic

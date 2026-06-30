@@ -56,7 +56,7 @@ func DaysToMonthDay(t time.Time, targetDay int) int64 {
 
 	// 如果当前号数大于目标号数，计算本月目标号数
 	if currentDay > targetDay {
-		targetDate = getValidDate(year, month, targetDay, t.Location())
+		targetDate = GetValidDate(year, month, targetDay, t.Location())
 	} else { // 如果当前号数小于等于目标号数，计算上个月目标号数
 		if month == time.January {
 			year--
@@ -64,7 +64,7 @@ func DaysToMonthDay(t time.Time, targetDay int) int64 {
 		} else {
 			month--
 		}
-		targetDate = getValidDate(year, month, targetDay, t.Location())
+		targetDate = GetValidDate(year, month, targetDay, t.Location())
 	}
 
 	// 计算时间差
@@ -88,7 +88,8 @@ func DaysToNextMonth(t time.Time) int64 {
 	return int64(duration.Hours() / 24) // 转换为整天数
 }
 
-func getValidDate(year int, month time.Month, day int, loc *time.Location) time.Time {
+// GetValidDate 返回指定年月日的有效日期，如果目标日超过当月天数则使用最后一天
+func GetValidDate(year int, month time.Month, day int, loc *time.Location) time.Time {
 	// 构造当月的 1 号
 	firstOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, loc)
 

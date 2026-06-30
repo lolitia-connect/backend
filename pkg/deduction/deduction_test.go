@@ -608,6 +608,67 @@ func TestCalculateRemainingAmount(t *testing.T) {
 	}
 }
 
+func TestCalculateRemainingAmount_MonthResetCycleNone(t *testing.T) {
+	now := time.Now()
+	t.Logf("Current time: %v, day: %d", now, now.Day())
+
+	tests := []struct {
+		name         string
+		startOffset  time.Duration
+		expireOffset time.Duration
+		wantPositive bool
+	}{
+		{
+			name:         "just purchased today",
+			startOffset:  0,
+			expireOffset: 30 * 24 * time.Hour,
+			wantPositive: true,
+		},
+		{
+			name:         "purchased 15 days ago",
+			startOffset:  -15 * 24 * time.Hour,
+			expireOffset: 15 * 24 * time.Hour,
+			wantPositive: true,
+		},
+		{
+			name:         "purchased 29 days ago, 1 day left",
+			startOffset:  -29 * 24 * time.Hour,
+			expireOffset: 1 * 24 * time.Hour,
+			wantPositive: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sub := Subscribe{
+				StartTime:        now.Add(tt.startOffset),
+				ExpireTime:       now.Add(tt.expireOffset),
+				Traffic:          1000,
+				Download:         0,
+				Upload:           0,
+				TrafficUnlimited: true,
+				UnitTime:         UnitTimeMonth,
+				ResetCycle:       ResetCycleNone,
+				DeductionRatio:   0,
+			}
+			order := Order{
+				Amount:   1000,
+				Quantity: 1,
+			}
+
+			got, err := CalculateRemainingAmount(sub, order)
+			if err != nil {
+				t.Errorf("CalculateRemainingAmount() error = %v", err)
+				return
+			}
+			t.Logf("remaining value: %d", got)
+			if tt.wantPositive && got <= 0 {
+				t.Errorf("CalculateRemainingAmount() = %d, want > 0", got)
+			}
+		})
+	}
+}
+
 func TestCalculateRemainingAmount_NoLimitWithResetCycle(t *testing.T) {
 	now := time.Now()
 	sub := Subscribe{

@@ -691,6 +691,36 @@ func TestCalculateRemainingAmount_NoLimitWithResetCycle(t *testing.T) {
 		t.Errorf("CalculateRemainingAmount() error = %v", err)
 		return
 	}
+	// NoLimit + ResetCycle!=0: has reset cycle, should calculate based on remaining traffic
+	// remaining traffic = 1000 - 300 - 200 = 500, result = 500/1000 * 1000 = 500
+	if got != 500 {
+		t.Errorf("CalculateRemainingAmount() = %v, want 500", got)
+	}
+}
+
+func TestCalculateRemainingAmount_NoLimitNoResetCycle(t *testing.T) {
+	now := time.Now()
+	sub := Subscribe{
+		StartTime:      now.Add(-24 * time.Hour),
+		ExpireTime:     now.Add(24 * time.Hour),
+		Traffic:        1000,
+		Download:       300,
+		Upload:         200,
+		UnitTime:       UnitTimeNoLimit,
+		ResetCycle:     ResetCycleNone,
+		DeductionRatio: 0,
+	}
+	order := Order{
+		Amount:   1000,
+		Quantity: 1,
+	}
+
+	got, err := CalculateRemainingAmount(sub, order)
+	if err != nil {
+		t.Errorf("CalculateRemainingAmount() error = %v", err)
+		return
+	}
+	// NoLimit + ResetCycle==0: truly unlimited, cannot cancel
 	if got != 0 {
 		t.Errorf("CalculateRemainingAmount() = %v, want 0", got)
 	}

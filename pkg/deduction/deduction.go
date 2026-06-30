@@ -156,7 +156,7 @@ func CalculateRemainingAmount(sub Subscribe, order Order) (int64, error) {
 		return 0, fmt.Errorf("invalid order: %w", err)
 	}
 
-	if sub.UnitTime == UnitTimeNoLimit && sub.ResetCycle != 0 {
+	if sub.UnitTime == UnitTimeNoLimit && sub.ResetCycle == 0 {
 		return 0, nil
 	}
 
@@ -166,75 +166,14 @@ func CalculateRemainingAmount(sub Subscribe, order Order) (int64, error) {
 	}
 	sub.UnitPrice = unitPrice
 
-	loc, err := time.LoadLocation(sub.StartTime.Location().String())
-	if err != nil {
-		loc = time.UTC
-	}
-	now := time.Now().In(loc)
-
 	switch sub.UnitTime {
 	case UnitTimeNoLimit:
 		return calculateNoLimitAmount(sub, order)
 
-	case UnitTimeYear:
-		remainingYears := tool.YearDiff(now, sub.ExpireTime)
-		remainingUnitTimeAmount, err := calculateRemainingUnitTimeAmount(sub)
-		if err != nil {
-			return 0, err
-		}
-
-		yearAmount, err := safeMultiply(int64(remainingYears), sub.UnitPrice)
-		if err != nil {
-			return 0, fmt.Errorf("year calculation overflow: %w", err)
-		}
-
-		total, err := safeAdd(yearAmount, remainingUnitTimeAmount)
-		if err != nil {
-			return 0, fmt.Errorf("total calculation overflow: %w", err)
-		}
-
-		return total, nil
-
-	case UnitTimeMonth:
-		remainingMonths := tool.MonthDiff(now, sub.ExpireTime)
-		remainingUnitTimeAmount, err := calculateRemainingUnitTimeAmount(sub)
-		if err != nil {
-			return 0, err
-		}
-
-		monthAmount, err := safeMultiply(int64(remainingMonths), sub.UnitPrice)
-		if err != nil {
-			return 0, fmt.Errorf("month calculation overflow: %w", err)
-		}
-
-		total, err := safeAdd(monthAmount, remainingUnitTimeAmount)
-		if err != nil {
-			return 0, fmt.Errorf("total calculation overflow: %w", err)
-		}
-
-		return total, nil
-
-	case UnitTimeDay:
-		remainingDays := tool.DayDiff(now, sub.ExpireTime)
-		remainingUnitTimeAmount, err := calculateRemainingUnitTimeAmount(sub)
-		if err != nil {
-			return 0, err
-		}
-
-		dayAmount, err := safeMultiply(remainingDays, sub.UnitPrice)
-		if err != nil {
-			return 0, fmt.Errorf("day calculation overflow: %w", err)
-		}
-
-		total, err := safeAdd(dayAmount, remainingUnitTimeAmount)
-		if err != nil {
-			return 0, fmt.Errorf("total calculation overflow: %w", err)
-		}
-
-		return total, nil
+	default:
+		// Year, Month, Day: all use the same formula: unitPrice × (remainingDays / totalDays)
+		return calculateRemainingUnitTimeAmount(sub)
 	}
-
-	return 0, nil
 }
 
 // calculateNoLimitAmount calculates refund amount for unlimited time subscriptions
@@ -264,7 +203,7 @@ func calculateNoLimitAmount(sub Subscribe, order Order) (int64, error) {
 func calculateRemainingUnitTimeAmount(sub Subscribe) (int64, error) {
 	now := time.Now()
 	trafficWeight, timeWeight := calculateWeights(sub.DeductionRatio)
-	remainingDays, totalDays := getRemainingAndTotalDays(sub, now, sub.UnitTime)
+	remainingDays, totalDays := getRemainingAndTotalDays(sub, now)
 
 	if totalDays == 0 {
 		return 0, nil
@@ -307,51 +246,20 @@ func calculateWeights(deductionRatio int64) (float64, float64) {
 	return trafficWeight, timeWeight
 }
 
-// getRemainingAndTotalDays calculates remaining and total units based on
-// the subscription's reset cycle configuration and unit time.
-// Returns values in the appropriate unit: days for Month/Year/Day, hours for Hour, minutes for Minute.
-func getRemainingAndTotalDays(sub Subscribe, now time.Time, unitTime string) (int64, int64) {
+// getRemainingAndTotalDays calculates remaining and total days based on
+// the subscription's reset cycle configuration.
+func getRemainingAndTotalDays(sub Subscribe, now time.Time) (int64, int64) {
 	switch sub.ResetCycle {
 	case ResetCycleNone:
-		// For no reset cycle, calculate based on the current billing period determined by UnitTime
-		switch unitTime {
-		case UnitTimeMonth:
-			// Calculate days remaining in the current billing cycle based on subscription start day
-			startDay := sub.StartTime.Day()
-			loc := sub.StartTime.Location()
-			// When today is the billing day, the cycle just started (elapsed = 0)
-			var elapsed int64
-			if now.Day() != startDay {
-				elapsed = tool.DaysToMonthDay(now, startDay)
-			}
-			cycleStart := tool.GetValidDate(now.Year(), now.Month(), startDay, loc)
-			nextMonthStart := cycleStart.AddDate(0, 1, 0)
-			cycleEnd := tool.GetValidDate(nextMonthStart.Year(), nextMonthStart.Month(), startDay, loc)
-			total := int64(cycleEnd.Sub(cycleStart).Hours() / 24)
-			if total < 1 {
-				total = 1
-			}
-			remaining := total - elapsed
-			if remaining < 0 {
-				remaining = 0
-			}
-			return remaining, total
-		case UnitTimeYear:
-			remaining := tool.DaysToYearDay(now, int(sub.StartTime.Month()), sub.StartTime.Day())
-			total := tool.GetYearDays(now, int(sub.StartTime.Month()), sub.StartTime.Day())
-			return remaining, total
-		default:
-			// Day and other types: use the full subscription period
-			remaining := sub.ExpireTime.Sub(now).Hours() / 24
-			total := sub.ExpireTime.Sub(sub.StartTime).Hours() / 24
-			if remaining < 0 {
-				remaining = 0
-			}
-			if total < 0 {
-				total = 0
-			}
-			return int64(remaining), int64(total)
+		remaining := sub.ExpireTime.Sub(now).Hours() / 24
+		total := sub.ExpireTime.Sub(sub.StartTime).Hours() / 24
+		if remaining < 0 {
+			remaining = 0
 		}
+		if total < 0 {
+			total = 0
+		}
+		return int64(remaining), int64(total)
 
 	case ResetCycle1st:
 		return tool.DaysToNextMonth(now), tool.GetLastDayOfMonth(now)

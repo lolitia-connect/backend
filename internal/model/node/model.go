@@ -131,10 +131,11 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 		}
 	}
 	if params.Search != "" {
-		pattern := orm.LikePrefixPattern(params.Search)
-		condition := "(name LIKE ?" + orm.LikeEscapeClause() + " OR address LIKE ?" + orm.LikeEscapeClause() + " OR tags LIKE ?" + orm.LikeEscapeClause()
-		args := []interface{}{pattern, pattern, pattern}
-		if port, err := strconv.ParseUint(params.Search, 10, 16); err == nil {
+		search := strings.TrimSpace(params.Search)
+		pattern := orm.LikeContainsPattern(search)
+		condition := "(name LIKE ?" + orm.LikeEscapeClause() + " OR address LIKE ?" + orm.LikeEscapeClause() + " OR FIND_IN_SET(?, tags)"
+		args := []interface{}{pattern, pattern, search}
+		if port, err := strconv.ParseUint(search, 10, 16); err == nil {
 			condition += " OR port = ?"
 			args = append(args, uint16(port))
 		}

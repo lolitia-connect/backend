@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/perfect-panel/server/internal/logic/nodeconfig"
-	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -49,9 +48,5 @@ func (l *UpdateServerNodeConfigLogic) UpdateServerNodeConfig(req *types.UpdateSe
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update server node config error: %v", err)
 	}
 
-	return nodeStore.ClearNodeCache(l.ctx, &node.FilterNodeParams{
-		Page:     1,
-		Size:     1000,
-		ServerId: []int64{req.ServerID},
-	})
+	return nodeStore.ClearServerCache(l.ctx, req.ServerID)
 }

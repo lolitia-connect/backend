@@ -115,10 +115,5 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update server error: %v", err.Error())
 	}
 
-	return nodeStore.ClearNodeCache(l.ctx, &node.FilterNodeParams{
-		Page:     1,
-		Size:     1000,
-		ServerId: []int64{req.Id},
-		Search:   "",
-	})
+	return nodeStore.ClearServerCache(l.ctx, req.Id)
 }

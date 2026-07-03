@@ -3,7 +3,6 @@ package traffic
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/node"
@@ -61,14 +60,18 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 	var ratio float32 = 1.0
 
 	for _, p := range protocols {
-		if strings.ToLower(p.Type) == strings.ToLower(payload.Protocol) {
+		if p.Id == payload.ProtocolId && p.Type == payload.Protocol {
 			protocol = &p
 			break
 		}
 	}
 
 	if protocol == nil {
-		logger.WithContext(ctx).Error("[TrafficStatistics] Protocol not found: %s", payload.Protocol)
+		logger.WithContext(ctx).Error("[TrafficStatistics] Protocol not found",
+			logger.Field("server_id", payload.ServerId),
+			logger.Field("protocol", payload.Protocol),
+			logger.Field("protocol_id", payload.ProtocolId),
+		)
 		return nil
 	}
 

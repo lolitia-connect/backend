@@ -115,6 +115,7 @@ type (
 		Address      string   `json:"address"`
 		ServerId     int64    `json:"server_id,string"`
 		Protocol     string   `json:"protocol"`
+		ProtocolId   string   `json:"protocol_id"`
 		Enabled      *bool    `json:"enabled"`
 		NodeType     string   `json:"node_type"` // front: 前置节点, landing: 落地节点
 		IsHidden     *bool    `json:"is_hidden"`
@@ -131,6 +132,7 @@ type (
 		Address      string   `json:"address"`
 		ServerId     int64    `json:"server_id,string"`
 		Protocol     string   `json:"protocol"`
+		ProtocolId   string   `json:"protocol_id"`
 		Enabled      *bool    `json:"enabled"`
 		NodeType     string   `json:"node_type,omitempty"`
 		IsHidden     *bool    `json:"is_hidden,omitempty"`
@@ -144,6 +146,7 @@ type (
 		Address      string   `json:"address"`
 		ServerId     int64    `json:"server_id,string"`
 		Protocol     string   `json:"protocol"`
+		ProtocolId   string   `json:"protocol_id"`
 		Enabled      *bool    `json:"enabled"`
 		NodeType     string   `json:"node_type,omitempty"`
 		IsHidden     *bool    `json:"is_hidden,omitempty"`

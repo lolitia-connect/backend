@@ -36,6 +36,7 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 		Address:      req.Address,
 		ServerId:     req.ServerId,
 		Protocol:     req.Protocol,
+		ProtocolId:   req.ProtocolId,
 		NodeType:     req.NodeType,
 		IsHidden:     req.IsHidden,
 		NodeGroupIds: node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds)),
@@ -46,5 +47,5 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "[CreateNode] Insert Database Error")
 	}
 
-	return nil
+	return l.svcCtx.Store.Node().ClearServerCache(l.ctx, data.ServerId)
 }

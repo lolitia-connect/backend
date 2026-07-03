@@ -26,7 +26,7 @@ func NewSortByNameServerLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 func (l *SortByNameServerLogic) SortByNameServer() error {
 	if err := l.svcCtx.Store.Node().SortServersByName(l.ctx); err != nil {
 		l.Errorw("[SortByNameServer] Error: ", logger.Field("error", err.Error()))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), err.Error())
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "%v", err)
 	}
 	return nil
 }

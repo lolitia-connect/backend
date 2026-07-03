@@ -51,7 +51,7 @@ func (l *QueryServerProtocolConfigLogic) QueryServerProtocolConfig(req *types.Qu
 	}
 	protocols = enabledProtocols
 
-	// filter by req.Protocols
+	// filter by req.Protocols using protocol instance identity in the form `type:id`
 
 	if len(req.Protocols) > 0 {
 		var filtered []types.Protocol
@@ -60,7 +60,7 @@ func (l *QueryServerProtocolConfigLogic) QueryServerProtocolConfig(req *types.Qu
 			protocolSet[p] = struct{}{}
 		}
 		for _, p := range protocols {
-			if _, exists := protocolSet[p.Type]; exists {
+			if _, exists := protocolSet[p.Type+":"+p.Id]; exists {
 				filtered = append(filtered, p)
 			}
 		}

@@ -106,7 +106,7 @@ func (l *ResetSortWithNodeLogic) ResetSortWithNode(req *types.ResetSortRequest) 
 	})
 	if err != nil {
 		l.Errorw("[NodeSort] Update Database Error: ", logger.Field("error", err.Error()))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), err.Error())
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "%v", err)
 	}
 	return nil
 }

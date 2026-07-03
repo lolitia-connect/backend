@@ -99,7 +99,7 @@ func (l *GetServerUserListLogic) queryMatchedSubscribes(nodeIds []int64, nodeTag
 }
 
 func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListRequest) (resp *types.GetServerUserListResponse, err error) {
-	cacheKey := fmt.Sprintf("%s%d:%s", node.ServerUserListCacheKey, req.ServerId, req.Protocol)
+	cacheKey := fmt.Sprintf("%s%d:%s:%s", node.ServerUserListCacheKey, req.ServerId, req.Protocol, req.ProtocolId)
 	cache, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 	if cache != "" {
 		etag := tool.GenerateETag([]byte(cache))
@@ -122,10 +122,11 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	}
 
 	_, nodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
-		Page:     1,
-		Size:     1000,
-		ServerId: []int64{server.Id},
-		Protocol: req.Protocol,
+		Page:       1,
+		Size:       1000,
+		ServerId:   []int64{server.Id},
+		Protocol:   req.Protocol,
+		ProtocolId: req.ProtocolId,
 	})
 	if err != nil {
 		l.Errorw("FilterNodeList error", logger.Field("error", err.Error()))

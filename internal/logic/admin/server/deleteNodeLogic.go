@@ -2,9 +2,7 @@ package server
 
 import (
 	"context"
-	"strings"
 
-	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -41,12 +39,5 @@ func (l *DeleteNodeLogic) DeleteNode(req *types.DeleteNodeRequest) error {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "[DeleteNode] Delete Database Error")
 	}
 
-	return nodeStore.ClearNodeCache(l.ctx, &node.FilterNodeParams{
-		Page:     1,
-		Size:     1000,
-		ServerId: []int64{data.ServerId},
-		Tag:      strings.Split(data.Tags, ","),
-		Search:   "",
-		Protocol: data.Protocol,
-	})
+	return nodeStore.ClearServerCache(l.ctx, data.ServerId)
 }

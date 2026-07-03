@@ -26,7 +26,7 @@ func NewSortByNameNodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *So
 func (l *SortByNameNodeLogic) SortByNameNode() error {
 	if err := l.svcCtx.Store.Node().SortNodesByName(l.ctx); err != nil {
 		l.Errorw("[SortByNameNode] Error: ", logger.Field("error", err.Error()))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), err.Error())
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "%v", err)
 	}
 	return nil
 }

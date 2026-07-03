@@ -38,7 +38,7 @@ func (l *GetServerConfigLogic) ResponseMeta() ResponseMeta {
 }
 
 func (l *GetServerConfigLogic) GetServerConfig(req *types.GetServerConfigRequest) (resp *types.GetServerConfigResponse, err error) {
-	cacheKey := fmt.Sprintf("%s%d:%s", node.ServerConfigCacheKey, req.ServerId, req.Protocol)
+	cacheKey := fmt.Sprintf("%s%d:%s:%s", node.ServerConfigCacheKey, req.ServerId, req.Protocol, req.ProtocolId)
 	cache, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 	if err == nil {
 		if cache != "" {
@@ -76,14 +76,14 @@ func (l *GetServerConfigLogic) GetServerConfig(req *types.GetServerConfigRequest
 	}
 	var cfg map[string]interface{}
 	for _, protocol := range protocols {
-		if protocol.Enable && protocol.Type == protocolRequest {
+		if protocol.Enable && protocol.Id == req.ProtocolId && protocol.Type == req.Protocol {
 			cfg = l.compatible(protocol)
 			break
 		}
 	}
 
 	if cfg == nil {
-		return nil, fmt.Errorf("protocol %s not found or disabled", req.Protocol)
+		return nil, fmt.Errorf("protocol %s:%s not found or disabled", req.Protocol, req.ProtocolId)
 	}
 
 	resp = &types.GetServerConfigResponse{

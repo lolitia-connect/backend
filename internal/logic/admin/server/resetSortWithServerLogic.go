@@ -104,7 +104,7 @@ func (l *ResetSortWithServerLogic) ResetSortWithServer(req *types.ResetSortReque
 	})
 	if err != nil {
 		l.Errorw("[ServerSort] Update Database Error: ", logger.Field("error", err.Error()))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), err.Error())
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "%v", err)
 	}
 	return nil
 }

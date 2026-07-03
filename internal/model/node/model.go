@@ -26,6 +26,7 @@ type customServerLogicModel interface {
 	QueryServerAddresses(ctx context.Context) ([]string, error)
 	QueryEnabledNodeProtocols(ctx context.Context) ([]string, error)
 	ClearNodeCache(ctx context.Context, params *FilterNodeParams) error
+	ClearServerCache(ctx context.Context, serverId int64) error
 	ClearServerAllCache(ctx context.Context) error
 	SortNodesByName(ctx context.Context) error
 	SortServersByName(ctx context.Context) error
@@ -59,6 +60,7 @@ type FilterNodeParams struct {
 	NodeGroupIds []int64  // Node Group IDs
 	Search       string   // Search Address or Name
 	Protocol     string   // Protocol
+	ProtocolId   string   // Protocol Instance ID
 	Preload      bool     // Preload Server
 	Enabled      *bool    // Enabled
 	IsHidden     *bool    // IsHidden - when not nil, filter by hidden status
@@ -165,6 +167,9 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 		}
 	}
 	// If no NodeGroupIds specified, return all nodes (including public nodes)
+	if params.ProtocolId != "" {
+		query = query.Where("protocol_id = ?", params.ProtocolId)
+	}
 	if params.Protocol != "" {
 		query = query.Where("protocol = ?", params.Protocol)
 	}

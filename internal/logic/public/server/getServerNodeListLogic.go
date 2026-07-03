@@ -122,10 +122,10 @@ func (l *GetServerNodeListLogic) countOnlineUsers(serverId int64, protocols []no
 		if !p.Enable {
 			continue
 		}
-		data, err := l.svcCtx.Store.Node().OnlineUserSubscribe(l.ctx, serverId, p.Type)
+		data, err := l.svcCtx.Store.Node().OnlineUserSubscribe(l.ctx, serverId, p.Type+":"+p.Id)
 		if err != nil {
 			if !errors.Is(err, redis.Nil) {
-				l.Errorw("[GetServerNodeList] OnlineUserSubscribe Error: ", logger.Field("error", err.Error()), logger.Field("server_id", serverId), logger.Field("protocol", p.Type))
+				l.Errorw("[GetServerNodeList] OnlineUserSubscribe Error: ", logger.Field("error", err.Error()), logger.Field("server_id", serverId), logger.Field("protocol", p.Id))
 			}
 			continue
 		}

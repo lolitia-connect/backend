@@ -340,6 +340,7 @@ type CreateNodeRequest struct {
 	Address      string   `json:"address"`
 	ServerId     int64    `json:"server_id,string"`
 	Protocol     string   `json:"protocol"`
+	ProtocolId   string   `json:"protocol_id"`
 	Enabled      *bool    `json:"enabled"`
 	NodeType     string   `json:"node_type,omitempty"`
 	IsHidden     *bool    `json:"is_hidden,omitempty"`
@@ -1432,6 +1433,7 @@ type Node struct {
 	Address      string   `json:"address"`
 	ServerId     int64    `json:"server_id,string"`
 	Protocol     string   `json:"protocol"`
+	ProtocolId   string   `json:"protocol_id"`
 	Enabled      *bool    `json:"enabled"`
 	NodeType     string   `json:"node_type"` // front: 前置节点, landing: 落地节点
 	IsHidden     *bool    `json:"is_hidden"`
@@ -1763,6 +1765,8 @@ type PrivacyPolicyConfig struct {
 }
 
 type Protocol struct {
+	Id                      string  `json:"id"`   // Stable protocol instance id. Not tied to display name.
+	Name                    string  `json:"name"` // Optional display name.
 	Type                    string  `json:"type"`
 	Port                    uint16  `json:"port"`
 	Enable                  bool    `json:"enable"`
@@ -2254,9 +2258,10 @@ type ServerBasic struct {
 }
 
 type ServerCommon struct {
-	Protocol  string `form:"protocol"`
-	ServerId  int64  `form:"server_id"`
-	SecretKey string `form:"secret_key"`
+	Protocol   string `form:"protocol"`
+	ProtocolId string `form:"protocol_id"`
+	ServerId   int64  `form:"server_id"`
+	SecretKey  string `form:"secret_key"`
 }
 
 type ServerGroup struct {
@@ -2788,6 +2793,7 @@ type UpdateNodeRequest struct {
 	Address      string   `json:"address"`
 	ServerId     int64    `json:"server_id,string"`
 	Protocol     string   `json:"protocol"`
+	ProtocolId   string   `json:"protocol_id"`
 	Enabled      *bool    `json:"enabled"`
 	NodeType     string   `json:"node_type,omitempty"`
 	IsHidden     *bool    `json:"is_hidden,omitempty"`

@@ -34,12 +34,14 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 		l.Errorw("[UpdateNode] Query Database Error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "[UpdateNode] Query Database Error")
 	}
+	oldServerId := data.ServerId
 	data.Name = req.Name
 	data.Tags = tool.StringSliceToString(req.Tags)
 	data.ServerId = req.ServerId
 	data.Port = req.Port
 	data.Address = req.Address
 	data.Protocol = req.Protocol
+	data.ProtocolId = req.ProtocolId
 	data.Enabled = req.Enabled
 	data.NodeType = req.NodeType
 	data.IsHidden = req.IsHidden
@@ -49,10 +51,11 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 		l.Errorw("[UpdateNode] Update Database Error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "[UpdateNode] Update Database Error")
 	}
-	return nodeStore.ClearNodeCache(l.ctx, &node.FilterNodeParams{
-		Page:     1,
-		Size:     1000,
-		ServerId: []int64{data.ServerId},
-		Search:   "",
-	})
+	if err := nodeStore.ClearServerCache(l.ctx, data.ServerId); err != nil {
+		return err
+	}
+	if oldServerId != data.ServerId {
+		return nodeStore.ClearServerCache(l.ctx, oldServerId)
+	}
+	return nil
 }

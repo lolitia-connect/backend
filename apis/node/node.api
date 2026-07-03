@@ -57,9 +57,10 @@ type (
 		PullInterval int64 `json:"pull_interval"`
 	}
 	ServerCommon {
-		Protocol  string `form:"protocol"`
-		ServerId  int64  `form:"server_id"`
-		SecretKey string `form:"secret_key"`
+		Protocol   string `form:"protocol"`
+		ProtocolId string `form:"protocol_id"`
+		ServerId   int64  `form:"server_id"`
+		SecretKey  string `form:"secret_key"`
 	}
 	ServerUser {
 		Id          int64  `json:"id"`

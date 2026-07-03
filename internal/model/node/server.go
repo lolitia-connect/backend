@@ -2,6 +2,7 @@ package node
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/perfect-panel/server/pkg/logger"
@@ -73,15 +74,30 @@ func (m *Server) BeforeUpdate(tx *gorm.DB) error {
 
 // MarshalProtocols Marshal server protocols to json
 func (m *Server) MarshalProtocols(list []Protocol) error {
-	var validate = make(map[string]bool)
+	// key = "type:id", unique within (type, id) per server
+	validate := make(map[string]bool)
+	// track max ID per type for auto-increment
+	typeMaxId := make(map[string]int)
 	for _, protocol := range list {
+		if protocol.Id != "" {
+			if n, err := strconv.Atoi(protocol.Id); err == nil && n > typeMaxId[protocol.Type] {
+				typeMaxId[protocol.Type] = n
+			}
+		}
+	}
+	for i, protocol := range list {
 		if protocol.Type == "" {
 			return errors.New("protocol type is required")
 		}
-		if _, exists := validate[protocol.Type]; exists {
-			return errors.New("duplicate protocol type: " + protocol.Type)
+		if list[i].Id == "" {
+			typeMaxId[protocol.Type]++
+			list[i].Id = strconv.Itoa(typeMaxId[protocol.Type])
 		}
-		validate[protocol.Type] = true
+		key := protocol.Type + ":" + list[i].Id
+		if _, exists := validate[key]; exists {
+			return errors.New("duplicate protocol id: " + key)
+		}
+		validate[key] = true
 	}
 	data, err := json.Marshal(list)
 	if err != nil {
@@ -105,6 +121,8 @@ func (m *Server) UnmarshalProtocols() ([]Protocol, error) {
 }
 
 type Protocol struct {
+	Id                      string `json:"id"`   // Stable protocol instance id. Not tied to display name.
+	Name                    string `json:"name"` // Optional display name.
 	Type                    string `json:"type"`
 	Port                    uint16 `json:"port"`
 	Enable                  bool   `json:"enable"`

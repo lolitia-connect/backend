@@ -57,7 +57,7 @@ func (l *PushOnlineUsersLogic) PushOnlineUsers(req *types.OnlineUsersRequest) er
 			onlineUsers[user.SID] = []string{user.IP}
 		}
 	}
-	err = l.svcCtx.Store.Node().UpdateOnlineUserSubscribe(l.ctx, req.ServerId, req.Protocol, onlineUsers)
+	err = l.svcCtx.Store.Node().UpdateOnlineUserSubscribe(l.ctx, req.ServerId, fmt.Sprintf("%s:%s", req.Protocol, req.ProtocolId), onlineUsers)
 	if err != nil {
 		l.Errorw("[PushOnlineUsers] cache operation error", logger.Field("error", err))
 		return err

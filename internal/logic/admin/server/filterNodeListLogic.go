@@ -54,6 +54,7 @@ func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (
 			Address:      datum.Address,
 			ServerId:     datum.ServerId,
 			Protocol:     datum.Protocol,
+			ProtocolId:   datum.ProtocolId,
 			Enabled:      datum.Enabled,
 			NodeType:     datum.NodeType,
 			IsHidden:     datum.IsHidden,

@@ -33,9 +33,10 @@ func serverCommonRequest(ctx *app.RequestContext) (types.ServerCommon, error) {
 		serverID = id
 	}
 	return types.ServerCommon{
-		Protocol:  ctx.Query("protocol"),
-		ServerId:  serverID,
-		SecretKey: ctx.Query("secret_key"),
+		Protocol:   ctx.Query("protocol"),
+		ProtocolId: ctx.Query("protocol_id"),
+		ServerId:   serverID,
+		SecretKey:  ctx.Query("secret_key"),
 	}, nil
 }
 

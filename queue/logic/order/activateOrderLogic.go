@@ -988,6 +988,8 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 					Download:    us.Download,
 					Upload:      us.Upload,
 					NodeGroupId: us.NodeGroupId,
+					Token:       us.Token,
+					UUID:        us.UUID,
 				}
 				break
 			}

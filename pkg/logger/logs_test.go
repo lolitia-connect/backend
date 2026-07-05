@@ -643,15 +643,20 @@ func TestSetup(t *testing.T) {
 		Encoding:    plainEncoding,
 	})
 
-	defer os.RemoveAll("CD01CB7D-2705-4F3F-889E-86219BF56F10")
+	testLogPath := t.TempDir()
+	defer Close()
 	assert.NotNil(t, setupWithVolume(LogConf{}))
 	assert.Nil(t, setupWithVolume(LogConf{
 		ServiceName: "CD01CB7D-2705-4F3F-889E-86219BF56F10",
+		Path:        testLogPath,
 	}))
+	assert.Nil(t, Close())
 	assert.Nil(t, setupWithVolume(LogConf{
 		ServiceName: "CD01CB7D-2705-4F3F-889E-86219BF56F10",
+		Path:        testLogPath,
 		Rotation:    sizeRotationRule,
 	}))
+	assert.Nil(t, Close())
 	assert.NotNil(t, setupWithFiles(LogConf{}))
 	assert.Nil(t, setupWithFiles(LogConf{
 		ServiceName: "any",
@@ -672,6 +677,7 @@ func TestSetup(t *testing.T) {
 	})
 	_, err := createOutput("")
 	assert.NotNil(t, err)
+	assert.Nil(t, Close())
 	Disable()
 	SetLevel(InfoLevel)
 	atomic.StoreUint32(&encoding, jsonEncodingType)

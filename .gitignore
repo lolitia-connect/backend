@@ -3,7 +3,17 @@
 *-dev.yaml
 *.local.yaml
 /test/
+/test-artifacts/
 *.log
+*.out
+*.prof
+*.cover
+*.coverage
+coverage.*
+*.tmp
+*.db
+*.sqlite
+*.sqlite3
 .DS_Store
 *_test_config.go
 *.log*
@@ -16,6 +26,9 @@ package-lock.json
 package.json
 /bin
 .local/
+
+# Test-generated artifacts
+pkg/logger/CD01CB7D-2705-4F3F-889E-86219BF56F10/
 
 # Local agent instructions
 AGENT.md

@@ -273,8 +273,9 @@ func TestRotateLoggerMayCompressFileTrue(t *testing.T) {
 	assert.Nil(t, err)
 	logger, err := NewLogger(filename, new(DailyRotateRule), true)
 	assert.Nil(t, err)
+	assert.Nil(t, logger.Close())
 	if len(filename) > 0 {
-		defer os.Remove(filepath.Base(logger.getBackupFilename()) + ".gz")
+		defer os.Remove(logger.getBackupFilename() + ".gz")
 	}
 	logger.maybeCompressFile(filename)
 	_, err = os.Stat(filename)
@@ -289,7 +290,7 @@ func TestRotateLoggerRotate(t *testing.T) {
 	if len(filename) > 0 {
 		defer func() {
 			os.Remove(logger.getBackupFilename())
-			os.Remove(filepath.Base(logger.getBackupFilename()) + ".gz")
+			os.Remove(logger.getBackupFilename() + ".gz")
 		}()
 	}
 	err = logger.rotate()
@@ -315,7 +316,7 @@ func TestRotateLoggerWrite(t *testing.T) {
 	if len(filename) > 0 {
 		defer func() {
 			os.Remove(logger.getBackupFilename())
-			os.Remove(filepath.Base(logger.getBackupFilename()) + ".gz")
+			os.Remove(logger.getBackupFilename() + ".gz")
 		}()
 	}
 	// the following write calls cannot be changed to Write, because of DATA RACE.
@@ -384,8 +385,9 @@ func TestRotateLoggerWithSizeLimitRotateRuleMayCompressFileTrue(t *testing.T) {
 	assert.Nil(t, err)
 	logger, err := NewLogger(filename, new(SizeLimitRotateRule), true)
 	assert.Nil(t, err)
+	assert.Nil(t, logger.Close())
 	if len(filename) > 0 {
-		defer os.Remove(filepath.Base(logger.getBackupFilename()) + ".gz")
+		defer os.Remove(logger.getBackupFilename() + ".gz")
 	}
 	logger.maybeCompressFile(filename)
 	_, err = os.Stat(filename)
@@ -399,12 +401,13 @@ func TestRotateLoggerWithSizeLimitRotateRuleMayCompressFileFailed(t *testing.T) 
 		os.Stdout = old
 	}()
 
-	filename := random.KeyNew(8, 1)
+	filename := filepath.Join(t.TempDir(), random.KeyNew(8, 1))
 	logger, err := NewLogger(filename, new(SizeLimitRotateRule), true)
+	defer logger.Close()
 	defer os.Remove(filename)
 	if assert.NoError(t, err) {
 		assert.NotPanics(t, func() {
-			logger.maybeCompressFile(random.KeyNew(8, 1))
+			logger.maybeCompressFile(filepath.Join(t.TempDir(), random.KeyNew(8, 1)))
 		})
 	}
 }
@@ -417,7 +420,7 @@ func TestRotateLoggerWithSizeLimitRotateRuleRotate(t *testing.T) {
 	if len(filename) > 0 {
 		defer func() {
 			os.Remove(logger.getBackupFilename())
-			os.Remove(filepath.Base(logger.getBackupFilename()) + ".gz")
+			os.Remove(logger.getBackupFilename() + ".gz")
 		}()
 	}
 	err = logger.rotate()
@@ -443,7 +446,7 @@ func TestRotateLoggerWithSizeLimitRotateRuleWrite(t *testing.T) {
 	if len(filename) > 0 {
 		defer func() {
 			os.Remove(logger.getBackupFilename())
-			os.Remove(filepath.Base(logger.getBackupFilename()) + ".gz")
+			os.Remove(logger.getBackupFilename() + ".gz")
 		}()
 	}
 	// the following write calls cannot be changed to Write, because of DATA RACE.

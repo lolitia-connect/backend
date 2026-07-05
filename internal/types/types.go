@@ -2258,9 +2258,9 @@ type ServerBasic struct {
 }
 
 type ServerCommon struct {
-	Protocol   string `form:"protocol"`
-	ProtocolId string `form:"protocol_id"`
-	ServerId   int64  `form:"server_id"`
+	Protocol   string `form:"protocol" validate:"required"`
+	ProtocolId string `form:"protocol_id" validate:"required"`
+	ServerId   int64  `form:"server_id" validate:"required"`
 	SecretKey  string `form:"secret_key"`
 }
 

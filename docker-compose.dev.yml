@@ -12,28 +12,43 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      postgres:
+      mariadb:
         condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
 
-  postgres:
-    container_name: ppanel-dev-postgres
-    image: postgres:16-alpine
+  mariadb:
+    container_name: ppanel-dev-mariadb
+    image: mariadb:11.4
     environment:
-      POSTGRES_DB: ppanel
-      POSTGRES_USER: ppanel
-      POSTGRES_PASSWORD: ppanel_test_password
+      MARIADB_DATABASE: ppanel
+      MARIADB_USER: ppanel
+      MARIADB_PASSWORD: ppanel_test_password
+      MARIADB_ROOT_PASSWORD: ppanel_root_password
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - ppanel-dev-postgres:/var/lib/postgresql/data
+      - ppanel-dev-mariadb:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ppanel -d ppanel"]
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  phpmyadmin:
+    container_name: ppanel-dev-phpmyadmin
+    image: phpmyadmin:5-apache
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 128M
+    ports:
+      - "8081:80"
+    depends_on:
+      mariadb:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -52,5 +67,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  ppanel-dev-postgres:
+  ppanel-dev-mariadb:
   ppanel-dev-redis:

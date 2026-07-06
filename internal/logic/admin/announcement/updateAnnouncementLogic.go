@@ -3,6 +3,7 @@ package announcement
 import (
 	"context"
 
+	entannouncement "github.com/perfect-panel/server/ent/announcement"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -26,23 +27,24 @@ func NewUpdateAnnouncementLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 }
 
 func (l *UpdateAnnouncementLogic) UpdateAnnouncement(req *types.UpdateAnnouncementRequest) error {
-	info, err := l.svcCtx.Store.Announcement().FindOne(l.ctx, req.Id)
+	_, err := l.svcCtx.Ent.Announcement.Query().Where(entannouncement.ID(req.Id)).Only(l.ctx)
 	if err != nil {
 		l.Errorw("[UpdateAnnouncement] Query Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get announcement error: %v", err.Error())
 	}
-	info.Title = req.Title
-	info.Content = req.Content
+	update := l.svcCtx.Ent.Announcement.UpdateOneID(req.Id).
+		SetTitle(req.Title).
+		SetContent(req.Content)
 	if req.Show != nil {
-		info.Show = req.Show
+		update.SetShow(*req.Show)
 	}
 	if req.Pinned != nil {
-		info.Pinned = req.Pinned
+		update.SetPinned(*req.Pinned)
 	}
 	if req.Popup != nil {
-		info.Popup = req.Popup
+		update.SetPopup(*req.Popup)
 	}
-	err = l.svcCtx.Store.Announcement().Update(l.ctx, info)
+	err = update.Exec(l.ctx)
 	if err != nil {
 		l.Errorw("[UpdateAnnouncement] Update Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update announcement error: %v", err.Error())

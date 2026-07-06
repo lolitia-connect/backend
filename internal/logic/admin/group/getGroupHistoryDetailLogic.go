@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/perfect-panel/server/internal/model/group"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/grouphistory"
+	"github.com/perfect-panel/server/ent/grouphistorydetail"
+	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/pkg/tool"
 )
 
 type GetGroupHistoryDetailLogic struct {
@@ -28,9 +31,9 @@ func NewGetGroupHistoryDetailLogic(ctx context.Context, svcCtx *svc.ServiceConte
 
 func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHistoryDetailRequest) (resp *types.GetGroupHistoryDetailResponse, err error) {
 	// 查询分组历史记录
-	var history group.GroupHistory
-	if err := l.svcCtx.Store.DB().Where("id = ?", req.Id).First(&history).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	history, err := l.svcCtx.Ent.GroupHistory.Query().Where(grouphistory.ID(req.Id)).Only(l.ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
 			return nil, errors.New("group history not found")
 		}
 		logger.Errorf("failed to find group history: %v", err)
@@ -38,8 +41,8 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 	}
 
 	// 查询分组历史详情
-	var details []group.GroupHistoryDetail
-	if err := l.svcCtx.Store.DB().Where("history_id = ?", req.Id).Find(&details).Error; err != nil {
+	details, err := l.svcCtx.Ent.GroupHistoryDetail.Query().Where(grouphistorydetail.HistoryID(req.Id)).All(l.ctx)
+	if err != nil {
 		logger.Errorf("failed to find group history details: %v", err)
 		return nil, err
 	}
@@ -47,18 +50,18 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 	// 转换时间格式
 	var startTime, endTime *int64
 	if history.StartTime != nil {
-		t := history.StartTime.Unix()
+		t := tool.UnixPtr(history.StartTime)
 		startTime = &t
 	}
 	if history.EndTime != nil {
-		t := history.EndTime.Unix()
+		t := tool.UnixPtr(history.EndTime)
 		endTime = &t
 	}
 
 	// 构建 GroupHistoryDetail
 	historyDetail := types.GroupHistoryDetail{
 		GroupHistory: types.GroupHistory{
-			Id:           history.Id,
+			Id:           history.ID,
 			GroupMode:    history.GroupMode,
 			TriggerType:  history.TriggerType,
 			TotalUsers:   history.TotalUsers,
@@ -67,7 +70,7 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 			StartTime:    startTime,
 			EndTime:      endTime,
 			ErrorLog:     history.ErrorMessage,
-			CreatedAt:    history.CreatedAt.Unix(),
+			CreatedAt:    tool.Unix(history.CreatedAt),
 		},
 	}
 
@@ -78,16 +81,22 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 
 		// 获取配置快照（从 system_config 读取）
 		var configValue string
+		var configKey string
 		if history.GroupMode == "average" {
-			l.svcCtx.Store.DB().Table("system_config").
-				Where("`key` = ?", "group.average_config").
-				Select("value").
-				Scan(&configValue)
+			configKey = "average_config"
 		} else if history.GroupMode == "traffic" {
-			l.svcCtx.Store.DB().Table("system_config").
-				Where("`key` = ?", "group.traffic_config").
-				Select("value").
-				Scan(&configValue)
+			configKey = "traffic_config"
+		}
+		if configKey != "" {
+			config, err := l.svcCtx.Ent.System.Query().Where(
+				entsystem.Or(
+					entsystem.Key("group."+configKey),
+					entsystem.And(entsystem.Category("group"), entsystem.Key(configKey)),
+				),
+			).First(l.ctx)
+			if err == nil {
+				configValue = config.Value
+			}
 		}
 
 		// 解析 JSON 配置

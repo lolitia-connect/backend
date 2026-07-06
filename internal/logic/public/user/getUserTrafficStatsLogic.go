@@ -2,11 +2,14 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
-	"gorm.io/gorm"
-
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/trafficlog"
+	"github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -49,18 +52,9 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 	}
 
 	// 验证订阅归属权 - 直接查询 user_subscribe 表
-	var userSubscribe struct {
-		Id     int64
-		UserId int64
-	}
-	err = l.svcCtx.Store.DB().WithContext(l.ctx).
-		Table("user_subscribe").
-		Select("id, user_id").
-		Where("id = ?", userSubscribeId).
-		First(&userSubscribe).Error
-
+	userSubscribe, err := l.svcCtx.Ent.UserSubscribe.Query().Where(usersubscribe.ID(userSubscribeId)).Only(l.ctx)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			l.Errorw("[GetUserTrafficStats] User Subscribe Not Found:",
 				logger.Field("user_subscribe_id", userSubscribeId),
 				logger.Field("user_id", u.Id))
@@ -70,10 +64,10 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query User Subscribe Error")
 	}
 
-	if userSubscribe.UserId != u.Id {
+	if userSubscribe.UserID != u.Id {
 		l.Errorw("[GetUserTrafficStats] User Subscribe Access Denied:",
 			logger.Field("user_subscribe_id", userSubscribeId),
-			logger.Field("subscribe_user_id", userSubscribe.UserId),
+			logger.Field("subscribe_user_id", userSubscribe.UserID),
 			logger.Field("current_user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
@@ -97,42 +91,52 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 		dayStart := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 0, 0, 0, 0, time.Local)
 		dayEnd := dayStart.Add(24 * time.Hour).Add(-time.Nanosecond)
 
-		// 查询当天流量
-		var dailyTraffic struct {
-			Upload   int64
-			Download int64
+		var dailyTraffic []struct {
+			Upload   int64 `json:"upload"`
+			Download int64 `json:"download"`
 		}
-
-		// 直接使用 model 的查询方法
-		err := l.svcCtx.Store.DB().WithContext(l.ctx).
-			Table("traffic_log").
-			Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-			Where("user_id = ? AND subscribe_id = ? AND timestamp BETWEEN ? AND ?",
-				u.Id, userSubscribeId, dayStart, dayEnd).
-			Scan(&dailyTraffic).Error
-
+		err := l.svcCtx.Ent.TrafficLog.Query().Where(
+			trafficlog.UserID(u.Id),
+			trafficlog.SubscribeID(userSubscribeId),
+			trafficlog.TimestampGTE(dayStart),
+			trafficlog.TimestampLTE(dayEnd),
+		).Aggregate(
+			ent.As(sumTrafficField(trafficlog.FieldUpload), "upload"),
+			ent.As(sumTrafficField(trafficlog.FieldDownload), "download"),
+		).Scan(l.ctx, &dailyTraffic)
 		if err != nil {
 			l.Errorw("[GetUserTrafficStats] Query Daily Traffic Error:",
 				logger.Field("date", currentDate.Format("2006-01-02")),
 				logger.Field("err", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query Traffic Error")
 		}
+		upload, download := int64(0), int64(0)
+		if len(dailyTraffic) > 0 {
+			upload = dailyTraffic[0].Upload
+			download = dailyTraffic[0].Download
+		}
 
 		// 添加到结果列表
-		total := dailyTraffic.Upload + dailyTraffic.Download
+		total := upload + download
 		resp.List = append(resp.List, types.DailyTrafficStats{
 			Date:     currentDate.Format("2006-01-02"),
-			Upload:   dailyTraffic.Upload,
-			Download: dailyTraffic.Download,
+			Upload:   upload,
+			Download: download,
 			Total:    total,
 		})
 
 		// 累加总计
-		resp.TotalUpload += dailyTraffic.Upload
-		resp.TotalDownload += dailyTraffic.Download
+		resp.TotalUpload += upload
+		resp.TotalDownload += download
 	}
 
 	resp.TotalTraffic = resp.TotalUpload + resp.TotalDownload
 
 	return resp, nil
+}
+
+func sumTrafficField(field string) ent.AggregateFunc {
+	return func(s *entsql.Selector) string {
+		return fmt.Sprintf("COALESCE(SUM(%s), 0)", s.C(field))
+	}
 }

@@ -2,15 +2,17 @@ package user
 
 import (
 	"context"
-
-	"gorm.io/gorm"
 )
 
-func (m *customUserModel) InsertWithdrawal(ctx context.Context, data *Withdrawal, tx ...*gorm.DB) error {
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Create(data).Error
-	})
+func (m *customUserModel) InsertWithdrawal(ctx context.Context, data *Withdrawal) error {
+	c := m.db.UserWithdrawal.Create().SetUserID(data.UserId).SetAmount(data.Amount).SetContent(data.Content).SetStatus(data.Status).SetReason(data.Reason)
+	if data.Id > 0 {
+		c.SetID(data.Id)
+	}
+	created, err := c.Save(ctx)
+	if err != nil {
+		return err
+	}
+	data.Id, data.CreatedAt, data.UpdatedAt = created.ID, created.CreatedAt, created.UpdatedAt
+	return nil
 }

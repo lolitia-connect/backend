@@ -3,6 +3,7 @@ package ads
 import (
 	"context"
 
+	entads "github.com/perfect-panel/server/ent/ads"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -27,7 +28,7 @@ func NewGetAdsDetailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetA
 }
 
 func (l *GetAdsDetailLogic) GetAdsDetail(req *types.GetAdsDetailRequest) (resp *types.Ads, err error) {
-	data, err := l.svcCtx.Store.Ads().FindOne(l.ctx, req.Id)
+	data, err := l.svcCtx.Ent.Ads.Query().Where(entads.ID(req.Id)).Only(l.ctx)
 	if err != nil {
 		l.Errorw("find ads error", logger.Field("error", err.Error()), logger.Field("id", req.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find ads error: %v", err.Error())

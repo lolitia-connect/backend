@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/logic/auth"
 	"github.com/perfect-panel/server/internal/model/log"
@@ -19,7 +21,6 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 type AdminLoginLogic struct {
@@ -73,16 +74,15 @@ func (l *AdminLoginLogic) AdminLogin(req *types.UserLoginRequest) (resp *types.L
 
 	userInfo, err = l.svcCtx.Store.User().FindOneByEmail(l.ctx, req.Email)
 
-	if userInfo.DeletedAt.Valid {
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email deleted: %v", req.Email)
-	}
-
 	if err != nil {
-		if errors.As(err, &gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email not exist: %v", req.Email)
 		}
 		logger.WithContext(l.ctx).Error(err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
+	}
+	if userInfo.DeletedAt != nil {
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email deleted: %v", req.Email)
 	}
 
 	// Check if user is admin

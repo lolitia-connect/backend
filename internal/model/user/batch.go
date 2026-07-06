@@ -3,7 +3,8 @@ package user
 import (
 	"context"
 
-	"gorm.io/gorm"
+	entuser "github.com/perfect-panel/server/ent/user"
+	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 )
 
 func (m *customUserModel) FindUsersByIds(ctx context.Context, ids []int64) ([]*User, error) {
@@ -11,10 +12,8 @@ func (m *customUserModel) FindUsersByIds(ctx context.Context, ids []int64) ([]*U
 	if len(ids) == 0 {
 		return users, nil
 	}
-	err := m.QueryNoCacheCtx(ctx, &users, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Where("id IN ?", ids).Find(&users).Error
-	})
-	return users, err
+	items, err := m.db.User.Query().Where(entuser.IDIn(ids...)).All(ctx)
+	return entUsersToModels(items), err
 }
 
 func (m *customUserModel) FindSubscribesByIds(ctx context.Context, ids []int64) ([]*Subscribe, error) {
@@ -22,8 +21,6 @@ func (m *customUserModel) FindSubscribesByIds(ctx context.Context, ids []int64) 
 	if len(ids) == 0 {
 		return subscribes, nil
 	}
-	err := m.QueryNoCacheCtx(ctx, &subscribes, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("id IN ?", ids).Find(&subscribes).Error
-	})
-	return subscribes, err
+	items, err := m.db.UserSubscribe.Query().Where(entsub.IDIn(ids...)).All(ctx)
+	return entSubscribesToModels(items), err
 }

@@ -3,12 +3,12 @@ package server
 import (
 	"context"
 
+	"github.com/perfect-panel/server/ent/serverconfigoverride"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 type DeleteServerLogic struct {
@@ -28,13 +28,24 @@ func NewDeleteServerLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Dele
 
 func (l *DeleteServerLogic) DeleteServer(req *types.DeleteServerRequest) error {
 	nodeStore := l.svcCtx.Store.Node()
-	if err := nodeStore.Transaction(l.ctx, func(db *gorm.DB) error {
-		if err := nodeStore.DeleteServer(l.ctx, req.Id, db); err != nil {
+	tx, err := l.svcCtx.Ent.Tx(l.ctx)
+	if err != nil {
+		l.Errorw("[DeleteServer] Start Transaction Error: ", logger.Field("error", err.Error()))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "[DeleteServer] Delete Server Error")
+	}
+	if err := func() error {
+		if err := tx.Server.DeleteOneID(req.Id).Exec(l.ctx); err != nil {
 			return err
 		}
-		return nodeStore.DeleteServerConfigOverride(l.ctx, req.Id, db)
-	}); err != nil {
+		_, err := tx.ServerConfigOverride.Delete().Where(serverconfigoverride.ServerID(req.Id)).Exec(l.ctx)
+		return err
+	}(); err != nil {
+		_ = tx.Rollback()
 		l.Errorw("[DeleteServer] Delete Server Error: ", logger.Field("error", err.Error()))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "[DeleteServer] Delete Server Error")
+	}
+	if err := tx.Commit(); err != nil {
+		l.Errorw("[DeleteServer] Commit Transaction Error: ", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "[DeleteServer] Delete Server Error")
 	}
 	return nodeStore.ClearServerCache(l.ctx, req.Id)

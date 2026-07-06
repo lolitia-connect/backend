@@ -3,13 +3,14 @@ package auth
 import (
 	"context"
 
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 type BindDeviceLogic struct {
@@ -43,7 +44,7 @@ func (l *BindDeviceLogic) BindDeviceToUser(identifier, ip, userAgent string, cur
 	// Check if device exists
 	deviceInfo, err := l.svcCtx.Store.User().FindOneDeviceByIdentifier(l.ctx, identifier)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			// Device not found, create new device record
 			return l.createDeviceForUser(identifier, ip, userAgent, currentUserId)
 		}
@@ -98,7 +99,7 @@ func (l *BindDeviceLogic) createDeviceForUser(identifier, ip, userAgent string, 
 			Verified:       true,
 		}
 		if err := store.User().InsertUserAuthMethods(l.ctx, authMethod); err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
+			if ent.IsConstraintError(err) {
 				// Concurrent request already created this auth method;
 				// propagate so the outer handler can retry gracefully.
 				return err
@@ -136,7 +137,7 @@ func (l *BindDeviceLogic) createDeviceForUser(identifier, ip, userAgent string, 
 	// Handle duplicate key from concurrent device creation.
 	// The transaction is rolled back, and another request has already committed
 	// the device record — re-read it and route to the appropriate path.
-	if errors.Is(err, gorm.ErrDuplicatedKey) {
+	if ent.IsConstraintError(err) {
 		l.Infow("device concurrently created, retrying as existing device",
 			logger.Field("identifier", identifier),
 			logger.Field("user_id", userId),
@@ -209,8 +210,10 @@ func (l *BindDeviceLogic) rebindDeviceToNewUser(deviceInfo *user.Device, ip, use
 		}
 		if nonDeviceAuthCount == 0 {
 			//检查设备下是否有套餐，有套餐。就检查即将绑定过去的所有账户是否有套餐，如果有，那么检查两个套餐是否一致。如果一致就将即将删除的用户套餐，时间叠加到我绑定过去的用户套餐上面（如果套餐已过期就忽略）。新绑定设备的账户上套餐不一致或者不存在直接将套餐换绑即可
-			var oldUserSubscribes []user.Subscribe
-			err = store.DB().Where("user_id = ? AND status IN ?", oldUserId, []int64{0, 1}).Find(&oldUserSubscribes).Error
+			_, err = store.Ent().UserSubscribe.Query().Where(
+				usersubscribe.UserID(oldUserId),
+				usersubscribe.StatusIn(0, 1),
+			).All(l.ctx)
 			if err != nil {
 				l.Errorw("failed to query old user subscribes",
 					logger.Field("old_user_id", oldUserId),

@@ -2,12 +2,9 @@ package ticket
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"github.com/perfect-panel/server/pkg/cache"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entticket "github.com/perfect-panel/server/ent/ticket"
 )
 
 var _ Model = (*customTicketModel)(nil)
@@ -25,93 +22,81 @@ type (
 		FindOne(ctx context.Context, id int64) (*Ticket, error)
 		Update(ctx context.Context, data *Ticket) error
 		Delete(ctx context.Context, id int64) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 	}
 
 	customTicketModel struct {
 		*defaultTicketModel
 	}
 	defaultTicketModel struct {
-		cache.CachedConn
-		table string
+		db *ent.Client
 	}
 )
 
-func newTicketModel(db *gorm.DB, c *redis.Client) *defaultTicketModel {
+func newTicketModel(db *ent.Client) *defaultTicketModel {
 	return &defaultTicketModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "ticket",
+		db: db,
 	}
-}
-
-//nolint:unused
-func (m *defaultTicketModel) batchGetCacheKeys(Tickets ...*Ticket) []string {
-	var keys []string
-	for _, ticket := range Tickets {
-		keys = append(keys, m.getCacheKeys(ticket)...)
-	}
-	return keys
-
-}
-func (m *defaultTicketModel) getCacheKeys(data *Ticket) []string {
-	if data == nil {
-		return []string{}
-	}
-	ticketIdKey := fmt.Sprintf("%s%v", cacheTicketIdPrefix, data.Id)
-	cacheKeys := []string{
-		ticketIdKey,
-	}
-	return cacheKeys
 }
 
 func (m *defaultTicketModel) Insert(ctx context.Context, data *Ticket) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Create(&data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+	created, err := m.db.Ticket.Create().
+		SetTitle(data.Title).
+		SetDescription(data.Description).
+		SetUserID(data.UserId).
+		SetStatus(data.Status).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyFromEnt(data, created)
+	return nil
 }
 
 func (m *defaultTicketModel) FindOne(ctx context.Context, id int64) (*Ticket, error) {
-	var resp Ticket
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-
-		return conn.Model(&Ticket{}).Where("id = ?", id).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
+	data, err := m.db.Ticket.Query().Where(entticket.ID(id)).Only(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return ticketFromEnt(data), nil
 }
 
 func (m *defaultTicketModel) Update(ctx context.Context, data *Ticket) error {
-	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	updated, err := m.db.Ticket.UpdateOneID(data.Id).
+		SetTitle(data.Title).
+		SetDescription(data.Description).
+		SetUserID(data.UserId).
+		SetStatus(data.Status).
+		Save(ctx)
+	if err != nil {
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
+	copyFromEnt(data, updated)
+	return nil
 }
 
 func (m *defaultTicketModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+	err := m.db.Ticket.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Delete(&Ticket{}, id).Error
-	}, m.getCacheKeys(data)...)
 	return err
 }
 
-func (m *defaultTicketModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
+func ticketFromEnt(data *ent.Ticket) *Ticket {
+	if data == nil {
+		return nil
+	}
+	var resp Ticket
+	copyFromEnt(&resp, data)
+	return &resp
+}
+
+func copyFromEnt(dst *Ticket, src *ent.Ticket) {
+	dst.Id = src.ID
+	dst.Title = src.Title
+	dst.Description = src.Description
+	dst.UserId = src.UserID
+	dst.Status = src.Status
+	dst.CreatedAt = src.CreatedAt
+	dst.UpdatedAt = src.UpdatedAt
 }

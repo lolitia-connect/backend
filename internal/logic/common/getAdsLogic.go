@@ -3,7 +3,7 @@ package common
 import (
 	"context"
 
-	"github.com/perfect-panel/server/internal/model/ads"
+	entads "github.com/perfect-panel/server/ent/ads"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -27,10 +27,11 @@ func NewGetAdsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetAdsLogi
 
 func (l *GetAdsLogic) GetAds(req *types.GetAdsRequest) (resp *types.GetAdsResponse, err error) {
 	// todo: add ads position and device
-	status := 1
-	_, data, err := l.svcCtx.Store.Ads().GetAdsListByPage(l.ctx, 1, 200, ads.Filter{
-		Status: &status,
-	})
+	data, err := l.svcCtx.Ent.Ads.Query().
+		Where(entads.Status(1)).
+		Offset(0).
+		Limit(200).
+		All(l.ctx)
 	if err != nil {
 		return nil, err
 	}

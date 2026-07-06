@@ -9,5 +9,5 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./etc/ppanel.yaml:/app/etc/ppanel.yaml
+      - ./config.yaml:/app/config.yaml
     restart: always

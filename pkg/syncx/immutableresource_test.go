@@ -61,7 +61,7 @@ func TestImmutableResourceErrorRefreshAlways(t *testing.T) {
 	r := NewImmutableResource(func() (any, error) {
 		count++
 		return nil, errors.New("any")
-	}, WithRefreshIntervalOnFailure(0))
+	}, WithRefreshIntervalOnFailure(-time.Nanosecond))
 
 	res, err := r.Get()
 	assert.Nil(t, res)

@@ -3,12 +3,11 @@ package group
 import (
 	"context"
 
-	"github.com/perfect-panel/server/internal/model/group"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/grouphistory"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
-	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 type GetRecalculationStatusLogic struct {
@@ -28,10 +27,9 @@ func NewGetRecalculationStatusLogic(ctx context.Context, svcCtx *svc.ServiceCont
 
 func (l *GetRecalculationStatusLogic) GetRecalculationStatus() (resp *types.RecalculationState, err error) {
 	// 返回最近的一条 GroupHistory 记录
-	var history group.GroupHistory
-	err = l.svcCtx.Store.DB().Order("id desc").First(&history).Error
+	history, err := l.svcCtx.Ent.GroupHistory.Query().Order(ent.Desc(grouphistory.FieldID)).First(l.ctx)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			// 如果没有历史记录，返回空闲状态
 			resp = &types.RecalculationState{
 				State:    "idle",

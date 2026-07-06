@@ -103,7 +103,7 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 		u := int64(float32(log.Upload) * ratio * realTimeMultiplier)
 		isExpired := sub.Status == 3 // Status 3 = Expired
 
-		// Update user subscribe traffic using GORM model layer.
+		// Update user subscribe traffic using ent model layer.
 		// The FindOneSubscribe call has been removed from inside the method
 		// to avoid PXC's SELECT→UPDATE row-level conflict (Error 1020).
 		if err := l.svc.Store.User().UpdateUserSubscribeWithTraffic(ctx, sub.Id, d, u, isExpired); err != nil {

@@ -6,12 +6,12 @@ import (
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 type DeleteCurrentUserAccountLogic struct {
@@ -41,11 +41,11 @@ func (l *DeleteCurrentUserAccountLogic) DeleteCurrentUserAccount() (err error) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth methods failed: %v", err.Error())
 	}
 
-	err = l.svcCtx.Store.User().Transaction(l.ctx, func(tx *gorm.DB) error {
+	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
 		//delete user devices
 		if len(userInfo.UserDevices) > 0 {
 			for _, device := range userInfo.UserDevices {
-				if err = l.svcCtx.Store.User().DeleteDevice(l.ctx, device.Id, tx); err != nil {
+				if err = store.User().DeleteDevice(l.ctx, device.Id); err != nil {
 					return err
 				}
 			}
@@ -54,7 +54,7 @@ func (l *DeleteCurrentUserAccountLogic) DeleteCurrentUserAccount() (err error) {
 		// delete user auth methods
 		if len(userInfo.AuthMethods) > 0 {
 			for _, authMethod := range userInfo.AuthMethods {
-				if err = l.svcCtx.Store.User().DeleteUserAuthMethods(l.ctx, userInfo.Id, authMethod.AuthType); err != nil {
+				if err = store.User().DeleteUserAuthMethods(l.ctx, userInfo.Id, authMethod.AuthType); err != nil {
 					return err
 				}
 			}
@@ -62,17 +62,17 @@ func (l *DeleteCurrentUserAccountLogic) DeleteCurrentUserAccount() (err error) {
 
 		// delete user subscribes
 		var subscribes []*user.SubscribeDetails
-		subscribes, err = l.svcCtx.Store.User().QueryUserSubscribe(l.ctx, userInfo.Id)
+		subscribes, err = store.User().QueryUserSubscribe(l.ctx, userInfo.Id)
 		if err != nil {
 			return err
 		}
 		for _, subscribe := range subscribes {
-			if err = l.svcCtx.Store.User().DeleteSubscribe(l.ctx, subscribe.Token, tx); err != nil {
+			if err = store.User().DeleteSubscribe(l.ctx, subscribe.Token); err != nil {
 				return err
 			}
 		}
 		// delete user account
-		return l.svcCtx.Store.User().BatchDeleteUser(l.ctx, []int64{userInfo.Id}, tx)
+		return store.User().BatchDeleteUser(l.ctx, []int64{userInfo.Id})
 	})
 	if err != nil {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "find user auth methods failed: %v", err.Error())

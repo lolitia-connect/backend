@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/perfect-panel/server/internal/model/group"
-	"github.com/perfect-panel/server/internal/model/system"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/grouphistory"
+	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
-	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 type GetGroupConfigLogic struct {
@@ -30,19 +29,14 @@ func NewGetGroupConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Ge
 
 func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (resp *types.GetGroupConfigResponse, err error) {
 	// 读取基础配置
-	var enabledConfig system.System
-	var modeConfig system.System
-	var averageConfig system.System
-	var subscribeConfig system.System
-	var trafficConfig system.System
-
-	// 从 system_config 表读取配置
-	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "enabled").First(&enabledConfig).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	enabledConfig, err := l.svcCtx.Ent.System.Query().Where(entsystem.Category("group"), entsystem.Key("enabled")).Only(l.ctx)
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("failed to get group enabled config", logger.Field("error", err.Error()))
 		return nil, err
 	}
 
-	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "mode").First(&modeConfig).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	modeConfig, err := l.svcCtx.Ent.System.Query().Where(entsystem.Category("group"), entsystem.Key("mode")).Only(l.ctx)
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("failed to get group mode config", logger.Field("error", err.Error()))
 		return nil, err
 	}
@@ -50,21 +44,21 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 	// 读取 JSON 配置
 	config := make(map[string]interface{})
 
-	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "average_config").First(&averageConfig).Error; err == nil {
+	if averageConfig, err := l.svcCtx.Ent.System.Query().Where(entsystem.Category("group"), entsystem.Key("average_config")).Only(l.ctx); err == nil {
 		var averageCfg map[string]interface{}
 		if err := json.Unmarshal([]byte(averageConfig.Value), &averageCfg); err == nil {
 			config["average_config"] = averageCfg
 		}
 	}
 
-	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "subscribe_config").First(&subscribeConfig).Error; err == nil {
+	if subscribeConfig, err := l.svcCtx.Ent.System.Query().Where(entsystem.Category("group"), entsystem.Key("subscribe_config")).Only(l.ctx); err == nil {
 		var subscribeCfg map[string]interface{}
 		if err := json.Unmarshal([]byte(subscribeConfig.Value), &subscribeCfg); err == nil {
 			config["subscribe_config"] = subscribeCfg
 		}
 	}
 
-	if err := l.svcCtx.Store.DB().Where("`category` = 'group' and `key` = ?", "traffic_config").First(&trafficConfig).Error; err == nil {
+	if trafficConfig, err := l.svcCtx.Ent.System.Query().Where(entsystem.Category("group"), entsystem.Key("traffic_config")).Only(l.ctx); err == nil {
 		var trafficCfg map[string]interface{}
 		if err := json.Unmarshal([]byte(trafficConfig.Value), &trafficCfg); err == nil {
 			config["traffic_config"] = trafficCfg
@@ -72,8 +66,11 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 	}
 
 	// 解析基础配置
-	enabled := enabledConfig.Value == "true"
-	mode := modeConfig.Value
+	enabled := enabledConfig != nil && enabledConfig.Value == "true"
+	mode := ""
+	if modeConfig != nil {
+		mode = modeConfig.Value
+	}
 	if mode == "" {
 		mode = "average" // 默认模式
 	}
@@ -102,10 +99,9 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 
 // getRecalculationState 获取重算状态
 func (l *GetGroupConfigLogic) getRecalculationState() (*types.RecalculationState, error) {
-	var history group.GroupHistory
-	err := l.svcCtx.Store.DB().Order("id desc").First(&history).Error
+	history, err := l.svcCtx.Ent.GroupHistory.Query().Order(ent.Desc(grouphistory.FieldID)).First(l.ctx)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			return &types.RecalculationState{
 				State:    "idle",
 				Progress: 0,

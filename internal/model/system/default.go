@@ -2,12 +2,9 @@ package system
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"github.com/perfect-panel/server/pkg/cache"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entsystem "github.com/perfect-panel/server/ent/system"
 )
 
 var (
@@ -27,93 +24,92 @@ type (
 		FindOneByKey(ctx context.Context, email string) (*System, error)
 		Update(ctx context.Context, data *System) error
 		Delete(ctx context.Context, id int64) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 	}
 
 	customSystemModel struct {
 		*defaultSystemModel
 	}
 	defaultSystemModel struct {
-		cache.CachedConn
-		table string
+		db *ent.Client
 	}
 )
 
-func newSystemModel(db *gorm.DB, c *redis.Client) *defaultSystemModel {
+func newSystemModel(db *ent.Client) *defaultSystemModel {
 	return &defaultSystemModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "System",
+		db: db,
 	}
-}
-
-func (m *defaultSystemModel) getCacheKeys(data *System) []string {
-	if data == nil {
-		return []string{}
-	}
-	SystemIdKey := fmt.Sprintf("%s%v", cacheSystemIdPrefix, data.Id)
-	cacheKeys := []string{
-		SystemIdKey,
-	}
-	return cacheKeys
 }
 
 func (m *defaultSystemModel) FindOneByKey(ctx context.Context, key string) (*System, error) {
-	system := new(System)
-	cacheKey := fmt.Sprintf("%s%v", cacheSystemKeyPrefix, key)
-	err := m.QueryCtx(ctx, system, cacheKey, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&System{}).Scopes(WhereKey(key)).First(v).Error
-	})
-	return system, err
+	data, err := m.db.System.Query().Where(entsystem.Key(key)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return systemFromEnt(data), nil
 }
 
 func (m *defaultSystemModel) Insert(ctx context.Context, data *System) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Create(&data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+	created, err := m.db.System.Create().
+		SetCategory(data.Category).
+		SetKey(data.Key).
+		SetValue(data.Value).
+		SetType(data.Type).
+		SetDesc(data.Desc).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyFromEnt(data, created)
+	return nil
 }
 
 func (m *defaultSystemModel) FindOne(ctx context.Context, id int64) (*System, error) {
-	SystemIdKey := fmt.Sprintf("%s%v", cacheSystemIdPrefix, id)
-	var resp System
-	err := m.QueryCtx(ctx, &resp, SystemIdKey, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&System{}).Where("id = ?", id).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
+	data, err := m.db.System.Query().Where(entsystem.ID(id)).Only(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return systemFromEnt(data), nil
 }
 
 func (m *defaultSystemModel) Update(ctx context.Context, data *System) error {
-	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	updated, err := m.db.System.UpdateOneID(data.Id).
+		SetCategory(data.Category).
+		SetKey(data.Key).
+		SetValue(data.Value).
+		SetType(data.Type).
+		SetDesc(data.Desc).
+		Save(ctx)
+	if err != nil {
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
+	copyFromEnt(data, updated)
+	return nil
 }
 
 func (m *defaultSystemModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+	err := m.db.System.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Delete(&System{}, id).Error
-	}, m.getCacheKeys(data)...)
 	return err
 }
 
-func (m *defaultSystemModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
+func systemFromEnt(data *ent.System) *System {
+	if data == nil {
+		return nil
+	}
+	var resp System
+	copyFromEnt(&resp, data)
+	return &resp
+}
+
+func copyFromEnt(dst *System, src *ent.System) {
+	dst.Id = src.ID
+	dst.Category = src.Category
+	dst.Key = src.Key
+	dst.Value = src.Value
+	dst.Type = src.Type
+	dst.Desc = src.Desc
+	dst.CreatedAt = src.CreatedAt
+	dst.UpdatedAt = src.UpdatedAt
 }

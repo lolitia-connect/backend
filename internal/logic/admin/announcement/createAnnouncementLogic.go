@@ -3,7 +3,6 @@ package announcement
 import (
 	"context"
 
-	"github.com/perfect-panel/server/internal/model/announcement"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -28,10 +27,10 @@ func NewCreateAnnouncementLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 
 func (l *CreateAnnouncementLogic) CreateAnnouncement(req *types.CreateAnnouncementRequest) error {
 
-	if err := l.svcCtx.Store.Announcement().Insert(l.ctx, &announcement.Announcement{
-		Title:   req.Title,
-		Content: req.Content,
-	}); err != nil {
+	if err := l.svcCtx.Ent.Announcement.Create().
+		SetTitle(req.Title).
+		SetContent(req.Content).
+		Exec(l.ctx); err != nil {
 		l.Errorw("[CreateAnnouncement] Database Error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create announcement failed: %v", err.Error())
 	}

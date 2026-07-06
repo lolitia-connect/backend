@@ -92,7 +92,7 @@ func TestModelWhitelistTableMapping(t *testing.T) {
 
 // Verify NewStoreAdapter doesn't panic with nil db (lazy init)
 func TestNewStoreAdapterNil(t *testing.T) {
-	adapter := NewStoreAdapter(nil)
+	adapter := NewStoreAdapter(nil, "mysql")
 	if adapter == nil {
 		t.Fatal("NewStoreAdapter returned nil")
 	}
@@ -104,7 +104,7 @@ func TestNewStoreAdapterNil(t *testing.T) {
 }
 
 func TestStoreAdapterBlockedModel(t *testing.T) {
-	adapter := NewStoreAdapter(nil)
+	adapter := NewStoreAdapter(nil, "mysql")
 	_, _, err := adapter.Query("admin", "list", nil, nil, 10, 0)
 	if err == nil {
 		t.Fatal("expected error for blocked model")
@@ -112,7 +112,7 @@ func TestStoreAdapterBlockedModel(t *testing.T) {
 }
 
 func TestStoreAdapterUnknownOperation(t *testing.T) {
-	adapter := NewStoreAdapter(nil)
+	adapter := NewStoreAdapter(nil, "mysql")
 	_, _, err := adapter.Query("user", "execute_raw_sql", nil, nil, 10, 0)
 	if err == nil {
 		t.Fatal("expected error for unknown operation")
@@ -181,7 +181,7 @@ func TestValidateDBConditionFields(t *testing.T) {
 }
 
 func TestStoreAdapterTicketReplyRequiresCreate(t *testing.T) {
-	adapter := NewStoreAdapter(nil)
+	adapter := NewStoreAdapter(nil, "mysql")
 	_, _, err := adapter.query("ticket_reply", "update", map[string]interface{}{"ticket_id": int64(1), "content": "hello"}, nil, 0, 0)
 	if err == nil {
 		t.Fatal("expected unsupported ticket_reply operation to fail")

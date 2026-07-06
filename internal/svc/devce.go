@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
 
 	"github.com/perfect-panel/server/pkg/device"
 	"github.com/perfect-panel/server/pkg/logger"
-	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
@@ -23,7 +22,7 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 	manager.OnDeviceOffline = func(userID int64, deviceID, session string, createAt time.Time) {
 		oneDevice, err := srv.Store.User().FindOneDeviceByIdentifier(ctx, deviceID)
 		if err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
+			if !ent.IsNotFound(err) {
 				logger.Errorw("failed to find device", logger.Field("error", err.Error()), logger.Field("device_id", deviceID))
 			}
 			return
@@ -68,7 +67,7 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 	manager.OnDeviceOnline = func(userID int64, deviceID, session string) {
 		oneDevice, err := srv.Store.User().FindOneDeviceByIdentifier(ctx, deviceID)
 		if err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
+			if !ent.IsNotFound(err) {
 				logger.Errorw("failed to find device", logger.Field("error", err.Error()), logger.Field("device_id", deviceID))
 			}
 			return

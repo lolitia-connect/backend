@@ -1,6 +1,7 @@
 package common
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,8 +19,7 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type SmsSendCount struct {
 	Count    int64 `json:"count"`
@@ -66,7 +66,7 @@ func (l *SendSmsCodeLogic) SendSmsCode(req *types.SendSmsCodeRequest) (resp *typ
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.TodaySendCountExceedsLimit), "This account has reached the limit of sending times today")
 	}
 	m, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
 	if constant.ParseVerifyType(req.Type) == constant.Register && m.Id > 0 {

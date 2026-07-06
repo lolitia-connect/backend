@@ -2,8 +2,10 @@ package svc
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/pkg/device"
 
 	"github.com/perfect-panel/server/internal/config"
@@ -29,6 +31,9 @@ type ServiceContext struct {
 	ExchangeRate float64
 	GeoIP        *IPLocation
 	Store        repository.Store
+	Ent          *ent.Client
+	SQLDB        *sql.DB
+	SQLDialect   string
 
 	//NodeCache   *cache.NodeCacheClient
 	Restart               func() error
@@ -41,14 +46,15 @@ type ServiceContext struct {
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
-	// gorm initialize
-	db, err := orm.ConnectMysql(orm.Mysql{
+	// database initialize
+	dbConfig := orm.Mysql{
 		Config: c.DatabaseConfig(),
-	})
-
+	}
+	sqlDB, sqlDialect, err := orm.OpenSQL(dbConfig)
 	if err != nil {
 		panic(err.Error())
 	}
+	entClient := orm.NewEntClient(sqlDB, sqlDialect)
 
 	// IP location initialize
 	geoIP, err := NewIPLocation("./cache/GeoLite2-City.mmdb")
@@ -75,7 +81,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		panic(err.Error())
 	}
 	authLimiter := limit.NewPeriodLimit(86400, 15, rds, config.SendCountLimitKeyPrefix, limit.Align())
-	store := repository.NewGormStore(db, rds)
+	store := repository.NewStore(entClient, rds)
 	srv := &ServiceContext{
 		Redis:        rds,
 		Config:       c,
@@ -83,6 +89,9 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		ExchangeRate: 0,
 		GeoIP:        geoIP,
 		Store:        store,
+		Ent:          entClient,
+		SQLDB:        sqlDB,
+		SQLDialect:   sqlDialect,
 		//NodeCache:   cache.NewNodeCacheClient(rds),
 		AuthLimiter: authLimiter,
 	}

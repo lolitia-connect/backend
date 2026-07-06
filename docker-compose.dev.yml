@@ -1,0 +1,71 @@
+services:
+  ppanel:
+    container_name: ppanel-dev-server
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: dev
+    command: ["run", "--config", "config.dev.yaml"]
+    volumes:
+      - ./config.dev.yaml:/app/config.dev.yaml
+    ports:
+      - "8080:8080"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mariadb:
+    container_name: ppanel-dev-mariadb
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: ppanel
+      MARIADB_USER: ppanel
+      MARIADB_PASSWORD: ppanel_test_password
+      MARIADB_ROOT_PASSWORD: ppanel_root_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - ppanel-dev-mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "healthcheck.sh --connect --innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  phpmyadmin:
+    container_name: ppanel-dev-phpmyadmin
+    image: phpmyadmin:5-apache
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 128M
+    ports:
+      - "8081:80"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    container_name: ppanel-dev-redis
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ppanel-dev-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  ppanel-dev-mariadb:
+  ppanel-dev-redis:

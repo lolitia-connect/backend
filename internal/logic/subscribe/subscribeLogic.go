@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/adapter"
+	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
+	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/model/client"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/log"
@@ -182,7 +184,7 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 				}
 				return userSubscribe.Traffic
 			}(),
-			userSubscribe.ExpireTime.Unix(),
+			tool.Unix(userSubscribe.ExpireTime),
 		),
 		Headers: headers,
 	}
@@ -439,38 +441,33 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 }
 
 func (l *SubscribeLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
-	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
+	expireTime := tool.Unix(userSub.ExpireTime)
+	return expireTime < time.Now().Unix() && expireTime != 0
 }
 
 // isGroupEnabled 判断分组功能是否启用
 func (l *SubscribeLogic) isGroupEnabled() bool {
-	var value string
-	err := l.svc.Store.DB().Table("system").
-		Where("`category` = ? AND `key` = ?", "group", "enabled").
-		Select("value").
-		Scan(&value).Error
+	systemConfig, err := l.svc.Ent.System.Query().Where(
+		entsystem.Category("group"),
+		entsystem.Key("enabled"),
+	).Only(l.ctx)
 	if err != nil {
 		l.Debugf("[SubscribeLogic]check group enabled failed: %v", err)
 		return false
 	}
-	return value == "true" || value == "1"
+	return systemConfig.Value == "true" || systemConfig.Value == "1"
 }
 
 // getExpiredGroupNodes 获取过期节点组的节点
 func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.Node, error) {
 	// 1. 查询过期节点组
-	var expiredGroup group.NodeGroup
-	err := l.svc.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error
+	expiredGroup, err := l.svc.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).First(l.ctx)
 	if err != nil {
 		l.Debugw("[SubscribeLogic]no expired node group configured", logger.Field("error", err.Error()))
 		return nil, err
 	}
-	if expiredGroup.Id == 0 {
-		l.Debugw("[SubscribeLogic]no expired node group configured")
-		return nil, nil
-	}
 	if !group.IsNodeGroupTypeAccessible(expiredGroup.Type, group.NodeGroupAccessSubscribe) {
-		l.Debugf("[SubscribeLogic]expired node group %d is not accessible for subscribe output", expiredGroup.Id)
+		l.Debugf("[SubscribeLogic]expired node group %d is not accessible for subscribe output", expiredGroup.ID)
 		return nil, nil
 	}
 
@@ -496,7 +493,7 @@ func (l *SubscribeLogic) getExpiredGroupNodes(userSub *user.Subscribe) ([]*node.
 	_, nodes, err := l.svc.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:         1,
 		Size:         1000,
-		NodeGroupIds: []int64{expiredGroup.Id},
+		NodeGroupIds: []int64{expiredGroup.ID},
 		Enabled:      &enable,
 		IsHidden:     &isHidden,
 		Preload:      true,
@@ -527,16 +524,17 @@ func (l *SubscribeLogic) getAccessibleNodeGroup(nodeGroupId int64, accessType st
 		return nil
 	}
 
-	var nodeGroup group.NodeGroup
-	if err := l.svc.Store.DB().Select("id, name, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
+	entNodeGroup, err := l.svc.Ent.NodeGroup.Query().Where(entnodegroup.ID(nodeGroupId)).Only(l.ctx)
+	if err != nil {
 		l.Infow("[Generate Subscribe]node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
 		return nil
 	}
 
-	if !group.IsNodeGroupTypeAccessible(nodeGroup.Type, accessType) {
+	if !group.IsNodeGroupTypeAccessible(entNodeGroup.Type, accessType) {
 		return nil
 	}
 
+	nodeGroup := group.NodeGroup{Id: entNodeGroup.ID, Name: entNodeGroup.Name, Type: entNodeGroup.Type}
 	nodeGroup.Type = group.MustNodeGroupType(nodeGroup.Type)
 	return &nodeGroup
 }

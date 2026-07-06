@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	entsystem "github.com/perfect-panel/server/ent/system"
+	entusersubscribe "github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/constant"
@@ -28,7 +30,6 @@ import (
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	queueTypes "github.com/perfect-panel/server/queue/types"
-	"gorm.io/gorm"
 )
 
 // Order type constants define the different types of orders that can be processed
@@ -370,12 +371,14 @@ func (l *ActivateOrderLogic) createUserSubscription(ctx context.Context, orderIn
 
 	// Check quota limit before creating subscription (final safeguard)
 	if sub.Quota > 0 {
-		var count int64
-		if err := l.svc.Store.DB().Model(&user.Subscribe{}).Where("user_id = ? AND subscribe_id = ?", orderInfo.UserId, orderInfo.SubscribeId).Count(&count).Error; err != nil {
+		count, err := l.svc.Ent.UserSubscribe.Query().
+			Where(entusersubscribe.UserID(orderInfo.UserId), entusersubscribe.SubscribeID(orderInfo.SubscribeId)).
+			Count(ctx)
+		if err != nil {
 			logger.WithContext(ctx).Error("Count user subscribe failed", logger.Field("error", err.Error()))
 			return nil, err
 		}
-		if count >= sub.Quota {
+		if int64(count) >= sub.Quota {
 			logger.WithContext(ctx).Infow("Subscribe quota limit exceeded",
 				logger.Field("user_id", orderInfo.UserId),
 				logger.Field("subscribe_id", orderInfo.SubscribeId),
@@ -540,37 +543,33 @@ func (l *ActivateOrderLogic) triggerUserGroupRecalculation(ctx context.Context, 
 		defer cancel()
 
 		// Check if group management is enabled
-		var groupEnabled string
-		err := l.svc.Store.DB().Table("system").
-			Where("`category` = ? AND `key` = ?", "group", "enabled").
-			Select("value").
-			Scan(&groupEnabled).Error
-		if err != nil || groupEnabled != "true" && groupEnabled != "1" {
+		groupEnabled, err := l.svc.Ent.System.Query().
+			Where(entsystem.Category("group"), entsystem.Key("enabled")).
+			Only(ctx)
+		if err != nil || groupEnabled.Value != "true" && groupEnabled.Value != "1" {
 			logger.Debugf("[Group Trigger] Group management not enabled, skipping recalculation")
 			return
 		}
 
 		// Get the configured grouping mode
-		var groupMode string
-		err = l.svc.Store.DB().Table("system").
-			Where("`category` = ? AND `key` = ?", "group", "mode").
-			Select("value").
-			Scan(&groupMode).Error
+		groupMode, err := l.svc.Ent.System.Query().
+			Where(entsystem.Category("group"), entsystem.Key("mode")).
+			Only(ctx)
 		if err != nil {
 			logger.Errorw("[Group Trigger] Failed to get group mode", logger.Field("error", err.Error()))
 			return
 		}
 
 		// Validate group mode
-		if groupMode != "average" && groupMode != "subscribe" && groupMode != "traffic" {
-			logger.Debugf("[Group Trigger] Invalid group mode (current: %s), skipping", groupMode)
+		if groupMode.Value != "average" && groupMode.Value != "subscribe" && groupMode.Value != "traffic" {
+			logger.Debugf("[Group Trigger] Invalid group mode (current: %s), skipping", groupMode.Value)
 			return
 		}
 
 		// Trigger group recalculation with the configured mode
 		logic := group.NewRecalculateGroupLogic(ctx, l.svc)
 		req := &types.RecalculateGroupRequest{
-			Mode: groupMode,
+			Mode: groupMode.Value,
 		}
 
 		if err := logic.RecalculateGroup(req); err != nil {
@@ -583,7 +582,7 @@ func (l *ActivateOrderLogic) triggerUserGroupRecalculation(ctx context.Context, 
 
 		logger.Infow("[Group Trigger] Successfully recalculated user group",
 			logger.Field("user_id", userId),
-			logger.Field("mode", groupMode),
+			logger.Field("mode", groupMode.Value),
 		)
 	}()
 }
@@ -999,7 +998,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 	now := time.Now()
 
 	// 6. 使用事务保护核心操作
-	err = l.svc.Store.DB().Transaction(func(tx *gorm.DB) error {
+	err = l.svc.Store.InTx(ctx, func(store repository.Store) error {
 		// 6.1 创建或更新订阅
 		if existingSubscribe != nil {
 			// 续期现有订阅
@@ -1026,7 +1025,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 				existingSubscribe.Upload = 0
 			}
 
-			err = l.svc.Store.User().UpdateSubscribe(ctx, existingSubscribe, tx)
+			err = store.User().UpdateSubscribe(ctx, existingSubscribe)
 			if err != nil {
 				logger.WithContext(ctx).Error("Update subscribe failed", logger.Field("error", err.Error()))
 				return err
@@ -1039,14 +1038,14 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 		} else {
 			// 检查配额限制
 			if sub.Quota > 0 {
-				var count int64
-				if err := tx.Model(&user.Subscribe{}).
-					Where("user_id = ? AND subscribe_id = ?", userInfo.Id, orderInfo.SubscribeId).
-					Count(&count).Error; err != nil {
+				count, err := store.Ent().UserSubscribe.Query().
+					Where(entusersubscribe.UserID(userInfo.Id), entusersubscribe.SubscribeID(orderInfo.SubscribeId)).
+					Count(ctx)
+				if err != nil {
 					logger.WithContext(ctx).Error("Count user subscribe failed", logger.Field("error", err.Error()))
 					return err
 				}
-				if count >= sub.Quota {
+				if int64(count) >= sub.Quota {
 					logger.WithContext(ctx).Infow("Subscribe quota limit exceeded",
 						logger.Field("user_id", userInfo.Id),
 						logger.Field("subscribe_id", orderInfo.SubscribeId),
@@ -1081,7 +1080,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 				NodeGroupId:      sub.NodeGroupId, // Inherit node_group_id from subscription plan
 			}
 
-			err = l.svc.Store.User().InsertSubscribe(ctx, newSubscribe, tx)
+			err = store.User().InsertSubscribe(ctx, newSubscribe)
 			if err != nil {
 				logger.WithContext(ctx).Error("Insert subscribe failed", logger.Field("error", err.Error()))
 				return err
@@ -1094,7 +1093,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 		}
 
 		// 6.2 更新兑换码使用次数
-		err = l.svc.Store.RedemptionCode().IncrementUsedCount(ctx, redemptionData.RedemptionCodeId, tx)
+		err = store.RedemptionCode().IncrementUsedCount(ctx, redemptionData.RedemptionCodeId)
 		if err != nil {
 			logger.WithContext(ctx).Error("Increment used count failed", logger.Field("error", err.Error()))
 			return err
@@ -1111,7 +1110,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 			CreatedAt:        now,
 		}
 
-		err = l.svc.Store.RedemptionRecord().Insert(ctx, redemptionRecord, tx)
+		err = store.RedemptionRecord().Insert(ctx, redemptionRecord)
 		if err != nil {
 			logger.WithContext(ctx).Error("Insert redemption record failed", logger.Field("error", err.Error()))
 			return err

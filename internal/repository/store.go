@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/ads"
 	"github.com/perfect-panel/server/internal/model/announcement"
 	"github.com/perfect-panel/server/internal/model/auth"
@@ -21,10 +22,10 @@ import (
 	"github.com/perfect-panel/server/internal/model/traffic"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 type Store interface {
+	Ent() *ent.Client
 	Ads() ads.Model
 	Announcement() announcement.Model
 	Auth() auth.Model
@@ -44,139 +45,144 @@ type Store interface {
 	TrafficLog() traffic.Model
 	User() user.Model
 
-	// DB 返回底层 *gorm.DB，供插件系统等内部使用
-	DB() *gorm.DB
 	InTx(ctx context.Context, fn func(store Store) error) error
 }
 
-var _ Store = (*GormStore)(nil)
+var _ Store = (*StoreImpl)(nil)
 
-type GormStore struct {
-	db    *gorm.DB
+type StoreImpl struct {
+	ent   *ent.Client
 	redis *redis.Client
 
-	ads          ads.Model
-	announcement announcement.Model
-	auth         auth.Model
-	client       client.Model
-	coupon       coupon.Model
-	document     document.Model
-	log          log.Model
-	node         node.Model
-	order        order.Model
-	payment      payment.Model
+	ads              ads.Model
+	announcement     announcement.Model
+	auth             auth.Model
+	client           client.Model
+	coupon           coupon.Model
+	document         document.Model
+	log              log.Model
+	node             node.Model
+	order            order.Model
+	payment          payment.Model
 	redemptionCode   redemption.RedemptionCodeModel
 	redemptionRecord redemption.RedemptionRecordModel
-	subscribe    subscribe.Model
-	system       system.Model
-	task         task.Model
-	ticket       ticket.Model
-	trafficLog   traffic.Model
-	user         user.Model
+	subscribe        subscribe.Model
+	system           system.Model
+	task             task.Model
+	ticket           ticket.Model
+	trafficLog       traffic.Model
+	user             user.Model
 }
 
-// DB 返回底层 *gorm.DB（供插件系统等内部使用）
-func (s *GormStore) DB() *gorm.DB { return s.db }
+func (s *StoreImpl) Ent() *ent.Client { return s.ent }
 
-func NewGormStore(db *gorm.DB, rds *redis.Client) *GormStore {
-	return &GormStore{
-		db:           db,
-		redis:        rds,
-		ads:          ads.NewModel(db, rds),
-		announcement: announcement.NewModel(db, rds),
-		auth:         auth.NewModel(db, rds),
-		client:       client.NewSubscribeApplicationModel(db),
-		coupon:       coupon.NewModel(db, rds),
-		document:     document.NewModel(db, rds),
-		log:          log.NewModel(db),
-		node:         node.NewModel(db, rds),
-		order:        order.NewModel(db, rds),
-		payment:      payment.NewModel(db, rds),
-		redemptionCode:   redemption.NewRedemptionCodeModel(db, rds),
-		redemptionRecord: redemption.NewRedemptionRecordModel(db, rds),
-		subscribe:    subscribe.NewModel(db, rds),
-		system:       system.NewModel(db, rds),
-		task:         task.NewModel(db),
-		ticket:       ticket.NewModel(db, rds),
-		trafficLog:   traffic.NewModel(db),
-		user:         user.NewModel(db, rds),
+func NewStore(ec *ent.Client, rds *redis.Client) *StoreImpl {
+	return &StoreImpl{
+		ent:              ec,
+		redis:            rds,
+		ads:              ads.NewModel(ec),
+		announcement:     announcement.NewModel(ec),
+		auth:             auth.NewModel(ec),
+		client:           client.NewSubscribeApplicationModel(ec),
+		coupon:           coupon.NewModel(ec),
+		document:         document.NewModel(ec),
+		log:              log.NewModel(ec),
+		node:             node.NewModel(ec, rds),
+		order:            order.NewModel(ec, rds),
+		payment:          payment.NewModel(ec),
+		redemptionCode:   redemption.NewRedemptionCodeModel(ec),
+		redemptionRecord: redemption.NewRedemptionRecordModel(ec),
+		subscribe:        subscribe.NewModel(ec, rds),
+		system:           system.NewModel(ec),
+		task:             task.NewModel(ec),
+		ticket:           ticket.NewModel(ec),
+		trafficLog:       traffic.NewModel(ec),
+		user:             user.NewModel(ec, rds),
 	}
 }
 
-func (s *GormStore) Ads() ads.Model {
+func (s *StoreImpl) Ads() ads.Model {
 	return s.ads
 }
 
-func (s *GormStore) Announcement() announcement.Model {
+func (s *StoreImpl) Announcement() announcement.Model {
 	return s.announcement
 }
 
-func (s *GormStore) Auth() auth.Model {
+func (s *StoreImpl) Auth() auth.Model {
 	return s.auth
 }
 
-func (s *GormStore) Client() client.Model {
+func (s *StoreImpl) Client() client.Model {
 	return s.client
 }
 
-func (s *GormStore) Coupon() coupon.Model {
+func (s *StoreImpl) Coupon() coupon.Model {
 	return s.coupon
 }
 
-func (s *GormStore) Document() document.Model {
+func (s *StoreImpl) Document() document.Model {
 	return s.document
 }
 
-func (s *GormStore) Log() log.Model {
+func (s *StoreImpl) Log() log.Model {
 	return s.log
 }
 
-func (s *GormStore) Node() node.Model {
+func (s *StoreImpl) Node() node.Model {
 	return s.node
 }
 
-func (s *GormStore) Order() order.Model {
+func (s *StoreImpl) Order() order.Model {
 	return s.order
 }
 
-func (s *GormStore) Payment() payment.Model {
+func (s *StoreImpl) Payment() payment.Model {
 	return s.payment
 }
 
-func (s *GormStore) RedemptionCode() redemption.RedemptionCodeModel {
+func (s *StoreImpl) RedemptionCode() redemption.RedemptionCodeModel {
 	return s.redemptionCode
 }
 
-func (s *GormStore) RedemptionRecord() redemption.RedemptionRecordModel {
+func (s *StoreImpl) RedemptionRecord() redemption.RedemptionRecordModel {
 	return s.redemptionRecord
 }
 
-func (s *GormStore) Subscribe() subscribe.Model {
+func (s *StoreImpl) Subscribe() subscribe.Model {
 	return s.subscribe
 }
 
-func (s *GormStore) System() system.Model {
+func (s *StoreImpl) System() system.Model {
 	return s.system
 }
 
-func (s *GormStore) Task() task.Model {
+func (s *StoreImpl) Task() task.Model {
 	return s.task
 }
 
-func (s *GormStore) Ticket() ticket.Model {
+func (s *StoreImpl) Ticket() ticket.Model {
 	return s.ticket
 }
 
-func (s *GormStore) TrafficLog() traffic.Model {
+func (s *StoreImpl) TrafficLog() traffic.Model {
 	return s.trafficLog
 }
 
-func (s *GormStore) User() user.Model {
+func (s *StoreImpl) User() user.Model {
 	return s.user
 }
 
-func (s *GormStore) InTx(ctx context.Context, fn func(store Store) error) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return fn(NewGormStore(tx, s.redis))
-	})
+func (s *StoreImpl) InTx(ctx context.Context, fn func(store Store) error) error {
+	entTx, err := s.ent.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fn(NewStore(entTx.Client(), s.redis)); err != nil {
+		if rbErr := entTx.Rollback(); rbErr != nil {
+			return rbErr
+		}
+		return err
+	}
+	return entTx.Commit()
 }

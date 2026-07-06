@@ -2,13 +2,15 @@ package user
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"time"
 
-	"github.com/perfect-panel/server/pkg/cache"
+	"github.com/perfect-panel/server/ent"
+	entuser "github.com/perfect-panel/server/ent/user"
+	entauth "github.com/perfect-panel/server/ent/userauthmethod"
+	entdevice "github.com/perfect-panel/server/ent/userdevice"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 var (
@@ -23,26 +25,28 @@ type (
 		customUserLogicModel
 	}
 	userModel interface {
-		Insert(ctx context.Context, data *User, tx ...*gorm.DB) error
+		Insert(ctx context.Context, data *User) error
 		FindOne(ctx context.Context, id int64) (*User, error)
-		Update(ctx context.Context, data *User, tx ...*gorm.DB) error
-		Delete(ctx context.Context, id int64, tx ...*gorm.DB) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
+		Update(ctx context.Context, data *User) error
+		Delete(ctx context.Context, id int64) error
+		Transaction(ctx context.Context, fn func(db *ent.Client) error) error
 	}
 
 	customUserModel struct {
 		*defaultUserModel
 	}
 	defaultUserModel struct {
-		cache.CachedConn
+		db    *ent.Client
+		redis *redis.Client
 		table string
 	}
 )
 
-func newUserModel(db *gorm.DB, c *redis.Client) *defaultUserModel {
+func newUserModel(db *ent.Client, c *redis.Client) *defaultUserModel {
 	return &defaultUserModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "user",
+		db:    db,
+		redis: c,
+		table: "user",
 	}
 }
 
@@ -66,55 +70,61 @@ func (m *defaultUserModel) clearUserCache(ctx context.Context, data ...*User) er
 }
 
 func (m *defaultUserModel) FindOneByEmail(ctx context.Context, email string) (*User, error) {
-	var user User
 	key := fmt.Sprintf("%s%v", cacheUserEmailPrefix, email)
-	err := m.QueryCtx(ctx, &user, key, func(conn *gorm.DB, v interface{}) error {
-		var data AuthMethods
-		if err := conn.Model(&AuthMethods{}).Where("auth_type = 'email' AND auth_identifier = ?", email).First(&data).Error; err != nil {
-			return err
-		}
-		return conn.Model(&User{}).Unscoped().Where("id = ?", data.UserId).Preload("UserDevices").Preload("AuthMethods").First(v).Error
-	})
-	return &user, err
+	var cached User
+	if err := getJSONCache(ctx, m.redis, key, &cached); err == nil {
+		return &cached, nil
+	}
+	auth, err := m.db.UserAuthMethod.Query().Where(entauth.AuthType("email"), entauth.AuthIdentifier(email)).First(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data, err := m.findOne(ctx, auth.UserID, true)
+	if err == nil {
+		_ = setJSONCache(ctx, m.redis, key, data)
+	}
+	return data, err
 }
 
-func (m *defaultUserModel) Insert(ctx context.Context, data *User, tx ...*gorm.DB) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Create(&data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+func (m *defaultUserModel) Insert(ctx context.Context, data *User) error {
+	created, err := userCreate(m.db.User.Create(), data).Save(ctx)
+	if err != nil {
+		return err
+	}
+	*data = *entToUser(created)
+	return m.ClearUserCache(ctx, data)
 }
 
 func (m *defaultUserModel) FindOne(ctx context.Context, id int64) (*User, error) {
 	userIdKey := fmt.Sprintf("%s%v", cacheUserIdPrefix, id)
-	var resp User
-	err := m.QueryCtx(ctx, &resp, userIdKey, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Unscoped().Where("id = ?", id).Preload("UserDevices").Preload("AuthMethods").First(&resp).Error
-	})
-	return &resp, err
+	var cached User
+	if err := getJSONCache(ctx, m.redis, userIdKey, &cached); err == nil {
+		return &cached, nil
+	}
+	resp, err := m.findOne(ctx, id, true)
+	if err == nil {
+		_ = setJSONCache(ctx, m.redis, userIdKey, resp)
+	}
+	return resp, err
 }
 
-func (m *defaultUserModel) Update(ctx context.Context, data *User, tx ...*gorm.DB) error {
+func (m *defaultUserModel) Update(ctx context.Context, data *User) error {
 	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
+	updated, err := userUpdate(m.db.User.UpdateOneID(data.Id), data).Save(ctx)
+	if err != nil {
+		return err
+	}
+	*data = *entToUser(updated)
+	return m.GetCacheManager().ClearCache(ctx, append(m.getCacheKeys(old), m.getCacheKeys(data)...)...)
 }
 
-func (m *defaultUserModel) Delete(ctx context.Context, id int64, tx ...*gorm.DB) error {
+func (m *defaultUserModel) Delete(ctx context.Context, id int64) error {
 	data, err := m.FindOne(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -128,19 +138,36 @@ func (m *defaultUserModel) Delete(ctx context.Context, id int64, tx ...*gorm.DB)
 		}
 	}()
 
-	return m.TransactCtx(ctx, func(db *gorm.DB) error {
-		if len(tx) > 0 {
-			db = tx[0]
-		}
-		// Soft deletion of user information without any processing of other information (Determine whether to allow login/subscription based on the user's deletion status)
-		if err := db.Model(&User{}).Where("id = ?", id).Delete(&User{}).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
+	return m.db.User.UpdateOneID(id).SetDeletedAt(time.Now()).Exec(ctx)
 }
 
-func (m *defaultUserModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
+func (m *defaultUserModel) Transaction(ctx context.Context, fn func(db *ent.Client) error) error {
+	tx, err := m.db.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fn(tx.Client()); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func (m *defaultUserModel) findOne(ctx context.Context, id int64, unscoped bool) (*User, error) {
+	q := m.db.User.Query().Where(entuser.ID(id))
+	if !unscoped {
+		q = q.Where(entuser.DeletedAtIsNil())
+	}
+	entUser, err := q.First(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data := entToUser(entUser)
+	if auths, err := m.db.UserAuthMethod.Query().Where(entauth.UserID(id)).Order(entauth.ByAuthType()).All(ctx); err == nil {
+		data.AuthMethods = entAuthMethodsToModels(auths)
+	}
+	if devices, err := m.db.UserDevice.Query().Where(entdevice.UserID(id)).All(ctx); err == nil {
+		data.UserDevices = entDevicesToModels(devices)
+	}
+	return data, nil
 }

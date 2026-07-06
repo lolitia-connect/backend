@@ -2,12 +2,9 @@ package coupon
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"github.com/perfect-panel/server/pkg/cache"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entcoupon "github.com/perfect-panel/server/ent/coupon"
 )
 
 var _ Model = (*customCouponModel)(nil)
@@ -27,107 +24,116 @@ type (
 		FindOneByCode(ctx context.Context, code string) (*Coupon, error)
 		Update(ctx context.Context, data *Coupon) error
 		Delete(ctx context.Context, id int64) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 	}
 
 	customCouponModel struct {
 		*defaultCouponModel
 	}
 	defaultCouponModel struct {
-		cache.CachedConn
-		table string
+		db *ent.Client
 	}
 )
 
-func newCouponModel(db *gorm.DB, c *redis.Client) *defaultCouponModel {
+func newCouponModel(db *ent.Client) *defaultCouponModel {
 	return &defaultCouponModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "coupon",
+		db: db,
 	}
-}
-
-//nolint:unused
-func (m *defaultCouponModel) batchGetCacheKeys(Coupons ...*Coupon) []string {
-	var keys []string
-	for _, coupon := range Coupons {
-		keys = append(keys, m.getCacheKeys(coupon)...)
-	}
-	return keys
-
-}
-func (m *defaultCouponModel) getCacheKeys(data *Coupon) []string {
-	if data == nil {
-		return []string{}
-	}
-	couponIdKey := fmt.Sprintf("%s%v", cacheCouponIdPrefix, data.Id)
-	couponCodeKey := fmt.Sprintf("%s%v", cacheCouponCodePrefix, data.Code)
-	cacheKeys := []string{
-		couponIdKey,
-		couponCodeKey,
-	}
-	return cacheKeys
 }
 
 func (m *defaultCouponModel) Insert(ctx context.Context, data *Coupon) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Create(&data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+	created, err := m.db.Coupon.Create().
+		SetName(data.Name).
+		SetCode(data.Code).
+		SetCount(data.Count).
+		SetType(data.Type).
+		SetDiscount(data.Discount).
+		SetStartTime(data.StartTime).
+		SetExpireTime(data.ExpireTime).
+		SetUserLimit(data.UserLimit).
+		SetSubscribe(data.Subscribe).
+		SetUsedCount(data.UsedCount).
+		SetEnable(value(data.Enable)).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyFromEnt(data, created)
+	return nil
 }
 
 func (m *defaultCouponModel) FindOne(ctx context.Context, id int64) (*Coupon, error) {
-	var resp Coupon
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Coupon{}).Where("id = ?", id).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
+	data, err := m.db.Coupon.Query().Where(entcoupon.ID(id)).Only(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return couponFromEnt(data), nil
 }
 
 func (m *defaultCouponModel) FindOneByCode(ctx context.Context, code string) (*Coupon, error) {
-	var resp Coupon
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Coupon{}).Where("code = ?", code).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
+	data, err := m.db.Coupon.Query().Where(entcoupon.Code(code)).Only(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return couponFromEnt(data), nil
 }
 
 func (m *defaultCouponModel) Update(ctx context.Context, data *Coupon) error {
-	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	updated, err := m.db.Coupon.UpdateOneID(data.Id).
+		SetName(data.Name).
+		SetCode(data.Code).
+		SetCount(data.Count).
+		SetType(data.Type).
+		SetDiscount(data.Discount).
+		SetStartTime(data.StartTime).
+		SetExpireTime(data.ExpireTime).
+		SetUserLimit(data.UserLimit).
+		SetSubscribe(data.Subscribe).
+		SetUsedCount(data.UsedCount).
+		SetEnable(value(data.Enable)).
+		Save(ctx)
+	if err != nil {
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
+	copyFromEnt(data, updated)
+	return nil
 }
 
 func (m *defaultCouponModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+	err := m.db.Coupon.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Delete(&Coupon{}, id).Error
-	}, m.getCacheKeys(data)...)
 	return err
 }
 
-func (m *defaultCouponModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
+func couponFromEnt(data *ent.Coupon) *Coupon {
+	if data == nil {
+		return nil
+	}
+	var resp Coupon
+	copyFromEnt(&resp, data)
+	return &resp
+}
+
+func copyFromEnt(dst *Coupon, src *ent.Coupon) {
+	dst.Id = src.ID
+	dst.Name = src.Name
+	dst.Code = src.Code
+	dst.Count = src.Count
+	dst.Type = src.Type
+	dst.Discount = src.Discount
+	dst.StartTime = src.StartTime
+	dst.ExpireTime = src.ExpireTime
+	dst.UserLimit = src.UserLimit
+	dst.Subscribe = src.Subscribe
+	dst.UsedCount = src.UsedCount
+	dst.Enable = ptr(src.Enable)
+	dst.CreatedAt = src.CreatedAt
+	dst.UpdatedAt = src.UpdatedAt
+}
+
+func ptr(v bool) *bool { return &v }
+
+func value(v *bool) bool {
+	return v == nil || *v
 }

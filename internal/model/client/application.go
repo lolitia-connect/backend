@@ -6,22 +6,18 @@ import (
 )
 
 type SubscribeApplication struct {
-	Id                int64     `gorm:"primaryKey"`
-	Name              string    `gorm:"type:varchar(255);default:'';not null;comment:Application Name"`
-	Icon              string    `gorm:"type:MEDIUMTEXT;default:null;comment:Application Icon"`
-	Description       string    `gorm:"type:varchar(255);default:null;comment:Application Description"`
-	Scheme            string    `gorm:"type:varchar(255);default:'';not null;comment:Scheme"`
-	UserAgent         string    `gorm:"type:varchar(255);default:'';not null;comment:User Agent"`
-	IsDefault         bool      `gorm:"type:tinyint(1);not null;default:0;comment:Is Default Application"`
-	SubscribeTemplate string    `gorm:"type:MEDIUMTEXT;default:null;comment:Subscribe Template"`
-	OutputFormat      string    `gorm:"type:varchar(50);default:'yaml';not null;comment:Output Format"`
-	DownloadLink      string    `gorm:"type:text;not null;comment:Download Link"`
-	CreatedAt         time.Time `gorm:"<-:create;comment:Create Time"`
-	UpdatedAt         time.Time `gorm:"comment:Update Time"`
-}
-
-func (SubscribeApplication) TableName() string {
-	return "subscribe_application"
+	Id                int64
+	Name              string
+	Icon              string
+	Description       string
+	Scheme            string
+	UserAgent         string
+	IsDefault         bool
+	SubscribeTemplate string
+	OutputFormat      string
+	DownloadLink      string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type DownloadLink struct {

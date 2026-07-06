@@ -3,36 +3,25 @@ package orm
 import (
 	"fmt"
 	"strings"
-
-	"gorm.io/gorm"
 )
 
-// CommaSeparatedContains filters comma-separated string columns, such as "1,2,3".
-func CommaSeparatedContains(field string, values []string) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		values = removeEmpty(values)
-		if len(values) == 0 {
-			return db
-		}
-
-		if db.Dialector.Name() == DriverMySQL {
-			conds := make([]string, len(values))
-			args := make([]interface{}, len(values))
-			for i, v := range values {
-				conds[i] = "FIND_IN_SET(?, " + field + ")"
-				args[i] = v
-			}
-			return db.Where("("+strings.Join(conds, " OR ")+")", args...)
-		}
-
-		conds := make([]string, len(values))
-		args := make([]interface{}, len(values))
-		for i, v := range values {
+func CommaSeparatedContainsCondition(driver, field string, values []string) (string, []any) {
+	values = removeEmpty(values)
+	if len(values) == 0 {
+		return "", nil
+	}
+	conds := make([]string, len(values))
+	args := make([]any, len(values))
+	for i, v := range values {
+		if NormalizeDriver(driver) == DriverMySQL {
+			conds[i] = "FIND_IN_SET(?, " + field + ")"
+			args[i] = v
+		} else {
 			conds[i] = "(',' || COALESCE(" + field + ", '') || ',') LIKE ?"
 			args[i] = "%," + v + ",%"
 		}
-		return db.Where("("+strings.Join(conds, " OR ")+")", args...)
 	}
+	return "(" + strings.Join(conds, " OR ") + ")", args
 }
 
 func removeEmpty(values []string) []string {
@@ -45,8 +34,8 @@ func removeEmpty(values []string) []string {
 	return list
 }
 
-func TextColumnExpr(db *gorm.DB, field string) string {
-	if db.Dialector.Name() == DriverPostgres {
+func TextColumnExpr(driver, field string) string {
+	if NormalizeDriver(driver) == DriverPostgres {
 		return fmt.Sprintf("CAST(%s AS TEXT)", field)
 	}
 	return fmt.Sprintf("CAST(%s AS CHAR)", field)

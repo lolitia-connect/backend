@@ -79,7 +79,7 @@ $ systemctl start ppanel
     ```
 4. 服务日志：服务日志默认输出到 /root/ppanel-server-linux-amd64/ppanel.log 文件中
 5. 可通过 `journalctl -u ppanel -f` 查看服务日志
-6. 当配置文件为空或者不存在的情况下，服务会使用默认配置启动，配置文件路径为：`./etc/ppanel.yaml`，
+6. 当配置文件为空或者不存在的情况下，服务会使用默认配置启动，配置文件路径为：`./config.yaml`，
 请通过`http://服务器地址:8080/init` 初始化系统配置
 
 #### NGINX 反向代理配置

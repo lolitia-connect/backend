@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,8 +20,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type PurchaseLogic struct {
 	logger.Logger
@@ -44,7 +44,7 @@ const (
 func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.PortalPurchaseResponse, err error) {
 	// find user auth
 	userAuth, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, req.AuthType, req.Identifier)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth error: %v", err.Error())
 	}
 	if userAuth.UserId != 0 {
@@ -82,7 +82,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	if req.Coupon != "" {
 		couponInfo, err := l.svcCtx.Store.Coupon().FindOneByCode(l.ctx, req.Coupon)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if ent.IsNotFound(err) {
 				return nil, errors.Wrapf(xerr.NewErrCode(xerr.CouponNotExist), "coupon not found")
 			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())

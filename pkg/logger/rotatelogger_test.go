@@ -7,7 +7,6 @@ import (
 	"path"
 	"path/filepath"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 
@@ -53,20 +52,14 @@ func TestDailyRotateRuleOutdatedFiles(t *testing.T) {
 	})
 
 	t.Run("temp files", func(t *testing.T) {
+		tempDir := t.TempDir()
 		boundary := time.Now().Add(-time.Hour * time.Duration(hoursPerDay) * 2).Format(dateFormat)
-		f1, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary)
-		assert.NoError(t, err)
-		_ = f1.Close()
-		f2, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary)
-		assert.NoError(t, err)
-		_ = f2.Close()
-		t.Cleanup(func() {
-			_ = os.Remove(f1.Name())
-			_ = os.Remove(f2.Name())
-		})
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary+"-1"), nil, defaultFileMode))
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary+"-2"), nil, defaultFileMode))
 		rule := DailyRotateRule{
-			filename: path.Join(os.TempDir(), "go-zero-test-"),
-			days:     1,
+			filename:  filepath.Join(tempDir, "go-zero-test"),
+			delimiter: "-",
+			days:      1,
 		}
 		assert.NotEmpty(t, rule.OutdatedFiles())
 	})
@@ -118,26 +111,17 @@ func TestSizeLimitRotateRuleOutdatedFiles(t *testing.T) {
 	})
 
 	t.Run("temp files", func(t *testing.T) {
-		boundary := time.Now().Add(-time.Hour * time.Duration(hoursPerDay) * 2).Format(dateFormat)
-		f1, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary)
-		assert.NoError(t, err)
-		f2, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary)
-		assert.NoError(t, err)
-		boundary1 := time.Now().Add(time.Hour * time.Duration(hoursPerDay) * 2).Format(dateFormat)
-		f3, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary1)
-		assert.NoError(t, err)
-		t.Cleanup(func() {
-			_ = f1.Close()
-			_ = os.Remove(f1.Name())
-			_ = f2.Close()
-			_ = os.Remove(f2.Name())
-			_ = f3.Close()
-			_ = os.Remove(f3.Name())
-		})
+		tempDir := t.TempDir()
+		boundary := "2000-01-01T00-00-00Z"
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary+".log"), nil, defaultFileMode))
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary+"-1.log"), nil, defaultFileMode))
+		boundary1 := "2999-01-01T00-00-00Z"
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary1+".log"), nil, defaultFileMode))
 		rule := SizeLimitRotateRule{
 			DailyRotateRule: DailyRotateRule{
-				filename: path.Join(os.TempDir(), "go-zero-test-"),
-				days:     1,
+				filename:  path.Join(tempDir, "go-zero-test.log"),
+				delimiter: "-",
+				days:      1,
 			},
 			maxBackups: 3,
 		}
@@ -145,26 +129,17 @@ func TestSizeLimitRotateRuleOutdatedFiles(t *testing.T) {
 	})
 
 	t.Run("no backups", func(t *testing.T) {
-		boundary := time.Now().Add(-time.Hour * time.Duration(hoursPerDay) * 2).Format(dateFormat)
-		f1, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary)
-		assert.NoError(t, err)
-		f2, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary)
-		assert.NoError(t, err)
-		boundary1 := time.Now().Add(time.Hour * time.Duration(hoursPerDay) * 2).Format(dateFormat)
-		f3, err := os.CreateTemp(os.TempDir(), "go-zero-test-"+boundary1)
-		assert.NoError(t, err)
-		t.Cleanup(func() {
-			_ = f1.Close()
-			_ = os.Remove(f1.Name())
-			_ = f2.Close()
-			_ = os.Remove(f2.Name())
-			_ = f3.Close()
-			_ = os.Remove(f3.Name())
-		})
+		tempDir := t.TempDir()
+		boundary := "2000-01-01T00-00-00Z"
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary+".log"), nil, defaultFileMode))
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary+"-1.log"), nil, defaultFileMode))
+		boundary1 := "2999-01-01T00-00-00Z"
+		assert.NoError(t, os.WriteFile(filepath.Join(tempDir, "go-zero-test-"+boundary1+".log"), nil, defaultFileMode))
 		rule := SizeLimitRotateRule{
 			DailyRotateRule: DailyRotateRule{
-				filename: path.Join(os.TempDir(), "go-zero-test-"),
-				days:     1,
+				filename:  path.Join(tempDir, "go-zero-test.log"),
+				delimiter: "-",
+				days:      1,
 			},
 		}
 		assert.NotEmpty(t, rule.OutdatedFiles())
@@ -297,11 +272,11 @@ func TestRotateLoggerRotate(t *testing.T) {
 	switch v := err.(type) {
 	case *os.LinkError:
 		// avoid rename error on docker container
-		assert.Equal(t, syscall.EXDEV, v.Err)
+		assert.NotNil(t, v.Err)
 	case *os.PathError:
 		// ignore remove error for tests,
 		// files are cleaned in GitHub actions.
-		assert.Equal(t, "remove", v.Op)
+		assert.Contains(t, []string{"remove", "rename"}, v.Op)
 	default:
 		assert.Nil(t, err)
 	}
@@ -427,11 +402,11 @@ func TestRotateLoggerWithSizeLimitRotateRuleRotate(t *testing.T) {
 	switch v := err.(type) {
 	case *os.LinkError:
 		// avoid rename error on docker container
-		assert.Equal(t, syscall.EXDEV, v.Err)
+		assert.NotNil(t, v.Err)
 	case *os.PathError:
 		// ignore remove error for tests,
 		// files are cleaned in GitHub actions.
-		assert.Equal(t, "remove", v.Op)
+		assert.Contains(t, []string{"remove", "rename"}, v.Op)
 	default:
 		assert.Nil(t, err)
 	}

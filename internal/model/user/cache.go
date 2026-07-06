@@ -30,7 +30,7 @@ func (c *UserCacheManager) ClearCache(ctx context.Context, keys ...string) error
 	if len(keys) == 0 {
 		return nil
 	}
-	return c.model.CachedConn.DelCacheCtx(ctx, keys...)
+	return c.model.redis.Del(ctx, keys...).Err()
 }
 
 func (c *UserCacheManager) ClearModelCache(ctx context.Context, models ...CacheKeyGenerator) error {

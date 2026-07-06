@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -36,15 +37,12 @@ func runMigration(t *testing.T, driver, dsn string) {
 		t.Fatalf("%s dsn parse failed", driver)
 	}
 	cfg.Driver = orm.NormalizeDriver(driver)
-	db, err := orm.ConnectDatabase(orm.Mysql{Config: *cfg})
+	db, driverName, err := orm.OpenSQL(orm.Mysql{Config: *cfg})
 	if err != nil {
 		t.Fatalf("%s connect failed: %v", driver, err)
 	}
-	sqlDB, err := db.DB()
-	if err == nil {
-		defer sqlDB.Close()
-	}
-	if err := CreateAdminUser(fmt.Sprintf("admin-%s@example.com", driver), "password", db); err != nil {
+	defer db.Close()
+	if err := CreateAdminUser(context.Background(), fmt.Sprintf("admin-%s@example.com", driver), "password", orm.NewEntClient(db, driverName)); err != nil {
 		t.Fatalf("%s create admin failed: %v", driver, err)
 	}
 }

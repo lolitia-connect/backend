@@ -7,9 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/perfect-panel/server/pkg/orm"
+	"entgo.io/ent/dialect/sql"
+	entnode "github.com/perfect-panel/server/ent/node"
+	"github.com/perfect-panel/server/ent/predicate"
+	entserver "github.com/perfect-panel/server/ent/server"
+	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
-	"gorm.io/gorm"
 )
 
 type customServerLogicModel interface {
@@ -73,36 +76,44 @@ type SortItem struct {
 
 // FilterServerList Filter Server List
 func (m *customServerModel) FilterServerList(ctx context.Context, params *FilterParams) (int64, []*Server, error) {
-	var servers []*Server
-	var total int64
-	query := m.WithContext(ctx).Model(&Server{})
 	if params == nil {
 		params = &FilterParams{
 			Page: 1,
 			Size: 10,
 		}
 	}
+	query := m.db.Server.Query()
 	if params.Search != "" {
-		query = query.Scopes(orm.PrefixLike([]string{"name", "address"}, params.Search))
+		search := strings.TrimSpace(params.Search)
+		query = query.Where(entserver.Or(entserver.NameContains(search), entserver.AddressContains(search)))
 	}
 	if len(params.Ids) > 0 {
-		query = query.Where("id IN ?", params.Ids)
+		query = query.Where(entserver.IDIn(params.Ids...))
 	}
 
-	err := query.Count(&total).Order("sort ASC, id ASC").Limit(params.Size).Offset((params.Page - 1) * params.Size).Find(&servers).Error
-	return total, servers, err
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	list, err := query.Order(entserver.BySort(), entserver.ByID()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
+	return int64(total), entServersToModel(list), err
 }
 
 func (m *customServerModel) QueryServerList(ctx context.Context, ids []int64) (servers []*Server, err error) {
-	query := m.WithContext(ctx).Model(&Server{})
-	err = query.Where("id IN (?)", ids).Find(&servers).Error
-	return
+	list, err := m.db.Server.Query().Where(entserver.IDIn(ids...)).All(ctx)
+	return entServersToModel(list), err
 }
 
 func (m *customServerModel) QueryServerSorts(ctx context.Context) ([]SortItem, error) {
-	var items []SortItem
-	err := m.WithContext(ctx).Model(&Server{}).Select("id", "sort").Order("sort ASC, id ASC").Find(&items).Error
-	return items, err
+	list, err := m.db.Server.Query().Order(entserver.BySort(), entserver.ByID()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]SortItem, 0, len(list))
+	for _, item := range list {
+		items = append(items, SortItem{Id: item.ID, Sort: int64(item.Sort)})
+	}
+	return items, nil
 }
 
 func (m *customServerModel) UpdateServerSort(ctx context.Context, id int64, sort int64) error {
@@ -118,82 +129,87 @@ func (m *customServerModel) UpdateServerSort(ctx context.Context, id int64, sort
 // avoiding full-row updates that cause optimistic locking conflicts
 // when multiple nodes report status simultaneously.
 func (m *customServerModel) UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error {
-	return m.WithContext(ctx).Model(&Server{}).Where("id = ?", id).Update("last_reported_at", t).Error
+	return m.db.Server.UpdateOneID(id).SetLastReportedAt(t).Exec(ctx)
 }
 
 // FilterNodeList Filter Node List
 func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNodeParams) (int64, []*Node, error) {
-	var nodes []*Node
-	var total int64
-	query := m.WithContext(ctx).Model(&Node{})
 	if params == nil {
 		params = &FilterNodeParams{
 			Page: 1,
 			Size: 10,
 		}
 	}
+	query := m.db.Node.Query()
 	if params.Search != "" {
 		search := strings.TrimSpace(params.Search)
-		pattern := orm.LikeContainsPattern(search)
-		condition := "(name LIKE ?" + orm.LikeEscapeClause() + " OR address LIKE ?" + orm.LikeEscapeClause() + " OR FIND_IN_SET(?, tags)"
-		args := []interface{}{pattern, pattern, search}
+		predicates := []predicate.Node{entnode.NameContains(search), entnode.AddressContains(search), commaSeparatedContains(entnode.FieldTags, search)}
 		if port, err := strconv.ParseUint(search, 10, 16); err == nil {
-			condition += " OR port = ?"
-			args = append(args, uint16(port))
+			predicates = append(predicates, entnode.Port(uint16(port)))
 		}
-		condition += ")"
-		query = query.Where(condition, args...)
+		query = query.Where(entnode.Or(predicates...))
 	}
 	if len(params.NodeId) > 0 {
-		query = query.Where("id IN ?", params.NodeId)
+		query = query.Where(entnode.IDIn(params.NodeId...))
 	}
 	if len(params.ServerId) > 0 {
-		query = query.Where("server_id IN ?", params.ServerId)
+		query = query.Where(entnode.ServerIDIn(params.ServerId...))
 	}
 	if len(params.Tag) > 0 {
-		query = query.Scopes(InSet("tags", params.Tag))
+		query = query.Where(commaSeparatedContainsAny(entnode.FieldTags, params.Tag))
 	}
 	if len(params.NodeGroupIds) > 0 {
-		// Filter by node_group_ids using JSON_CONTAINS for each group ID
-		// Multiple group IDs: node must belong to at least one of the groups
-		var conditions []string
-		var args []interface{}
+		predicates := make([]predicate.Node, 0, len(params.NodeGroupIds))
 		for _, gid := range params.NodeGroupIds {
-			conditions = append(conditions, "JSON_CONTAINS(node_group_ids, ?)")
-			args = append(args, fmt.Sprintf("[%d]", gid))
+			id := gid
+			predicates = append(predicates, predicate.Node(func(s *sql.Selector) {
+				s.Where(sql.ExprP("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", id)))
+			}))
 		}
-		if len(conditions) > 0 {
-			query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
-		}
+		query = query.Where(entnode.Or(predicates...))
 	}
-	// If no NodeGroupIds specified, return all nodes (including public nodes)
 	if params.ProtocolId != "" {
-		query = query.Where("protocol_id = ?", params.ProtocolId)
+		query = query.Where(entnode.ProtocolID(params.ProtocolId))
 	}
 	if params.Protocol != "" {
-		query = query.Where("protocol = ?", params.Protocol)
+		query = query.Where(entnode.Protocol(params.Protocol))
 	}
 
 	if params.Enabled != nil {
-		query = query.Where("enabled = ?", *params.Enabled)
+		query = query.Where(entnode.Enabled(*params.Enabled))
 	}
 
 	if params.IsHidden != nil {
-		query = query.Where("is_hidden = ?", *params.IsHidden)
+		query = query.Where(entnode.IsHidden(*params.IsHidden))
 	}
 
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	list, err := query.Order(entnode.BySort(), entnode.ByID()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	nodes := entNodesToModel(list)
 	if params.Preload {
-		query = query.Preload("Server")
+		if err := m.preloadNodeServers(ctx, nodes); err != nil {
+			return 0, nil, err
+		}
 	}
-
-	err := query.Count(&total).Order("sort ASC, id ASC").Limit(params.Size).Offset((params.Page - 1) * params.Size).Find(&nodes).Error
-	return total, nodes, err
+	return int64(total), nodes, nil
 }
 
 func (m *customServerModel) QueryNodeSorts(ctx context.Context) ([]SortItem, error) {
-	var items []SortItem
-	err := m.WithContext(ctx).Model(&Node{}).Select("id", "sort").Order("sort ASC, id ASC").Find(&items).Error
-	return items, err
+	list, err := m.db.Node.Query().Order(entnode.BySort(), entnode.ByID()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]SortItem, 0, len(list))
+	for _, item := range list {
+		items = append(items, SortItem{Id: item.ID, Sort: int64(item.Sort)})
+	}
+	return items, nil
 }
 
 func (m *customServerModel) UpdateNodeSort(ctx context.Context, id int64, sort int64) error {
@@ -206,19 +222,17 @@ func (m *customServerModel) UpdateNodeSort(ctx context.Context, id int64, sort i
 }
 
 func (m *customServerModel) QueryNodeTags(ctx context.Context) ([]string, error) {
-	var tags []string
-	err := m.WithContext(ctx).Model(&Node{}).Pluck("tags", &tags).Error
-	return tags, err
+	return m.db.Node.Query().Select(entnode.FieldTags).Strings(ctx)
 }
 
 func (m *customServerModel) SortNodesByName(ctx context.Context) error {
-	var nodes []*Node
-	if err := m.WithContext(ctx).Model(&Node{}).Order("CONVERT(name USING gbk) ASC").Find(&nodes).Error; err != nil {
+	nodes, err := m.db.Node.Query().Order(nodeNameGBKOrder()).All(ctx)
+	if err != nil {
 		return err
 	}
 	for i, n := range nodes {
 		if n.Sort != i {
-			if err := m.WithContext(ctx).Model(&Node{}).Where("id = ?", n.Id).Update("sort", i).Error; err != nil {
+			if err := m.db.Node.UpdateOneID(n.ID).SetSort(i).Exec(ctx); err != nil {
 				return err
 			}
 		}
@@ -227,13 +241,13 @@ func (m *customServerModel) SortNodesByName(ctx context.Context) error {
 }
 
 func (m *customServerModel) SortServersByName(ctx context.Context) error {
-	var servers []*Server
-	if err := m.WithContext(ctx).Model(&Server{}).Order("CONVERT(name USING gbk) ASC").Find(&servers).Error; err != nil {
+	servers, err := m.db.Server.Query().Order(serverNameGBKOrder()).All(ctx)
+	if err != nil {
 		return err
 	}
 	for i, s := range servers {
 		if s.Sort != i {
-			if err := m.WithContext(ctx).Model(&Server{}).Where("id = ?", s.Id).Update("sort", i).Error; err != nil {
+			if err := m.db.Server.UpdateOneID(s.ID).SetSort(i).Exec(ctx); err != nil {
 				return err
 			}
 		}
@@ -242,35 +256,30 @@ func (m *customServerModel) SortServersByName(ctx context.Context) error {
 }
 
 func (m *customServerModel) CountEnabledNodes(ctx context.Context) (int64, error) {
-	var total int64
-	err := m.WithContext(ctx).Model(&Node{}).Where("enabled = ?", true).Count(&total).Error
-	return total, err
+	total, err := m.db.Node.Query().Where(entnode.Enabled(true)).Count(ctx)
+	return int64(total), err
 }
 
 func (m *customServerModel) CountServersByReportStatus(ctx context.Context, cutoff time.Time) (int64, int64, error) {
-	var online int64
-	if err := m.WithContext(ctx).Model(&Server{}).Where("last_reported_at > ?", cutoff).Count(&online).Error; err != nil {
+	online, err := m.db.Server.Query().Where(entserver.LastReportedAtGT(cutoff)).Count(ctx)
+	if err != nil {
 		return 0, 0, err
 	}
 
-	var offline int64
-	if err := m.WithContext(ctx).Model(&Server{}).Where("last_reported_at <= ? OR last_reported_at IS NULL", cutoff).Count(&offline).Error; err != nil {
+	offline, err := m.db.Server.Query().Where(entserver.Or(entserver.LastReportedAtLTE(cutoff), entserver.LastReportedAtIsNil())).Count(ctx)
+	if err != nil {
 		return 0, 0, err
 	}
 
-	return online, offline, nil
+	return int64(online), int64(offline), nil
 }
 
 func (m *customServerModel) QueryServerAddresses(ctx context.Context) ([]string, error) {
-	var addresses []string
-	err := m.WithContext(ctx).Model(&Server{}).Pluck("address", &addresses).Error
-	return addresses, err
+	return m.db.Server.Query().Select(entserver.FieldAddress).Strings(ctx)
 }
 
 func (m *customServerModel) QueryEnabledNodeProtocols(ctx context.Context) ([]string, error) {
-	var protocols []string
-	err := m.WithContext(ctx).Model(&Node{}).Where("enabled = ?", true).Pluck("protocol", &protocols).Error
-	return protocols, err
+	return m.db.Node.Query().Where(entnode.Enabled(true)).Select(entnode.FieldProtocol).Strings(ctx)
 }
 
 // ClearNodeCache Clear Node Cache
@@ -354,10 +363,10 @@ func (m *customServerModel) ClearServerAllCache(ctx context.Context) error {
 	for {
 		scanKeys, newCursor, err := m.Cache.Scan(ctx, cursor, prefix, 999).Result()
 		if err != nil {
-			m.Logger.Error(ctx, fmt.Sprintf("ClearServerAllCache err:%v", err))
+			logger.Error(ctx, fmt.Sprintf("ClearServerAllCache err:%v", err))
 			break
 		}
-		m.Logger.Info(ctx, fmt.Sprintf("ClearServerAllCache query keys:%v", scanKeys))
+		logger.Info(ctx, fmt.Sprintf("ClearServerAllCache query keys:%v", scanKeys))
 		keys = append(keys, scanKeys...)
 		cursor = newCursor
 		if cursor == 0 {
@@ -365,13 +374,8 @@ func (m *customServerModel) ClearServerAllCache(ctx context.Context) error {
 		}
 	}
 	if len(keys) > 0 {
-		m.Logger.Info(ctx, fmt.Sprintf("ClearServerAllCache keys:%v", keys))
+		logger.Info(ctx, fmt.Sprintf("ClearServerAllCache keys:%v", keys))
 		return m.Cache.Del(ctx, keys...).Err()
 	}
 	return nil
-}
-
-// InSet 支持多值 OR 查询
-func InSet(field string, values []string) func(db *gorm.DB) *gorm.DB {
-	return orm.CommaSeparatedContains(field, values)
 }

@@ -5,6 +5,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/userdeviceonlinerecord"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -31,19 +33,26 @@ func (l *DeviceOnlineStatisticsLogic) DeviceOnlineStatistics() (resp *types.GetD
 	u := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	//获取历史最长在线时间
 	var OnlineSeconds int64
-	if err := l.svcCtx.Store.DB().Model(user.DeviceOnlineRecord{}).Where("user_id = ?", u.Id).Select("online_seconds").Order("online_seconds desc").Limit(1).Scan(&OnlineSeconds).Error; err != nil {
+	if record, err := l.svcCtx.Ent.UserDeviceOnlineRecord.Query().Where(userdeviceonlinerecord.UserID(u.Id)).Order(ent.Desc(userdeviceonlinerecord.FieldOnlineSeconds)).First(l.ctx); err == nil {
+		OnlineSeconds = record.OnlineSeconds
+	} else if !ent.IsNotFound(err) {
 		l.Logger.Error(err)
 	}
 
 	//获取历史连续最长在线天数
 	var DurationDays int64
-	if err := l.svcCtx.Store.DB().Model(user.DeviceOnlineRecord{}).Where("user_id = ?", u.Id).Select("duration_days").Order("duration_days desc").Limit(1).Scan(&DurationDays).Error; err != nil {
+	if record, err := l.svcCtx.Ent.UserDeviceOnlineRecord.Query().Where(userdeviceonlinerecord.UserID(u.Id)).Order(ent.Desc(userdeviceonlinerecord.FieldDurationDays)).First(l.ctx); err == nil {
+		DurationDays = record.DurationDays
+	} else if !ent.IsNotFound(err) {
 		l.Logger.Error(err)
 	}
 
 	//获取近七天在线情况
-	var userOnlineRecord []user.DeviceOnlineRecord
-	if err := l.svcCtx.Store.DB().Model(&userOnlineRecord).Where("user_id = ? and created_at >= ?", u.Id, time.Now().AddDate(0, 0, -7).Format(time.DateTime)).Order("created_at desc").Find(&userOnlineRecord).Error; err != nil {
+	userOnlineRecord, err := l.svcCtx.Ent.UserDeviceOnlineRecord.Query().Where(
+		userdeviceonlinerecord.UserID(u.Id),
+		userdeviceonlinerecord.CreatedAtGTE(time.Now().AddDate(0, 0, -7)),
+	).Order(ent.Desc(userdeviceonlinerecord.FieldCreatedAt)).All(l.ctx)
+	if err != nil {
 		l.Logger.Error(err)
 	}
 

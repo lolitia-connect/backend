@@ -1,6 +1,7 @@
 package redemption
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"crypto/rand"
 	"math/big"
@@ -11,8 +12,7 @@ import (
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type CreateRedemptionCodeLogic struct {
 	logger.Logger
@@ -49,7 +49,7 @@ func (l *CreateRedemptionCodeLogic) generateUniqueCode() (string, error) {
 
 		// Check if code already exists
 		_, err := l.svcCtx.Store.RedemptionCode().FindOneByCode(l.ctx, codeStr)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			return codeStr, nil
 		} else if err != nil {
 			return "", err
@@ -70,7 +70,7 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 	// Verify subscribe plan exists
 	_, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, req.SubscribePlan)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			l.Errorw("[CreateRedemptionCode] Subscribe plan not found", logger.Field("subscribe_plan", req.SubscribePlan))
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "subscribe plan not found")
 		}

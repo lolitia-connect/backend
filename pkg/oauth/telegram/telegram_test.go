@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"encoding/base64"
 	"net/http"
 	"testing"
 
@@ -24,13 +25,30 @@ func TestOAuth(t *testing.T) {
 }
 
 func TestBase64(t *testing.T) {
-	text := "eyJpZCI6ODI0NjI2ODAzLCJmaXJzdF9uYW1lIjoiQ2hhbmcgbHVlIiwibGFzdF9uYW1lIjoiVHNlbiIsInVzZXJuYW1lIjoidGVuc2lvbl9jIiwicGhvdG9fdXJsIjoiaHR0cHM6XC9cL3QubWVcL2lcL3VzZXJwaWNcLzMyMFwvYU1LNkhEc0pqc2V1YldRYmt2NGlYOHZCRUF6N0hWU3g3dkFuRDBLZ0tFVS5qcGciLCJhdXRoX2RhdGUiOjE3Mzc4MTkwNzQsImhhc2giOiI5M2I1ZDg3Zjc3NjE2YjBjMTM0OTAxYmYwMDg3MTc4YjJiYmZlYzA1MTlkMWVmMDJhZjFjMGNlOTAzM2ZiNGFlIn0"
-	var token = "7651491571:AAEVQma6niHhtqEYDowAEpPo6Fq69BWvRU8"
+	id := int64(824626803)
+	firstName := "Chang lue"
+	lastName := "Tsen"
+	username := "tension_c"
+	photoURL := "https://t.me/i/userpic/320/aMK6HDsJjseubWQbkv4iX8vBEAz7HVSx7vAnD0KgKEU.jpg"
+	authDate := int64(1737819074)
+	data := &AuthData{
+		Id:        &id,
+		FirstName: &firstName,
+		LastName:  &lastName,
+		Username:  &username,
+		PhotoUrl:  &photoURL,
+		AuthDate:  &authDate,
+	}
+	token := "7651491571:AAEVQma6niHhtqEYDowAEpPo6Fq69BWvRU8"
+	hash := computeHash(data, []byte(token))
+	text := base64.StdEncoding.EncodeToString([]byte(`{"id":824626803,"first_name":"Chang lue","last_name":"Tsen","username":"tension_c","photo_url":"https://t.me/i/userpic/320/aMK6HDsJjseubWQbkv4iX8vBEAz7HVSx7vAnD0KgKEU.jpg","auth_date":1737819074,"hash":"` + hash + `"}`))
 
-	data, err := ParseAndValidateBase64([]byte(text), token)
+	parsed, err := ParseAndValidateBase64([]byte(text), token)
 	if err != nil {
 		t.Error(err)
 	}
-	t.Log(*data.Id)
+	if parsed == nil || parsed.Id == nil || *parsed.Id != id {
+		t.Fatalf("unexpected parsed data: %#v", parsed)
+	}
 
 }

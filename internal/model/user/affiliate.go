@@ -3,29 +3,31 @@ package user
 import (
 	"context"
 
-	"gorm.io/gorm"
+	entsql "entgo.io/ent/dialect/sql"
+	entuser "github.com/perfect-panel/server/ent/user"
+	entauth "github.com/perfect-panel/server/ent/userauthmethod"
 )
 
 func (m *customUserModel) CountAffiliates(ctx context.Context, refererId int64) (int64, error) {
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Where("referer_id = ?", refererId).Count(&total).Error
-	})
-	return total, err
+	count, err := m.db.User.Query().Where(entuser.RefererID(refererId), entuser.DeletedAtIsNil()).Count(ctx)
+	return int64(count), err
 }
 
 func (m *customUserModel) QueryAffiliateList(ctx context.Context, refererId int64, page, size int) ([]*User, int64, error) {
-	var list []*User
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).
-			Where("referer_id = ?", refererId).
-			Count(&total).
-			Order("id desc").
-			Limit(size).
-			Offset((page - 1) * size).
-			Preload("AuthMethods").
-			Find(&list).Error
-	})
-	return list, total, err
+	query := m.db.User.Query().Where(entuser.RefererID(refererId), entuser.DeletedAtIsNil())
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	items, err := query.Order(entuser.ByID(entsql.OrderDesc())).Offset((page - 1) * size).Limit(size).All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	list := entUsersToModels(items)
+	for _, item := range list {
+		if auths, err := m.db.UserAuthMethod.Query().Where(entauth.UserID(item.Id)).All(ctx); err == nil {
+			item.AuthMethods = entAuthMethodsToModels(auths)
+		}
+	}
+	return list, int64(total), nil
 }

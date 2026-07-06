@@ -3,9 +3,8 @@ package payment
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/orm"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entpayment "github.com/perfect-panel/server/ent/payment"
 )
 
 type customPaymentLogicModel interface {
@@ -16,54 +15,64 @@ type customPaymentLogicModel interface {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, c *redis.Client) Model {
+func NewModel(conn *ent.Client) Model {
 	return &customPaymentModel{
-		defaultPaymentModel: newPaymentModel(conn, c),
+		defaultPaymentModel: newPaymentModel(conn),
 	}
 }
 
 func (m *customPaymentModel) FindOneByPaymentToken(ctx context.Context, token string) (*Payment, error) {
-	var resp *Payment
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Payment{}).Where("token = ?", token).First(v).Error
-	})
-	return resp, err
+	data, err := m.db.Payment.Query().Where(entpayment.Token(token)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return paymentFromEnt(data), nil
 }
 
 func (m *customPaymentModel) FindAll(ctx context.Context) ([]*Payment, error) {
-	var resp []*Payment
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Payment{}).Order("sort ASC, id ASC").Find(v).Error
-	})
-	return resp, err
+	items, err := m.db.Payment.Query().Order(ent.Asc(entpayment.FieldSort), ent.Asc(entpayment.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return paymentsFromEnt(items), nil
 }
 
 func (m *customPaymentModel) FindAvailableMethods(ctx context.Context) ([]*Payment, error) {
-	var resp []*Payment
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Payment{}).Where("enable = ?", true).Order("sort ASC, id ASC").Find(v).Error
-	})
-	return resp, err
+	items, err := m.db.Payment.Query().Where(entpayment.Enable(true)).Order(ent.Asc(entpayment.FieldSort), ent.Asc(entpayment.FieldID)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return paymentsFromEnt(items), nil
 }
 
 func (m *customPaymentModel) FindListByPage(ctx context.Context, page, size int, req *Filter) (int64, []*Payment, error) {
-	var resp []*Payment
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		conn = conn.Model(&Payment{})
-		if req != nil {
-			if req.Enable != nil {
-				conn = conn.Where("enable = ?", *req.Enable)
-			}
-			if req.Mark != "" {
-				conn = conn.Where("platform = ?", req.Mark)
-			}
-			if req.Search != "" {
-				conn = conn.Scopes(orm.PrefixLike([]string{"name"}, req.Search))
-			}
+	query := m.db.Payment.Query()
+	if req != nil {
+		if req.Enable != nil {
+			query = query.Where(entpayment.Enable(*req.Enable))
 		}
+		if req.Mark != "" {
+			query = query.Where(entpayment.Platform(req.Mark))
+		}
+		if req.Search != "" {
+			query = query.Where(entpayment.NameHasPrefix(req.Search))
+		}
+	}
+	total, err := query.Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	items, err := query.Order(ent.Asc(entpayment.FieldSort), ent.Asc(entpayment.FieldID)).Offset((page - 1) * size).Limit(size).All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	return int64(total), paymentsFromEnt(items), nil
+}
 
-		return conn.Count(&total).Order("sort ASC, id ASC").Offset((page - 1) * size).Limit(size).Find(v).Error
-	})
-	return total, resp, err
+func paymentsFromEnt(items []*ent.Payment) []*Payment {
+	list := make([]*Payment, 0, len(items))
+	for _, item := range items {
+		list = append(list, paymentFromEnt(item))
+	}
+	return list
 }

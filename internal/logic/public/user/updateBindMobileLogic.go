@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -62,7 +62,7 @@ func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequ
 	l.svcCtx.Redis.Del(l.ctx, cacheKey)
 
 	m, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", req.Mobile)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
 	if m.Id > 0 {
@@ -70,10 +70,10 @@ func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequ
 	}
 
 	method, err := l.svcCtx.Store.User().FindUserAuthMethodByUserId(l.ctx, "mobile", u.Id)
-	if err != nil {
+	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if ent.IsNotFound(err) {
 		method = &user.AuthMethods{
 			UserId:         u.Id,
 			AuthType:       "mobile",

@@ -98,7 +98,7 @@ func (r *DailyRotateRule) MarkRotated() {
 
 // OutdatedFiles returns the files that exceeded the keeping days.
 func (r *DailyRotateRule) OutdatedFiles() []string {
-	if r.days <= 0 {
+	if r.days <= 0 || r.filename == "" {
 		return nil
 	}
 
@@ -167,6 +167,10 @@ func (r *SizeLimitRotateRule) MarkRotated() {
 }
 
 func (r *SizeLimitRotateRule) OutdatedFiles() []string {
+	if r.filename == "" {
+		return nil
+	}
+
 	dir := filepath.Dir(r.filename)
 	prefix, ext := r.parseFilename()
 

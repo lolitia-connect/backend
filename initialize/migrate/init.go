@@ -1,21 +1,30 @@
 package migrate
 
 import (
+	"context"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
-	"gorm.io/gorm"
 )
 
 // CreateAdminUser create admin user
-func CreateAdminUser(email, password string, tx *gorm.DB) error {
+func CreateAdminUser(ctx context.Context, email, password string, client *ent.Client) error {
 	enable := true
-	return tx.Transaction(func(tx *gorm.DB) error {
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	if err := func() error {
 		// Prevent duplicate creation
-		if tx.Model(&user.User{}).Find(&user.User{}).RowsAffected != 0 {
+		count, err := tx.Client().User.Query().Count(ctx)
+		if err != nil {
+			return err
+		}
+		if count != 0 {
 			logger.Info("User already exists, skip creating administrator account")
 			return nil
 		}
@@ -25,18 +34,23 @@ func CreateAdminUser(email, password string, tx *gorm.DB) error {
 			IsAdmin:   &enable,
 			ReferCode: uuidx.UserInviteCode(time.Now().Unix()),
 		}
-		if err := tx.Model(&user.User{}).Save(&u).Error; err != nil {
+		created, err := tx.Client().User.Create().SetPassword(u.Password).SetIsAdmin(enable).SetReferCode(u.ReferCode).Save(ctx)
+		if err != nil {
 			return err
 		}
 		method := user.AuthMethods{
-			UserId:         u.Id,
+			UserId:         created.ID,
 			AuthType:       "email",
 			AuthIdentifier: email,
 			Verified:       true,
 		}
-		if err := tx.Model(&user.AuthMethods{}).Save(&method).Error; err != nil {
+		if _, err := tx.Client().UserAuthMethod.Create().SetUserID(method.UserId).SetAuthType(method.AuthType).SetAuthIdentifier(method.AuthIdentifier).SetVerified(method.Verified).Save(ctx); err != nil {
 			return err
 		}
 		return nil
-	})
+	}(); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }

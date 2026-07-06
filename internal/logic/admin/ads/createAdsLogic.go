@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/perfect-panel/server/internal/model/ads"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -28,15 +27,16 @@ func NewCreateAdsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateA
 }
 
 func (l *CreateAdsLogic) CreateAds(req *types.CreateAdsRequest) error {
-	if err := l.svcCtx.Store.Ads().Insert(l.ctx, &ads.Ads{
-		Title:     req.Title,
-		Type:      req.Type,
-		Content:   req.Content,
-		TargetURL: req.TargetURL,
-		StartTime: time.UnixMilli(req.StartTime),
-		EndTime:   time.UnixMilli(req.EndTime),
-		Status:    req.Status,
-	}); err != nil {
+	if err := l.svcCtx.Ent.Ads.Create().
+		SetTitle(req.Title).
+		SetType(req.Type).
+		SetContent(req.Content).
+		SetDescription(req.Description).
+		SetTargetURL(req.TargetURL).
+		SetStartTime(time.UnixMilli(req.StartTime)).
+		SetEndTime(time.UnixMilli(req.EndTime)).
+		SetStatus(req.Status).
+		Exec(l.ctx); err != nil {
 		l.Errorw("insert ads error: %v", logger.Field("error", err.Error()), logger.Field("req", req))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert ads error: %v", err.Error())
 	}

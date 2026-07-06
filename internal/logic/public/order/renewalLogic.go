@@ -1,6 +1,7 @@
 package order
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"time"
@@ -19,8 +20,7 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type RenewalLogic struct {
 	logger.Logger
@@ -97,7 +97,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	if req.Coupon != "" {
 		couponInfo, err := store.Coupon().FindOneByCode(l.ctx, req.Coupon)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if ent.IsNotFound(err) {
 				return nil, errors.Wrapf(xerr.NewErrCode(xerr.CouponNotExist), "coupon not found")
 			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())

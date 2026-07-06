@@ -3,7 +3,7 @@ package log
 import (
 	"context"
 
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
 )
 
 var _ Model = (*customSystemLogModel)(nil)
@@ -23,33 +23,73 @@ type (
 		*defaultLogModel
 	}
 	defaultLogModel struct {
-		*gorm.DB
+		db *ent.Client
 	}
 )
 
-func newSystemLogModel(db *gorm.DB) *defaultLogModel {
+func newSystemLogModel(db *ent.Client) *defaultLogModel {
 	return &defaultLogModel{
-		DB: db,
+		db: db,
 	}
 }
 
 func (m *defaultLogModel) Insert(ctx context.Context, data *SystemLog) error {
-	return m.WithContext(ctx).Create(data).Error
+	created, err := m.db.SystemLog.Create().
+		SetType(data.Type).
+		SetDate(data.Date).
+		SetObjectID(data.ObjectID).
+		SetContent(data.Content).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyFromEnt(data, created)
+	return nil
 }
 
 func (m *defaultLogModel) FindOne(ctx context.Context, id int64) (*SystemLog, error) {
-	var log SystemLog
-	err := m.WithContext(ctx).Where("id = ?", id).First(&log).Error
+	data, err := m.db.SystemLog.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	return &log, nil
+	return logFromEnt(data), nil
 }
 
 func (m *defaultLogModel) Update(ctx context.Context, data *SystemLog) error {
-	return m.WithContext(ctx).Where("id = ?", data.Id).Save(data).Error
+	updated, err := m.db.SystemLog.UpdateOneID(data.Id).
+		SetType(data.Type).
+		SetDate(data.Date).
+		SetObjectID(data.ObjectID).
+		SetContent(data.Content).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyFromEnt(data, updated)
+	return nil
 }
 
 func (m *defaultLogModel) Delete(ctx context.Context, id int64) error {
-	return m.WithContext(ctx).Where("id = ?", id).Delete(&SystemLog{}).Error
+	return m.db.SystemLog.DeleteOneID(id).Exec(ctx)
+}
+
+func logFromEnt(data *ent.SystemLog) *SystemLog {
+	if data == nil {
+		return nil
+	}
+	return &SystemLog{
+		Id:        data.ID,
+		Type:      data.Type,
+		Date:      data.Date,
+		ObjectID:  data.ObjectID,
+		Content:   data.Content,
+		CreatedAt: data.CreatedAt,
+	}
+}
+
+func copyFromEnt(dst *SystemLog, src *ent.SystemLog) {
+	if dst == nil || src == nil {
+		return
+	}
+	*dst = *logFromEnt(src)
 }

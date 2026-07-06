@@ -3,11 +3,13 @@ package traffic
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
-	"github.com/perfect-panel/server/pkg/orm"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
+	"entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/predicate"
+	enttrafficlog "github.com/perfect-panel/server/ent/trafficlog"
 )
 
 type customTrafficLogicModel interface {
@@ -37,131 +39,92 @@ type TrafficLogDetailsFilter struct {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB) Model {
+func NewModel(conn *ent.Client) Model {
 	return &customTrafficModel{
 		defaultTrafficModel: newTrafficModel(conn),
 	}
 }
 
 func (m *customTrafficModel) QueryServerTrafficByDay(ctx context.Context, serverId int64, date time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
 	start, end := dayRange(date)
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(totalTrafficSelect(m.Conn)).
-		Where(fmt.Sprintf("%s = ? AND %s >= ? AND %s < ?", trafficColumn(m.Conn, "server_id"), trafficColumn(m.Conn, "timestamp"), trafficColumn(m.Conn, "timestamp")), serverId, start, end).
-		Scan(&data).Error
-	return &data, err
+	return m.queryTrafficSummary(ctx, enttrafficlog.ServerID(serverId), timeRange(start, end))
 }
 
 func (m *customTrafficModel) QueryTrafficByDay(ctx context.Context, date time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
 	start, end := dayRange(date)
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(totalTrafficSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Scan(&data).Error
-	return &data, err
+	return m.queryTrafficSummary(ctx, timeRange(start, end))
 }
 
 func (m *customTrafficModel) QueryTrafficByMonthly(ctx context.Context, date time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
 	start, end := monthRange(date)
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(totalTrafficSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Scan(&data).Error
-	return &data, err
+	return m.queryTrafficSummary(ctx, timeRange(start, end))
 }
 
 func (m *customTrafficModel) QueryTrafficSummary(ctx context.Context, start, end time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(totalTrafficSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Scan(&data).Error
-	return &data, err
+	return m.queryTrafficSummary(ctx, timeRange(start, end))
+}
+
+func (m *customTrafficModel) queryTrafficSummary(ctx context.Context, predicates ...predicate.TrafficLog) (*TotalTraffic, error) {
+	var data []TotalTraffic
+	err := m.db.TrafficLog.Query().Where(predicates...).Aggregate(totalTrafficAggregates()...).Scan(ctx, &data)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return &TotalTraffic{}, nil
+	}
+	return &data[0], nil
 }
 
 func (m *customTrafficModel) TopServersTrafficByDay(ctx context.Context, date time.Time, limit int) ([]ServerTrafficRanking, error) {
 	var summaries []ServerTrafficRanking
 	start, end := dayRange(date)
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(serverTrafficRankingSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Group(trafficColumn(m.Conn, "server_id")).
-		Order("total DESC").
-		Limit(limit).
-		Scan(&summaries).Error
+	err := m.serverTrafficRankingQuery(ctx, start, end, limit, &summaries)
 	return summaries, err
 }
 
 func (m *customTrafficModel) TopServersTrafficByMonthly(ctx context.Context, date time.Time, limit int) ([]ServerTrafficRanking, error) {
 	var summaries []ServerTrafficRanking
 	start, end := monthRange(date)
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(serverTrafficRankingSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Group(trafficColumn(m.Conn, "server_id")).
-		Order("total DESC").
-		Limit(limit).
-		Scan(&summaries).Error
+	err := m.serverTrafficRankingQuery(ctx, start, end, limit, &summaries)
 	return summaries, err
 }
 
 func (m *customTrafficModel) TopUsersTrafficByDay(ctx context.Context, date time.Time, limit int) ([]UserTrafficRanking, error) {
 	var summaries []UserTrafficRanking
 	start, end := dayRange(date)
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(userTrafficRankingSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Group(trafficColumn(m.Conn, "user_id") + ", " + trafficColumn(m.Conn, "subscribe_id")).
-		Order("total DESC").
-		Limit(limit).
-		Scan(&summaries).Error
+	err := m.userTrafficRankingQuery(ctx, start, end, limit, &summaries)
 	return summaries, err
 }
 
 func (m *customTrafficModel) TopUsersTrafficByMonthly(ctx context.Context, date time.Time, limit int) ([]UserTrafficRanking, error) {
 	var summaries []UserTrafficRanking
 	start, end := monthRange(date)
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(userTrafficRankingSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Group(trafficColumn(m.Conn, "user_id") + ", " + trafficColumn(m.Conn, "subscribe_id")).
-		Order("total DESC").
-		Limit(limit).
-		Scan(&summaries).Error
+	err := m.userTrafficRankingQuery(ctx, start, end, limit, &summaries)
 	return summaries, err
 }
 
 func (m *customTrafficModel) QueryServerTrafficRanking(ctx context.Context, start, end time.Time) ([]ServerTrafficRanking, error) {
 	var summaries []ServerTrafficRanking
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(serverTrafficRankingSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Group(trafficColumn(m.Conn, "server_id")).
-		Order("total DESC").
-		Scan(&summaries).Error
+	err := m.serverTrafficRankingQuery(ctx, start, end, 0, &summaries)
 	return summaries, err
 }
 
 func (m *customTrafficModel) QueryUserTrafficRanking(ctx context.Context, start, end time.Time) ([]UserTrafficRanking, error) {
 	var summaries []UserTrafficRanking
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).
-		Select(userTrafficRankingSelect(m.Conn)).
-		Where(timeRangeCondition(m.Conn), start, end).
-		Group(trafficColumn(m.Conn, "user_id") + ", " + trafficColumn(m.Conn, "subscribe_id")).
-		Order("total DESC").
-		Scan(&summaries).Error
+	err := m.userTrafficRankingQuery(ctx, start, end, 0, &summaries)
 	return summaries, err
 }
 
 // QueryTrafficLogPageList returns a list of records that meet the conditions.
 func (m *customTrafficModel) QueryTrafficLogPageList(ctx context.Context, userId, subscribeId int64, page, size int) ([]*TrafficLog, int64, error) {
-	var list []*TrafficLog
-	var total int64
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).Where("user_id = ? and subscribe_id= ?", userId, subscribeId).Count(&total).Limit(size).Offset((page - 1) * size).Find(&list).Error
-	return list, total, err
+	query := m.db.TrafficLog.Query().Where(enttrafficlog.UserID(userId), enttrafficlog.SubscribeID(subscribeId))
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	data, err := query.Limit(size).Offset((page - 1) * size).All(ctx)
+	return entTrafficLogsToModel(data), int64(total), err
 }
 
 func (m *customTrafficModel) QueryTrafficLogDetails(ctx context.Context, filter *TrafficLogDetailsFilter) ([]*TrafficLog, int64, error) {
@@ -175,32 +138,32 @@ func (m *customTrafficModel) QueryTrafficLogDetails(ctx context.Context, filter 
 		filter.Size = 10
 	}
 
-	query := m.Conn.WithContext(ctx).Model(&TrafficLog{})
+	predicates := make([]predicate.TrafficLog, 0)
 	if filter.ServerId != 0 {
-		query = query.Where("server_id = ?", filter.ServerId)
+		predicates = append(predicates, enttrafficlog.ServerID(filter.ServerId))
 	}
 	if !filter.Start.IsZero() && !filter.End.IsZero() {
-		query = query.Where(timeRangeCondition(m.Conn), filter.Start, filter.End)
+		predicates = append(predicates, timeRange(filter.Start, filter.End))
 	}
 	if filter.UserId != 0 {
-		query = query.Where("user_id = ?", filter.UserId)
+		predicates = append(predicates, enttrafficlog.UserID(filter.UserId))
 	}
 	if filter.SubscribeId != 0 {
-		query = query.Where("subscribe_id = ?", filter.SubscribeId)
+		predicates = append(predicates, enttrafficlog.SubscribeID(filter.SubscribeId))
 	}
 
-	var list []*TrafficLog
-	var total int64
-	err := query.Count(&total).
-		Order("timestamp DESC").
-		Limit(filter.Size).
-		Offset((filter.Page - 1) * filter.Size).
-		Find(&list).Error
-	return list, total, err
+	query := m.db.TrafficLog.Query().Where(predicates...)
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	data, err := query.Order(enttrafficlog.ByTimestamp(sql.OrderDesc())).Limit(filter.Size).Offset((filter.Page - 1) * filter.Size).All(ctx)
+	return entTrafficLogsToModel(data), int64(total), err
 }
 
 func (m *customTrafficModel) DeleteBefore(ctx context.Context, end time.Time) error {
-	return m.Conn.WithContext(ctx).Model(&TrafficLog{}).Where(trafficColumn(m.Conn, "timestamp")+" <= ?", end).Delete(&TrafficLog{}).Error
+	_, err := m.db.TrafficLog.Delete().Where(enttrafficlog.TimestampLTE(end)).Exec(ctx)
+	return err
 }
 
 func dayRange(date time.Time) (time.Time, time.Time) {
@@ -213,51 +176,71 @@ func monthRange(date time.Time) (time.Time, time.Time) {
 	return start, start.AddDate(0, 1, 0)
 }
 
-func timeRangeCondition(db *gorm.DB) string {
-	column := trafficColumn(db, "timestamp")
-	return column + " >= ? AND " + column + " < ?"
-}
-
-func totalTrafficSelect(db *gorm.DB) string {
-	return sumIntExpr(db, trafficColumn(db, "download"), "download") + ", " +
-		sumIntExpr(db, trafficColumn(db, "upload"), "upload")
-}
-
-func serverTrafficRankingSelect(db *gorm.DB) string {
-	download := trafficColumn(db, "download")
-	upload := trafficColumn(db, "upload")
-	return fmt.Sprintf(
-		"%s AS server_id, %s, %s, %s",
-		trafficColumn(db, "server_id"),
-		sumIntExpr(db, download+" + "+upload, "total"),
-		sumIntExpr(db, download, "download"),
-		sumIntExpr(db, upload, "upload"),
-	)
-}
-
-func userTrafficRankingSelect(db *gorm.DB) string {
-	download := trafficColumn(db, "download")
-	upload := trafficColumn(db, "upload")
-	return fmt.Sprintf(
-		"%s AS user_id, %s AS subscribe_id, %s, %s, %s",
-		trafficColumn(db, "user_id"),
-		trafficColumn(db, "subscribe_id"),
-		sumIntExpr(db, download+" + "+upload, "total"),
-		sumIntExpr(db, download, "download"),
-		sumIntExpr(db, upload, "upload"),
-	)
-}
-
-func sumIntExpr(db *gorm.DB, expr, alias string) string {
-	if db != nil && db.Dialector.Name() == orm.DriverPostgres {
-		return fmt.Sprintf("COALESCE(SUM(%s), 0)::bigint AS %s", expr, alias)
+func (m *customTrafficModel) serverTrafficRankingQuery(ctx context.Context, start, end time.Time, limit int, dst *[]ServerTrafficRanking) error {
+	err := m.db.TrafficLog.Query().Where(timeRange(start, end)).GroupBy(enttrafficlog.FieldServerID).Aggregate(trafficRankingAggregates()...).Scan(ctx, dst)
+	if err != nil {
+		return err
 	}
-	return fmt.Sprintf("COALESCE(SUM(%s), 0) AS %s", expr, alias)
+	sort.Slice(*dst, func(i, j int) bool { return (*dst)[i].Total > (*dst)[j].Total })
+	if limit > 0 && len(*dst) > limit {
+		*dst = (*dst)[:limit]
+	}
+	return nil
 }
 
-func trafficColumn(db *gorm.DB, column string) string {
-	if db != nil && db.Statement != nil {
-		return db.Statement.Quote(clause.Column{Table: TrafficLog{}.TableName(), Name: column})
+func (m *customTrafficModel) userTrafficRankingQuery(ctx context.Context, start, end time.Time, limit int, dst *[]UserTrafficRanking) error {
+	err := m.db.TrafficLog.Query().Where(timeRange(start, end)).GroupBy(enttrafficlog.FieldUserID, enttrafficlog.FieldSubscribeID).Aggregate(trafficRankingAggregates()...).Scan(ctx, dst)
+	if err != nil {
+		return err
 	}
-	return TrafficLog{}.TableName() + "." + column
+	sort.Slice(*dst, func(i, j int) bool { return (*dst)[i].Total > (*dst)[j].Total })
+	if limit > 0 && len(*dst) > limit {
+		*dst = (*dst)[:limit]
+	}
+	return nil
+}
+
+func timeRange(start, end time.Time) predicate.TrafficLog {
+	return predicate.TrafficLog(func(s *sql.Selector) {
+		s.Where(sql.And(sql.GTE(s.C(enttrafficlog.FieldTimestamp), start), sql.LT(s.C(enttrafficlog.FieldTimestamp), end)))
+	})
+}
+
+func totalTrafficAggregates() []ent.AggregateFunc {
+	return []ent.AggregateFunc{
+		ent.As(sumField(enttrafficlog.FieldDownload), "download"),
+		ent.As(sumField(enttrafficlog.FieldUpload), "upload"),
+	}
+}
+
+func trafficRankingAggregates() []ent.AggregateFunc {
+	return []ent.AggregateFunc{
+		ent.As(sumTotal(), "total"),
+		ent.As(sumField(enttrafficlog.FieldDownload), "download"),
+		ent.As(sumField(enttrafficlog.FieldUpload), "upload"),
+	}
+}
+
+func sumField(field string) ent.AggregateFunc {
+	return func(s *sql.Selector) string {
+		return fmt.Sprintf("COALESCE(SUM(%s), 0)", s.C(field))
+	}
+}
+
+func sumTotal() ent.AggregateFunc {
+	return func(s *sql.Selector) string {
+		return fmt.Sprintf("COALESCE(SUM(%s + %s), 0)", s.C(enttrafficlog.FieldDownload), s.C(enttrafficlog.FieldUpload))
+	}
+}
+
+func trafficColumn(column string) string {
+	return sql.Table(enttrafficlog.Table).C(column)
+}
+
+func entTrafficLogsToModel(data []*ent.TrafficLog) []*TrafficLog {
+	result := make([]*TrafficLog, 0, len(data))
+	for _, item := range data {
+		result = append(result, entToTrafficLog(item))
+	}
+	return result
 }

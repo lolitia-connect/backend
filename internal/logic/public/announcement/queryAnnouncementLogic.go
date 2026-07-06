@@ -3,7 +3,7 @@ package announcement
 import (
 	"context"
 
-	"github.com/perfect-panel/server/internal/model/announcement"
+	entannouncement "github.com/perfect-panel/server/ent/announcement"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
@@ -29,17 +29,27 @@ func NewQueryAnnouncementLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 }
 
 func (l *QueryAnnouncementLogic) QueryAnnouncement(req *types.QueryAnnouncementRequest) (resp *types.QueryAnnouncementResponse, err error) {
-	enable := true
-	total, list, err := l.svcCtx.Store.Announcement().GetAnnouncementListByPage(l.ctx, req.Page, req.Size, announcement.Filter{
-		Show:   &enable,
-		Pinned: req.Pinned,
-		Popup:  req.Popup,
-	})
+	size := req.Size
+	if size == 0 {
+		size = 10
+	}
+	query := l.svcCtx.Ent.Announcement.Query().Where(entannouncement.Show(true))
+	if req.Pinned != nil {
+		query = query.Where(entannouncement.Pinned(*req.Pinned))
+	}
+	if req.Popup != nil {
+		query = query.Where(entannouncement.Popup(*req.Popup))
+	}
+	total, err := query.Count(l.ctx)
+	if err != nil {
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetAnnouncementListByPage error: %v", err.Error())
+	}
+	list, err := query.Offset((req.Page - 1) * size).Limit(size).All(l.ctx)
 	if err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetAnnouncementListByPage error: %v", err.Error())
 	}
 	resp = &types.QueryAnnouncementResponse{}
-	resp.Total = total
+	resp.Total = int64(total)
 	resp.List = make([]types.Announcement, 0)
 	tool.DeepCopy(&resp.List, list)
 	return

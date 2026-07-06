@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/user"
@@ -57,25 +58,25 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 			return nil, err
 		}
 		userSubscribeInfo := types.UserSubscribeInfo{
-			Id:              userSubscribe.Id,
-			Nodes:           nodes,
-			Traffic:         userSubscribe.Traffic,
+			Id:               userSubscribe.Id,
+			Nodes:            nodes,
+			Traffic:          userSubscribe.Traffic,
 			TrafficUnlimited: userSubscribe.TrafficUnlimited,
-			Upload:          userSubscribe.Upload,
-			Download:        userSubscribe.Download,
-			Token:       userSubscribe.Token,
-			UserId:      userSubscribe.UserId,
-			OrderId:     userSubscribe.OrderId,
-			SubscribeId: userSubscribe.SubscribeId,
-			StartTime:   userSubscribe.StartTime.Unix(),
-			ExpireTime:  userSubscribe.ExpireTime.Unix(),
-			Status:      userSubscribe.Status,
-			CreatedAt:   userSubscribe.CreatedAt.Unix(),
-			UpdatedAt:   userSubscribe.UpdatedAt.Unix(),
+			Upload:           userSubscribe.Upload,
+			Download:         userSubscribe.Download,
+			Token:            userSubscribe.Token,
+			UserId:           userSubscribe.UserId,
+			OrderId:          userSubscribe.OrderId,
+			SubscribeId:      userSubscribe.SubscribeId,
+			StartTime:        tool.Unix(userSubscribe.StartTime),
+			ExpireTime:       tool.Unix(userSubscribe.ExpireTime),
+			Status:           userSubscribe.Status,
+			CreatedAt:        tool.Unix(userSubscribe.CreatedAt),
+			UpdatedAt:        tool.Unix(userSubscribe.UpdatedAt),
 		}
 
 		if userSubscribe.FinishedAt != nil {
-			userSubscribeInfo.FinishedAt = userSubscribe.FinishedAt.Unix()
+			userSubscribeInfo.FinishedAt = tool.UnixPtr(userSubscribe.FinishedAt)
 		}
 
 		if l.svcCtx.Config.Register.EnableTrial && l.svcCtx.Config.Register.TrialSubscribe == userSubscribe.SubscribeId {
@@ -227,7 +228,8 @@ func (l *QueryUserSubscribeNodeListLogic) filterSubscribeNodes(nodeIds []int64, 
 }
 
 func (l *QueryUserSubscribeNodeListLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
-	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
+	expireTime := tool.Unix(userSub.ExpireTime)
+	return expireTime < time.Now().Unix() && expireTime != 0
 }
 
 // isTrafficExhausted reports whether the subscription has used up its traffic
@@ -238,18 +240,13 @@ func (l *QueryUserSubscribeNodeListLogic) isTrafficExhausted(userSub *user.Subsc
 
 func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Subscribe) ([]*types.UserSubscribeNodeInfo, error) {
 	// 1. 查询过期节点组
-	var expiredGroup group.NodeGroup
-	err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error
+	expiredGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).First(l.ctx)
 	if err != nil {
 		l.Debugw("no expired node group configured", logger.Field("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
-	if expiredGroup.Id == 0 {
-		l.Debugw("no expired node group configured")
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
-	}
 	if !group.IsNodeGroupTypeAccessible(expiredGroup.Type, group.NodeGroupAccessApp) {
-		l.Debugf("expired node group %d is not accessible for app output", expiredGroup.Id)
+		l.Debugf("expired node group %d is not accessible for app output", expiredGroup.ID)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
@@ -275,7 +272,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 	_, nodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:         0,
 		Size:         1000,
-		NodeGroupIds: []int64{expiredGroup.Id},
+		NodeGroupIds: []int64{expiredGroup.ID},
 		Enabled:      &enable,
 		IsHidden:     &isHidden,
 	})
@@ -345,16 +342,17 @@ func (l *QueryUserSubscribeNodeListLogic) getAccessibleNodeGroup(nodeGroupId int
 		return nil
 	}
 
-	var nodeGroup group.NodeGroup
-	if err := l.svcCtx.Store.DB().Select("id, group_type").Where("id = ?", nodeGroupId).First(&nodeGroup).Error; err != nil {
+	entNodeGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.ID(nodeGroupId)).Only(l.ctx)
+	if err != nil {
 		l.Debugw("[GetNodesByGroup] node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
 		return nil
 	}
 
-	if !group.IsNodeGroupTypeAccessible(nodeGroup.Type, accessType) {
+	if !group.IsNodeGroupTypeAccessible(entNodeGroup.Type, accessType) {
 		return nil
 	}
 
+	nodeGroup := group.NodeGroup{Id: entNodeGroup.ID, Type: entNodeGroup.Type}
 	nodeGroup.Type = group.MustNodeGroupType(nodeGroup.Type)
 	return &nodeGroup
 }

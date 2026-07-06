@@ -31,6 +31,7 @@ package.json
 
 # Test-generated artifacts
 pkg/logger/CD01CB7D-2705-4F3F-889E-86219BF56F10/
+pkg/logger/*.gz
 
 # Local agent instructions
 AGENT.md
@@ -46,5 +47,4 @@ plugins/**/*.wasm
 !plugins/**/.gitkeep
 
 # Application generated files
-./logs
-./pkg/logger/*.gz
+logs

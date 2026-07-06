@@ -270,7 +270,7 @@ func (l *GetServerUserListLogic) shouldIncludeServerUser(userSub *user.Subscribe
 		return false
 	}
 
-	if userSub.ExpireTime.Unix() == 0 || userSub.ExpireTime.After(time.Now()) {
+	if tool.Unix(userSub.ExpireTime) == 0 || userSub.ExpireTime.After(time.Now()) {
 		return true
 	}
 

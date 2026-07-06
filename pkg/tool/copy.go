@@ -23,6 +23,34 @@ func CopyWithIgnoreEmpty(ignoreEmpty bool) CopyOption {
 	}
 }
 
+func Unix(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
+func UnixMilli(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixMilli()
+}
+
+func UnixPtr(t *time.Time) int64 {
+	if t == nil || t.IsZero() {
+		return 0
+	}
+	return t.Unix()
+}
+
+func UnixMilliPtr(t *time.Time) int64 {
+	if t == nil || t.IsZero() {
+		return 0
+	}
+	return t.UnixMilli()
+}
+
 func DeepCopy[T, K any](destStruct T, srcStruct K, opts ...CopyOption) T {
 	var dst = destStruct
 	var src = srcStruct
@@ -39,7 +67,24 @@ func DeepCopy[T, K any](destStruct T, srcStruct K, opts ...CopyOption) T {
 					if !ok {
 						return nil, errors.New("src type not matching")
 					}
-					return s.UnixMilli(), nil
+					if s.IsZero() {
+						return int64(0), nil
+					}
+					return UnixMilli(s), nil
+				},
+			},
+			{
+				SrcType: (*time.Time)(nil),
+				DstType: constant.Int64,
+				Fn: func(src any) (any, error) {
+					s, ok := src.(*time.Time)
+					if !ok {
+						return nil, errors.New("src type not matching")
+					}
+					if s == nil || s.IsZero() {
+						return int64(0), nil
+					}
+					return UnixMilliPtr(s), nil
 				},
 			},
 		},
@@ -68,7 +113,24 @@ func ShallowCopy[T, K interface{}](destStruct T, srcStruct K, opts ...CopyOption
 					if !ok {
 						return nil, errors.New("src type not matching")
 					}
-					return s.UnixMilli(), nil
+					if s.IsZero() {
+						return int64(0), nil
+					}
+					return UnixMilli(s), nil
+				},
+			},
+			{
+				SrcType: (*time.Time)(nil),
+				DstType: constant.Int64,
+				Fn: func(src interface{}) (interface{}, error) {
+					s, ok := src.(*time.Time)
+					if !ok {
+						return nil, errors.New("src type not matching")
+					}
+					if s == nil || s.IsZero() {
+						return int64(0), nil
+					}
+					return UnixMilliPtr(s), nil
 				},
 			},
 		},

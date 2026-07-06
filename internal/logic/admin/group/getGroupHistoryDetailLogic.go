@@ -12,6 +12,7 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/tool"
 )
 
 type GetGroupHistoryDetailLogic struct {
@@ -49,11 +50,11 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 	// 转换时间格式
 	var startTime, endTime *int64
 	if history.StartTime != nil {
-		t := history.StartTime.Unix()
+		t := tool.UnixPtr(history.StartTime)
 		startTime = &t
 	}
 	if history.EndTime != nil {
-		t := history.EndTime.Unix()
+		t := tool.UnixPtr(history.EndTime)
 		endTime = &t
 	}
 
@@ -69,7 +70,7 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 			StartTime:    startTime,
 			EndTime:      endTime,
 			ErrorLog:     history.ErrorMessage,
-			CreatedAt:    history.CreatedAt.Unix(),
+			CreatedAt:    tool.Unix(history.CreatedAt),
 		},
 	}
 

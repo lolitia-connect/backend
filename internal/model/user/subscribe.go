@@ -6,6 +6,7 @@ import (
 	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/predicate"
 	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 )
@@ -17,11 +18,11 @@ func (m *defaultUserModel) UpdateUserSubscribeCache(ctx context.Context, data *S
 // QueryActiveSubscriptions returns the number of active subscriptions.
 func (m *defaultUserModel) QueryActiveSubscriptions(ctx context.Context, subscribeId ...int64) (map[int64]int64, error) {
 	type SubscriptionCount struct {
-		SubscribeId int64
-		Total       int64
+		SubscribeId int64 `json:"subscribe_id"`
+		Total       int64 `json:"total"`
 	}
 	var result []SubscriptionCount
-	err := m.db.UserSubscribe.Query().Where(entsub.SubscribeIDIn(subscribeId...), entsub.StatusIn(1, 0)).GroupBy(entsub.FieldSubscribeID).Aggregate(func(s *entsql.Selector) string { return entsql.As(entsql.Count(s.C(entsub.FieldID)), "total") }).Scan(ctx, &result)
+	err := m.db.UserSubscribe.Query().Where(entsub.SubscribeIDIn(subscribeId...), entsub.StatusIn(1, 0)).GroupBy(entsub.FieldSubscribeID).Aggregate(ent.As(ent.Count(), "total")).Scan(ctx, &result)
 
 	if err != nil {
 		return nil, err

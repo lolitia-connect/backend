@@ -46,30 +46,34 @@ func NewModel(conn *ent.Client) Model {
 }
 
 func (m *customTrafficModel) QueryServerTrafficByDay(ctx context.Context, serverId int64, date time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
 	start, end := dayRange(date)
-	err := m.db.TrafficLog.Query().Where(enttrafficlog.ServerID(serverId), timeRange(start, end)).Aggregate(totalTrafficAggregates()...).Scan(ctx, &data)
-	return &data, err
+	return m.queryTrafficSummary(ctx, enttrafficlog.ServerID(serverId), timeRange(start, end))
 }
 
 func (m *customTrafficModel) QueryTrafficByDay(ctx context.Context, date time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
 	start, end := dayRange(date)
-	err := m.db.TrafficLog.Query().Where(timeRange(start, end)).Aggregate(totalTrafficAggregates()...).Scan(ctx, &data)
-	return &data, err
+	return m.queryTrafficSummary(ctx, timeRange(start, end))
 }
 
 func (m *customTrafficModel) QueryTrafficByMonthly(ctx context.Context, date time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
 	start, end := monthRange(date)
-	err := m.db.TrafficLog.Query().Where(timeRange(start, end)).Aggregate(totalTrafficAggregates()...).Scan(ctx, &data)
-	return &data, err
+	return m.queryTrafficSummary(ctx, timeRange(start, end))
 }
 
 func (m *customTrafficModel) QueryTrafficSummary(ctx context.Context, start, end time.Time) (*TotalTraffic, error) {
-	var data TotalTraffic
-	err := m.db.TrafficLog.Query().Where(timeRange(start, end)).Aggregate(totalTrafficAggregates()...).Scan(ctx, &data)
-	return &data, err
+	return m.queryTrafficSummary(ctx, timeRange(start, end))
+}
+
+func (m *customTrafficModel) queryTrafficSummary(ctx context.Context, predicates ...predicate.TrafficLog) (*TotalTraffic, error) {
+	var data []TotalTraffic
+	err := m.db.TrafficLog.Query().Where(predicates...).Aggregate(totalTrafficAggregates()...).Scan(ctx, &data)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return &TotalTraffic{}, nil
+	}
+	return &data[0], nil
 }
 
 func (m *customTrafficModel) TopServersTrafficByDay(ctx context.Context, date time.Time, limit int) ([]ServerTrafficRanking, error) {

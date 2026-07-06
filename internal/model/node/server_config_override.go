@@ -12,7 +12,3 @@ type ServerConfigOverride struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
-
-func (*ServerConfigOverride) TableName() string {
-	return "server_config_overrides"
-}

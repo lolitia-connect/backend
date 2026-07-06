@@ -68,11 +68,6 @@ type SystemLog struct {
 	CreatedAt time.Time
 }
 
-// TableName returns the name of the table for SystemLogs.
-func (SystemLog) TableName() string {
-	return "system_logs"
-}
-
 // Message represents a message log entry.
 type Message struct {
 	To       string                 `json:"to"`

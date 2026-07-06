@@ -2,10 +2,9 @@ package order
 
 import (
 	"context"
-	"fmt"
+	"sort"
 	"time"
 
-	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 	entorder "github.com/perfect-panel/server/ent/order"
@@ -137,33 +136,33 @@ func (m *customOrderModel) FindOneDetails(ctx context.Context, id int64) (*Detai
 func (m *customOrderModel) QueryMonthlyOrders(ctx context.Context, date time.Time) (OrdersTotal, error) {
 	firstDay := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
 	nextMonth := firstDay.AddDate(0, 1, 0)
-	return m.queryOrdersTotal(ctx, "created_at >= ? AND created_at < ?", firstDay, nextMonth)
+	return m.queryOrdersTotal(ctx, entorder.CreatedAtGTE(firstDay), entorder.CreatedAtLT(nextMonth))
 }
 
 func (m *customOrderModel) QueryDateOrders(ctx context.Context, date time.Time) (OrdersTotal, error) {
 	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	nextDay := start.Add(24 * time.Hour)
-	return m.queryOrdersTotal(ctx, "created_at >= ? AND created_at < ?", start, nextDay)
+	return m.queryOrdersTotal(ctx, entorder.CreatedAtGTE(start), entorder.CreatedAtLT(nextDay))
 }
 
 func (m *customOrderModel) QueryTotalOrders(ctx context.Context) (OrdersTotal, error) {
-	return m.queryOrdersTotal(ctx, "1 = 1")
+	return m.queryOrdersTotal(ctx)
 }
 
 func (m *customOrderModel) QueryMonthlyUserCounts(ctx context.Context, date time.Time) (int64, int64, error) {
 	firstDay := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
 	nextMonth := firstDay.AddDate(0, 1, 0)
-	return m.queryUserCounts(ctx, "created_at >= ? AND created_at < ?", firstDay, nextMonth)
+	return m.queryUserCounts(ctx, entorder.CreatedAtGTE(firstDay), entorder.CreatedAtLT(nextMonth))
 }
 
 func (m *customOrderModel) QueryDateUserCounts(ctx context.Context, date time.Time) (int64, int64, error) {
 	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	nextDay := start.Add(24 * time.Hour)
-	return m.queryUserCounts(ctx, "created_at >= ? AND created_at < ?", start, nextDay)
+	return m.queryUserCounts(ctx, entorder.CreatedAtGTE(start), entorder.CreatedAtLT(nextDay))
 }
 
 func (m *customOrderModel) QueryTotalUserCounts(ctx context.Context) (int64, int64, error) {
-	return m.queryUserCounts(ctx, "1 = 1")
+	return m.queryUserCounts(ctx)
 }
 
 func (m *customOrderModel) IsUserEligibleForNewOrder(ctx context.Context, userID int64) (bool, error) {
@@ -183,59 +182,70 @@ func (m *customOrderModel) QueryMonthlyOrdersList(ctx context.Context, date time
 	return m.queryOrdersList(ctx, "month", start, end)
 }
 
-func (m *customOrderModel) queryOrdersTotal(ctx context.Context, where string, args ...any) (OrdersTotal, error) {
+func (m *customOrderModel) queryOrdersTotal(ctx context.Context, predicates ...predicate.Order) (OrdersTotal, error) {
 	var result OrdersTotal
-	query := fmt.Sprintf(`
-		SELECT
-			COALESCE(SUM(amount), 0) AS amount_total,
-			COALESCE(SUM(CASE WHEN is_new THEN amount ELSE 0 END), 0) AS new_order_amount,
-			COALESCE(SUM(CASE WHEN NOT is_new THEN amount ELSE 0 END), 0) AS renewal_order_amount
-		FROM %s
-		WHERE status IN (?, ?) AND method != ? AND %s`, quoteOrderTable(m.db), where)
-	params := append([]any{uint8(2), uint8(5), "balance"}, args...)
-	err := sqlScanOne(ctx, m.db, query, params, func(rows *entsql.Rows) error {
-		return rows.Scan(&result.AmountTotal, &result.NewOrderAmount, &result.RenewalOrderAmount)
-	})
-	return result, err
+	list, err := m.paidNonBalanceOrders(ctx, predicates...).Select(entorder.FieldAmount, entorder.FieldIsNew).All(ctx)
+	if err != nil {
+		return result, err
+	}
+	for _, item := range list {
+		result.AmountTotal += item.Amount
+		if item.IsNew {
+			result.NewOrderAmount += item.Amount
+		} else {
+			result.RenewalOrderAmount += item.Amount
+		}
+	}
+	return result, nil
 }
 
-func (m *customOrderModel) queryUserCounts(ctx context.Context, where string, args ...any) (int64, int64, error) {
-	var counts UserCounts
-	query := fmt.Sprintf(`
-		SELECT
-			COUNT(DISTINCT CASE WHEN is_new THEN user_id END) AS new_users,
-			COUNT(DISTINCT CASE WHEN NOT is_new THEN user_id END) AS renewal_users
-		FROM %s
-		WHERE status IN (?, ?) AND method != ? AND %s`, quoteOrderTable(m.db), where)
-	params := append([]any{uint8(2), uint8(5), "balance"}, args...)
-	err := sqlScanOne(ctx, m.db, query, params, func(rows *entsql.Rows) error {
-		return rows.Scan(&counts.NewUsers, &counts.RenewalUsers)
-	})
-	return counts.NewUsers, counts.RenewalUsers, err
+func (m *customOrderModel) queryUserCounts(ctx context.Context, predicates ...predicate.Order) (int64, int64, error) {
+	list, err := m.paidNonBalanceOrders(ctx, predicates...).Select(entorder.FieldUserID, entorder.FieldIsNew).All(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	newUsers := make(map[int64]struct{})
+	renewalUsers := make(map[int64]struct{})
+	for _, item := range list {
+		if item.IsNew {
+			newUsers[item.UserID] = struct{}{}
+		} else {
+			renewalUsers[item.UserID] = struct{}{}
+		}
+	}
+	return int64(len(newUsers)), int64(len(renewalUsers)), nil
 }
 
 func (m *customOrderModel) queryOrdersList(ctx context.Context, bucket string, start, end time.Time) ([]OrdersTotalWithDate, error) {
-	var results []OrdersTotalWithDate
-	dateExpr := dateBucketExpr(m.db, entorder.FieldCreatedAt, bucket)
-	query := fmt.Sprintf(`
-		SELECT
-			%s AS date,
-			COALESCE(SUM(amount), 0) AS amount_total,
-			COALESCE(SUM(CASE WHEN is_new THEN amount ELSE 0 END), 0) AS new_order_amount,
-			COALESCE(SUM(CASE WHEN NOT is_new THEN amount ELSE 0 END), 0) AS renewal_order_amount
-		FROM %s
-		WHERE status IN (?, ?) AND created_at >= ? AND created_at < ? AND method != ?
-		GROUP BY %s
-		ORDER BY date ASC`, dateExpr, quoteOrderTable(m.db), dateExpr)
-	err := sqlScan(ctx, m.db, query, []any{uint8(2), uint8(5), start, end, "balance"}, func(rows *entsql.Rows) error {
-		var item OrdersTotalWithDate
-		if err := rows.Scan(&item.Date, &item.AmountTotal, &item.NewOrderAmount, &item.RenewalOrderAmount); err != nil {
-			return err
+	list, err := m.paidNonBalanceOrders(ctx, entorder.CreatedAtGTE(start), entorder.CreatedAtLT(end)).Select(entorder.FieldCreatedAt, entorder.FieldAmount, entorder.FieldIsNew).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make(map[string]*OrdersTotalWithDate)
+	for _, item := range list {
+		key := formatOrderBucket(item.CreatedAt, bucket)
+		total := items[key]
+		if total == nil {
+			total = &OrdersTotalWithDate{Date: key}
+			items[key] = total
 		}
-		results = append(results, item)
-		return nil
-	})
-	return results, err
+		total.AmountTotal += item.Amount
+		if item.IsNew {
+			total.NewOrderAmount += item.Amount
+		} else {
+			total.RenewalOrderAmount += item.Amount
+		}
+	}
+	results := make([]OrdersTotalWithDate, 0, len(items))
+	for _, item := range items {
+		results = append(results, *item)
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].Date < results[j].Date })
+	return results, nil
+}
+
+func (m *customOrderModel) paidNonBalanceOrders(ctx context.Context, predicates ...predicate.Order) *ent.OrderQuery {
+	return m.db.Order.Query().Where(append([]predicate.Order{entorder.StatusIn(2, 5), entorder.MethodNEQ("balance")}, predicates...)...)
 }
 
 func (m *customOrderModel) preloadDetails(ctx context.Context, details []*Details, includeSubOrders bool) error {
@@ -330,48 +340,9 @@ func mapKeys(values map[int64]struct{}) []int64 {
 	return keys
 }
 
-func sqlScanOne(ctx context.Context, client *ent.Client, query string, args []any, scan func(*entsql.Rows) error) error {
-	return sqlScan(ctx, client, query, args, func(rows *entsql.Rows) error {
-		if !rows.Next() {
-			return nil
-		}
-		return scan(rows)
-	})
-}
-
-func sqlScan(ctx context.Context, client *ent.Client, query string, args []any, scan func(*entsql.Rows) error) error {
-	rows := &entsql.Rows{}
-	if err := client.Driver().Query(ctx, query, args, rows); err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		if err := scan(rows); err != nil {
-			return err
-		}
-	}
-	return rows.Err()
-}
-
-func quoteOrderTable(client *ent.Client) string {
-	if client.Driver().Dialect() == dialect.Postgres {
-		return `"order"`
-	}
-	return "`order`"
-}
-
-func dateBucketExpr(client *ent.Client, column, bucket string) string {
-	quotedColumn := column
-	if client.Driver().Dialect() == dialect.Postgres {
-		quotedColumn = fmt.Sprintf(`"%s"`, column)
-		if bucket == "month" {
-			return fmt.Sprintf("TO_CHAR(%s, 'YYYY-MM')", quotedColumn)
-		}
-		return fmt.Sprintf("TO_CHAR(%s, 'YYYY-MM-DD')", quotedColumn)
-	}
-	quotedColumn = fmt.Sprintf("`%s`", column)
+func formatOrderBucket(date time.Time, bucket string) string {
 	if bucket == "month" {
-		return fmt.Sprintf("DATE_FORMAT(%s, '%%Y-%%m')", quotedColumn)
+		return date.Format("2006-01")
 	}
-	return fmt.Sprintf("DATE_FORMAT(%s, '%%Y-%%m-%%d')", quotedColumn)
+	return date.Format("2006-01-02")
 }

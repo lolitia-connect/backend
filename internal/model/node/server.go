@@ -26,10 +26,6 @@ type Server struct {
 	UpdatedAt       time.Time
 }
 
-func (*Server) TableName() string {
-	return "servers"
-}
-
 // MarshalProtocols Marshal server protocols to json
 func (m *Server) MarshalProtocols(list []Protocol) error {
 	// key = "type:id", unique within (type, id) per server

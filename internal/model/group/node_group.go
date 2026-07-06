@@ -19,8 +19,3 @@ type NodeGroup struct {
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }
-
-// TableName 指定表名
-func (*NodeGroup) TableName() string {
-	return "node_group"
-}

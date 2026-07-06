@@ -18,11 +18,6 @@ type GroupHistory struct {
 	CreatedAt    time.Time
 }
 
-// TableName 指定表名
-func (*GroupHistory) TableName() string {
-	return "group_history"
-}
-
 // GroupHistoryDetail 分组历史详情模型
 type GroupHistoryDetail struct {
 	Id          int64
@@ -32,9 +27,4 @@ type GroupHistoryDetail struct {
 	NodeCount   int
 	UserData    string
 	CreatedAt   time.Time
-}
-
-// TableName 指定表名
-func (*GroupHistoryDetail) TableName() string {
-	return "group_history_detail"
 }

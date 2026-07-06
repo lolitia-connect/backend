@@ -4,6 +4,8 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"time"
+
+	"github.com/perfect-panel/server/internal/model/subscribe"
 )
 
 // JSONInt64Slice is a custom type for handling []int64 as JSON in database
@@ -16,10 +18,8 @@ func (j *JSONInt64Slice) Scan(value interface{}) error {
 		return nil
 	}
 
-	// Handle []byte
 	bytes, ok := value.([]byte)
 	if !ok {
-		// Try to handle string
 		str, ok := value.(string)
 		if !ok {
 			*j = []int64{}
@@ -32,14 +32,10 @@ func (j *JSONInt64Slice) Scan(value interface{}) error {
 		*j = []int64{}
 		return nil
 	}
-
-	// Check if it's a JSON array
 	if bytes[0] != '[' {
-		// Not a JSON array, return empty slice
 		*j = []int64{}
 		return nil
 	}
-
 	return json.Unmarshal(bytes, j)
 }
 
@@ -78,10 +74,6 @@ type User struct {
 	DeletedAt             *time.Time
 }
 
-func (*User) TableName() string {
-	return "user"
-}
-
 type Subscribe struct {
 	Id               int64
 	UserId           int64
@@ -107,8 +99,28 @@ type Subscribe struct {
 	UpdatedAt        time.Time
 }
 
-func (*Subscribe) TableName() string {
-	return "user_subscribe"
+type SubscribeDetails struct {
+	Id               int64
+	UserId           int64
+	User             *User
+	OrderId          int64
+	SubscribeId      int64
+	Subscribe        *subscribe.Subscribe
+	NodeGroupId      int64
+	GroupLocked      *bool
+	StartTime        time.Time
+	ExpireTime       time.Time
+	FinishedAt       *time.Time
+	Traffic          int64
+	TrafficUnlimited bool
+	Download         int64
+	Upload           int64
+	Token            string
+	UUID             string
+	Status           uint8
+	Note             string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type AuthMethods struct {
@@ -119,10 +131,6 @@ type AuthMethods struct {
 	Verified       bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
-}
-
-func (*AuthMethods) TableName() string {
-	return "user_auth_methods"
 }
 
 type Device struct {
@@ -138,10 +146,6 @@ type Device struct {
 	UpdatedAt  time.Time
 }
 
-func (*Device) TableName() string {
-	return "user_device"
-}
-
 type DeviceOnlineRecord struct {
 	Id            int64
 	UserId        int64
@@ -151,10 +155,6 @@ type DeviceOnlineRecord struct {
 	OnlineSeconds int64
 	DurationDays  int64
 	CreatedAt     time.Time
-}
-
-func (DeviceOnlineRecord) TableName() string {
-	return "user_device_online_record"
 }
 
 type Withdrawal struct {
@@ -168,6 +168,47 @@ type Withdrawal struct {
 	UpdatedAt time.Time
 }
 
-func (*Withdrawal) TableName() string {
-	return "user_withdrawal"
+type SubscribeLogFilterParams struct {
+	IP              string
+	UserAgent       string
+	UserId          int64
+	Token           string
+	UserSubscribeId int64
+}
+
+type LoginLogFilterParams struct {
+	IP        string
+	UserId    int64
+	UserAgent string
+	Success   *bool
+}
+
+type UserFilterParams struct {
+	Search          string
+	UserId          *int64
+	SubscribeId     *int64
+	UserSubscribeId *int64
+	ShortCode       string
+	Order           string // Order by id, e.g., "desc"
+	Unscoped        bool   // Whether to include soft-deleted records
+}
+
+type EmailRecipientFilter struct {
+	Scope             int8
+	RegisterStartTime int64
+	RegisterEndTime   int64
+}
+
+type SubscribeFilter struct {
+	Subscribers []int64
+	IsActive    *bool
+	StartTime   int64
+	EndTime     int64
+}
+
+type UserStatisticsWithDate struct {
+	Date              string
+	Register          int64
+	NewOrderUsers     int64
+	RenewalOrderUsers int64
 }

@@ -26,11 +26,3 @@ type RedemptionRecord struct {
 	RedeemedAt       time.Time
 	CreatedAt        time.Time
 }
-
-func (RedemptionCode) TableName() string {
-	return "redemption_code"
-}
-
-func (RedemptionRecord) TableName() string {
-	return "redemption_record"
-}

@@ -12,7 +12,3 @@ type Announcement struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
-
-func (Announcement) TableName() string {
-	return "announcement"
-}

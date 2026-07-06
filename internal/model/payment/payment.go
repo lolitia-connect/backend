@@ -23,10 +23,6 @@ type Payment struct {
 	BillDesc     string
 }
 
-func (*Payment) TableName() string {
-	return "payment"
-}
-
 type Filter struct {
 	Mark   string
 	Enable *bool

@@ -16,10 +16,6 @@ type Auth struct {
 	UpdatedAt time.Time
 }
 
-func (Auth) TableName() string {
-	return "auth_method"
-}
-
 type AppleAuthConfig struct {
 	TeamID       string `json:"team_id"`
 	KeyID        string `json:"key_id"`

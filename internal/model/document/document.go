@@ -11,7 +11,3 @@ type Document struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
-
-func (Document) TableName() string {
-	return "document"
-}

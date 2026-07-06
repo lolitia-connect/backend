@@ -85,7 +85,7 @@ func (m *customServerModel) FilterServerList(ctx context.Context, params *Filter
 	query := m.db.Server.Query()
 	if params.Search != "" {
 		search := strings.TrimSpace(params.Search)
-		query = query.Where(entserver.Or(entserver.NameHasPrefix(search), entserver.AddressHasPrefix(search)))
+		query = query.Where(entserver.Or(entserver.NameContains(search), entserver.AddressContains(search)))
 	}
 	if len(params.Ids) > 0 {
 		query = query.Where(entserver.IDIn(params.Ids...))

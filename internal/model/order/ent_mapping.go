@@ -6,6 +6,8 @@ import (
 	subscribemodel "github.com/perfect-panel/server/internal/model/subscribe"
 )
 
+const balancePaymentID int64 = -1
+
 func entToOrder(data *ent.Order) *Order {
 	if data == nil {
 		return nil
@@ -98,6 +100,20 @@ func entToPayment(data *ent.Payment) *paymentmodel.Payment {
 		CurrencyUnit: data.CurrencyUnit,
 		ExchangeRate: data.ExchangeRate,
 		BillDesc:     data.BillDesc,
+	}
+}
+
+func isBalancePayment(data *Details) bool {
+	return data != nil && (data.PaymentId == balancePaymentID || data.Method == "balance")
+}
+
+func defaultBalancePayment() *paymentmodel.Payment {
+	enable := true
+	return &paymentmodel.Payment{
+		Id:       balancePaymentID,
+		Name:     "Balance",
+		Platform: "balance",
+		Enable:   &enable,
 	}
 }
 

@@ -4,9 +4,6 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"time"
-
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // JSONInt64Slice is a custom type for handling []int64 as JSON in database
@@ -55,97 +52,59 @@ func (j JSONInt64Slice) Value() (driver.Value, error) {
 }
 
 type User struct {
-	Id                    int64          `gorm:"primaryKey"`
-	Password              string         `gorm:"type:varchar(100);not null;comment:User Password"`
-	Algo                  string         `gorm:"type:varchar(20);default:'default';comment:Encryption Algorithm"`
-	Salt                  string         `gorm:"type:varchar(20);default:null;comment:Password Salt"`
-	Avatar                string         `gorm:"type:MEDIUMTEXT;comment:User Avatar"`
-	Balance               int64          `gorm:"default:0;comment:User Balance"` // User Balance Amount
-	ReferCode             string         `gorm:"type:varchar(20);default:'';comment:Referral Code"`
-	RefererId             int64          `gorm:"index:idx_referer;comment:Referrer ID"`
-	Commission            int64          `gorm:"default:0;comment:Commission"`                      // Commission Amount
-	ReferralPercentage    uint8          `gorm:"default:0;comment:Referral"`                        // Referral Percentage
-	OnlyFirstPurchase     *bool          `gorm:"default:true;not null;comment:Only First Purchase"` // Only First Purchase Referral
-	GiftAmount            int64          `gorm:"default:0;comment:User Gift Amount"`
-	Enable                *bool          `gorm:"default:true;not null;comment:Is Account Enabled"`
-	IsAdmin               *bool          `gorm:"default:false;not null;comment:Is Admin"`
-	EnableBalanceNotify   *bool          `gorm:"default:false;not null;comment:Enable Balance Change Notifications"`
-	EnableLoginNotify     *bool          `gorm:"default:false;not null;comment:Enable Login Notifications"`
-	EnableSubscribeNotify *bool          `gorm:"default:false;not null;comment:Enable Subscription Notifications"`
-	EnableTradeNotify     *bool          `gorm:"default:false;not null;comment:Enable Trade Notifications"`
-	AuthMethods           []AuthMethods  `gorm:"foreignKey:UserId;references:Id"`
-	UserDevices           []Device       `gorm:"foreignKey:UserId;references:Id"`
-	Rules                 string         `gorm:"type:TEXT;comment:User Rules"`
-	CreatedAt             time.Time      `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt             time.Time      `gorm:"comment:Update Time"`
-	DeletedAt             gorm.DeletedAt `gorm:"index;comment:Deletion Time"`
+	Id                    int64
+	Password              string
+	Algo                  string
+	Salt                  string
+	Avatar                string
+	Balance               int64 // User Balance Amount
+	ReferCode             string
+	RefererId             int64
+	Commission            int64 // Commission Amount
+	ReferralPercentage    uint8 // Referral Percentage
+	OnlyFirstPurchase     *bool // Only First Purchase Referral
+	GiftAmount            int64
+	Enable                *bool
+	IsAdmin               *bool
+	EnableBalanceNotify   *bool
+	EnableLoginNotify     *bool
+	EnableSubscribeNotify *bool
+	EnableTradeNotify     *bool
+	AuthMethods           []AuthMethods
+	UserDevices           []Device
+	Rules                 string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	DeletedAt             *time.Time
 }
 
 func (*User) TableName() string {
 	return "user"
 }
 
-func UserTableName(db *gorm.DB) string {
-	return quoteTable(db, "user")
-}
-
-func UserColumn(db *gorm.DB, column string) string {
-	return quoteColumn(db, "user", column)
-}
-
-func AuthMethodsTableName(db *gorm.DB) string {
-	return quoteTable(db, "user_auth_methods")
-}
-
-func AuthMethodsColumn(db *gorm.DB, column string) string {
-	return quoteColumn(db, "user_auth_methods", column)
-}
-
-func UserSubscribeTableName(db *gorm.DB) string {
-	return quoteTable(db, "user_subscribe")
-}
-
-func UserSubscribeColumn(db *gorm.DB, column string) string {
-	return quoteColumn(db, "user_subscribe", column)
-}
-
-func quoteTable(db *gorm.DB, table string) string {
-	if db != nil && db.Statement != nil {
-		return db.Statement.Quote(clause.Table{Name: table})
-	}
-	return table
-}
-
-func quoteColumn(db *gorm.DB, table, column string) string {
-	if db != nil && db.Statement != nil {
-		return db.Statement.Quote(clause.Column{Table: table, Name: column})
-	}
-	return table + "." + column
-}
-
 type Subscribe struct {
-	Id              int64      `gorm:"primaryKey"`
-	UserId          int64      `gorm:"index:idx_user_id;not null;comment:User ID"`
-	User            User       `gorm:"foreignKey:UserId;references:Id"`
-	OrderId         int64      `gorm:"index:idx_order_id;not null;comment:Order ID"`
-	SubscribeId     int64      `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
-	NodeGroupId     int64      `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
-	GroupLocked     *bool      `gorm:"type:tinyint(1);not null;default:0;comment:Group Locked"`
-	StartTime       time.Time  `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
-	ExpireTime      time.Time  `gorm:"default:NULL;comment:Subscription Expire Time"`
-	FinishedAt      *time.Time `gorm:"default:NULL;comment:Finished Time"`
-	Traffic         int64      `gorm:"default:0;comment:Traffic"`
-	TrafficUnlimited bool      `gorm:"default:false;not null;comment:Traffic Unlimited"`
-	Download        int64      `gorm:"default:0;comment:Download Traffic"`
-	Upload          int64      `gorm:"default:0;comment:Upload Traffic"`
-	ExpiredDownload int64      `gorm:"default:0;comment:Expired period download traffic (bytes)"`
-	ExpiredUpload   int64      `gorm:"default:0;comment:Expired period upload traffic (bytes)"`
-	Token           string     `gorm:"index:idx_token;unique;type:varchar(255);default:'';comment:Token"`
-	UUID            string     `gorm:"type:varchar(255);unique;index:idx_uuid;default:'';comment:UUID"`
-	Status          uint8      `gorm:"type:tinyint(1);default:0;comment:Subscription Status: 0: Pending 1: Active 2: Finished 3: Expired 4: Deducted 5: stopped"`
-	Note            string     `gorm:"type:varchar(500);default:'';comment:User note for subscription"`
-	CreatedAt       time.Time  `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt       time.Time  `gorm:"comment:Update Time"`
+	Id               int64
+	UserId           int64
+	User             User
+	OrderId          int64
+	SubscribeId      int64
+	NodeGroupId      int64
+	GroupLocked      *bool
+	StartTime        time.Time
+	ExpireTime       time.Time
+	FinishedAt       *time.Time
+	Traffic          int64
+	TrafficUnlimited bool
+	Download         int64
+	Upload           int64
+	ExpiredDownload  int64
+	ExpiredUpload    int64
+	Token            string
+	UUID             string
+	Status           uint8
+	Note             string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 func (*Subscribe) TableName() string {
@@ -153,13 +112,13 @@ func (*Subscribe) TableName() string {
 }
 
 type AuthMethods struct {
-	Id             int64     `gorm:"primaryKey"`
-	UserId         int64     `gorm:"index:idx_user_id;not null;comment:User ID"`
-	AuthType       string    `gorm:"type:varchar(255);not null;comment:Auth Type 1: apple 2: google 3: github 4: facebook 5: telegram 6: email 7: mobile 8: device"`
-	AuthIdentifier string    `gorm:"type:varchar(255);unique;index:idx_auth_identifier;not null;comment:Auth Identifier"`
-	Verified       bool      `gorm:"default:false;not null;comment:Is Verified"`
-	CreatedAt      time.Time `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt      time.Time `gorm:"comment:Update Time"`
+	Id             int64
+	UserId         int64
+	AuthType       string
+	AuthIdentifier string
+	Verified       bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 func (*AuthMethods) TableName() string {
@@ -167,16 +126,16 @@ func (*AuthMethods) TableName() string {
 }
 
 type Device struct {
-	Id         int64     `gorm:"primaryKey"`
-	Ip         string    `gorm:"type:varchar(255);not null;comment:Device IP"`
-	UserId     int64     `gorm:"index:idx_user_id;not null;comment:User ID"`
-	UserAgent  string    `gorm:"default:null;comment:UserAgent."`
-	Identifier string    `gorm:"type:varchar(255);unique;index:idx_identifier;default:'';comment:Device Identifier"`
-	ShortCode  string    `gorm:"type:varchar(255);default:'';comment:Short Code"`
-	Online     bool      `gorm:"default:false;not null;comment:Online"`
-	Enabled    bool      `gorm:"default:true;not null;comment:Enabled"`
-	CreatedAt  time.Time `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt  time.Time `gorm:"comment:Update Time"`
+	Id         int64
+	Ip         string
+	UserId     int64
+	UserAgent  string
+	Identifier string
+	ShortCode  string
+	Online     bool
+	Enabled    bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 func (*Device) TableName() string {
@@ -184,14 +143,14 @@ func (*Device) TableName() string {
 }
 
 type DeviceOnlineRecord struct {
-	Id            int64     `gorm:"primaryKey"`
-	UserId        int64     `gorm:"type:bigint;not null;comment:User ID"`
-	Identifier    string    `gorm:"type:varchar(255);not null;comment:Device Identifier"`
-	OnlineTime    time.Time `gorm:"comment:Online Time"` // The time when the device goes online
-	OfflineTime   time.Time `gorm:"comment:Offline Time"`
-	OnlineSeconds int64     `gorm:"comment:Offline Seconds"`
-	DurationDays  int64     `gorm:"comment:Duration Days"`
-	CreatedAt     time.Time `gorm:"<-:create;comment:Creation Time"`
+	Id            int64
+	UserId        int64
+	Identifier    string
+	OnlineTime    time.Time // The time when the device goes online
+	OfflineTime   time.Time
+	OnlineSeconds int64
+	DurationDays  int64
+	CreatedAt     time.Time
 }
 
 func (DeviceOnlineRecord) TableName() string {
@@ -199,14 +158,14 @@ func (DeviceOnlineRecord) TableName() string {
 }
 
 type Withdrawal struct {
-	Id        int64     `gorm:"primaryKey"`
-	UserId    int64     `gorm:"index:idx_user_id;not null;comment:User ID"`
-	Amount    int64     `gorm:"not null;comment:Withdrawal Amount"`
-	Content   string    `gorm:"type:text;comment:Withdrawal Content"`
-	Status    uint8     `gorm:"type:tinyint(1);default:0;comment:Withdrawal Status: 0: Pending 1: Approved 2: Rejected"`
-	Reason    string    `gorm:"type:varchar(500);default:'';comment:Rejection Reason"`
-	CreatedAt time.Time `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt time.Time `gorm:"comment:Update Time"`
+	Id        int64
+	UserId    int64
+	Amount    int64
+	Content   string
+	Status    uint8
+	Reason    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (*Withdrawal) TableName() string {

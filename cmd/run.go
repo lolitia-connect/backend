@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/google/uuid"
@@ -31,7 +32,7 @@ import (
 )
 
 func init() {
-	startCmd.Flags().StringVar(&startConfigPath, "config", "etc/ppanel.yaml", "ppanel.yaml directory to read from")
+	startCmd.Flags().StringVar(&startConfigPath, "config", "config.yaml", "config.yaml file to read from")
 }
 
 var (
@@ -60,17 +61,15 @@ func getServers() *service.Group {
 
 	// check config file is exist
 	if _, err := os.Stat(startConfigPath); os.IsNotExist(err) {
-		// check directory is existed
-		if _, err := os.Stat("etc"); os.IsNotExist(err) {
-			logger.Errorf("Directory %s does not exist. Creating it...\n", "etc")
-			if err = os.MkdirAll("etc", os.ModePerm); err != nil {
-				log.Fatalf("Please create the directory %s and place the configuration file %s in it.\n", "etc", startConfigPath)
+		if dir := filepath.Dir(startConfigPath); dir != "." {
+			if err = os.MkdirAll(dir, os.ModePerm); err != nil {
+				log.Fatalf("Please create the directory %s and place the configuration file %s in it.\n", dir, startConfigPath)
 			}
 		}
 		// create new config file
 		if _, err := os.Create(startConfigPath); err != nil {
-			logger.Errorf("Please create the configuration file %s in the directory %s.\n", startConfigPath, "etc")
-			panic(fmt.Sprintf("Please create the configuration file %s in the directory %s.\n", startConfigPath, "etc"))
+			logger.Errorf("Please create the configuration file %s.\n", startConfigPath)
+			panic(fmt.Sprintf("Please create the configuration file %s.\n", startConfigPath))
 		}
 	}
 	// check config file is empty, if empty, start init web server
@@ -97,7 +96,7 @@ func getServers() *service.Group {
 	pluginHostEnv := &plugin.HostEnv{
 		Config: c,
 		Redis:  plugin.NewRedisAdapter(ctx.Redis),
-		Store:  plugin.NewStoreAdapter(ctx.Store.DB()),
+		Store:  plugin.NewStoreAdapter(ctx.SQLDB, ctx.SQLDialect),
 		Queue:  plugin.NewQueueAdapter(ctx.Queue),
 	}
 	pluginMgr := plugin.NewManager(pluginHostEnv)
@@ -116,11 +115,11 @@ func initConfig(c *config.Config) bool {
 	// load config
 	conf.MustLoad(startConfigPath, c)
 	//  check custom config
-	if startConfigPath != "etc/ppanel.yaml" && c.DatabaseConfig().Addr == "" {
+	if startConfigPath != "config.yaml" && c.DatabaseConfig().Addr == "" {
 		return true
 	}
 	// check access secret
-	if c.JwtAuth.AccessSecret == "" && startConfigPath == "etc/ppanel.yaml" {
+	if c.JwtAuth.AccessSecret == "" && startConfigPath == "config.yaml" {
 		c.JwtAuth.AccessSecret = uuid.New().String()
 		// Get environment variables
 		dsn := os.Getenv("PPANEL_DB")

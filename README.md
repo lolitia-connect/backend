@@ -78,7 +78,7 @@ PPanel 服务端是 PPanel 项目的后端组件，为代理服务提供强大�
 
 5. **启动服务器**：
    ```bash
-   ./ppanel-server-linux-amd64 run --config etc/ppanel.yaml
+  ./ppanel-server-linux-amd64 run --config config.yaml
    ```
 
 ### 🐳 Docker 部署
@@ -148,7 +148,7 @@ PPanel 服务端是 PPanel 项目的后端组件，为代理服务提供强大�
 ├── apis/             # API 定义文件
 ├── cmd/              # 应用程序入口
 ├── doc/              # 文档
-├── etc/              # 配置文件（如 ppanel.yaml）
+├── config.yaml.example # 配置文件示例
 ├── generate/         # 代码生成工具
 ├── initialize/       # 系统初始化
 ├── internal/         # 内部模块
@@ -230,14 +230,14 @@ make linux-arm64  # 构建特定平台
         高性能的 Go HTTP 框架<br/>
       </td>
       <td align="center" style="padding: 15px; vertical-align: middle;">
-        <a href="https://gorm.io/" style="text-decoration: none;">
-          <img src="https://gorm.io/gorm.svg" width="50" alt="Gorm" style="border-radius: 8px;" /><br/>
-          <strong>Gorm</strong><br/>
-          <img src="https://img.shields.io/github/stars/go-gorm/gorm?style=social" alt="Gorm Stars" />
+        <a href="https://entgo.io/" style="text-decoration: none;">
+          <img src="https://entgo.io/images/assets/ent-logo.svg" width="50" alt="ent" style="border-radius: 8px;" /><br/>
+          <strong>ent</strong><br/>
+          <img src="https://img.shields.io/github/stars/ent/ent?style=social" alt="ent Stars" />
         </a>
       </td>
       <td style="padding: 15px; vertical-align: middle;">
-        功能强大的 Go ORM 框架<br/>
+        类型安全的 Go 实体框架<br/>
       </td>
     </tr>
     <tr>

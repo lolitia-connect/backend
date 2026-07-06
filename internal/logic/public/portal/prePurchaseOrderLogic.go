@@ -1,6 +1,7 @@
 package portal
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 
@@ -11,8 +12,7 @@ import (
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type PrePurchaseOrderLogic struct {
 	logger.Logger
@@ -49,7 +49,7 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 	if req.Coupon != "" {
 		couponInfo, err := l.svcCtx.Store.Coupon().FindOneByCode(l.ctx, req.Coupon)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if ent.IsNotFound(err) {
 				return nil, errors.Wrapf(xerr.NewErrCode(xerr.CouponNotExist), "coupon not found")
 			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())

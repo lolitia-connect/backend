@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,8 +23,7 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type CacheKeyPayload struct {
 	Code   string `json:"code"`
@@ -91,11 +91,11 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 
 	// Check if the user exists
 	_, err = l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("FindOneByTelephone Error", logger.Field("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
+	if !ent.IsNotFound(err) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "telephone already exists")
 	}
 	var referer *user.User

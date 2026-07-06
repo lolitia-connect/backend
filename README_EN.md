@@ -79,7 +79,7 @@ proxy services. Built with Go, it emphasizes performance, security, and scalabil
 
 5. **Run the server**:
    ```bash
-   ./ppanel-server-linux-amd64 run --config etc/ppanel.yaml
+  ./ppanel-server-linux-amd64 run --config config.yaml
    ```
 
 ### 🐳 Docker Deployment
@@ -149,7 +149,7 @@ Visit [ppanel.dev](https://ppanel.dev/) for more details.
 ├── apis/             # API definition files
 ├── cmd/              # Application entry point
 ├── doc/              # Documentation
-├── etc/              # Configuration files (e.g., ppanel.yaml)
+├── config.yaml.example # Example configuration file
 ├── generate/         # Code generation tools
 ├── initialize/       # System initialization
 ├── internal/         # Internal modules
@@ -233,14 +233,14 @@ project's development! 🚀
         High-performance Go HTTP framework<br/>
       </td>
       <td align="center" style="padding: 15px; vertical-align: middle;">
-        <a href="https://gorm.io/" style="text-decoration: none;">
-          <img src="https://gorm.io/gorm.svg" width="50" alt="Gorm" style="border-radius: 8px;" /><br/>
-          <strong>Gorm</strong><br/>
-          <img src="https://img.shields.io/github/stars/go-gorm/gorm?style=social" alt="Gorm Stars" />
+        <a href="https://entgo.io/" style="text-decoration: none;">
+          <img src="https://entgo.io/images/assets/ent-logo.svg" width="50" alt="ent" style="border-radius: 8px;" /><br/>
+          <strong>ent</strong><br/>
+          <img src="https://img.shields.io/github/stars/ent/ent?style=social" alt="ent Stars" />
         </a>
       </td>
       <td style="padding: 15px; vertical-align: middle;">
-        Powerful Go ORM framework<br/>
+        Type-safe entity framework for Go<br/>
       </td>
     </tr>
     <tr>

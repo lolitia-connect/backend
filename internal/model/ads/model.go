@@ -3,9 +3,8 @@ package ads
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/orm"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entads "github.com/perfect-panel/server/ent/ads"
 )
 
 type customAdsLogicModel interface {
@@ -13,9 +12,9 @@ type customAdsLogicModel interface {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, c *redis.Client) Model {
+func NewModel(conn *ent.Client) Model {
 	return &customAdsModel{
-		defaultAdsModel: newAdsModel(conn, c),
+		defaultAdsModel: newAdsModel(conn),
 	}
 }
 
@@ -26,17 +25,24 @@ type Filter struct {
 
 // GetAdsListByPage  get ads list by page
 func (m *customAdsModel) GetAdsListByPage(ctx context.Context, page, size int, filter Filter) (int64, []*Ads, error) {
-	var list []*Ads
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		conn = conn.Model(&Ads{})
-		if filter.Status != nil {
-			conn = conn.Where("status = ?", *filter.Status)
-		}
-		if filter.Search != "" {
-			conn = conn.Scopes(orm.ContainsLike([]string{"title", "content"}, filter.Search))
-		}
-		return conn.Count(&total).Offset((page - 1) * size).Limit(size).Find(v).Error
-	})
-	return total, list, err
+	query := m.db.Ads.Query()
+	if filter.Status != nil {
+		query = query.Where(entads.Status(*filter.Status))
+	}
+	if filter.Search != "" {
+		query = query.Where(entads.Or(entads.TitleContains(filter.Search), entads.ContentContains(filter.Search)))
+	}
+	total, err := query.Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	items, err := query.Offset((page - 1) * size).Limit(size).All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	list := make([]*Ads, 0, len(items))
+	for _, item := range items {
+		list = append(list, adsFromEnt(item))
+	}
+	return int64(total), list, nil
 }

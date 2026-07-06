@@ -1,6 +1,7 @@
 package redemption
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -15,8 +16,7 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-
+	
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -80,7 +80,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	// Find redemption code by code
 	redemptionCode, err := l.svcCtx.Store.RedemptionCode().FindOneByCode(l.ctx, req.Code)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			l.Errorw("[RedeemCode] Redemption code not found", logger.Field("code", req.Code))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code not found")
 		}

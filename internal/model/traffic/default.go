@@ -2,9 +2,9 @@ package traffic
 
 import (
 	"context"
-	"errors"
 
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	enttrafficlog "github.com/perfect-panel/server/ent/trafficlog"
 )
 
 var _ Model = (*customTrafficModel)(nil)
@@ -19,51 +19,80 @@ type (
 		FindOne(ctx context.Context, id int64) (*TrafficLog, error)
 		Update(ctx context.Context, data *TrafficLog) error
 		Delete(ctx context.Context, id int64) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 	}
 
 	customTrafficModel struct {
 		*defaultTrafficModel
 	}
 	defaultTrafficModel struct {
-		Conn  *gorm.DB
+		db    *ent.Client
 		table string
 	}
 )
 
-func newTrafficModel(db *gorm.DB) *defaultTrafficModel {
+func newTrafficModel(db *ent.Client) *defaultTrafficModel {
 	return &defaultTrafficModel{
-		Conn:  db,
+		db:    db,
 		table: "traffic",
 	}
 }
 
 func (m *defaultTrafficModel) Insert(ctx context.Context, data *TrafficLog) error {
-	return m.Conn.WithContext(ctx).Create(&data).Error
+	create := m.db.TrafficLog.Create().
+		SetServerID(data.ServerId).
+		SetUserID(data.UserId).
+		SetSubscribeID(data.SubscribeId).
+		SetDownload(data.Download).
+		SetUpload(data.Upload)
+	if !data.Timestamp.IsZero() {
+		create.SetTimestamp(data.Timestamp)
+	}
+	created, err := create.Save(ctx)
+	if err != nil {
+		return err
+	}
+	data.Id = created.ID
+	return nil
 }
 
 func (m *defaultTrafficModel) FindOne(ctx context.Context, id int64) (*TrafficLog, error) {
-	var data TrafficLog
-	err := m.Conn.WithContext(ctx).Model(&TrafficLog{}).Where("id = ?", id).First(&data).Error
-	return &data, err
+	data, err := m.db.TrafficLog.Query().Where(enttrafficlog.ID(id)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return entToTrafficLog(data), nil
 }
 
 func (m *defaultTrafficModel) Update(ctx context.Context, data *TrafficLog) error {
-	return m.Conn.WithContext(ctx).Save(data).Error
+	return m.db.TrafficLog.UpdateOneID(data.Id).
+		SetServerID(data.ServerId).
+		SetUserID(data.UserId).
+		SetSubscribeID(data.SubscribeId).
+		SetDownload(data.Download).
+		SetUpload(data.Upload).
+		SetTimestamp(data.Timestamp).
+		Exec(ctx)
 }
 
 func (m *defaultTrafficModel) Delete(ctx context.Context, id int64) error {
-	_, err := m.FindOne(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+	err := m.db.TrafficLog.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
 	}
-
-	return m.Conn.WithContext(ctx).Delete(&TrafficLog{}, id).Error
+	return err
 }
 
-func (m *defaultTrafficModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.Conn.WithContext(ctx).Transaction(fn)
+func entToTrafficLog(data *ent.TrafficLog) *TrafficLog {
+	if data == nil {
+		return nil
+	}
+	return &TrafficLog{
+		Id:          data.ID,
+		ServerId:    data.ServerID,
+		UserId:      data.UserID,
+		SubscribeId: data.SubscribeID,
+		Download:    data.Download,
+		Upload:      data.Upload,
+		Timestamp:   data.Timestamp,
+	}
 }

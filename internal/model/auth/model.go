@@ -3,8 +3,8 @@ package auth
 import (
 	"context"
 
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entauthmethod "github.com/perfect-panel/server/ent/authmethod"
 )
 
 type customAuthLogicModel interface {
@@ -14,9 +14,9 @@ type customAuthLogicModel interface {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, c *redis.Client) Model {
+func NewModel(conn *ent.Client) Model {
 	return &customAuthModel{
-		defaultAuthModel: newAuthModel(conn, c),
+		defaultAuthModel: newAuthModel(conn),
 	}
 }
 
@@ -29,30 +29,27 @@ type Filter struct {
 
 // GetAuthListByPage  get auth list by page
 func (m *customAuthModel) GetAuthListByPage(ctx context.Context) ([]*Auth, error) {
-	var list []*Auth
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		conn = conn.Model(&Auth{})
-		return conn.Find(v).Error
-	})
-	return list, err
+	return m.FindAll(ctx)
 }
 
 // FindOneByMethod  find one by method
 func (m *customAuthModel) FindOneByMethod(ctx context.Context, method string) (*Auth, error) {
-	var data Auth
-	err := m.QueryNoCacheCtx(ctx, &data, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Auth{}).Where("method = ?", method).First(v).Error
-	})
-
-	return &data, err
+	data, err := m.db.AuthMethod.Query().Where(entauthmethod.Method(method)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return authFromEnt(data), nil
 }
 
 // FindAll find all
 func (m *customAuthModel) FindAll(ctx context.Context) ([]*Auth, error) {
-	var list []*Auth
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		conn = conn.Model(&Auth{})
-		return conn.Find(v).Error
-	})
-	return list, err
+	items, err := m.db.AuthMethod.Query().All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]*Auth, 0, len(items))
+	for _, item := range items {
+		list = append(list, authFromEnt(item))
+	}
+	return list, nil
 }

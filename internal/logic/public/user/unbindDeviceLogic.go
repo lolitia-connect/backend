@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	entuser "github.com/perfect-panel/server/ent/user"
+	"github.com/perfect-panel/server/ent/userauthmethod"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
@@ -49,14 +51,13 @@ func (l *UnbindDeviceLogic) UnbindDevice(req *types.UnbindDeviceRequest) error {
 		if err = store.User().DeleteUserAuthMethodByIdentifier(l.ctx, "device", device.Identifier); err != nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find device online record err: %v", err)
 		}
-		var count int64
-		err = store.DB().Model(user.AuthMethods{}).Where("user_id = ?", device.UserId).Count(&count).Error
+		count, err := store.Ent().UserAuthMethod.Query().Where(userauthmethod.UserID(device.UserId)).Count(l.ctx)
 		if err != nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "count user auth methods err: %v", err)
 		}
 
 		if count < 1 {
-			_ = store.DB().Where("id = ?", device.UserId).Delete(&user.User{}).Error
+			_, _ = store.Ent().User.Delete().Where(entuser.ID(device.UserId)).Exec(l.ctx)
 		}
 
 		//remove device cache

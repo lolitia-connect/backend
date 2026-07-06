@@ -24,11 +24,11 @@ RUN BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M:%S") && \
     go build -ldflags="-s -w -X 'github.com/perfect-panel/server/pkg/constant.Version=${VERSION}' -X 'github.com/perfect-panel/server/pkg/constant.BuildTime=${BUILD_TIME}'" -o /app/ppanel ppanel.go
 
 # Final minimal image
-FROM scratch
+FROM debian:bookworm-slim
 
-# Copy CA certificates and timezone data
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /usr/share/zoneinfo/Asia/Shanghai /usr/share/zoneinfo/Asia/Shanghai
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates tzdata && \
+    rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Shanghai
 
@@ -36,11 +36,11 @@ ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 COPY --from=builder /app/ppanel /app/ppanel
-COPY --from=builder /build/etc /app/etc
+COPY --from=builder /build/config.yaml.example /app/config.yaml.example
 
 # Expose the port (optional)
 EXPOSE 8080
 
 # Specify entry point
 ENTRYPOINT ["/app/ppanel"]
-CMD ["run", "--config", "etc/ppanel.yaml"]
+CMD ["run", "--config", "config.yaml"]

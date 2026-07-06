@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,8 +19,7 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type TelephoneResetPasswordLogic struct {
 	logger.Logger
@@ -74,7 +74,7 @@ func (l *TelephoneResetPasswordLogic) TelephoneResetPassword(req *types.Telephon
 	}
 
 	authMethods, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("FindOneByTelephone Error", logger.Field("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	}

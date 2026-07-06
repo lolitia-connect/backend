@@ -1,6 +1,7 @@
 package redemption
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 
 	"github.com/perfect-panel/server/internal/svc"
@@ -8,8 +9,7 @@ import (
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type ToggleRedemptionCodeStatusLogic struct {
 	logger.Logger
@@ -30,7 +30,7 @@ func (l *ToggleRedemptionCodeStatusLogic) ToggleRedemptionCodeStatus(req *types.
 	// Find redemption code
 	codeInfo, err := l.svcCtx.Store.RedemptionCode().FindOne(l.ctx, req.Id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			l.Errorw("[ToggleRedemptionCodeStatus] Redemption code not found", logger.Field("id", req.Id))
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code not found")
 		}

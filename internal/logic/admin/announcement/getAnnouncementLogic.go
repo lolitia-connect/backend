@@ -3,6 +3,7 @@ package announcement
 import (
 	"context"
 
+	entannouncement "github.com/perfect-panel/server/ent/announcement"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -27,7 +28,7 @@ func NewGetAnnouncementLogic(ctx context.Context, svcCtx *svc.ServiceContext) *G
 }
 
 func (l *GetAnnouncementLogic) GetAnnouncement(req *types.GetAnnouncementRequest) (resp *types.Announcement, err error) {
-	info, err := l.svcCtx.Store.Announcement().FindOne(l.ctx, req.Id)
+	info, err := l.svcCtx.Ent.Announcement.Query().Where(entannouncement.ID(req.Id)).Only(l.ctx)
 	if err != nil {
 		l.Errorw("[GetAnnouncement] Database Error", logger.Field("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get announcement error: %v", err.Error())

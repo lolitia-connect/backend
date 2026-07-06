@@ -4,9 +4,8 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/perfect-panel/server/pkg/orm"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entcoupon "github.com/perfect-panel/server/ent/coupon"
 )
 
 type customCouponLogicModel interface {
@@ -16,25 +15,35 @@ type customCouponLogicModel interface {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, c *redis.Client) Model {
+func NewModel(conn *ent.Client) Model {
 	return &customCouponModel{
-		defaultCouponModel: newCouponModel(conn, c),
+		defaultCouponModel: newCouponModel(conn),
 	}
 }
 
 // QueryCouponListByPage query coupon list by page
 func (m *customCouponModel) QueryCouponListByPage(ctx context.Context, page, size int, subscribe int64, search string) (total int64, list []*Coupon, err error) {
-	err = m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		db := conn.Model(&Coupon{})
-		if subscribe != 0 {
-			db = db.Scopes(orm.CommaSeparatedContains("subscribe", []string{strconv.FormatInt(subscribe, 10)}))
-		}
-		if search != "" {
-			db = db.Scopes(orm.PrefixLike([]string{"name", "code"}, search))
-		}
-		return db.Count(&total).Limit(size).Offset((page - 1) * size).Find(v).Error
-	})
-	return total, list, err
+	query := m.db.Coupon.Query()
+	if subscribe != 0 {
+		tag := strconv.FormatInt(subscribe, 10)
+		query = query.Where(entcoupon.Or(entcoupon.Subscribe(tag), entcoupon.SubscribeHasPrefix(tag+","), entcoupon.SubscribeHasSuffix(","+tag), entcoupon.SubscribeContains(","+tag+",")))
+	}
+	if search != "" {
+		query = query.Where(entcoupon.Or(entcoupon.NameHasPrefix(search), entcoupon.CodeHasPrefix(search)))
+	}
+	count, err := query.Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	items, err := query.Limit(size).Offset((page - 1) * size).All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	list = make([]*Coupon, 0, len(items))
+	for _, item := range items {
+		list = append(list, couponFromEnt(item))
+	}
+	return int64(count), list, nil
 }
 
 func (m *customCouponModel) BatchDelete(ctx context.Context, ids []int64) error {

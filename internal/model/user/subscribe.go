@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent/predicate"
+	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 )
 
 func (m *defaultUserModel) UpdateUserSubscribeCache(ctx context.Context, data *Subscribe) error {
@@ -19,14 +21,7 @@ func (m *defaultUserModel) QueryActiveSubscriptions(ctx context.Context, subscri
 		Total       int64
 	}
 	var result []SubscriptionCount
-	err := m.QueryNoCacheCtx(ctx, &result, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).
-			Where("subscribe_id IN ? AND status IN ?", subscribeId, []int64{1, 0}).
-			Select("subscribe_id, COUNT(id) as total").
-			Group("subscribe_id").
-			Scan(&result).
-			Error
-	})
+	err := m.db.UserSubscribe.Query().Where(entsub.SubscribeIDIn(subscribeId...), entsub.StatusIn(1, 0)).GroupBy(entsub.FieldSubscribeID).Aggregate(func(s *entsql.Selector) string { return entsql.As(entsql.Count(s.C(entsub.FieldID)), "total") }).Scan(ctx, &result)
 
 	if err != nil {
 		return nil, err
@@ -41,47 +36,42 @@ func (m *defaultUserModel) QueryActiveSubscriptions(ctx context.Context, subscri
 }
 
 func (m *defaultUserModel) FindOneSubscribeByOrderId(ctx context.Context, orderId int64) (*Subscribe, error) {
-	var data Subscribe
-	err := m.QueryNoCacheCtx(ctx, &data, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("order_id = ?", orderId).First(&data).Error
-	})
-	return &data, err
+	item, err := m.db.UserSubscribe.Query().Where(entsub.OrderID(orderId)).First(ctx)
+	return entToSubscribe(item), err
 }
 
 func (m *defaultUserModel) FindOneSubscribe(ctx context.Context, id int64) (*Subscribe, error) {
-	var data Subscribe
 	key := fmt.Sprintf("%s%d", cacheUserSubscribeIdPrefix, id)
-	err := m.QueryCtx(ctx, &data, key, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("id = ?", id).First(&data).Error
-	})
-	return &data, err
+	var data Subscribe
+	if err := getJSONCache(ctx, m.redis, key, &data); err == nil {
+		return &data, nil
+	}
+	item, err := m.db.UserSubscribe.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	data = *entToSubscribe(item)
+	_ = setJSONCache(ctx, m.redis, key, &data)
+	return &data, nil
 }
 
 func (m *defaultUserModel) FindUsersSubscribeBySubscribeId(ctx context.Context, subscribeId int64) ([]*Subscribe, error) {
-	var data []*Subscribe
-	err := m.QueryNoCacheCtx(ctx, &data, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("subscribe_id = ? AND status IN ?", subscribeId, []int64{1, 0}).Find(v).Error
-	})
-	return data, err
+	items, err := m.db.UserSubscribe.Query().Where(entsub.SubscribeID(subscribeId), entsub.StatusIn(1, 0)).All(ctx)
+	return entSubscribesToModels(items), err
 }
 
 func (m *defaultUserModel) FindUserSubscribesByStatus(ctx context.Context, status ...int64) ([]*Subscribe, error) {
-	var data []*Subscribe
-	err := m.QueryNoCacheCtx(ctx, &data, func(conn *gorm.DB, v interface{}) error {
-		conn = conn.Model(&Subscribe{})
-		if len(status) > 0 {
-			conn = conn.Where("status IN ?", status)
-		}
-		return conn.Find(v).Error
-	})
-	return data, err
+	q := m.db.UserSubscribe.Query()
+	if len(status) > 0 {
+		q = q.Where(entsub.StatusIn(int64ToUint8(status)...))
+	}
+	items, err := q.All(ctx)
+	return entSubscribesToModels(items), err
 }
 
 func (m *defaultUserModel) ActivatePendingSubscribesBySubscribeId(ctx context.Context, subscribeId int64) error {
-	var pending []*Subscribe
-	err := m.QueryNoCacheCtx(ctx, &pending, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("subscribe_id = ? AND status = ?", subscribeId, 0).Find(v).Error
-	})
+	items, err := m.db.UserSubscribe.Query().Where(entsub.SubscribeID(subscribeId), entsub.Status(0)).All(ctx)
+	pending := entSubscribesToModels(items)
 	if err != nil || len(pending) == 0 {
 		return err
 	}
@@ -91,84 +81,76 @@ func (m *defaultUserModel) ActivatePendingSubscribesBySubscribeId(ctx context.Co
 		cacheKeys = append(cacheKeys, sub.GetCacheKeys()...)
 	}
 
-	return m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Model(&Subscribe{}).Where("subscribe_id = ? AND status = ?", subscribeId, 0).Update("status", 1).Error
-	}, cacheKeys...)
+	if _, err := m.db.UserSubscribe.Update().Where(entsub.SubscribeID(subscribeId), entsub.Status(0)).SetStatus(1).Save(ctx); err != nil {
+		return err
+	}
+	return m.GetCacheManager().ClearCache(ctx, cacheKeys...)
 }
 
 func (m *defaultUserModel) CountUserSubscribesBySubscribeIdAndStatus(ctx context.Context, subscribeId int64, status ...int64) (int64, error) {
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		conn = conn.Model(&Subscribe{}).Where("subscribe_id = ?", subscribeId)
-		if len(status) > 0 {
-			conn = conn.Where("status IN ?", status)
-		}
-		return conn.Count(&total).Error
-	})
-	return total, err
+	q := m.db.UserSubscribe.Query().Where(entsub.SubscribeID(subscribeId))
+	if len(status) > 0 {
+		q = q.Where(entsub.StatusIn(int64ToUint8(status)...))
+	}
+	count, err := q.Count(ctx)
+	return int64(count), err
 }
 
 func (m *defaultUserModel) CountUserSubscribesByUserAndSubscribe(ctx context.Context, userId, subscribeId int64) (int64, error) {
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).
-			Where("user_id = ? AND subscribe_id = ?", userId, subscribeId).
-			Count(&total).Error
-	})
-	return total, err
+	count, err := m.db.UserSubscribe.Query().Where(entsub.UserID(userId), entsub.SubscribeID(subscribeId)).Count(ctx)
+	return int64(count), err
 }
 
 // QueryUserSubscribe returns a list of records that meet the conditions.
 func (m *defaultUserModel) QueryUserSubscribe(ctx context.Context, userId int64, status ...int64) ([]*SubscribeDetails, error) {
-	var list []*SubscribeDetails
 	key := fmt.Sprintf("%s%d", cacheUserSubscribeUserPrefix, userId)
-	err := m.QueryCtx(ctx, &list, key, func(conn *gorm.DB, v interface{}) error {
-		// 获取当前时间
-		now := time.Now()
-		// 获取当前时间向前推 7 天
-		sevenDaysAgo := time.Now().Add(-7 * 24 * time.Hour)
-		// 基础条件查询
-		conn = conn.Model(&Subscribe{}).Where("user_id = ?", userId)
-		if len(status) > 0 {
-			conn = conn.Where("status IN ?", status)
-		}
-		// 订阅过期时间大于当前时间或者订阅结束时间大于当前时间
-		return conn.Where("expire_time > ? OR finished_at >= ? OR expire_time = ?", now, sevenDaysAgo, time.UnixMilli(0)).
-			Preload("Subscribe").
-			Find(&list).Error
-	})
-	return list, err
+	var list []*SubscribeDetails
+	if err := getJSONCache(ctx, m.redis, key, &list); err == nil {
+		return list, nil
+	}
+	now := time.Now()
+	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
+	q := m.db.UserSubscribe.Query().Where(entsub.UserID(userId), predicate.UserSubscribe(func(s *entsql.Selector) {
+		s.Where(entsql.Or(entsql.GT(s.C(entsub.FieldExpireTime), now), entsql.GTE(s.C(entsub.FieldFinishedAt), sevenDaysAgo), entsql.EQ(s.C(entsub.FieldExpireTime), time.UnixMilli(0))))
+	}))
+	if len(status) > 0 {
+		q = q.Where(entsub.StatusIn(int64ToUint8(status)...))
+	}
+	items, err := q.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	list = entSubscribeDetailsToModels(items)
+	_ = setJSONCache(ctx, m.redis, key, list)
+	return list, nil
 }
 
 // FindOneUserSubscribe  finds a subscribeDetails by id.
 func (m *defaultUserModel) FindOneUserSubscribe(ctx context.Context, id int64) (subscribeDetails *SubscribeDetails, err error) {
 	//TODO cache
 	//key := fmt.Sprintf("%s%d", cacheUserSubscribeUserPrefix, userId)
-	subscribeDetails = new(SubscribeDetails)
-	err = m.QueryNoCacheCtx(ctx, subscribeDetails, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Preload("Subscribe").Where("id = ?", id).First(v).Error
-	})
-	return
+	item, err := m.db.UserSubscribe.Get(ctx, id)
+	return entToSubscribeDetails(item), err
 }
 
 // FindOneSubscribeByToken  finds a record by token.
 func (m *defaultUserModel) FindOneSubscribeByToken(ctx context.Context, token string) (*Subscribe, error) {
-	var data Subscribe
 	key := fmt.Sprintf("%s%s", cacheUserSubscribeTokenPrefix, token)
-	err := m.QueryCtx(ctx, &data, key, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("token = ?", token).Find(&data).Error
-	})
+	var data Subscribe
+	if err := getJSONCache(ctx, m.redis, key, &data); err == nil {
+		return &data, nil
+	}
+	item, err := m.db.UserSubscribe.Query().Where(entsub.Token(token)).First(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if data.Id == 0 {
-		return nil, nil
-	}
+	data = *entToSubscribe(item)
+	_ = setJSONCache(ctx, m.redis, key, &data)
 	return &data, nil
 }
 
 // UpdateSubscribe updates a record.
-func (m *defaultUserModel) UpdateSubscribe(ctx context.Context, data *Subscribe, tx ...*gorm.DB) error {
+func (m *defaultUserModel) UpdateSubscribe(ctx context.Context, data *Subscribe) error {
 	old, err := m.FindOneSubscribe(ctx, data.Id)
 	if err != nil {
 		return err
@@ -190,16 +172,16 @@ func (m *defaultUserModel) UpdateSubscribe(ctx context.Context, data *Subscribe,
 		}
 	}()
 
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Model(&Subscribe{}).Where("id = ?", data.Id).Save(data).Error
-	})
+	updated, err := subscribeUpdate(m.db.UserSubscribe.UpdateOneID(data.Id), data).Save(ctx)
+	if err != nil {
+		return err
+	}
+	*data = *entToSubscribe(updated)
+	return nil
 }
 
 // DeleteSubscribe deletes a record.
-func (m *defaultUserModel) DeleteSubscribe(ctx context.Context, token string, tx ...*gorm.DB) error {
+func (m *defaultUserModel) DeleteSubscribe(ctx context.Context, token string) error {
 	data, err := m.FindOneSubscribeByToken(ctx, token)
 	if err != nil {
 		return err
@@ -212,16 +194,12 @@ func (m *defaultUserModel) DeleteSubscribe(ctx context.Context, token string, tx
 		}
 	}()
 
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Where("token = ?", token).Delete(&Subscribe{}).Error
-	})
+	_, err = m.db.UserSubscribe.Delete().Where(entsub.Token(token)).Exec(ctx)
+	return err
 }
 
 // InsertSubscribe insert Subscribe into the database.
-func (m *defaultUserModel) InsertSubscribe(ctx context.Context, data *Subscribe, tx ...*gorm.DB) error {
+func (m *defaultUserModel) InsertSubscribe(ctx context.Context, data *Subscribe) error {
 	// 使用 defer 确保插入后清理相关缓存
 	defer func() {
 		if clearErr := m.ClearSubscribeCacheByModels(ctx, data); clearErr != nil {
@@ -229,15 +207,15 @@ func (m *defaultUserModel) InsertSubscribe(ctx context.Context, data *Subscribe,
 		}
 	}()
 
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Create(data).Error
-	})
+	created, err := subscribeCreate(m.db.UserSubscribe.Create(), data).Save(ctx)
+	if err != nil {
+		return err
+	}
+	*data = *entToSubscribe(created)
+	return nil
 }
 
-func (m *defaultUserModel) DeleteSubscribeById(ctx context.Context, id int64, tx ...*gorm.DB) error {
+func (m *defaultUserModel) DeleteSubscribeById(ctx context.Context, id int64) error {
 	data, err := m.FindOneSubscribe(ctx, id)
 	if err != nil {
 		return err
@@ -250,12 +228,7 @@ func (m *defaultUserModel) DeleteSubscribeById(ctx context.Context, id int64, tx
 		}
 	}()
 
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Where("id = ?", id).Delete(&Subscribe{}).Error
-	})
+	return m.db.UserSubscribe.DeleteOneID(id).Exec(ctx)
 }
 
 func (m *defaultUserModel) ClearSubscribeCache(ctx context.Context, data ...*Subscribe) error {

@@ -2,12 +2,9 @@ package announcement
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"github.com/perfect-panel/server/pkg/cache"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entannouncement "github.com/perfect-panel/server/ent/announcement"
 )
 
 var _ Model = (*customAnnouncementModel)(nil)
@@ -25,92 +22,90 @@ type (
 		FindOne(ctx context.Context, id int64) (*Announcement, error)
 		Update(ctx context.Context, data *Announcement) error
 		Delete(ctx context.Context, id int64) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 	}
 
 	customAnnouncementModel struct {
 		*defaultAnnouncementModel
 	}
 	defaultAnnouncementModel struct {
-		cache.CachedConn
-		table string
+		db *ent.Client
 	}
 )
 
-func newAnnouncementModel(db *gorm.DB, c *redis.Client) *defaultAnnouncementModel {
+func newAnnouncementModel(db *ent.Client) *defaultAnnouncementModel {
 	return &defaultAnnouncementModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "announcement",
+		db: db,
 	}
-}
-
-//nolint:unused
-func (m *defaultAnnouncementModel) batchGetCacheKeys(Announcements ...*Announcement) []string {
-	var keys []string
-	for _, announcement := range Announcements {
-		keys = append(keys, m.getCacheKeys(announcement)...)
-	}
-	return keys
-
-}
-func (m *defaultAnnouncementModel) getCacheKeys(data *Announcement) []string {
-	if data == nil {
-		return []string{}
-	}
-	announcementIdKey := fmt.Sprintf("%s%v", cacheAnnouncementIdPrefix, data.Id)
-	cacheKeys := []string{
-		announcementIdKey,
-	}
-	return cacheKeys
 }
 
 func (m *defaultAnnouncementModel) Insert(ctx context.Context, data *Announcement) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Create(&data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+	created, err := m.db.Announcement.Create().
+		SetTitle(data.Title).
+		SetContent(data.Content).
+		SetShow(value(data.Show)).
+		SetPinned(value(data.Pinned)).
+		SetPopup(value(data.Popup)).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyFromEnt(data, created)
+	return nil
 }
 
 func (m *defaultAnnouncementModel) FindOne(ctx context.Context, id int64) (*Announcement, error) {
-	var resp Announcement
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Announcement{}).Where("id = ?", id).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
+	data, err := m.db.Announcement.Query().Where(entannouncement.ID(id)).Only(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return announcementFromEnt(data), nil
 }
 
 func (m *defaultAnnouncementModel) Update(ctx context.Context, data *Announcement) error {
-	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	updated, err := m.db.Announcement.UpdateOneID(data.Id).
+		SetTitle(data.Title).
+		SetContent(data.Content).
+		SetShow(value(data.Show)).
+		SetPinned(value(data.Pinned)).
+		SetPopup(value(data.Popup)).
+		Save(ctx)
+	if err != nil {
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
+	copyFromEnt(data, updated)
+	return nil
 }
 
 func (m *defaultAnnouncementModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+	err := m.db.Announcement.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Delete(&Announcement{}, id).Error
-	}, m.getCacheKeys(data)...)
 	return err
 }
 
-func (m *defaultAnnouncementModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
+func announcementFromEnt(data *ent.Announcement) *Announcement {
+	if data == nil {
+		return nil
+	}
+	var resp Announcement
+	copyFromEnt(&resp, data)
+	return &resp
+}
+
+func copyFromEnt(dst *Announcement, src *ent.Announcement) {
+	dst.Id = src.ID
+	dst.Title = src.Title
+	dst.Content = src.Content
+	dst.Show = ptr(src.Show)
+	dst.Pinned = ptr(src.Pinned)
+	dst.Popup = ptr(src.Popup)
+	dst.CreatedAt = src.CreatedAt
+	dst.UpdatedAt = src.UpdatedAt
+}
+
+func ptr(v bool) *bool { return &v }
+
+func value(v *bool) bool {
+	return v != nil && *v
 }

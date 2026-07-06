@@ -1,6 +1,8 @@
 .idea/
 .vscode/
 *-dev.yaml
+config.yaml
+config.dev.yaml
 *.local.yaml
 /test/
 /test-artifacts/
@@ -42,3 +44,6 @@ BRANCH_STRATEGY.md
 # Plugin WASM binaries (built elsewhere)
 plugins/**/*.wasm
 !plugins/**/.gitkeep
+
+# Application generated files
+./logs

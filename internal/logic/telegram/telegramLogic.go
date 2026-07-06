@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
@@ -15,7 +16,6 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 type TelegramLogic struct {
@@ -91,11 +91,11 @@ func (l *TelegramLogic) start(req *tgbotapi.Update) error {
 		}
 
 		method, err := l.svcCtx.Store.User().FindUserAuthMethodByPlatform(l.ctx, userId, "telegram")
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if err != nil && !ent.IsNotFound(err) {
 			l.Errorw("TelegramLogic start FindUserAuthMethodByPlatform Error: ", logger.Field("error", err.Error()), logger.Field("userId", userId))
 			return l.sendMessage(l.svcCtx.TelegramBot, "Bind failed!", req.Message.Chat.ID)
 		}
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			if err := l.svcCtx.Store.User().InsertUserAuthMethods(l.ctx, &user.AuthMethods{
 				UserId:         userId,
 				AuthType:       "telegram",

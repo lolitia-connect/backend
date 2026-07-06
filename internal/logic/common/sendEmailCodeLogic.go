@@ -1,6 +1,7 @@
 package common
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,8 +13,7 @@ import (
 	"github.com/perfect-panel/server/pkg/limit"
 	"github.com/perfect-panel/server/pkg/random"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-
+	
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -73,7 +73,7 @@ func (l *SendEmailCodeLogic) SendEmailCode(req *types.SendCodeRequest) (resp *ty
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.TodaySendCountExceedsLimit), "send email too many requests")
 	}
 	m, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "email", req.Email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
 	if constant.ParseVerifyType(req.Type) == constant.Register && m.Id > 0 {

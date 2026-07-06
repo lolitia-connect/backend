@@ -1,6 +1,7 @@
 package user
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,8 +20,7 @@ import (
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 const telegramBindAuthExpire = 86400
 
@@ -121,7 +121,7 @@ func (l *BindOAuthCallbackLogic) google(req *types.BindOAuthCallbackRequest) err
 	}
 	// query user info
 	userAuthMethod, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "google", googleUserInfo.OpenID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user auth method failed")
 	}
 	if userAuthMethod.Id > 0 {
@@ -190,7 +190,7 @@ func (l *BindOAuthCallbackLogic) apple(req *types.BindOAuthCallbackRequest) erro
 	}
 	// query user by apple unique id
 	userAuthMethod, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "apple", appleUnique)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("[BindOAuthCallbackLogic] FindUserAuthMethodByOpenID error", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth method by openid failed: %v", err.Error())
 	}
@@ -274,7 +274,7 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 	telegramUserID := fmt.Sprintf("%d", *callbackData.Id)
 
 	existingByOpenID, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "telegram", telegramUserID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("find telegram user auth method by openid failed", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find telegram user auth method failed")
 	}
@@ -286,7 +286,7 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 	}
 
 	existingByPlatform, err := l.svcCtx.Store.User().FindUserAuthMethodByPlatform(l.ctx, u.Id, "telegram")
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("find telegram user auth method by platform failed", logger.Field("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find telegram user auth method failed")
 	}

@@ -11,7 +11,7 @@
 3. 创建一个空的 PostgreSQL 数据库。
 4. 使用 PostgreSQL 配置启动一次最新版 PPanel server，让内置 PostgreSQL migrations 创建数据库结构，然后停止服务。
 5. 使用 `--truncate --yes` 运行本工具。
-6. 将 `etc/ppanel.yaml` 指向 PostgreSQL，然后启动 PPanel。
+6. 将 `config.yaml` 指向 PostgreSQL，然后启动 PPanel。
 
 ## 使用方式
 

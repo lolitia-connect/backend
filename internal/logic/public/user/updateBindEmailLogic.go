@@ -3,12 +3,12 @@ package user
 import (
 	"context"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -37,11 +37,11 @@ func (l *UpdateBindEmailLogic) UpdateBindEmail(req *types.UpdateBindEmailRequest
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	method, err := l.svcCtx.Store.User().FindUserAuthMethodByUserId(l.ctx, "email", u.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
 	m, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "email", req.Email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
 	// email already bind

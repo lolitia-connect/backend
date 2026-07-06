@@ -2,15 +2,16 @@ package node
 
 import (
 	"context"
-	"errors"
 
+	"github.com/perfect-panel/server/ent"
+	entnode "github.com/perfect-panel/server/ent/node"
+	entserver "github.com/perfect-panel/server/ent/server"
+	entserverconfigoverride "github.com/perfect-panel/server/ent/serverconfigoverride"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 var _ Model = (*customServerModel)(nil)
 
-//goland:noinspection GoNameStartsWithPackageName
 type (
 	Model interface {
 		serverModel
@@ -19,160 +20,250 @@ type (
 		customServerLogicModel
 	}
 	serverModel interface {
-		InsertServer(ctx context.Context, data *Server, tx ...*gorm.DB) error
+		InsertServer(ctx context.Context, data *Server) error
 		FindOneServer(ctx context.Context, id int64) (*Server, error)
-		UpdateServer(ctx context.Context, data *Server, tx ...*gorm.DB) error
-		DeleteServer(ctx context.Context, id int64, tx ...*gorm.DB) error
+		UpdateServer(ctx context.Context, data *Server) error
+		DeleteServer(ctx context.Context, id int64) error
 		FindServerConfigOverride(ctx context.Context, serverId int64) (*ServerConfigOverride, error)
-		SaveServerConfigOverride(ctx context.Context, data *ServerConfigOverride, tx ...*gorm.DB) error
-		DeleteServerConfigOverride(ctx context.Context, serverId int64, tx ...*gorm.DB) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
+		SaveServerConfigOverride(ctx context.Context, data *ServerConfigOverride) error
+		DeleteServerConfigOverride(ctx context.Context, serverId int64) error
 		QueryServerList(ctx context.Context, ids []int64) (servers []*Server, err error)
 	}
 
 	NodeModel interface {
-		InsertNode(ctx context.Context, data *Node, tx ...*gorm.DB) error
+		InsertNode(ctx context.Context, data *Node) error
 		FindOneNode(ctx context.Context, id int64) (*Node, error)
-		UpdateNode(ctx context.Context, data *Node, tx ...*gorm.DB) error
-		DeleteNode(ctx context.Context, id int64, tx ...*gorm.DB) error
+		UpdateNode(ctx context.Context, data *Node) error
+		DeleteNode(ctx context.Context, id int64) error
 	}
 
 	customServerModel struct {
 		*defaultServerModel
 	}
 	defaultServerModel struct {
-		*gorm.DB
+		db    *ent.Client
 		Cache *redis.Client
 	}
 )
 
-func newServerModel(db *gorm.DB, cache *redis.Client) *defaultServerModel {
-	return &defaultServerModel{
-		DB:    db,
-		Cache: cache,
-	}
+func newServerModel(db *ent.Client, cache *redis.Client) *defaultServerModel {
+	return &defaultServerModel{db: db, Cache: cache}
 }
 
-// NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, cache *redis.Client) Model {
-	return &customServerModel{
-		defaultServerModel: newServerModel(conn, cache),
-	}
+func NewModel(conn *ent.Client, cache *redis.Client) Model {
+	return &customServerModel{defaultServerModel: newServerModel(conn, cache)}
 }
 
-func (m *defaultServerModel) InsertServer(ctx context.Context, data *Server, tx ...*gorm.DB) error {
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
+func (m *defaultServerModel) InsertServer(ctx context.Context, data *Server) error {
+	if data.Sort == 0 {
+		maxSort, err := m.db.Server.Query().Aggregate(ent.Max(entserver.FieldSort)).Int(ctx)
+		if err != nil {
+			return err
+		}
+		data.Sort = maxSort + 1
 	}
-	return db.WithContext(ctx).Create(data).Error
+	created, err := m.db.Server.Create().
+		SetName(data.Name).
+		SetCountry(data.Country).
+		SetCity(data.City).
+		SetAddress(data.Address).
+		SetSort(data.Sort).
+		SetNillableProtocols(nilIfEmpty(data.Protocols)).
+		SetNillableLastReportedAt(data.LastReportedAt).
+		SetLongitude(data.Longitude).
+		SetLatitude(data.Latitude).
+		SetLongitudeCenter(data.LongitudeCenter).
+		SetLatitudeCenter(data.LatitudeCenter).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	data.Id = created.ID
+	data.CreatedAt = created.CreatedAt
+	data.UpdatedAt = created.UpdatedAt
+	return nil
 }
 
 func (m *defaultServerModel) FindOneServer(ctx context.Context, id int64) (*Server, error) {
-	var server Server
-	err := m.WithContext(ctx).Model(&Server{}).Where("id = ?", id).First(&server).Error
-	return &server, err
-}
-
-func (m *defaultServerModel) UpdateServer(ctx context.Context, data *Server, tx ...*gorm.DB) error {
-	_, err := m.FindOneServer(ctx, data.Id)
-	if err != nil {
-		return err
-	}
-
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
-	}
-	return db.WithContext(ctx).Where("id = ?", data.Id).Save(data).Error
-
-}
-
-func (m *defaultServerModel) DeleteServer(ctx context.Context, id int64, tx ...*gorm.DB) error {
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
-	}
-	return db.WithContext(ctx).Where("id = ?", id).Delete(&Server{}).Error
-}
-
-func (m *defaultServerModel) FindServerConfigOverride(ctx context.Context, serverId int64) (*ServerConfigOverride, error) {
-	var data []ServerConfigOverride
-
-	err := m.WithContext(ctx).Model(&ServerConfigOverride{}).Where("server_id = ?", serverId).Limit(1).Find(&data).Error
+	data, err := m.db.Server.Query().Where(entserver.ID(id)).Only(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(data) == 0 {
-		return nil, nil
-	}
-
-	return &data[0], nil
+	return entToServer(data), nil
 }
 
-func (m *defaultServerModel) SaveServerConfigOverride(ctx context.Context, data *ServerConfigOverride, tx ...*gorm.DB) error {
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
-	}
-
-	var old ServerConfigOverride
-	err := db.WithContext(ctx).Model(&ServerConfigOverride{}).Where("server_id = ?", data.ServerId).First(&old).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+func (m *defaultServerModel) UpdateServer(ctx context.Context, data *Server) error {
+	if err := m.ensureUniqueServerSort(ctx, data); err != nil {
 		return err
 	}
-	if err == nil {
-		data.Id = old.Id
-		data.CreatedAt = old.CreatedAt
+	return m.db.Server.UpdateOneID(data.Id).
+		SetName(data.Name).
+		SetCountry(data.Country).
+		SetCity(data.City).
+		SetAddress(data.Address).
+		SetSort(data.Sort).
+		SetNillableProtocols(nilIfEmpty(data.Protocols)).
+		SetNillableLastReportedAt(data.LastReportedAt).
+		SetLongitude(data.Longitude).
+		SetLatitude(data.Latitude).
+		SetLongitudeCenter(data.LongitudeCenter).
+		SetLatitudeCenter(data.LatitudeCenter).
+		Exec(ctx)
+}
+
+func (m *defaultServerModel) DeleteServer(ctx context.Context, id int64) error {
+	old, err := m.FindOneServer(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil
+		}
+		return err
 	}
-
-	return db.WithContext(ctx).Save(data).Error
-}
-
-func (m *defaultServerModel) DeleteServerConfigOverride(ctx context.Context, serverId int64, tx ...*gorm.DB) error {
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
+	if err := m.db.Server.DeleteOneID(id).Exec(ctx); err != nil && !ent.IsNotFound(err) {
+		return err
 	}
-	return db.WithContext(ctx).Where("server_id = ?", serverId).Delete(&ServerConfigOverride{}).Error
+	_, err = m.db.Server.Update().Where(entserver.SortGT(old.Sort)).AddSort(-1).Save(ctx)
+	return err
 }
 
-func (m *defaultServerModel) InsertNode(ctx context.Context, data *Node, tx ...*gorm.DB) error {
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
+func (m *defaultServerModel) FindServerConfigOverride(ctx context.Context, serverId int64) (*ServerConfigOverride, error) {
+	data, err := m.db.ServerConfigOverride.Query().Where(entserverconfigoverride.ServerID(serverId)).First(ctx)
+	if ent.IsNotFound(err) {
+		return nil, nil
 	}
-	return db.WithContext(ctx).Create(data).Error
+	if err != nil {
+		return nil, err
+	}
+	return entToServerConfigOverride(data), nil
 }
 
-func (m *defaultServerModel) FindOneNode(ctx context.Context, id int64) (*Node, error) {
-	var node Node
-	err := m.WithContext(ctx).Model(&Node{}).Where("id = ?", id).First(&node).Error
-	return &node, err
-}
-
-func (m *defaultServerModel) UpdateNode(ctx context.Context, data *Node, tx ...*gorm.DB) error {
-	_, err := m.FindOneNode(ctx, data.Id)
+func (m *defaultServerModel) SaveServerConfigOverride(ctx context.Context, data *ServerConfigOverride) error {
+	old, err := m.FindServerConfigOverride(ctx, data.ServerId)
 	if err != nil {
 		return err
 	}
-
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
+	if old != nil {
+		data.Id = old.Id
+		data.CreatedAt = old.CreatedAt
+		return m.db.ServerConfigOverride.UpdateOneID(old.Id).
+			SetNillableIPStrategy(data.IPStrategy).
+			SetNillableDNS(data.DNS).
+			SetNillableBlock(data.Block).
+			SetNillableOutbound(data.Outbound).
+			Exec(ctx)
 	}
-	return db.WithContext(ctx).Where("id = ?", data.Id).Save(data).Error
+	created, err := m.db.ServerConfigOverride.Create().
+		SetServerID(data.ServerId).
+		SetNillableIPStrategy(data.IPStrategy).
+		SetNillableDNS(data.DNS).
+		SetNillableBlock(data.Block).
+		SetNillableOutbound(data.Outbound).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	data.Id = created.ID
+	data.CreatedAt = created.CreatedAt
+	data.UpdatedAt = created.UpdatedAt
+	return nil
 }
 
-func (m *defaultServerModel) DeleteNode(ctx context.Context, id int64, tx ...*gorm.DB) error {
-	db := m.DB
-	if len(tx) > 0 {
-		db = tx[0]
-	}
-	return db.WithContext(ctx).Where("id = ?", id).Delete(&Node{}).Error
+func (m *defaultServerModel) DeleteServerConfigOverride(ctx context.Context, serverId int64) error {
+	_, err := m.db.ServerConfigOverride.Delete().Where(entserverconfigoverride.ServerID(serverId)).Exec(ctx)
+	return err
 }
 
-func (m *defaultServerModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.WithContext(ctx).Transaction(fn)
+func (m *defaultServerModel) InsertNode(ctx context.Context, data *Node) error {
+	if data.Sort == 0 {
+		maxSort, err := m.db.Node.Query().Aggregate(ent.Max(entnode.FieldSort)).Int(ctx)
+		if err != nil {
+			return err
+		}
+		data.Sort = maxSort + 1
+	}
+	created, err := m.nodeCreate(data).Save(ctx)
+	if err != nil {
+		return err
+	}
+	data.Id = created.ID
+	data.CreatedAt = created.CreatedAt
+	data.UpdatedAt = created.UpdatedAt
+	return nil
+}
+
+func (m *defaultServerModel) FindOneNode(ctx context.Context, id int64) (*Node, error) {
+	data, err := m.db.Node.Query().Where(entnode.ID(id)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return entToNode(data), nil
+}
+
+func (m *defaultServerModel) UpdateNode(ctx context.Context, data *Node) error {
+	if err := m.ensureUniqueNodeSort(ctx, data); err != nil {
+		return err
+	}
+	return m.nodeUpdate(data).Exec(ctx)
+}
+
+func (m *defaultServerModel) DeleteNode(ctx context.Context, id int64) error {
+	old, err := m.FindOneNode(ctx, id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if err := m.db.Node.DeleteOneID(id).Exec(ctx); err != nil && !ent.IsNotFound(err) {
+		return err
+	}
+	_, err = m.db.Node.Update().Where(entnode.SortGT(old.Sort)).AddSort(-1).Save(ctx)
+	return err
+}
+
+func (m *defaultServerModel) nodeCreate(data *Node) *ent.NodeCreate {
+	return m.db.Node.Create().SetName(data.Name).SetTags(data.Tags).SetPort(data.Port).SetAddress(data.Address).SetServerID(data.ServerId).SetProtocol(data.Protocol).SetProtocolID(data.ProtocolId).SetNillableEnabled(data.Enabled).SetNodeType(data.NodeType).SetNillableIsHidden(data.IsHidden).SetSort(data.Sort).SetNodeGroupIds([]int64(data.NodeGroupIds))
+}
+
+func (m *defaultServerModel) nodeUpdate(data *Node) *ent.NodeUpdateOne {
+	return m.db.Node.UpdateOneID(data.Id).SetName(data.Name).SetTags(data.Tags).SetPort(data.Port).SetAddress(data.Address).SetServerID(data.ServerId).SetProtocol(data.Protocol).SetProtocolID(data.ProtocolId).SetNillableEnabled(data.Enabled).SetNodeType(data.NodeType).SetNillableIsHidden(data.IsHidden).SetSort(data.Sort).SetNodeGroupIds([]int64(data.NodeGroupIds))
+}
+
+func (m *defaultServerModel) ensureUniqueServerSort(ctx context.Context, data *Server) error {
+	count, err := m.db.Server.Query().Where(entserver.Sort(data.Sort), entserver.IDNEQ(data.Id)).Count(ctx)
+	if err != nil || count <= 1 {
+		return err
+	}
+	if err := m.reorderServers(ctx); err != nil {
+		return err
+	}
+	maxSort, err := m.db.Server.Query().Aggregate(ent.Max(entserver.FieldSort)).Int(ctx)
+	if err != nil {
+		return err
+	}
+	data.Sort = maxSort + 1
+	return nil
+}
+
+func (m *defaultServerModel) ensureUniqueNodeSort(ctx context.Context, data *Node) error {
+	count, err := m.db.Node.Query().Where(entnode.Sort(data.Sort), entnode.IDNEQ(data.Id)).Count(ctx)
+	if err != nil || count <= 1 {
+		return err
+	}
+	if err := m.reorderNodes(ctx); err != nil {
+		return err
+	}
+	maxSort, err := m.db.Node.Query().Aggregate(ent.Max(entnode.FieldSort)).Int(ctx)
+	if err != nil {
+		return err
+	}
+	data.Sort = maxSort + 1
+	return nil
+}
+
+func nilIfEmpty(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }

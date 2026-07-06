@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -26,13 +27,9 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 	logger.Infof("[RecalculateGroup] Starting scheduled group recalculation: %s", time.Now().Format("2006-01-02 15:04:05"))
 
 	// 1. Check if group management is enabled
-	var enabledConfig struct {
-		Value string `gorm:"column:value"`
-	}
-	err := l.svc.Store.DB().Table("system").
-		Where("`category` = ? AND `key` = ?", "group", "enabled").
-		Select("value").
-		First(&enabledConfig).Error
+	enabledConfig, err := l.svc.Ent.System.Query().
+		Where(entsystem.Category("group"), entsystem.Key("enabled")).
+		Only(ctx)
 	if err != nil {
 		logger.Errorw("[RecalculateGroup] Failed to read group enabled config", logger.Field("error", err.Error()))
 		return err
@@ -45,13 +42,9 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	// 2. Get grouping mode
-	var modeConfig struct {
-		Value string `gorm:"column:value"`
-	}
-	err = l.svc.Store.DB().Table("system").
-		Where("`category` = ? AND `key` = ?", "group", "mode").
-		Select("value").
-		First(&modeConfig).Error
+	modeConfig, err := l.svc.Ent.System.Query().
+		Where(entsystem.Category("group"), entsystem.Key("mode")).
+		Only(ctx)
 	if err != nil {
 		logger.Errorw("[RecalculateGroup] Failed to read group mode config", logger.Field("error", err.Error()))
 		return err

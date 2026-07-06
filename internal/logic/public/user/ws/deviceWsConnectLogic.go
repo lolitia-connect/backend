@@ -2,15 +2,14 @@ package ws
 
 import (
 	"context"
-	sysErr "errors"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -43,9 +42,9 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 	}
 	identifier := value.(string)
 	_, err := l.svcCtx.Store.User().FindOneDeviceByIdentifier(l.ctx, identifier)
-	if err != nil && !sysErr.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorf("DeviceWsConnectLogic DeviceWsConnect FindOneDeviceByIdentifier err: %v", err)
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), err.Error())
+		return errors.Wrap(xerr.NewErrCode(xerr.DatabaseQueryError), err.Error())
 	}
 
 	value = l.ctx.Value(constant.CtxKeyUser)
@@ -54,7 +53,7 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 		return nil
 	}
 	userInfo := value.(*user.User)
-	if sysErr.Is(err, gorm.ErrRecordNotFound) {
+	if ent.IsNotFound(err) {
 		device := user.Device{
 			Identifier: identifier,
 			UserId:     userInfo.Id,
@@ -66,7 +65,7 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 		err := l.svcCtx.Store.User().InsertDevice(l.ctx, &device)
 		if err != nil {
 			l.Errorf("DeviceWsConnectLogic DeviceWsConnect InsertDevice err: %v", err)
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), err.Error())
+			return errors.Wrap(xerr.NewErrCode(xerr.DatabaseInsertError), err.Error())
 		}
 	}
 	//默认在线设备1

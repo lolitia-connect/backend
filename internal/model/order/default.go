@@ -2,12 +2,11 @@ package order
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"github.com/perfect-panel/server/pkg/cache"
+	"github.com/perfect-panel/server/ent"
+	entorder "github.com/perfect-panel/server/ent/order"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 var _ Model = (*customOrderModel)(nil)
@@ -22,27 +21,28 @@ type (
 		customOrderLogicModel
 	}
 	orderModel interface {
-		Insert(ctx context.Context, data *Order, tx ...*gorm.DB) error
+		Insert(ctx context.Context, data *Order) error
 		FindOne(ctx context.Context, id int64) (*Order, error)
 		FindOneByOrderNo(ctx context.Context, orderNo string) (*Order, error)
-		Update(ctx context.Context, data *Order, tx ...*gorm.DB) error
-		Delete(ctx context.Context, id int64, tx ...*gorm.DB) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
+		Update(ctx context.Context, data *Order) error
+		Delete(ctx context.Context, id int64) error
 	}
 
 	customOrderModel struct {
 		*defaultOrderModel
 	}
 	defaultOrderModel struct {
-		cache.CachedConn
+		db    *ent.Client
+		redis *redis.Client
 		table string
 	}
 )
 
-func newOrderModel(db *gorm.DB, c *redis.Client) *defaultOrderModel {
+func newOrderModel(db *ent.Client, c *redis.Client) *defaultOrderModel {
 	return &defaultOrderModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "order",
+		db:    db,
+		redis: c,
+		table: "order",
 	}
 }
 
@@ -68,73 +68,57 @@ func (m *defaultOrderModel) getCacheKeys(data *Order) []string {
 	return cacheKeys
 }
 
-func (m *defaultOrderModel) Insert(ctx context.Context, data *Order, tx ...*gorm.DB) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Create(&data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+func (m *defaultOrderModel) Insert(ctx context.Context, data *Order) error {
+	saved, err := m.orderCreate(data).Save(ctx)
+	if err != nil {
+		return err
+	}
+	*data = *entToOrder(saved)
+	return m.delCache(ctx, data)
 }
 
 func (m *defaultOrderModel) FindOne(ctx context.Context, id int64) (*Order, error) {
-	var resp Order
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Order{}).Where("id = ?", id).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
-		return nil, err
-	}
+	data, err := m.db.Order.Get(ctx, id)
+	return entToOrder(data), err
 }
 
 func (m *defaultOrderModel) FindOneByOrderNo(ctx context.Context, orderNo string) (*Order, error) {
-	var resp Order
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Order{}).Where("order_no = ?", orderNo).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
-		return nil, err
-	}
+	data, err := m.db.Order.Query().Where(entorder.OrderNo(orderNo)).First(ctx)
+	return entToOrder(data), err
 }
 
-func (m *defaultOrderModel) Update(ctx context.Context, data *Order, tx ...*gorm.DB) error {
+func (m *defaultOrderModel) Update(ctx context.Context, data *Order) error {
 	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
+	if _, err = m.orderUpdate(data).Save(ctx); err != nil {
+		return err
+	}
+	return m.delCache(ctx, old, data)
 }
 
-func (m *defaultOrderModel) Delete(ctx context.Context, id int64, tx ...*gorm.DB) error {
+func (m *defaultOrderModel) Delete(ctx context.Context, id int64) error {
 	data, err := m.FindOne(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Delete(&Order{}, id).Error
-	}, m.getCacheKeys(data)...)
-	return err
+	if err = m.db.Order.DeleteOneID(id).Exec(ctx); err != nil {
+		return err
+	}
+	return m.delCache(ctx, data)
 }
 
-func (m *defaultOrderModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
+func (m *defaultOrderModel) delCache(ctx context.Context, orders ...*Order) error {
+	if m.redis == nil {
+		return nil
+	}
+	keys := m.batchGetCacheKeys(orders...)
+	if len(keys) == 0 {
+		return nil
+	}
+	return m.redis.Del(ctx, keys...).Err()
 }

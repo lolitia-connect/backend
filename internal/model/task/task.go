@@ -14,16 +14,16 @@ const (
 )
 
 type Task struct {
-	Id        int64     `gorm:"primaryKey;autoIncrement;comment:ID"`
-	Type      int8      `gorm:"not null;comment:Task Type"`
-	Scope     string    `gorm:"type:text;comment:Task Scope"`
-	Content   string    `gorm:"type:text;comment:Task Content"`
-	Status    int8      `gorm:"not null;default:0;comment:Task Status: 0: Pending, 1: In Progress, 2: Completed, 3: Failed"`
-	Errors    string    `gorm:"type:text;comment:Task Errors"`
-	Total     uint64    `gorm:"column:total;not null;default:0;comment:Total Number"`
-	Current   uint64    `gorm:"column:current;not null;default:0;comment:Current Number"`
-	CreatedAt time.Time `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt time.Time `gorm:"comment:Update Time"`
+	Id        int64
+	Type      int8
+	Scope     string
+	Content   string
+	Status    int8
+	Errors    string
+	Total     uint64
+	Current   uint64
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (Task) TableName() string {
@@ -45,7 +45,7 @@ func (t ScopeType) Int8() int8 {
 }
 
 type EmailScope struct {
-	Type              int8     `gorm:"not null;comment:Scope Type"`
+	Type              int8
 	RegisterStartTime int64    `json:"register_start_time"`
 	RegisterEndTime   int64    `json:"register_end_time"`
 	Recipients        []string `json:"recipients"` // list of email addresses

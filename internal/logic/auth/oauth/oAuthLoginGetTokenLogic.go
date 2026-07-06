@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -22,8 +23,7 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 const (
 	OAuthGoogle    = "google"
@@ -478,7 +478,7 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, reques
 
 func (l *OAuthLoginGetTokenLogic) checkEmailExists(store repository.Store, email, requestID string) error {
 	userInfo, err := store.User().FindOneByEmail(l.ctx, email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("failed to check email existence",
 			logger.Field("request_id", requestID),
 			logger.Field("email", email),
@@ -773,7 +773,7 @@ func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, av
 
 	userAuthMethod, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, authType, openID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			l.Infow("user not found, starting registration",
 				logger.Field("request_id", requestID),
 				logger.Field("auth_type", authType),

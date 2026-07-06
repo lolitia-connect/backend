@@ -279,6 +279,9 @@ func (m *customOrderModel) preloadDetails(ctx context.Context, details []*Detail
 			continue
 		}
 		item.Payment = payments[item.PaymentId]
+		if item.Payment == nil && isBalancePayment(item) {
+			item.Payment = defaultBalancePayment()
+		}
 		item.Subscribe = subscribes[item.SubscribeId]
 	}
 	if !includeSubOrders || len(parentIds) == 0 {

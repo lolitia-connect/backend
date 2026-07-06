@@ -2,9 +2,11 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/trafficlog"
 	"github.com/perfect-panel/server/ent/usersubscribe"
@@ -89,12 +91,19 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 		dayStart := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 0, 0, 0, 0, time.Local)
 		dayEnd := dayStart.Add(24 * time.Hour).Add(-time.Nanosecond)
 
-		dailyTraffic, err := l.svcCtx.Ent.TrafficLog.Query().Where(
+		var dailyTraffic []struct {
+			Upload   int64 `json:"upload"`
+			Download int64 `json:"download"`
+		}
+		err := l.svcCtx.Ent.TrafficLog.Query().Where(
 			trafficlog.UserID(u.Id),
 			trafficlog.SubscribeID(userSubscribeId),
 			trafficlog.TimestampGTE(dayStart),
 			trafficlog.TimestampLTE(dayEnd),
-		).Aggregate(ent.Sum(trafficlog.FieldUpload), ent.Sum(trafficlog.FieldDownload)).Ints(l.ctx)
+		).Aggregate(
+			ent.As(sumTrafficField(trafficlog.FieldUpload), "upload"),
+			ent.As(sumTrafficField(trafficlog.FieldDownload), "download"),
+		).Scan(l.ctx, &dailyTraffic)
 		if err != nil {
 			l.Errorw("[GetUserTrafficStats] Query Daily Traffic Error:",
 				logger.Field("date", currentDate.Format("2006-01-02")),
@@ -103,10 +112,8 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 		}
 		upload, download := int64(0), int64(0)
 		if len(dailyTraffic) > 0 {
-			upload = int64(dailyTraffic[0])
-		}
-		if len(dailyTraffic) > 1 {
-			download = int64(dailyTraffic[1])
+			upload = dailyTraffic[0].Upload
+			download = dailyTraffic[0].Download
 		}
 
 		// 添加到结果列表
@@ -126,4 +133,10 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 	resp.TotalTraffic = resp.TotalUpload + resp.TotalDownload
 
 	return resp, nil
+}
+
+func sumTrafficField(field string) ent.AggregateFunc {
+	return func(s *entsql.Selector) string {
+		return fmt.Sprintf("COALESCE(SUM(%s), 0)", s.C(field))
+	}
 }

@@ -23,17 +23,21 @@ func (m *defaultOrderModel) orderCreate(data *Order) *ent.OrderCreate {
 		SetStatus(data.Status).
 		SetSubscribeID(data.SubscribeId).
 		SetNillableSubscribeToken(nilIfEmpty(data.SubscribeToken)).
-		SetIsNew(data.IsNew).
-		SetCreatedAt(data.CreatedAt).
-		SetUpdatedAt(data.UpdatedAt)
+		SetIsNew(data.IsNew)
 	if data.Id > 0 {
 		create.SetID(data.Id)
+	}
+	if !data.CreatedAt.IsZero() {
+		create.SetCreatedAt(data.CreatedAt)
+	}
+	if !data.UpdatedAt.IsZero() {
+		create.SetUpdatedAt(data.UpdatedAt)
 	}
 	return create
 }
 
 func (m *defaultOrderModel) orderUpdate(data *Order) *ent.OrderUpdateOne {
-	return m.db.Order.UpdateOneID(data.Id).
+	update := m.db.Order.UpdateOneID(data.Id).
 		SetParentID(data.ParentId).
 		SetUserID(data.UserId).
 		SetOrderNo(data.OrderNo).
@@ -53,8 +57,11 @@ func (m *defaultOrderModel) orderUpdate(data *Order) *ent.OrderUpdateOne {
 		SetStatus(data.Status).
 		SetSubscribeID(data.SubscribeId).
 		SetNillableSubscribeToken(nilIfEmpty(data.SubscribeToken)).
-		SetIsNew(data.IsNew).
-		SetUpdatedAt(data.UpdatedAt)
+		SetIsNew(data.IsNew)
+	if !data.UpdatedAt.IsZero() {
+		update.SetUpdatedAt(data.UpdatedAt)
+	}
+	return update
 }
 
 func nilIfEmpty(value string) *string {

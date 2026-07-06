@@ -47,3 +47,4 @@ plugins/**/*.wasm
 
 # Application generated files
 ./logs
+./pkg/logger/*.gz

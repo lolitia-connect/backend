@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/logic/common"
 	"github.com/perfect-panel/server/internal/model/log"
@@ -21,7 +23,6 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 )
 
 type UserRegisterLogic struct {
@@ -89,12 +90,12 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 
 	// Check if the user exists
 	u, err := l.svcCtx.Store.User().FindOneByEmail(l.ctx, req.Email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Errorw("FindOneByEmail Error", logger.Field("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
-	} else if err == nil && !u.DeletedAt.Valid {
+	} else if err == nil && u.DeletedAt == nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "user email exist: %v", req.Email)
-	} else if err == nil && u.DeletedAt.Valid {
+	} else if err == nil && u.DeletedAt != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserDisabled), "user email deleted: %v", req.Email)
 	}
 

@@ -8,12 +8,12 @@ import (
 )
 
 type Auth struct {
-	Id        int64     `gorm:"primaryKey"`
-	Method    string    `gorm:"unique;type:varchar(255);not null;default:'';comment:platform"`
-	Config    string    `gorm:"type:text;not null;comment:Auth Configuration"`
-	Enabled   *bool     `gorm:"type:tinyint(1);not null;default:false;comment:Is Enabled"`
-	CreatedAt time.Time `gorm:"<-:create;comment:Create Time"`
-	UpdatedAt time.Time `gorm:"comment:Update Time"`
+	Id        int64
+	Method    string
+	Config    string
+	Enabled   *bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (Auth) TableName() string {

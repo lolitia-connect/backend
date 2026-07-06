@@ -5,7 +5,7 @@ file is in YAML format and defines settings for the server, logging, database, R
 
 ## 1. Configuration File Overview
 
-- **Default Path**: `./etc/ppanel.yaml`
+- **Default Path**: `./config.yaml`
 - **Custom Path**: Specify a custom path using the `--config` startup parameter.
 - **Format**: YAML, supports comments, and must be named with a `.yaml` extension.
 

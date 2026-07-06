@@ -1,18 +1,9 @@
 package orm
 
 import (
-	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/perfect-panel/server/pkg/logger"
-
-	"gorm.io/driver/mysql"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-	"gorm.io/gorm/schema"
 )
 
 const (
@@ -102,61 +93,4 @@ func (m *Mysql) GetSlowThreshold() time.Duration {
 }
 func (m *Mysql) GetColorful() bool {
 	return true
-}
-
-func ConnectMysql(m Mysql) (*gorm.DB, error) {
-	return ConnectDatabase(m)
-}
-
-func ConnectDatabase(m Mysql) (*gorm.DB, error) {
-	if m.Config.Dbname == "" {
-		return nil, errors.New("database name is empty")
-	}
-	var dialector gorm.Dialector
-	switch m.Driver() {
-	case DriverMySQL:
-		dialector = mysql.New(mysql.Config{DSN: m.Dsn()})
-	case DriverPostgres:
-		dialector = postgres.Open(m.Dsn())
-	default:
-		return nil, fmt.Errorf("unsupported database driver: %s", m.Config.Driver)
-	}
-	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger: new(logger.GormLogger),
-		NamingStrategy: schema.NamingStrategy{
-			SingularTable: true,
-		},
-	})
-	if err != nil {
-		return nil, err
-	} else {
-		sqldb, _ := db.DB()
-		sqldb.SetMaxIdleConns(m.Config.MaxIdleConns)
-		sqldb.SetMaxOpenConns(m.Config.MaxOpenConns)
-		return db, nil
-	}
-}
-
-func Ping(dsn string) bool {
-	return PingDatabase(DriverMySQL, dsn)
-}
-
-func PingDatabase(driver, dsn string) bool {
-	var dialector gorm.Dialector
-	switch NormalizeDriver(driver) {
-	case DriverMySQL:
-		dialector = mysql.Open(dsn)
-	case DriverPostgres:
-		dialector = postgres.Open(dsn)
-	default:
-		fmt.Printf("unsupported database driver: %s\n", driver)
-		return false
-	}
-	db, err := gorm.Open(dialector, &gorm.Config{})
-	if err != nil {
-		fmt.Printf("connect database failed, err: %v\n", err.Error())
-		return false
-	}
-	sqlDB, _ := db.DB()
-	return sqlDB.Ping() == nil
 }

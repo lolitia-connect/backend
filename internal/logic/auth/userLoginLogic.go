@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
@@ -17,7 +19,6 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -74,16 +75,15 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 
 	userInfo, err = l.svcCtx.Store.User().FindOneByEmail(l.ctx, req.Email)
 
-	if userInfo.DeletedAt.Valid {
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email deleted: %v", req.Email)
-	}
-
 	if err != nil {
-		if errors.As(err, &gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email not exist: %v", req.Email)
 		}
 		logger.WithContext(l.ctx).Error(err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
+	}
+	if userInfo.DeletedAt != nil {
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email deleted: %v", req.Email)
 	}
 
 	// Verify password

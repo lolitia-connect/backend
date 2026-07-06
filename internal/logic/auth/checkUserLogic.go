@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 
 	"github.com/perfect-panel/server/internal/svc"
@@ -8,8 +9,7 @@ import (
 	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type CheckUserLogic struct {
 	logger.Logger
@@ -28,7 +28,7 @@ func NewCheckUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CheckUs
 
 func (l *CheckUserLogic) CheckUser(req *types.CheckUserRequest) (resp *types.CheckUserResponse, err error) {
 	authMethod, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "email", req.Email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !ent.IsNotFound(err) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user by email error: %v", err.Error())
 	}
 	return &types.CheckUserResponse{

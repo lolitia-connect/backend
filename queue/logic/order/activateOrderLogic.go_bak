@@ -22,7 +22,7 @@ import (
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/queue/types"
-	"gorm.io/gorm"
+	"entgo.io/ent"
 )
 
 const (
@@ -153,7 +153,7 @@ func (l *ActivateOrderLogic) NewPurchase(ctx context.Context, orderInfo *order.O
 				},
 			},
 		}
-		err = l.svc.UserModel.Transaction(ctx, func(tx *gorm.DB) error {
+		err = l.svc.UserModel.Transaction(ctx, func(tx *ent.Client) error {
 			// Save user information
 			if err := tx.Save(userInfo).Error; err != nil {
 				return err
@@ -554,7 +554,7 @@ func (l *ActivateOrderLogic) Recharge(ctx context.Context, orderInfo *order.Orde
 	}
 	userInfo.Balance += orderInfo.Price
 	// update user
-	err = l.svc.DB.Transaction(func(tx *gorm.DB) error {
+	err = l.svc.DB.Transaction(func(tx *ent.Client) error {
 		err = l.svc.UserModel.Update(ctx, userInfo, tx)
 		if err != nil {
 			logger.WithContext(ctx).Error("[ActivateOrderLogic] Update user failed",

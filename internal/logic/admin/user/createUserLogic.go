@@ -1,6 +1,7 @@
 package user
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"fmt"
 	"time"
@@ -13,8 +14,7 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type CreateUserLogic struct {
 	ctx    context.Context
@@ -78,7 +78,7 @@ func (l *CreateUserLogic) CreateUser(req *types.CreateUserRequest) error {
 		// get referer user id
 		u, err := l.svcCtx.Store.User().FindOneByEmail(l.ctx, req.RefererUser)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if ent.IsNotFound(err) {
 				return errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "referer user not found: %v", err.Error())
 			}
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find referer user failed: %v", err.Error())

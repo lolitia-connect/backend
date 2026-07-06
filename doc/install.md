@@ -94,7 +94,7 @@ $ systemctl start ppanel
 4. Service Logs: By default, logs are output to `/root/ppanel-server-linux-amd64/ppanel.log`.
 
 5. You can view service logs using: `journalctl -u ppanel -f`
-6. If the configuration file is missing or empty, the service will start with default settings. The configuration file path is `./etc/ppanel.yaml`. Access `http://<server_address>:8080/init` to **initialize the system configuration**.
+6. If the configuration file is missing or empty, the service will start with default settings. The configuration file path is `./config.yaml`. Access `http://<server_address>:8080/init` to **initialize the system configuration**.
 
 #### NGINX Reverse Proxy Configuration
 

@@ -6,12 +6,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/perfect-panel/server/internal/model/order"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent"
+	entorder "github.com/perfect-panel/server/ent/order"
+	"github.com/perfect-panel/server/ent/predicate"
+	entuser "github.com/perfect-panel/server/ent/user"
+	entauth "github.com/perfect-panel/server/ent/userauthmethod"
+	entdevice "github.com/perfect-panel/server/ent/userdevice"
+	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/pkg/orm"
 
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
 )
 
 const (
@@ -23,27 +29,27 @@ const (
 )
 
 type SubscribeDetails struct {
-	Id               int64                `gorm:"primarykey"`
-	UserId           int64                `gorm:"index:idx_user_id;not null;comment:User ID"`
-	User             *User                `gorm:"foreignKey:UserId;references:Id"`
-	OrderId          int64                `gorm:"index:idx_order_id;not null;comment:Order ID"`
-	SubscribeId      int64                `gorm:"index:idx_subscribe_id;not null;comment:Subscription ID"`
-	Subscribe        *subscribe.Subscribe `gorm:"foreignKey:SubscribeId;references:Id"`
-	NodeGroupId      int64                `gorm:"index:idx_node_group_id;not null;default:0;comment:Node Group ID (single ID)"`
-	GroupLocked      *bool                `gorm:"type:tinyint(1);not null;default:0;comment:Group Locked"`
-	StartTime        time.Time            `gorm:"default:CURRENT_TIMESTAMP(3);not null;comment:Subscription Start Time"`
-	ExpireTime       time.Time            `gorm:"default:NULL;comment:Subscription Expire Time"`
-	FinishedAt       *time.Time           `gorm:"default:NULL;comment:Finished Time"`
-	Traffic          int64                `gorm:"default:0;comment:Traffic"`
-	TrafficUnlimited bool                 `gorm:"default:false;not null;comment:Traffic Unlimited"`
-	Download         int64                `gorm:"default:0;comment:Download Traffic"`
-	Upload           int64                `gorm:"default:0;comment:Upload Traffic"`
-	Token            string               `gorm:"index:idx_token;unique;type:varchar(255);default:'';comment:Token"`
-	UUID             string               `gorm:"type:varchar(255);unique;index:idx_uuid;default:'';comment:UUID"`
-	Status           uint8                `gorm:"type:tinyint(1);default:0;comment:Subscription Status: 0: Pending 1: Active 2: Finished 3: Expired; 4: Cancelled"`
-	Note             string               `gorm:"type:varchar(500);default:'';comment:User note for subscription"`
-	CreatedAt        time.Time            `gorm:"<-:create;comment:Creation Time"`
-	UpdatedAt        time.Time            `gorm:"comment:Update Time"`
+	Id               int64
+	UserId           int64
+	User             *User
+	OrderId          int64
+	SubscribeId      int64
+	Subscribe        *subscribe.Subscribe
+	NodeGroupId      int64
+	GroupLocked      *bool
+	StartTime        time.Time
+	ExpireTime       time.Time
+	FinishedAt       *time.Time
+	Traffic          int64
+	TrafficUnlimited bool
+	Download         int64
+	Upload           int64
+	Token            string
+	UUID             string
+	Status           uint8
+	Note             string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 type SubscribeLogFilterParams struct {
@@ -90,8 +96,8 @@ type customUserLogicModel interface {
 	CountAffiliates(ctx context.Context, refererId int64) (int64, error)
 	QueryAffiliateList(ctx context.Context, refererId int64, page, size int) ([]*User, int64, error)
 	FindOneByReferCode(ctx context.Context, referCode string) (*User, error)
-	BatchDeleteUser(ctx context.Context, ids []int64, tx ...*gorm.DB) error
-	InsertSubscribe(ctx context.Context, data *Subscribe, tx ...*gorm.DB) error
+	BatchDeleteUser(ctx context.Context, ids []int64) error
+	InsertSubscribe(ctx context.Context, data *Subscribe) error
 	FindOneSubscribeByToken(ctx context.Context, token string) (*Subscribe, error)
 	FindOneSubscribeByOrderId(ctx context.Context, orderId int64) (*Subscribe, error)
 	FindOneSubscribe(ctx context.Context, id int64) (*Subscribe, error)
@@ -99,13 +105,13 @@ type customUserLogicModel interface {
 	QueryMonthlyResetSubscribeIds(ctx context.Context, subscribeIds []int64, now time.Time) ([]int64, error)
 	QueryFirstResetSubscribeIds(ctx context.Context, subscribeIds []int64, now time.Time) ([]int64, error)
 	QueryYearlyResetSubscribeIds(ctx context.Context, subscribeIds []int64, now time.Time) ([]int64, error)
-	ResetSubscribeTrafficByIds(ctx context.Context, ids []int64, tx ...*gorm.DB) error
+	ResetSubscribeTrafficByIds(ctx context.Context, ids []int64) error
 	FindTrafficExceededSubscribes(ctx context.Context) ([]*Subscribe, error)
 	FindExpiredSubscribes(ctx context.Context, now time.Time) ([]*Subscribe, error)
-	MarkSubscribesFinished(ctx context.Context, ids []int64, status uint8, finishedAt time.Time, tx ...*gorm.DB) error
-	UpdateSubscribe(ctx context.Context, data *Subscribe, tx ...*gorm.DB) error
-	DeleteSubscribe(ctx context.Context, token string, tx ...*gorm.DB) error
-	DeleteSubscribeById(ctx context.Context, id int64, tx ...*gorm.DB) error
+	MarkSubscribesFinished(ctx context.Context, ids []int64, status uint8, finishedAt time.Time) error
+	UpdateSubscribe(ctx context.Context, data *Subscribe) error
+	DeleteSubscribe(ctx context.Context, token string) error
+	DeleteSubscribeById(ctx context.Context, id int64) error
 	QueryUserSubscribe(ctx context.Context, userId int64, status ...int64) ([]*SubscribeDetails, error)
 	FindOneSubscribeDetailsById(ctx context.Context, id int64) (*SubscribeDetails, error)
 	FindOneUserSubscribe(ctx context.Context, id int64) (*SubscribeDetails, error)
@@ -114,7 +120,7 @@ type customUserLogicModel interface {
 	ActivatePendingSubscribesBySubscribeId(ctx context.Context, subscribeId int64) error
 	CountUserSubscribesByUserAndSubscribe(ctx context.Context, userId, subscribeId int64) (int64, error)
 	CountUserSubscribesBySubscribeIdAndStatus(ctx context.Context, subscribeId int64, status ...int64) (int64, error)
-	UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool, tx ...*gorm.DB) error
+	UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool) error
 	QueryResisterUserTotalByDate(ctx context.Context, date time.Time) (int64, error)
 	QueryResisterUserTotalByMonthly(ctx context.Context, date time.Time) (int64, error)
 	QueryResisterUserTotal(ctx context.Context) (int64, error)
@@ -124,11 +130,11 @@ type customUserLogicModel interface {
 	UpdateUserSubscribeCache(ctx context.Context, data *Subscribe) error
 	QueryActiveSubscriptions(ctx context.Context, subscribeId ...int64) (map[int64]int64, error)
 	FindUserAuthMethods(ctx context.Context, userId int64) ([]*AuthMethods, error)
-	InsertUserAuthMethods(ctx context.Context, data *AuthMethods, tx ...*gorm.DB) error
-	UpdateUserAuthMethods(ctx context.Context, data *AuthMethods, tx ...*gorm.DB) error
-	DeleteUserAuthMethods(ctx context.Context, userId int64, platform string, tx ...*gorm.DB) error
-	UpdateUserAuthMethodOwner(ctx context.Context, authType, identifier string, userId int64, tx ...*gorm.DB) error
-	DeleteUserAuthMethodByIdentifier(ctx context.Context, authType, identifier string, tx ...*gorm.DB) error
+	InsertUserAuthMethods(ctx context.Context, data *AuthMethods) error
+	UpdateUserAuthMethods(ctx context.Context, data *AuthMethods) error
+	DeleteUserAuthMethods(ctx context.Context, userId int64, platform string) error
+	UpdateUserAuthMethodOwner(ctx context.Context, authType, identifier string, userId int64) error
+	DeleteUserAuthMethodByIdentifier(ctx context.Context, authType, identifier string) error
 	UpsertUserAuthMethod(ctx context.Context, data *AuthMethods) error
 	FindUserAuthMethodByOpenID(ctx context.Context, method, openID string) (*AuthMethods, error)
 	FindUserAuthMethodByUserId(ctx context.Context, method string, userId int64) (*AuthMethods, error)
@@ -139,13 +145,13 @@ type customUserLogicModel interface {
 	FindOneDevice(ctx context.Context, id int64) (*Device, error)
 	QueryDeviceList(ctx context.Context, userid int64) ([]*Device, int64, error)
 	QueryDevicePageList(ctx context.Context, userid, subscribeId int64, page, size int) ([]*Device, int64, error)
-	UpdateDevice(ctx context.Context, data *Device, tx ...*gorm.DB) error
+	UpdateDevice(ctx context.Context, data *Device) error
 	FindOneDeviceByIdentifier(ctx context.Context, id string) (*Device, error)
-	DeleteDevice(ctx context.Context, id int64, tx ...*gorm.DB) error
-	InsertDevice(ctx context.Context, data *Device, tx ...*gorm.DB) error
+	DeleteDevice(ctx context.Context, id int64) error
+	InsertDevice(ctx context.Context, data *Device) error
 	FindDeviceOnlineRecord(ctx context.Context, userId int64, startTime, endTime string) (*DeviceOnlineRecord, error)
-	InsertDeviceOnlineRecord(ctx context.Context, data *DeviceOnlineRecord, tx ...*gorm.DB) error
-	InsertWithdrawal(ctx context.Context, data *Withdrawal, tx ...*gorm.DB) error
+	InsertDeviceOnlineRecord(ctx context.Context, data *DeviceOnlineRecord) error
+	InsertWithdrawal(ctx context.Context, data *Withdrawal) error
 
 	QuerySubscribeIdsByFilter(ctx context.Context, filter *SubscribeFilter) ([]int64, error)
 	CountSubscribesByFilter(ctx context.Context, filter *SubscribeFilter) (int64, error)
@@ -165,7 +171,7 @@ type UserStatisticsWithDate struct {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, c *redis.Client) Model {
+func NewModel(conn *ent.Client, c *redis.Client) Model {
 	return &customUserModel{
 		defaultUserModel: newUserModel(conn, c),
 	}
@@ -173,117 +179,83 @@ func NewModel(conn *gorm.DB, c *redis.Client) Model {
 
 // QueryPageList returns a list of records that meet the conditions.
 func (m *customUserModel) QueryPageList(ctx context.Context, page, size int, filter *UserFilterParams) ([]*User, int64, error) {
-	var list []*User
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		conn = applyUserPageFilters(conn.Model(&User{}), filter)
-		if err := conn.Count(&total).Error; err != nil {
-			return err
+	query := applyUserPageFilters(m.db.User.Query(), filter)
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	if filter != nil && filter.Order != "" && strings.EqualFold(filter.Order, "ASC") {
+		query = query.Order(entuser.ByID())
+	} else {
+		query = query.Order(entuser.ByID(entsql.OrderDesc()))
+	}
+	items, err := query.Offset((page - 1) * size).Limit(size).All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	list := entUsersToModels(items)
+	for _, item := range list {
+		if auths, err := m.db.UserAuthMethod.Query().Where(entauth.UserID(item.Id)).All(ctx); err == nil {
+			item.AuthMethods = entAuthMethodsToModels(auths)
 		}
-		return conn.Limit(size).Offset((page - 1) * size).Preload("UserDevices").Preload("AuthMethods").Find(&list).Error
-	})
-	return list, total, err
+		if devices, err := m.db.UserDevice.Query().Where(entdevice.UserID(item.Id)).All(ctx); err == nil {
+			item.UserDevices = entDevicesToModels(devices)
+		}
+	}
+	return list, int64(total), nil
 }
 
-func applyUserPageFilters(conn *gorm.DB, filter *UserFilterParams) *gorm.DB {
-	userIdColumn := UserColumn(conn, "id")
+func applyUserPageFilters(query *ent.UserQuery, filter *UserFilterParams) *ent.UserQuery {
 	if filter == nil {
-		return conn
+		return query.Where(entuser.DeletedAtIsNil())
+	}
+	if !filter.Unscoped {
+		query = query.Where(entuser.DeletedAtIsNil())
 	}
 	if filter.UserId != nil {
-		conn = conn.Where(userIdColumn+" = ?", *filter.UserId)
+		query = query.Where(entuser.ID(*filter.UserId))
 	}
 	if filter.Search != "" {
 		search := orm.LikePrefixPattern(filter.Search)
 		if search != "" {
-			conn = conn.Where(userSearchCondition(conn), search, search)
+			query = query.Where(userSearchPredicate(search))
 		}
 	}
 	if filter.UserSubscribeId != nil {
-		conn = conn.Where(
-			fmt.Sprintf(
-				"EXISTS (SELECT 1 FROM %s WHERE %s = %s AND %s = ? AND %s IN ?)",
-				UserSubscribeTableName(conn),
-				UserSubscribeColumn(conn, "user_id"),
-				userIdColumn,
-				UserSubscribeColumn(conn, "id"),
-				UserSubscribeColumn(conn, "status"),
-			),
-			*filter.UserSubscribeId,
-			[]int64{0, 1},
-		)
+		query = query.Where(userSubscribeExistsPredicate(entsub.FieldID, *filter.UserSubscribeId))
 	}
 	if filter.SubscribeId != nil {
-		conn = conn.Where(
-			fmt.Sprintf(
-				"EXISTS (SELECT 1 FROM %s WHERE %s = %s AND %s = ? AND %s IN ?)",
-				UserSubscribeTableName(conn),
-				UserSubscribeColumn(conn, "user_id"),
-				userIdColumn,
-				UserSubscribeColumn(conn, "subscribe_id"),
-				UserSubscribeColumn(conn, "status"),
-			),
-			*filter.SubscribeId,
-			[]int64{0, 1},
-		)
-	}
-	if filter.Order != "" {
-		switch strings.ToUpper(filter.Order) {
-		case "ASC", "DESC":
-			conn = conn.Order(fmt.Sprintf("%s %s", userIdColumn, strings.ToUpper(filter.Order)))
-		}
-	}
-	if filter.Unscoped {
-		conn = conn.Unscoped()
-	}
-	return conn
-}
-
-func userSearchCondition(conn *gorm.DB) string {
-	return fmt.Sprintf(
-		"(%s LIKE ?%s OR EXISTS (SELECT 1 FROM %s WHERE %s = %s AND %s LIKE ?%s))",
-		UserColumn(conn, "refer_code"),
-		orm.LikeEscapeClause(),
-		AuthMethodsTableName(conn),
-		AuthMethodsColumn(conn, "user_id"),
-		UserColumn(conn, "id"),
-		AuthMethodsColumn(conn, "auth_identifier"),
-		orm.LikeEscapeClause(),
-	)
-}
-
-func emailRecipientQuery(conn *gorm.DB, filter *EmailRecipientFilter) *gorm.DB {
-	if filter == nil {
-		filter = &EmailRecipientFilter{Scope: 1}
-	}
-	userID := UserColumn(conn, "id")
-	userCreatedAt := UserColumn(conn, "created_at")
-	authUserID := AuthMethodsColumn(conn, "user_id")
-	authType := AuthMethodsColumn(conn, "auth_type")
-	query := conn.Model(&AuthMethods{}).
-		Select("auth_identifier").
-		Joins(fmt.Sprintf("JOIN %s ON %s = %s", UserTableName(conn), userID, authUserID)).
-		Where(authType+" = ?", "email")
-
-	if filter.RegisterStartTime != 0 {
-		query = query.Where(userCreatedAt+" >= ?", time.UnixMilli(filter.RegisterStartTime))
-	}
-	if filter.RegisterEndTime != 0 {
-		query = query.Where(userCreatedAt+" <= ?", time.UnixMilli(filter.RegisterEndTime))
-	}
-
-	switch filter.Scope {
-	case 2:
-		query = query.Joins(fmt.Sprintf("JOIN user_subscribe ON %s = user_subscribe.user_id", userID)).
-			Where("user_subscribe.status IN ?", []int64{1, 2})
-	case 3:
-		query = query.Joins(fmt.Sprintf("JOIN user_subscribe ON %s = user_subscribe.user_id", userID)).
-			Where("user_subscribe.status = ?", 3)
-	case 4:
-		query = query.Joins(fmt.Sprintf("LEFT JOIN user_subscribe ON %s = user_subscribe.user_id", userID)).
-			Where("user_subscribe.user_id IS NULL")
+		query = query.Where(userSubscribeExistsPredicate(entsub.FieldSubscribeID, *filter.SubscribeId))
 	}
 	return query
+}
+
+func userSearchPredicate(search string) predicate.User {
+	return predicate.User(func(s *entsql.Selector) {
+		authTable := entsql.Table(entauth.Table)
+		s.Where(entsql.Or(
+			entsql.P(func(b *entsql.Builder) {
+				b.Ident(s.C(entuser.FieldReferCode)).WriteString(" LIKE ").Arg(search).WriteString(orm.LikeEscapeClause())
+			}),
+			entsql.Exists(entsql.Select().From(authTable).Where(entsql.And(
+				entsql.ColumnsEQ(authTable.C(entauth.FieldUserID), s.C(entuser.FieldID)),
+				entsql.P(func(b *entsql.Builder) {
+					b.Ident(authTable.C(entauth.FieldAuthIdentifier)).WriteString(" LIKE ").Arg(search).WriteString(orm.LikeEscapeClause())
+				}),
+			))),
+		))
+	})
+}
+
+func userSubscribeExistsPredicate(field string, value int64) predicate.User {
+	return predicate.User(func(s *entsql.Selector) {
+		subTable := entsql.Table(entsub.Table)
+		s.Where(entsql.Exists(entsql.Select().From(subTable).Where(entsql.And(
+			entsql.ColumnsEQ(subTable.C(entsub.FieldUserID), s.C(entuser.FieldID)),
+			entsql.EQ(subTable.C(field), value),
+			entsql.In(subTable.C(entsub.FieldStatus), 0, 1),
+		))))
+	})
 }
 
 func (m *customUserModel) QueryEmailRecipients(ctx context.Context, filter *EmailRecipientFilter) ([]string, error) {
@@ -291,9 +263,7 @@ func (m *customUserModel) QueryEmailRecipients(ctx context.Context, filter *Emai
 		return nil, nil
 	}
 	var emails []string
-	err := m.QueryNoCacheCtx(ctx, &emails, func(conn *gorm.DB, v interface{}) error {
-		return emailRecipientQuery(conn, filter).Pluck("auth_identifier", v).Error
-	})
+	err := m.emailRecipientQuery(filter).Select(entauth.FieldAuthIdentifier).Scan(ctx, &emails)
 	return emails, err
 }
 
@@ -301,151 +271,137 @@ func (m *customUserModel) CountEmailRecipients(ctx context.Context, filter *Emai
 	if filter != nil && filter.Scope == 5 {
 		return 0, nil
 	}
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return emailRecipientQuery(conn, filter).Count(&total).Error
-	})
-	return total, err
+	count, err := m.emailRecipientQuery(filter).Count(ctx)
+	return int64(count), err
 }
 
-func subscribeFilterQuery(conn *gorm.DB, filter *SubscribeFilter) *gorm.DB {
-	query := conn.Model(&Subscribe{})
+func (m *customUserModel) emailRecipientQuery(filter *EmailRecipientFilter) *ent.UserAuthMethodQuery {
+	if filter == nil {
+		filter = &EmailRecipientFilter{Scope: 1}
+	}
+	query := m.db.UserAuthMethod.Query().Where(entauth.AuthType("email"), predicate.UserAuthMethod(func(s *entsql.Selector) {
+		userTable := entsql.Table(entuser.Table)
+		s.Join(userTable).On(s.C(entauth.FieldUserID), userTable.C(entuser.FieldID))
+		if filter.RegisterStartTime != 0 {
+			s.Where(entsql.GTE(userTable.C(entuser.FieldCreatedAt), time.UnixMilli(filter.RegisterStartTime)))
+		}
+		if filter.RegisterEndTime != 0 {
+			s.Where(entsql.LTE(userTable.C(entuser.FieldCreatedAt), time.UnixMilli(filter.RegisterEndTime)))
+		}
+		subTable := entsql.Table(entsub.Table)
+		switch filter.Scope {
+		case 2:
+			s.Join(subTable).On(userTable.C(entuser.FieldID), subTable.C(entsub.FieldUserID))
+			s.Where(entsql.In(subTable.C(entsub.FieldStatus), 1, 2))
+		case 3:
+			s.Join(subTable).On(userTable.C(entuser.FieldID), subTable.C(entsub.FieldUserID))
+			s.Where(entsql.EQ(subTable.C(entsub.FieldStatus), 3))
+		case 4:
+			s.LeftJoin(subTable).On(userTable.C(entuser.FieldID), subTable.C(entsub.FieldUserID))
+			s.Where(entsql.IsNull(subTable.C(entsub.FieldUserID)))
+		}
+	}))
+	return query
+}
+
+func applySubscribeFilter(query *ent.UserSubscribeQuery, filter *SubscribeFilter) *ent.UserSubscribeQuery {
 	if filter == nil {
 		return query
 	}
 	if len(filter.Subscribers) > 0 {
-		query = query.Where("subscribe_id IN ?", filter.Subscribers)
+		query = query.Where(entsub.SubscribeIDIn(filter.Subscribers...))
 	}
 	if filter.IsActive != nil && *filter.IsActive {
-		query = query.Where("status IN ?", []int64{0, 1, 2})
+		query = query.Where(entsub.StatusIn(0, 1, 2))
 	}
 	if filter.StartTime != 0 {
-		query = query.Where("start_time <= ?", time.UnixMilli(filter.StartTime))
+		query = query.Where(entsub.StartTimeLTE(time.UnixMilli(filter.StartTime)))
 	}
 	if filter.EndTime != 0 {
-		query = query.Where("expire_time >= ?", time.UnixMilli(filter.EndTime))
+		query = query.Where(entsub.ExpireTimeGTE(time.UnixMilli(filter.EndTime)))
 	}
 	return query
 }
 
 func (m *customUserModel) QuerySubscribeIdsByFilter(ctx context.Context, filter *SubscribeFilter) ([]int64, error) {
 	var ids []int64
-	err := m.QueryNoCacheCtx(ctx, &ids, func(conn *gorm.DB, v interface{}) error {
-		return subscribeFilterQuery(conn, filter).Pluck("id", v).Error
-	})
+	err := applySubscribeFilter(m.db.UserSubscribe.Query(), filter).Select(entsub.FieldID).Scan(ctx, &ids)
 	return ids, err
 }
 
 func (m *customUserModel) CountSubscribesByFilter(ctx context.Context, filter *SubscribeFilter) (int64, error) {
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return subscribeFilterQuery(conn, filter).Count(&total).Error
-	})
-	return total, err
+	count, err := applySubscribeFilter(m.db.UserSubscribe.Query(), filter).Count(ctx)
+	return int64(count), err
 }
 
 // BatchDeleteUser deletes multiple records by primary key.
-func (m *customUserModel) BatchDeleteUser(ctx context.Context, ids []int64, tx ...*gorm.DB) error {
+func (m *customUserModel) BatchDeleteUser(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	var users []*User
-	err := m.QueryNoCacheCtx(ctx, &users, func(conn *gorm.DB, v interface{}) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Where("id in ?", ids).Find(&users).Error
-	})
+	users, err := m.FindUsersByIds(ctx, ids)
 	if err != nil {
 		return err
 	}
-	return m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Where("id in ?", ids).Delete(&User{}).Error
-	}, m.batchGetCacheKeys(users...)...)
+	_, err = m.db.User.Update().Where(entuser.IDIn(ids...)).SetDeletedAt(time.Now()).Save(ctx)
+	if err != nil {
+		return err
+	}
+	return m.GetCacheManager().ClearCache(ctx, m.batchGetCacheKeys(users...)...)
 }
 
-func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool, tx ...*gorm.DB) error {
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-
-		// 根据订阅状态更新对应的流量字段
-		if isExpired {
-			// 过期期间,更新过期流量字段
-			if err := conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
-				"expired_download": gorm.Expr("expired_download + ?", download),
-				"expired_upload":   gorm.Expr("expired_upload + ?", upload),
-			}).Error; err != nil {
-				return err
-			}
-		} else {
-			// 正常期间,更新正常流量字段
-			if err := conn.Model(&Subscribe{}).Where("id = ?", id).Updates(map[string]interface{}{
-				"download": gorm.Expr("download + ?", download),
-				"upload":   gorm.Expr("upload + ?", upload),
-			}).Error; err != nil {
-				return err
-			}
-		}
-
-		// 更新后清理缓存
-		// 注意：不调用 FindOneSubscribe 避免 PXC 的 SELECT→UPDATE 行级冲突 (Error 1020)
-		// 通过查询 token/user_id 来清理所有维度的缓存
-		var sub Subscribe
-		if err := conn.Model(&Subscribe{}).Where("id = ?", id).Select("token", "user_id").First(&sub).Error; err == nil {
-			sub.Id = id
-			_ = m.ClearSubscribeCacheByModels(ctx, &sub)
-		}
-		return nil
-	})
+func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool) error {
+	u := m.db.UserSubscribe.UpdateOneID(id)
+	if isExpired {
+		u.AddExpiredDownload(download).AddExpiredUpload(upload)
+	} else {
+		u.AddDownload(download).AddUpload(upload)
+	}
+	if err := u.Exec(ctx); err != nil {
+		return err
+	}
+	if sub, err := m.FindOneSubscribe(ctx, id); err == nil {
+		_ = m.ClearSubscribeCacheByModels(ctx, sub)
+	}
+	return nil
 }
 
 func (m *customUserModel) QueryResisterUserTotalByDate(ctx context.Context, date time.Time) (int64, error) {
-	var total int64
 	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	end := start.AddDate(0, 0, 1)
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Where("created_at >= ? AND created_at < ?", start, end).Count(&total).Error
-	})
-	return total, err
+	count, err := m.db.User.Query().Where(entuser.CreatedAtGTE(start), entuser.CreatedAtLT(end), entuser.DeletedAtIsNil()).Count(ctx)
+	return int64(count), err
 }
 
 func (m *customUserModel) QueryResisterUserTotalByMonthly(ctx context.Context, date time.Time) (int64, error) {
-	var total int64
 	start := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
 	end := start.AddDate(0, 1, 0)
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Where("created_at >= ? AND created_at < ?", start, end).Count(&total).Error
-	})
-	return total, err
+	count, err := m.db.User.Query().Where(entuser.CreatedAtGTE(start), entuser.CreatedAtLT(end), entuser.DeletedAtIsNil()).Count(ctx)
+	return int64(count), err
 }
 
 func (m *customUserModel) QueryResisterUserTotal(ctx context.Context) (int64, error) {
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Count(&total).Error
-	})
-	return total, err
+	count, err := m.db.User.Query().Where(entuser.DeletedAtIsNil()).Count(ctx)
+	return int64(count), err
 }
 
 func (m *customUserModel) CountEnabledUsers(ctx context.Context) (int64, error) {
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &total, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Where("enable = ?", true).Count(&total).Error
-	})
-	return total, err
+	count, err := m.db.User.Query().Where(entuser.Enable(true), entuser.DeletedAtIsNil()).Count(ctx)
+	return int64(count), err
 }
 
 func (m *customUserModel) QueryAdminUsers(ctx context.Context) ([]*User, error) {
-	var data []*User
-	err := m.QueryNoCacheCtx(ctx, &data, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Preload("AuthMethods", func(db *gorm.DB) *gorm.DB { return db.Order("user_auth_methods.auth_type desc") }).Where("is_admin = ?", true).Find(&data).Error
-	})
-	return data, err
+	items, err := m.db.User.Query().Where(entuser.IsAdmin(true), entuser.DeletedAtIsNil()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data := entUsersToModels(items)
+	for _, item := range data {
+		if auths, err := m.db.UserAuthMethod.Query().Where(entauth.UserID(item.Id)).Order(entauth.ByAuthType(entsql.OrderDesc())).All(ctx); err == nil {
+			item.AuthMethods = entAuthMethodsToModels(auths)
+		}
+	}
+	return data, nil
 }
 
 func (m *customUserModel) UpdateUserCache(ctx context.Context, data *User) error {
@@ -453,104 +409,76 @@ func (m *customUserModel) UpdateUserCache(ctx context.Context, data *User) error
 }
 
 func (m *customUserModel) FindOneByReferCode(ctx context.Context, referCode string) (*User, error) {
-	var data User
-	err := m.QueryNoCacheCtx(ctx, &data, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&User{}).Where("refer_code = ?", referCode).First(&data).Error
-	})
-	return &data, err
+	item, err := m.db.User.Query().Where(entuser.ReferCode(referCode), entuser.DeletedAtIsNil()).First(ctx)
+	return entToUser(item), err
 }
 
 func (m *customUserModel) FindOneSubscribeDetailsById(ctx context.Context, id int64) (*SubscribeDetails, error) {
-	var data SubscribeDetails
-	err := m.QueryNoCacheCtx(ctx, &data, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Preload("Subscribe").Preload("User").Where("id = ?", id).First(&data).Error
-	})
-	return &data, err
+	item, err := m.db.UserSubscribe.Get(ctx, id)
+	return entToSubscribeDetails(item), err
 }
 
 // QueryDailyUserStatisticsList Query daily user statistics list for the current month (from 1st to current date)
 func (m *customUserModel) QueryDailyUserStatisticsList(ctx context.Context, date time.Time) ([]UserStatisticsWithDate, error) {
-	var results []UserStatisticsWithDate
-
-	err := m.QueryNoCacheCtx(ctx, &results, func(conn *gorm.DB, v interface{}) error {
-		firstDay := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
-		orderDateExpr := userDateBucketExpr(conn, "created_at", "day")
-		userCreatedAt := UserColumn(conn, "created_at")
-		userDateExpr := userDateBucketExpr(conn, userCreatedAt, "day")
-
-		// 子查询：统计每天的新用户订单数量
-		newOrderSub := conn.Model(&order.Order{}).
-			Select(fmt.Sprintf("%s AS date, COUNT(DISTINCT user_id) AS new_order_users", orderDateExpr)).
-			Where("is_new = ? AND created_at BETWEEN ? AND ? AND status IN ?", true, firstDay, date, []int64{2, 5}).
-			Group(orderDateExpr)
-
-		// 子查询：统计每天的续费订单数量
-		renewalOrderSub := conn.Model(&order.Order{}).
-			Select(fmt.Sprintf("%s AS date, COUNT(DISTINCT user_id) AS renewal_order_users", orderDateExpr)).
-			Where("is_new = ? AND created_at BETWEEN ? AND ? AND status IN ?", false, firstDay, date, []int64{2, 5}).
-			Group(orderDateExpr)
-
-		return conn.Model(&User{}).
-			Select(fmt.Sprintf(`
-                %s AS date,
-                COUNT(*) AS register,
-                COALESCE(MAX(n.new_order_users), 0) AS new_order_users,
-                COALESCE(MAX(r.renewal_order_users), 0) AS renewal_order_users
-            `, userDateExpr)).
-			Joins("LEFT JOIN (?) AS n ON "+userDateExpr+" = n.date", newOrderSub).
-			Joins("LEFT JOIN (?) AS r ON "+userDateExpr+" = r.date", renewalOrderSub).
-			Where(userCreatedAt+" BETWEEN ? AND ?", firstDay, date).
-			Group(userDateExpr).
-			Order("date ASC").
-			Scan(v).Error
-	})
-
-	return results, err
+	firstDay := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
+	return m.queryUserStatistics(ctx, firstDay, date, "day")
 }
 
 // QueryMonthlyUserStatisticsList Query monthly user statistics list for the past 6 months
 func (m *customUserModel) QueryMonthlyUserStatisticsList(ctx context.Context, date time.Time) ([]UserStatisticsWithDate, error) {
-	var results []UserStatisticsWithDate
-
-	err := m.QueryNoCacheCtx(ctx, &results, func(conn *gorm.DB, v interface{}) error {
-		// 获取 6 个月前的日期
-		sixMonthsAgo := date.AddDate(0, -5, 0)
-		orderDateExpr := userDateBucketExpr(conn, "created_at", "month")
-		userCreatedAt := UserColumn(conn, "created_at")
-		userDateExpr := userDateBucketExpr(conn, userCreatedAt, "month")
-
-		// 子查询：每月新订单用户数量
-		newOrderSub := conn.Model(&order.Order{}).
-			Select(fmt.Sprintf("%s AS date, COUNT(DISTINCT user_id) AS new_order_users", orderDateExpr)).
-			Where("is_new = ? AND created_at >= ? AND status IN ?", true, sixMonthsAgo, []int64{2, 5}).
-			Group(orderDateExpr)
-
-		// 子查询：每月续费订单数量
-		renewalOrderSub := conn.Model(&order.Order{}).
-			Select(fmt.Sprintf("%s AS date, COUNT(DISTINCT user_id) AS renewal_order_users", orderDateExpr)).
-			Where("is_new = ? AND created_at >= ? AND status IN ?", false, sixMonthsAgo, []int64{2, 5}).
-			Group(orderDateExpr)
-
-		return conn.Model(&User{}).
-			Select(fmt.Sprintf(`
-				%s AS date,
-				COUNT(*) AS register,
-				COALESCE(MAX(n.new_order_users), 0) AS new_order_users,
-				COALESCE(MAX(r.renewal_order_users), 0) AS renewal_order_users
-			`, userDateExpr)).
-			Joins("LEFT JOIN (?) AS n ON "+userDateExpr+" = n.date", newOrderSub).
-			Joins("LEFT JOIN (?) AS r ON "+userDateExpr+" = r.date", renewalOrderSub).
-			Where(userCreatedAt+" >= ?", sixMonthsAgo).
-			Group(userDateExpr).
-			Order("date ASC").
-			Scan(v).Error
-	})
-
-	return results, err
+	sixMonthsAgo := date.AddDate(0, -5, 0)
+	return m.queryUserStatistics(ctx, sixMonthsAgo, date, "month")
 }
 
-func userDateBucketExpr(db *gorm.DB, column, bucket string) string {
-	if db.Dialector.Name() == "postgres" {
+func (m *customUserModel) queryUserStatistics(ctx context.Context, start, end time.Time, bucket string) ([]UserStatisticsWithDate, error) {
+	d := m.db.Driver().Dialect()
+	userDateExpr := userDateBucketExpr(d, "u."+entuser.FieldCreatedAt, bucket)
+	orderDateExpr := userDateBucketExpr(d, "o."+entorder.FieldCreatedAt, bucket)
+	query := fmt.Sprintf(`
+		SELECT %s AS date,
+		       COUNT(*) AS register,
+		       COALESCE(MAX(n.new_order_users), 0) AS new_order_users,
+		       COALESCE(MAX(r.renewal_order_users), 0) AS renewal_order_users
+		FROM %s u
+		LEFT JOIN (
+			SELECT %s AS date, COUNT(DISTINCT %s) AS new_order_users
+			FROM %s o
+			WHERE %s = ? AND %s BETWEEN ? AND ? AND %s IN (?, ?)
+			GROUP BY %s
+		) n ON %s = n.date
+		LEFT JOIN (
+			SELECT %s AS date, COUNT(DISTINCT %s) AS renewal_order_users
+			FROM %s o
+			WHERE %s = ? AND %s BETWEEN ? AND ? AND %s IN (?, ?)
+			GROUP BY %s
+		) r ON %s = r.date
+		WHERE u.%s BETWEEN ? AND ? AND u.%s IS NULL
+		GROUP BY %s
+		ORDER BY date ASC`,
+		userDateExpr,
+		entuser.Table,
+		orderDateExpr, entorder.FieldUserID, entorder.Table, entorder.FieldIsNew, entorder.FieldCreatedAt, entorder.FieldStatus, orderDateExpr, userDateExpr,
+		orderDateExpr, entorder.FieldUserID, entorder.Table, entorder.FieldIsNew, entorder.FieldCreatedAt, entorder.FieldStatus, orderDateExpr, userDateExpr,
+		entuser.FieldCreatedAt, entuser.FieldDeletedAt, userDateExpr,
+	)
+	rows := &entsql.Rows{}
+	if err := m.db.Driver().Query(ctx, query, []any{true, start, end, 2, 5, false, start, end, 2, 5, start, end}, rows); err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []UserStatisticsWithDate
+	for rows.Next() {
+		var item UserStatisticsWithDate
+		if err := rows.Scan(&item.Date, &item.Register, &item.NewOrderUsers, &item.RenewalOrderUsers); err != nil {
+			return nil, err
+		}
+		results = append(results, item)
+	}
+	return results, rows.Err()
+}
+
+func userDateBucketExpr(dialectName, column, bucket string) string {
+	if dialectName == "postgres" {
 		if bucket == "month" {
 			return fmt.Sprintf("TO_CHAR(%s, 'YYYY-MM')", column)
 		}

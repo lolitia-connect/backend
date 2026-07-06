@@ -5,12 +5,13 @@ import (
 	"errors"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
+	entsubscribe "github.com/perfect-panel/server/ent/subscribe"
 	"github.com/perfect-panel/server/internal/model/group"
-	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
-	"gorm.io/gorm"
 )
 
 type UpdateNodeGroupLogic struct {
@@ -29,9 +30,9 @@ func NewUpdateNodeGroupLogic(ctx context.Context, svcCtx *svc.ServiceContext) *U
 
 func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest) error {
 	// 检查节点组是否存在
-	var nodeGroup group.NodeGroup
-	if err := l.svcCtx.Store.DB().Where("id = ?", req.Id).First(&nodeGroup).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	nodeGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.ID(req.Id)).Only(l.ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
 			return errors.New("node group not found")
 		}
 		logger.Errorf("failed to find node group: %v", err)
@@ -40,10 +41,10 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 
 	// 验证:系统中只能有一个过期节点组
 	if req.IsExpiredGroup != nil && *req.IsExpiredGroup {
-		var count int64
-		err := l.svcCtx.Store.DB().Model(&group.NodeGroup{}).
-			Where("is_expired_group = ? AND id != ?", true, req.Id).
-			Count(&count).Error
+		count, err := l.svcCtx.Ent.NodeGroup.Query().Where(
+			entnodegroup.IsExpiredGroup(true),
+			entnodegroup.IDNEQ(req.Id),
+		).Count(l.ctx)
 		if err != nil {
 			logger.Errorf("failed to check expired group count: %v", err)
 			return err
@@ -53,10 +54,7 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 		}
 
 		// 验证:被订阅商品设置为默认节点组的不能设置为过期节点组
-		var subscribeCount int64
-		err = l.svcCtx.Store.DB().Model(&subscribe.Subscribe{}).
-			Where("node_group_id = ?", req.Id).
-			Count(&subscribeCount).Error
+		subscribeCount, err := l.svcCtx.Ent.Subscribe.Query().Where(entsubscribe.NodeGroupID(req.Id)).Count(l.ctx)
 		if err != nil {
 			logger.Errorf("failed to check subscribe usage: %v", err)
 			return err
@@ -66,44 +64,41 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 		}
 	}
 
-	// 构建更新数据
-	updates := map[string]interface{}{
-		"updated_at": time.Now(),
-	}
+	update := l.svcCtx.Ent.NodeGroup.Update().Where(entnodegroup.ID(req.Id)).SetUpdatedAt(time.Now())
 	if req.Name != "" {
-		updates["name"] = req.Name
+		update.SetName(req.Name)
 	}
 	if req.Description != "" {
-		updates["description"] = req.Description
+		update.SetDescription(req.Description)
 	}
 	if req.Type != "" {
 		nodeGroupType, err := group.ResolveNodeGroupType(req.Type)
 		if err != nil {
 			return err
 		}
-		updates["group_type"] = nodeGroupType
+		update.SetType(nodeGroupType)
 	}
 	if req.Sort != 0 {
-		updates["sort"] = req.Sort
+		update.SetSort(req.Sort)
 	}
 	if req.ForCalculation != nil {
-		updates["for_calculation"] = *req.ForCalculation
+		update.SetForCalculation(*req.ForCalculation)
 	}
 	if req.IsExpiredGroup != nil {
-		updates["is_expired_group"] = *req.IsExpiredGroup
+		update.SetIsExpiredGroup(*req.IsExpiredGroup)
 		// 过期节点组不参与分组计算
 		if *req.IsExpiredGroup {
-			updates["for_calculation"] = false
+			update.SetForCalculation(false)
 		}
 	}
 	if req.ExpiredDaysLimit != nil {
-		updates["expired_days_limit"] = *req.ExpiredDaysLimit
+		update.SetExpiredDaysLimit(*req.ExpiredDaysLimit)
 	}
 	if req.MaxTrafficGBExpired != nil {
-		updates["max_traffic_gb_expired"] = *req.MaxTrafficGBExpired
+		update.SetMaxTrafficGBExpired(*req.MaxTrafficGBExpired)
 	}
 	if req.SpeedLimit != nil {
-		updates["speed_limit"] = *req.SpeedLimit
+		update.SetSpeedLimit(*req.SpeedLimit)
 	}
 
 	// 获取新的流量区间值
@@ -111,11 +106,11 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 	newMaxTraffic := nodeGroup.MaxTrafficGB
 	if req.MinTrafficGB != nil {
 		newMinTraffic = req.MinTrafficGB
-		updates["min_traffic_gb"] = *req.MinTrafficGB
+		update.SetMinTrafficGB(*req.MinTrafficGB)
 	}
 	if req.MaxTrafficGB != nil {
 		newMaxTraffic = req.MaxTrafficGB
-		updates["max_traffic_gb"] = *req.MaxTrafficGB
+		update.SetMaxTrafficGB(*req.MaxTrafficGB)
 	}
 
 	// 校验流量区间
@@ -124,7 +119,7 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 	}
 
 	// 执行更新
-	if err := l.svcCtx.Store.DB().Model(&nodeGroup).Updates(updates).Error; err != nil {
+	if _, err := update.Save(l.ctx); err != nil {
 		logger.Errorf("failed to update node group: %v", err)
 		return err
 	}
@@ -156,11 +151,11 @@ func (l *UpdateNodeGroupLogic) validateTrafficRange(currentNodeGroupId int, newM
 	}
 
 	// 查询所有其他设置了流量区间的节点组
-	var otherGroups []group.NodeGroup
-	if err := l.svcCtx.Store.DB().
-		Where("id != ?", currentNodeGroupId).
-		Where("(min_traffic_gb > 0 OR max_traffic_gb > 0)").
-		Find(&otherGroups).Error; err != nil {
+	otherGroups, err := l.svcCtx.Ent.NodeGroup.Query().Where(
+		entnodegroup.IDNEQ(int64(currentNodeGroupId)),
+		entnodegroup.Or(entnodegroup.MinTrafficGBGT(0), entnodegroup.MaxTrafficGBGT(0)),
+	).All(l.ctx)
+	if err != nil {
 		logger.Errorf("failed to query other node groups: %v", err)
 		return err
 	}

@@ -2,13 +2,16 @@ package subscribe
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
-	"github.com/perfect-panel/server/pkg/orm"
+	"entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/predicate"
+	entsubscribe "github.com/perfect-panel/server/ent/subscribe"
+	entsubscribegroup "github.com/perfect-panel/server/ent/subscribegroup"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type FilterParams struct {
@@ -55,26 +58,19 @@ type customSubscribeLogicModel interface {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, c *redis.Client) Model {
+func NewModel(conn *ent.Client, c *redis.Client) Model {
 	return &customSubscribeModel{
 		defaultSubscribeModel: newSubscribeModel(conn, c),
 	}
 }
 
 func (m *customSubscribeModel) QuerySubscribeMinSortByIds(ctx context.Context, ids []int64) (int64, error) {
-	var minSort int64
-	err := m.QueryNoCacheCtx(ctx, &minSort, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Where("id IN ?", ids).Select("COALESCE(MIN(sort), 0)").Scan(v).Error
-	})
-	return minSort, err
+	minSort, err := m.db.Subscribe.Query().Where(entsubscribe.IDIn(ids...)).Aggregate(ent.Min(entsubscribe.FieldSort)).Int(ctx)
+	return int64(minSort), err
 }
 
 func (m *customSubscribeModel) QueryResetCycleSubscribeIds(ctx context.Context, resetCycle int) ([]int64, error) {
-	var ids []int64
-	err := m.QueryNoCacheCtx(ctx, &ids, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Subscribe{}).Select("id").Where("reset_cycle = ?", resetCycle).Find(&ids).Error
-	})
-	return ids, err
+	return m.db.Subscribe.Query().Where(entsubscribe.ResetCycle(int64(resetCycle))).IDs(ctx)
 }
 
 func (m *customSubscribeModel) ClearCache(ctx context.Context, ids ...int64) error {
@@ -90,49 +86,57 @@ func (m *customSubscribeModel) ClearCache(ctx context.Context, ids ...int64) err
 		}
 		cacheKeys = append(cacheKeys, m.getCacheKeys(data)...)
 	}
-	return m.CachedConn.DelCacheCtx(ctx, cacheKeys...)
+	return m.delCache(ctx, cacheKeys...)
 }
 
 func (m *customSubscribeModel) UpdateSort(ctx context.Context, data []*Subscribe) error {
 	if len(data) == 0 {
 		return nil
 	}
-	return m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Save(data).Error
-	}, m.batchGetCacheKeys(data...)...)
+	cacheKeys := m.batchGetCacheKeys(data...)
+	for _, item := range data {
+		if err := m.Update(ctx, item); err != nil {
+			return err
+		}
+	}
+	return m.delCache(ctx, cacheKeys...)
 }
 
 func (m *customSubscribeModel) QueryGroupList(ctx context.Context) (int64, []*Group, error) {
-	var list []*Group
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Group{}).Count(&total).Find(v).Error
-	})
-	return total, list, err
+	total, err := m.db.SubscribeGroup.Query().Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	list, err := m.db.SubscribeGroup.Query().All(ctx)
+	return int64(total), entGroupsToModel(list), err
 }
 
 func (m *customSubscribeModel) CreateGroup(ctx context.Context, data *Group) error {
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Model(&Group{}).Create(data).Error
-	})
+	created, err := m.db.SubscribeGroup.Create().SetName(data.Name).SetDescription(data.Description).Save(ctx)
+	if err != nil {
+		return err
+	}
+	data.Id = created.ID
+	data.CreatedAt = created.CreatedAt
+	data.UpdatedAt = created.UpdatedAt
+	return nil
 }
 
 func (m *customSubscribeModel) UpdateGroup(ctx context.Context, data *Group) error {
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Model(&Group{}).Where("id = ?", data.Id).Save(data).Error
-	})
+	return m.db.SubscribeGroup.UpdateOneID(data.Id).SetName(data.Name).SetDescription(data.Description).Exec(ctx)
 }
 
 func (m *customSubscribeModel) DeleteGroup(ctx context.Context, id int64) error {
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Model(&Group{}).Where("id = ?", id).Delete(&Group{}).Error
-	})
+	err := m.db.SubscribeGroup.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 func (m *customSubscribeModel) BatchDeleteGroup(ctx context.Context, ids []int64) error {
-	return m.ExecNoCacheCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Model(&Group{}).Where("id IN ?", ids).Delete(&Group{}).Error
-	})
+	_, err := m.db.SubscribeGroup.Delete().Where(entsubscribegroup.IDIn(ids...)).Exec(ctx)
+	return err
 }
 
 // FilterList Filter Subscribe List
@@ -142,81 +146,65 @@ func (m *customSubscribeModel) FilterList(ctx context.Context, params *FilterPar
 	}
 	params.Normalize()
 
-	var list []*Subscribe
-	var total int64
-
-	// 构建查询函数
-	buildQuery := func(conn *gorm.DB, lang string) *gorm.DB {
-		query := conn.Model(&Subscribe{})
+	buildQuery := func(lang string) *ent.SubscribeQuery {
+		query := m.db.Subscribe.Query()
 
 		if params.Search != "" {
-			query = query.Scopes(orm.ContainsLike([]string{"name", "description"}, params.Search))
+			search := strings.TrimSpace(params.Search)
+			query = query.Where(entsubscribe.Or(entsubscribe.NameContains(search), entsubscribe.DescriptionContains(search)))
 		}
 		if params.Show {
-			query = query.Where(clause.Eq{
-				Column: clause.Column{Name: "show"},
-				Value:  true,
-			})
+			query = query.Where(entsubscribe.Show(true))
 		}
 		if params.Sell {
-			query = query.Where("sell = true")
+			query = query.Where(entsubscribe.Sell(true))
 		}
 
 		if len(params.Ids) > 0 {
-			query = query.Where("id IN ?", params.Ids)
+			query = query.Where(entsubscribe.IDIn(params.Ids...))
 		}
 		if len(params.Node) > 0 {
-			query = query.Scopes(InSet("nodes", tool.Int64SliceToStringSlice(params.Node)))
+			query = query.Where(subscribeCommaSeparatedContainsAny(entsubscribe.FieldNodes, tool.Int64SliceToStringSlice(params.Node)))
 		}
 
 		if len(params.Tags) > 0 {
-			query = query.Scopes(InSet("node_tags", params.Tags))
+			query = query.Where(subscribeCommaSeparatedContainsAny(entsubscribe.FieldNodeTags, params.Tags))
 		}
 		if params.NodeGroupId != nil {
-			// Filter by node_group_ids using JSON_CONTAINS
-			query = query.Where("JSON_CONTAINS(node_group_ids, ?)", *params.NodeGroupId)
+			query = query.Where(subscribeJSONContains(entsubscribe.FieldNodeGroupIds, *params.NodeGroupId))
 		}
 		if lang != "" {
-			query = query.Where("language = ?", lang)
+			query = query.Where(entsubscribe.Language(lang))
 		} else if params.DefaultLanguage {
-			query = query.Where("language = ''")
+			query = query.Where(entsubscribe.Language(""))
 		}
 
 		return query
 	}
 
-	// 查询数据
-	queryFunc := func(lang string) error {
-		return m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-			query := buildQuery(conn, lang)
-			if err := query.Count(&total).Error; err != nil {
-				return err
-			}
-			return query.Order("sort ASC").
-				Limit(params.Size).
-				Offset((params.Page - 1) * params.Size).
-				Find(v).Error
-		})
+	queryFunc := func(lang string) (int64, []*Subscribe, error) {
+		query := buildQuery(lang)
+		total, err := query.Clone().Count(ctx)
+		if err != nil {
+			return 0, nil, err
+		}
+		list, err := query.Order(entsubscribe.BySort()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
+		return int64(total), entSubscribesToModel(list), err
 	}
 
-	err := queryFunc(params.Language)
+	total, list, err := queryFunc(params.Language)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	// fallback 默认语言
 	if params.DefaultLanguage && total == 0 {
-		err = queryFunc("")
+		total, list, err = queryFunc("")
 		if err != nil {
 			return 0, nil, err
 		}
 	}
 
 	return total, list, nil
-}
-
-func InSet(field string, values []string) func(db *gorm.DB) *gorm.DB {
-	return orm.CommaSeparatedContains(field, values)
 }
 
 // FilterListByNodeGroups Filter subscribes by node groups
@@ -235,50 +223,35 @@ func (m *customSubscribeModel) FilterListByNodeGroups(ctx context.Context, param
 		params.Size = 10
 	}
 
-	var list []*Subscribe
-	var total int64
-
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		query := conn.Model(&Subscribe{})
-
-		// Filter by node groups: match if node_group_id or node_group_ids contains any of the provided IDs
-		if len(params.NodeGroupIds) > 0 {
-			var conditions []string
-			var args []interface{}
-
-			// Condition 1: node_group_id IN (...)
-			placeholders := make([]string, len(params.NodeGroupIds))
-			for i, id := range params.NodeGroupIds {
-				placeholders[i] = "?"
-				args = append(args, id)
-			}
-			conditions = append(conditions, "node_group_id IN ("+strings.Join(placeholders, ",")+")")
-
-			// Condition 2: JSON_CONTAINS(node_group_ids, id) for each id
-			for _, id := range params.NodeGroupIds {
-				conditions = append(conditions, "JSON_CONTAINS(node_group_ids, ?)")
-				args = append(args, id)
-			}
-
-			// Combine with OR: (node_group_id IN (...) OR JSON_CONTAINS(node_group_ids, id1) OR ...)
-			query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
+	query := m.db.Subscribe.Query()
+	if len(params.NodeGroupIds) > 0 {
+		predicates := []predicate.Subscribe{entsubscribe.NodeGroupIDIn(params.NodeGroupIds...)}
+		for _, id := range params.NodeGroupIds {
+			predicates = append(predicates, subscribeJSONContains(entsubscribe.FieldNodeGroupIds, id))
 		}
-
-		// Count total
-		if err := query.Count(&total).Error; err != nil {
-			return err
-		}
-
-		// Find with pagination
-		return query.Order("sort ASC").
-			Limit(params.Size).
-			Offset((params.Page - 1) * params.Size).
-			Find(v).Error
-	})
-
+		query = query.Where(entsubscribe.Or(predicates...))
+	}
+	total, err := query.Clone().Count(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
+	list, err := query.Order(entsubscribe.BySort()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
+	return int64(total), entSubscribesToModel(list), err
+}
 
-	return total, list, nil
+func subscribeCommaSeparatedContainsAny(field string, values []string) predicate.Subscribe {
+	predicates := make([]predicate.Subscribe, 0, len(values))
+	for _, value := range values {
+		v := value
+		predicates = append(predicates, predicate.Subscribe(func(s *sql.Selector) {
+			s.Where(sql.ExprP(fmt.Sprintf("FIND_IN_SET(?, %s)", field), v))
+		}))
+	}
+	return entsubscribe.Or(predicates...)
+}
+
+func subscribeJSONContains(field string, id int64) predicate.Subscribe {
+	return predicate.Subscribe(func(s *sql.Selector) {
+		s.Where(sql.ExprP(fmt.Sprintf("JSON_CONTAINS(%s, ?)", field), fmt.Sprintf("%d", id)))
+	})
 }

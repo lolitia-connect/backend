@@ -2,50 +2,29 @@ package payment
 
 import (
 	"encoding/json"
-	"fmt"
-
-	"gorm.io/gorm"
 )
 
 type Payment struct {
-	Id           int64   `gorm:"primaryKey"`
-	Name         string  `gorm:"type:varchar(100);not null;default:'';comment:Payment Name"`
-	Platform     string  `gorm:"<-:create;type:varchar(100);not null;comment:Payment Platform"`
-	Icon         string  `gorm:"type:varchar(255);default:'';comment:Payment Icon"`
-	Domain       string  `gorm:"type:varchar(255);default:'';comment:Notification Domain"`
-	Config       string  `gorm:"type:text;not null;comment:Payment Configuration"`
-	Description  string  `gorm:"type:text;comment:Payment Description"`
-	FeeMode      uint    `gorm:"type:tinyint(1);not null;default:0;comment:Fee Mode: 0: No Fee 1: Percentage 2: Fixed Amount 3: Percentage + Fixed Amount"`
-	FeePercent   int64   `gorm:"type:int;default:0;comment:Fee Percentage"`
-	FeeAmount    int64   `gorm:"type:int;default:0;comment:Fixed Fee Amount"`
-	Sort         int64   `gorm:"type:int;not null;default:0;comment:Sort"`
-	Enable       *bool   `gorm:"type:tinyint(1);not null;default:0;comment:Is Enabled"`
-	Token        string  `gorm:"type:varchar(255);unique;not null;default:'';comment:Payment Token"`
-	CurrencyUnit string  `gorm:"type:varchar(10);default:'';comment:Payment Channel Currency Unit"`
-	ExchangeRate float64 `gorm:"type:decimal(16,8);not null;default:0;comment:Exchange Rate from System Currency to Channel Currency"`
-	BillDesc     string  `gorm:"type:varchar(255);default:'';comment:Bill Description Template, supports {order_no}, {item_name}, {amount}, {trade_no}"`
+	Id           int64
+	Name         string
+	Platform     string
+	Icon         string
+	Domain       string
+	Config       string
+	Description  string
+	FeeMode      uint
+	FeePercent   int64
+	FeeAmount    int64
+	Sort         int64
+	Enable       *bool
+	Token        string
+	CurrencyUnit string
+	ExchangeRate float64
+	BillDesc     string
 }
 
 func (*Payment) TableName() string {
 	return "payment"
-}
-
-func (l *Payment) BeforeCreate(tx *gorm.DB) error {
-	if l.Sort == 0 {
-		var maxSort int64
-		if err := tx.Model(&Payment{}).Select("COALESCE(MAX(sort), 0)").Scan(&maxSort).Error; err != nil {
-			return err
-		}
-		l.Sort = maxSort + 1
-	}
-	return nil
-}
-
-func (l *Payment) BeforeDelete(_ *gorm.DB) (err error) {
-	if l.Id == -1 {
-		return fmt.Errorf("can't delete default payment method")
-	}
-	return nil
 }
 
 type Filter struct {

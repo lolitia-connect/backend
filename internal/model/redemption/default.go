@@ -2,36 +2,28 @@ package redemption
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"time"
 
-	"github.com/perfect-panel/server/pkg/cache"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entredemptioncode "github.com/perfect-panel/server/ent/redemptioncode"
+	entredemptionrecord "github.com/perfect-panel/server/ent/redemptionrecord"
 )
 
 var _ RedemptionCodeModel = (*customRedemptionCodeModel)(nil)
 var _ RedemptionRecordModel = (*customRedemptionRecordModel)(nil)
-
-var (
-	cacheRedemptionCodeIdPrefix   = "cache:redemption_code:id:"
-	cacheRedemptionCodeCodePrefix = "cache:redemption_code:code:"
-	cacheRedemptionRecordIdPrefix = "cache:redemption_record:id:"
-)
 
 type (
 	RedemptionCodeModel interface {
 		Insert(ctx context.Context, data *RedemptionCode) error
 		FindOne(ctx context.Context, id int64) (*RedemptionCode, error)
 		FindOneByCode(ctx context.Context, code string) (*RedemptionCode, error)
-		Update(ctx context.Context, data *RedemptionCode, tx ...*gorm.DB) error
+		Update(ctx context.Context, data *RedemptionCode) error
 		Delete(ctx context.Context, id int64) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 		customRedemptionCodeLogicModel
 	}
 
 	RedemptionRecordModel interface {
-		Insert(ctx context.Context, data *RedemptionRecord, tx ...*gorm.DB) error
+		Insert(ctx context.Context, data *RedemptionRecord) error
 		FindOne(ctx context.Context, id int64) (*RedemptionRecord, error)
 		Update(ctx context.Context, data *RedemptionRecord) error
 		Delete(ctx context.Context, id int64) error
@@ -41,7 +33,7 @@ type (
 	customRedemptionCodeLogicModel interface {
 		QueryRedemptionCodeListByPage(ctx context.Context, page, size int, subscribePlan int64, unitTime string, code string) (total int64, list []*RedemptionCode, err error)
 		BatchDelete(ctx context.Context, ids []int64) error
-		IncrementUsedCount(ctx context.Context, id int64, tx ...*gorm.DB) error
+		IncrementUsedCount(ctx context.Context, id int64) error
 	}
 
 	customRedemptionRecordLogicModel interface {
@@ -54,235 +46,222 @@ type (
 		*defaultRedemptionCodeModel
 	}
 	defaultRedemptionCodeModel struct {
-		cache.CachedConn
-		table string
+		db *ent.Client
 	}
 
 	customRedemptionRecordModel struct {
 		*defaultRedemptionRecordModel
 	}
 	defaultRedemptionRecordModel struct {
-		cache.CachedConn
-		table string
+		db *ent.Client
 	}
 )
 
-func newRedemptionCodeModel(db *gorm.DB, c *redis.Client) *defaultRedemptionCodeModel {
-	return &defaultRedemptionCodeModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "`redemption_code`",
-	}
+func newRedemptionCodeModel(db *ent.Client) *defaultRedemptionCodeModel {
+	return &defaultRedemptionCodeModel{db: db}
 }
 
-func newRedemptionRecordModel(db *gorm.DB, c *redis.Client) *defaultRedemptionRecordModel {
-	return &defaultRedemptionRecordModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "`redemption_record`",
-	}
-}
-
-// RedemptionCode cache methods
-func (m *defaultRedemptionCodeModel) getCacheKeys(data *RedemptionCode) []string {
-	if data == nil {
-		return []string{}
-	}
-	codeIdKey := fmt.Sprintf("%s%v", cacheRedemptionCodeIdPrefix, data.Id)
-	codeCodeKey := fmt.Sprintf("%s%v", cacheRedemptionCodeCodePrefix, data.Code)
-	cacheKeys := []string{
-		codeIdKey,
-		codeCodeKey,
-	}
-	return cacheKeys
+func newRedemptionRecordModel(db *ent.Client) *defaultRedemptionRecordModel {
+	return &defaultRedemptionRecordModel{db: db}
 }
 
 func (m *defaultRedemptionCodeModel) Insert(ctx context.Context, data *RedemptionCode) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Create(data).Error
-	}, m.getCacheKeys(data)...)
-	return err
-}
-
-func (m *defaultRedemptionCodeModel) FindOne(ctx context.Context, id int64) (*RedemptionCode, error) {
-	codeIdKey := fmt.Sprintf("%s%v", cacheRedemptionCodeIdPrefix, id)
-	var resp RedemptionCode
-	err := m.QueryCtx(ctx, &resp, codeIdKey, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&RedemptionCode{}).Where("`id` = ?", id).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
-		return nil, err
-	}
-}
-
-func (m *defaultRedemptionCodeModel) FindOneByCode(ctx context.Context, code string) (*RedemptionCode, error) {
-	codeCodeKey := fmt.Sprintf("%s%v", cacheRedemptionCodeCodePrefix, code)
-	var resp RedemptionCode
-	err := m.QueryCtx(ctx, &resp, codeCodeKey, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&RedemptionCode{}).Where("`code` = ?", code).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
-		return nil, err
-	}
-}
-
-func (m *defaultRedemptionCodeModel) Update(ctx context.Context, data *RedemptionCode, tx ...*gorm.DB) error {
-	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		if len(tx) > 0 {
-			db = tx[0]
-		}
-		return db.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
-}
-
-func (m *defaultRedemptionCodeModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
+	created, err := m.db.RedemptionCode.Create().SetCode(data.Code).SetTotalCount(data.TotalCount).SetUsedCount(data.UsedCount).SetSubscribePlan(data.SubscribePlan).SetUnitTime(data.UnitTime).SetQuantity(data.Quantity).SetStatus(data.Status).Save(ctx)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Delete(&RedemptionCode{}, id).Error
-	}, m.getCacheKeys(data)...)
-	return err
-}
-
-func (m *defaultRedemptionCodeModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
-}
-
-// RedemptionCode custom logic methods
-func (m *customRedemptionCodeModel) QueryRedemptionCodeListByPage(ctx context.Context, page, size int, subscribePlan int64, unitTime string, code string) (total int64, list []*RedemptionCode, err error) {
-	err = m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		db := conn.Model(&RedemptionCode{})
-		if subscribePlan != 0 {
-			db = db.Where("subscribe_plan = ?", subscribePlan)
-		}
-		if unitTime != "" {
-			db = db.Where("unit_time = ?", unitTime)
-		}
-		if code != "" {
-			db = db.Where("code like ?", "%"+code+"%")
-		}
-		return db.Count(&total).Limit(size).Offset((page - 1) * size).Order("created_at DESC").Find(v).Error
-	})
-	return total, list, err
-}
-
-func (m *customRedemptionCodeModel) BatchDelete(ctx context.Context, ids []int64) error {
-	var err error
-	for _, id := range ids {
-		if err = m.Delete(ctx, id); err != nil {
-			return err
-		}
-	}
+	copyCodeFromEnt(data, created)
 	return nil
 }
 
-func (m *customRedemptionCodeModel) IncrementUsedCount(ctx context.Context, id int64, tx ...*gorm.DB) error {
-	data, err := m.FindOne(ctx, id)
+func (m *defaultRedemptionCodeModel) FindOne(ctx context.Context, id int64) (*RedemptionCode, error) {
+	data, err := m.db.RedemptionCode.Query().Where(entredemptioncode.ID(id), entredemptioncode.DeletedAtIsNil()).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return codeFromEnt(data), nil
+}
+
+func (m *defaultRedemptionCodeModel) FindOneByCode(ctx context.Context, code string) (*RedemptionCode, error) {
+	data, err := m.db.RedemptionCode.Query().Where(entredemptioncode.Code(code), entredemptioncode.DeletedAtIsNil()).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return codeFromEnt(data), nil
+}
+
+func (m *defaultRedemptionCodeModel) Update(ctx context.Context, data *RedemptionCode) error {
+	updated, err := m.db.RedemptionCode.UpdateOneID(data.Id).SetCode(data.Code).SetTotalCount(data.TotalCount).SetUsedCount(data.UsedCount).SetSubscribePlan(data.SubscribePlan).SetUnitTime(data.UnitTime).SetQuantity(data.Quantity).SetStatus(data.Status).Save(ctx)
 	if err != nil {
 		return err
 	}
-	data.UsedCount++
-	if len(tx) > 0 {
-		return m.Update(ctx, data, tx[0])
-	}
-	return m.Update(ctx, data)
+	copyCodeFromEnt(data, updated)
+	return nil
 }
 
-// RedemptionRecord cache methods
-func (m *defaultRedemptionRecordModel) getCacheKeys(data *RedemptionRecord) []string {
-	if data == nil {
-		return []string{}
+func (m *defaultRedemptionCodeModel) Delete(ctx context.Context, id int64) error {
+	err := m.db.RedemptionCode.UpdateOneID(id).SetDeletedAt(time.Now()).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	recordIdKey := fmt.Sprintf("%s%v", cacheRedemptionRecordIdPrefix, data.Id)
-	cacheKeys := []string{
-		recordIdKey,
-	}
-	return cacheKeys
-}
-
-func (m *defaultRedemptionRecordModel) Insert(ctx context.Context, data *RedemptionRecord, tx ...*gorm.DB) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		if len(tx) > 0 {
-			conn = tx[0]
-		}
-		return conn.Create(data).Error
-	}, m.getCacheKeys(data)...)
 	return err
+}
+
+func (m *customRedemptionCodeModel) QueryRedemptionCodeListByPage(ctx context.Context, page, size int, subscribePlan int64, unitTime string, code string) (total int64, list []*RedemptionCode, err error) {
+	query := m.db.RedemptionCode.Query().Where(entredemptioncode.DeletedAtIsNil())
+	if subscribePlan != 0 {
+		query = query.Where(entredemptioncode.SubscribePlan(subscribePlan))
+	}
+	if unitTime != "" {
+		query = query.Where(entredemptioncode.UnitTime(unitTime))
+	}
+	if code != "" {
+		query = query.Where(entredemptioncode.CodeContains(code))
+	}
+	count, err := query.Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	items, err := query.Limit(size).Offset((page - 1) * size).Order(ent.Desc(entredemptioncode.FieldCreatedAt)).All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	return int64(count), codesFromEnt(items), nil
+}
+
+func (m *customRedemptionCodeModel) BatchDelete(ctx context.Context, ids []int64) error {
+	_, err := m.db.RedemptionCode.Update().Where(entredemptioncode.IDIn(ids...), entredemptioncode.DeletedAtIsNil()).SetDeletedAt(time.Now()).Save(ctx)
+	return err
+}
+
+func (m *customRedemptionCodeModel) IncrementUsedCount(ctx context.Context, id int64) error {
+	_, err := m.db.RedemptionCode.Update().Where(entredemptioncode.ID(id), entredemptioncode.DeletedAtIsNil()).AddUsedCount(1).Save(ctx)
+	return err
+}
+
+func (m *defaultRedemptionRecordModel) Insert(ctx context.Context, data *RedemptionRecord) error {
+	created, err := m.db.RedemptionRecord.Create().SetRedemptionCodeID(data.RedemptionCodeId).SetUserID(data.UserId).SetSubscribeID(data.SubscribeId).SetUnitTime(data.UnitTime).SetQuantity(data.Quantity).SetRedeemedAt(data.RedeemedAt).Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyRecordFromEnt(data, created)
+	return nil
 }
 
 func (m *defaultRedemptionRecordModel) FindOne(ctx context.Context, id int64) (*RedemptionRecord, error) {
-	recordIdKey := fmt.Sprintf("%s%v", cacheRedemptionRecordIdPrefix, id)
-	var resp RedemptionRecord
-	err := m.QueryCtx(ctx, &resp, recordIdKey, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&RedemptionRecord{}).Where("`id` = ?", id).First(&resp).Error
-	})
-	switch {
-	case err == nil:
-		return &resp, nil
-	default:
+	data, err := m.db.RedemptionRecord.Query().Where(entredemptionrecord.ID(id)).Only(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return recordFromEnt(data), nil
 }
 
 func (m *defaultRedemptionRecordModel) Update(ctx context.Context, data *RedemptionRecord) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Save(data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+	updated, err := m.db.RedemptionRecord.UpdateOneID(data.Id).SetRedemptionCodeID(data.RedemptionCodeId).SetUserID(data.UserId).SetSubscribeID(data.SubscribeId).SetUnitTime(data.UnitTime).SetQuantity(data.Quantity).SetRedeemedAt(data.RedeemedAt).Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyRecordFromEnt(data, updated)
+	return nil
 }
 
 func (m *defaultRedemptionRecordModel) Delete(ctx context.Context, id int64) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Delete(&RedemptionRecord{}, id).Error
-	}, m.getCacheKeys(nil)...)
+	err := m.db.RedemptionRecord.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
 	return err
 }
 
-// RedemptionRecord custom logic methods
 func (m *customRedemptionRecordModel) QueryRedemptionRecordListByPage(ctx context.Context, page, size int, userId int64, codeId int64) (total int64, list []*RedemptionRecord, err error) {
-	err = m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		db := conn.Model(&RedemptionRecord{})
-		if userId != 0 {
-			db = db.Where("user_id = ?", userId)
-		}
-		if codeId != 0 {
-			db = db.Where("redemption_code_id = ?", codeId)
-		}
-		return db.Count(&total).Limit(size).Offset((page - 1) * size).Order("created_at DESC").Find(v).Error
-	})
-	return total, list, err
+	query := m.db.RedemptionRecord.Query()
+	if userId != 0 {
+		query = query.Where(entredemptionrecord.UserID(userId))
+	}
+	if codeId != 0 {
+		query = query.Where(entredemptionrecord.RedemptionCodeID(codeId))
+	}
+	count, err := query.Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	items, err := query.Limit(size).Offset((page - 1) * size).Order(ent.Desc(entredemptionrecord.FieldCreatedAt)).All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	return int64(count), recordsFromEnt(items), nil
 }
 
 func (m *customRedemptionRecordModel) FindByUserId(ctx context.Context, userId int64) ([]*RedemptionRecord, error) {
-	var list []*RedemptionRecord
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&RedemptionRecord{}).Where("user_id = ?", userId).Order("created_at DESC").Find(v).Error
-	})
-	return list, err
+	items, err := m.db.RedemptionRecord.Query().Where(entredemptionrecord.UserID(userId)).Order(ent.Desc(entredemptionrecord.FieldCreatedAt)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return recordsFromEnt(items), nil
 }
 
 func (m *customRedemptionRecordModel) FindByCodeId(ctx context.Context, codeId int64) ([]*RedemptionRecord, error) {
-	var list []*RedemptionRecord
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&RedemptionRecord{}).Where("redemption_code_id = ?", codeId).Order("created_at DESC").Find(v).Error
-	})
-	return list, err
+	items, err := m.db.RedemptionRecord.Query().Where(entredemptionrecord.RedemptionCodeID(codeId)).Order(ent.Desc(entredemptionrecord.FieldCreatedAt)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return recordsFromEnt(items), nil
+}
+
+func codeFromEnt(data *ent.RedemptionCode) *RedemptionCode {
+	if data == nil {
+		return nil
+	}
+	var resp RedemptionCode
+	copyCodeFromEnt(&resp, data)
+	return &resp
+}
+
+func codesFromEnt(items []*ent.RedemptionCode) []*RedemptionCode {
+	list := make([]*RedemptionCode, 0, len(items))
+	for _, item := range items {
+		list = append(list, codeFromEnt(item))
+	}
+	return list
+}
+
+func copyCodeFromEnt(dst *RedemptionCode, src *ent.RedemptionCode) {
+	dst.Id = src.ID
+	dst.Code = src.Code
+	dst.TotalCount = src.TotalCount
+	dst.UsedCount = src.UsedCount
+	dst.SubscribePlan = src.SubscribePlan
+	dst.UnitTime = src.UnitTime
+	dst.Quantity = src.Quantity
+	dst.Status = src.Status
+	dst.CreatedAt = src.CreatedAt
+	dst.UpdatedAt = src.UpdatedAt
+}
+
+func recordFromEnt(data *ent.RedemptionRecord) *RedemptionRecord {
+	if data == nil {
+		return nil
+	}
+	var resp RedemptionRecord
+	copyRecordFromEnt(&resp, data)
+	return &resp
+}
+
+func recordsFromEnt(items []*ent.RedemptionRecord) []*RedemptionRecord {
+	list := make([]*RedemptionRecord, 0, len(items))
+	for _, item := range items {
+		list = append(list, recordFromEnt(item))
+	}
+	return list
+}
+
+func copyRecordFromEnt(dst *RedemptionRecord, src *ent.RedemptionRecord) {
+	dst.Id = src.ID
+	dst.RedemptionCodeId = src.RedemptionCodeID
+	dst.UserId = src.UserID
+	dst.SubscribeId = src.SubscribeID
+	dst.UnitTime = src.UnitTime
+	dst.Quantity = src.Quantity
+	dst.RedeemedAt = src.RedeemedAt
+	dst.CreatedAt = src.CreatedAt
 }

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/perfect-panel/server/internal/model/group"
-	"github.com/perfect-panel/server/internal/model/node"
+	"entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent"
+	entnode "github.com/perfect-panel/server/ent/node"
+	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
+	"github.com/perfect-panel/server/ent/predicate"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
-	"gorm.io/gorm"
 )
 
 type DeleteNodeGroupLogic struct {
@@ -29,9 +31,9 @@ func NewDeleteNodeGroupLogic(ctx context.Context, svcCtx *svc.ServiceContext) *D
 
 func (l *DeleteNodeGroupLogic) DeleteNodeGroup(req *types.DeleteNodeGroupRequest) error {
 	// 查询节点组信息
-	var nodeGroup group.NodeGroup
-	if err := l.svcCtx.Store.DB().Where("id = ?", req.Id).First(&nodeGroup).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+	nodeGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.ID(req.Id)).Only(l.ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
 			return errors.New("node group not found")
 		}
 		logger.Errorf("failed to find node group: %v", err)
@@ -39,8 +41,12 @@ func (l *DeleteNodeGroupLogic) DeleteNodeGroup(req *types.DeleteNodeGroupRequest
 	}
 
 	// 检查是否有关联节点（使用JSON_CONTAINS查询node_group_ids数组）
-	var nodeCount int64
-	if err := l.svcCtx.Store.DB().Model(&node.Node{}).Where("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroup.Id)).Count(&nodeCount).Error; err != nil {
+	nodeCount, err := l.svcCtx.Ent.Node.Query().Where(predicate.Node(func(s *sql.Selector) {
+		s.Where(sql.P(func(b *sql.Builder) {
+			b.WriteString("JSON_CONTAINS(").Ident(entnode.FieldNodeGroupIds).WriteString(", ").Arg(fmt.Sprintf("[%d]", nodeGroup.ID)).WriteByte(')')
+		}))
+	})).Count(l.ctx)
+	if err != nil {
 		logger.Errorf("failed to count nodes in group: %v", err)
 		return err
 	}
@@ -48,15 +54,11 @@ func (l *DeleteNodeGroupLogic) DeleteNodeGroup(req *types.DeleteNodeGroupRequest
 		return fmt.Errorf("cannot delete group with %d associated nodes, please migrate nodes first", nodeCount)
 	}
 
-	// 使用 GORM Transaction 删除节点组
-	return l.svcCtx.Store.DB().Transaction(func(tx *gorm.DB) error {
-		// 删除节点组
-		if err := tx.Where("id = ?", req.Id).Delete(&group.NodeGroup{}).Error; err != nil {
-			logger.Errorf("failed to delete node group: %v", err)
-			return err // 自动回滚
-		}
+	if _, err := l.svcCtx.Ent.NodeGroup.Delete().Where(entnodegroup.ID(req.Id)).Exec(l.ctx); err != nil {
+		logger.Errorf("failed to delete node group: %v", err)
+		return err
+	}
 
-		logger.Infof("deleted node group: id=%d", nodeGroup.Id)
-		return nil // 自动提交
-	})
+	logger.Infof("deleted node group: id=%d", nodeGroup.ID)
+	return nil
 }

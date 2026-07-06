@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"fmt"
 	"time"
@@ -17,8 +18,7 @@ import (
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	"gorm.io/gorm"
-)
+	)
 
 type DeviceLoginLogic struct {
 	logger.Logger
@@ -71,7 +71,7 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 	// Check if device exists by identifier
 	deviceInfo, err := l.svcCtx.Store.User().FindOneDeviceByIdentifier(l.ctx, req.Identifier)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if ent.IsNotFound(err) {
 			if !registerIpLimit(l.svcCtx, l.ctx, req.IP, "device", req.Identifier) {
 				return nil, errors.Wrapf(xerr.NewErrCode(xerr.RegisterIPLimit), "register ip limit: %v", req.IP)
 			}

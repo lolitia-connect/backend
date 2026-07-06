@@ -1,6 +1,7 @@
 package initialize
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
@@ -148,7 +149,7 @@ func handleInitConfig(c *hertzx.Context) {
 
 	// create database connection
 	dbClient := orm.Mysql{Config: dbConfig}
-	db, err := orm.ConnectDatabase(dbClient)
+	db, _, err := orm.OpenSQL(dbClient)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, hertzx.H{
 			"code": 500,
@@ -158,10 +159,7 @@ func handleInitConfig(c *hertzx.Context) {
 		c.Abort()
 		return
 	}
-	sqlDB, err := db.DB()
-	if err == nil {
-		defer sqlDB.Close()
-	}
+	defer db.Close()
 	// migrate database
 	if err = migrate.Migrate(dbClient.Driver(), dbClient.MigrationDsn()).Up(); err != nil {
 		logger.Errorf("[Init Database] Migrate failed: %v", err.Error())
@@ -175,7 +173,7 @@ func handleInitConfig(c *hertzx.Context) {
 	}
 
 	// create admin user
-	if err = migrate.CreateAdminUser(request.AdminEmail, request.AdminPassword, db); err != nil {
+	if err = migrate.CreateAdminUser(context.Background(), request.AdminEmail, request.AdminPassword, orm.NewEntClient(db, dbClient.Driver())); err != nil {
 		logger.Errorf("[Init Database] Create admin user failed: %v", err.Error())
 		c.JSON(http.StatusOK, hertzx.H{
 			"code": 500,
@@ -240,14 +238,14 @@ func HandleDatabaseTest(c *hertzx.Context) {
 		})
 		return
 	}
-	db, err := orm.ConnectDatabase(orm.Mysql{Config: dbConfig})
+	db, driverName, err := orm.OpenSQL(orm.Mysql{Config: dbConfig})
 	if err != nil {
 		logger.Errorf("connect database failed, err: %v\n", err.Error())
 		status = false
 		message = "Database connection failed"
 		goto result
 	}
-	tx, _ = db.DB()
+	tx = db
 	if tx != nil {
 		defer tx.Close()
 	}
@@ -257,7 +255,7 @@ func HandleDatabaseTest(c *hertzx.Context) {
 		message = "Database connection failed"
 	}
 
-	tables, err = db.Migrator().GetTables()
+	tables, err = listDatabaseTables(tx, driverName)
 	if err != nil {
 		logger.Errorf("database table check failed, err: %v\n", err.Error())
 		status = false
@@ -301,6 +299,27 @@ func buildDatabaseConfig(driver, host, port, database, user, password string) (o
 		cfg.Config = orm.DefaultMySQLConfig
 	}
 	return cfg, nil
+}
+
+func listDatabaseTables(db *sql.DB, driver string) ([]string, error) {
+	query := "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
+	if orm.NormalizeDriver(driver) == orm.DriverPostgres {
+		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+	}
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tables []string
+	for rows.Next() {
+		var table string
+		if err := rows.Scan(&table); err != nil {
+			return nil, err
+		}
+		tables = append(tables, table)
+	}
+	return tables, rows.Err()
 }
 
 func HandleRedisTest(c *hertzx.Context) {

@@ -1,35 +1,26 @@
 package group
 
-import (
-	"time"
-
-	"gorm.io/gorm"
-)
+import "time"
 
 // NodeGroup 节点组模型
 type NodeGroup struct {
-	Id                  int64     `gorm:"primaryKey"`
-	Name                string    `gorm:"type:varchar(255);not null;comment:Name"`
-	Type                string    `gorm:"column:group_type;type:varchar(32);not null;default:'common';comment:Node Group Type"`
-	Description         string    `gorm:"type:varchar(500);comment:Description"`
-	Sort                int       `gorm:"default:0;index:idx_sort;comment:Sort Order"`
-	ForCalculation      *bool     `gorm:"default:true;not null;comment:For Calculation: whether this node group participates in grouping calculation"`
-	IsExpiredGroup      *bool     `gorm:"default:false;not null;index:idx_is_expired_group;comment:Is Expired Group"`
-	ExpiredDaysLimit    int       `gorm:"default:7;not null;comment:Expired days limit (days)"`
-	MaxTrafficGBExpired *int64    `gorm:"default:0;comment:Max traffic for expired users (GB)"`
-	SpeedLimit          int       `gorm:"default:0;not null;comment:Speed limit (KB/s)"`
-	MinTrafficGB        *int64    `gorm:"default:0;comment:Minimum Traffic (GB) for this node group"`
-	MaxTrafficGB        *int64    `gorm:"default:0;comment:Maximum Traffic (GB) for this node group"`
-	CreatedAt           time.Time `gorm:"<-:create;comment:Create Time"`
-	UpdatedAt           time.Time `gorm:"comment:Update Time"`
+	Id                  int64
+	Name                string
+	Type                string
+	Description         string
+	Sort                int
+	ForCalculation      *bool
+	IsExpiredGroup      *bool
+	ExpiredDaysLimit    int
+	MaxTrafficGBExpired *int64
+	SpeedLimit          int
+	MinTrafficGB        *int64
+	MaxTrafficGB        *int64
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // TableName 指定表名
 func (*NodeGroup) TableName() string {
 	return "node_group"
-}
-
-// BeforeCreate GORM hook - 创建前回调
-func (ng *NodeGroup) BeforeCreate(tx *gorm.DB) error {
-	return nil
 }

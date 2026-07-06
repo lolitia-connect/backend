@@ -2,8 +2,9 @@ package client
 
 import (
 	"context"
+	"time"
 
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
 )
 
 type (
@@ -16,66 +17,107 @@ type (
 		Update(ctx context.Context, data *SubscribeApplication) error
 		Delete(ctx context.Context, id int64) error
 		List(ctx context.Context) ([]*SubscribeApplication, error)
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 	}
 	DefaultSubscribeApplicationModel struct {
-		*gorm.DB
+		db *ent.Client
 	}
 )
 
-func NewSubscribeApplicationModel(db *gorm.DB) Model {
+func NewSubscribeApplicationModel(db *ent.Client) Model {
 	return &DefaultSubscribeApplicationModel{
-		DB: db,
+		db: db,
 	}
 }
 
 func (m *DefaultSubscribeApplicationModel) Insert(ctx context.Context, data *SubscribeApplication) error {
-	if err := m.WithContext(ctx).Model(&SubscribeApplication{}).Create(data).Error; err != nil {
+	created, err := m.db.SubscribeApplication.Create().
+		SetName(data.Name).
+		SetIcon(data.Icon).
+		SetDescription(data.Description).
+		SetScheme(data.Scheme).
+		SetUserAgent(data.UserAgent).
+		SetIsDefault(data.IsDefault).
+		SetSubscribeTemplate(data.SubscribeTemplate).
+		SetOutputFormat(data.OutputFormat).
+		SetDownloadLink(data.DownloadLink).
+		Save(ctx)
+	if err != nil {
 		return err
 	}
+	copyFromEnt(data, created)
 	return nil
 }
 
 func (m *DefaultSubscribeApplicationModel) FindOne(ctx context.Context, id int64) (*SubscribeApplication, error) {
-	var resp SubscribeApplication
-	if err := m.WithContext(ctx).Model(&SubscribeApplication{}).Where("id = ?", id).First(&resp).Error; err != nil {
+	resp, err := m.db.SubscribeApplication.Get(ctx, id)
+	if err != nil {
 		return nil, err
 	}
-	return &resp, nil
+	return subscribeApplicationFromEnt(resp), nil
 }
 
 func (m *DefaultSubscribeApplicationModel) Update(ctx context.Context, data *SubscribeApplication) error {
 	if _, err := m.FindOne(ctx, data.Id); err != nil {
 		return err
 	}
-	if err := m.WithContext(ctx).Model(&SubscribeApplication{}).Where("id = ?", data.Id).Save(data).Error; err != nil {
+	updated, err := m.db.SubscribeApplication.UpdateOneID(data.Id).
+		SetName(data.Name).
+		SetIcon(data.Icon).
+		SetDescription(data.Description).
+		SetScheme(data.Scheme).
+		SetUserAgent(data.UserAgent).
+		SetIsDefault(data.IsDefault).
+		SetSubscribeTemplate(data.SubscribeTemplate).
+		SetOutputFormat(data.OutputFormat).
+		SetDownloadLink(data.DownloadLink).
+		SetUpdatedAt(time.Now()).
+		Save(ctx)
+	if err != nil {
 		return err
 	}
+	copyFromEnt(data, updated)
 	return nil
 }
 
 func (m *DefaultSubscribeApplicationModel) Delete(ctx context.Context, id int64) error {
-	if err := m.WithContext(ctx).Model(&SubscribeApplication{}).Where("id = ?", id).Delete(&SubscribeApplication{}).Error; err != nil {
-		return err
-	}
-	return nil
-}
-
-func (m *DefaultSubscribeApplicationModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	tx := m.WithContext(ctx).Begin()
-	if err := fn(tx); err != nil {
-		if rbErr := tx.Rollback().Error; rbErr != nil {
-			return rbErr
-		}
-		return err
-	}
-	return tx.Commit().Error
+	return m.db.SubscribeApplication.DeleteOneID(id).Exec(ctx)
 }
 
 func (m *DefaultSubscribeApplicationModel) List(ctx context.Context) ([]*SubscribeApplication, error) {
-	var resp []*SubscribeApplication
-	if err := m.WithContext(ctx).Find(&resp).Error; err != nil {
+	items, err := m.db.SubscribeApplication.Query().All(ctx)
+	if err != nil {
 		return nil, err
 	}
+	resp := make([]*SubscribeApplication, 0, len(items))
+	for _, item := range items {
+		resp = append(resp, subscribeApplicationFromEnt(item))
+	}
 	return resp, nil
+}
+
+func subscribeApplicationFromEnt(data *ent.SubscribeApplication) *SubscribeApplication {
+	if data == nil {
+		return nil
+	}
+	return &SubscribeApplication{
+		Id:                data.ID,
+		Name:              data.Name,
+		Icon:              data.Icon,
+		Description:       data.Description,
+		Scheme:            data.Scheme,
+		UserAgent:         data.UserAgent,
+		IsDefault:         data.IsDefault,
+		SubscribeTemplate: data.SubscribeTemplate,
+		OutputFormat:      data.OutputFormat,
+		DownloadLink:      data.DownloadLink,
+		CreatedAt:         data.CreatedAt,
+		UpdatedAt:         data.UpdatedAt,
+	}
+}
+
+func copyFromEnt(dst *SubscribeApplication, src *ent.SubscribeApplication) {
+	if dst == nil || src == nil {
+		return
+	}
+	*dst = *subscribeApplicationFromEnt(src)
 }

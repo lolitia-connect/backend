@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -33,10 +34,7 @@ func (l *CreateNodeGroupLogic) CreateNodeGroup(req *types.CreateNodeGroupRequest
 
 	// 验证:系统中只能有一个过期节点组
 	if req.IsExpiredGroup != nil && *req.IsExpiredGroup {
-		var count int64
-		err = l.svcCtx.Store.DB().Model(&group.NodeGroup{}).
-			Where("is_expired_group = ?", true).
-			Count(&count).Error
+		count, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).Count(l.ctx)
 		if err != nil {
 			logger.Errorf("failed to check expired group count: %v", err)
 			return err
@@ -46,42 +44,41 @@ func (l *CreateNodeGroupLogic) CreateNodeGroup(req *types.CreateNodeGroupRequest
 		}
 	}
 
-	// 创建节点组
-	nodeGroup := &group.NodeGroup{
-		Name:                req.Name,
-		Type:                nodeGroupType,
-		Description:         req.Description,
-		Sort:                req.Sort,
-		ForCalculation:      req.ForCalculation,
-		IsExpiredGroup:      req.IsExpiredGroup,
-		MaxTrafficGBExpired: req.MaxTrafficGBExpired,
-		MinTrafficGB:        req.MinTrafficGB,
-		MaxTrafficGB:        req.MaxTrafficGB,
-		CreatedAt:           time.Now(),
-		UpdatedAt:           time.Now(),
-	}
+	now := time.Now()
+	create := l.svcCtx.Ent.NodeGroup.Create().
+		SetName(req.Name).
+		SetType(nodeGroupType).
+		SetDescription(req.Description).
+		SetSort(req.Sort).
+		SetNillableForCalculation(req.ForCalculation).
+		SetNillableIsExpiredGroup(req.IsExpiredGroup).
+		SetNillableMaxTrafficGBExpired(req.MaxTrafficGBExpired).
+		SetNillableMinTrafficGB(req.MinTrafficGB).
+		SetNillableMaxTrafficGB(req.MaxTrafficGB).
+		SetCreatedAt(now).
+		SetUpdatedAt(now)
 
 	// 设置过期节点组的默认值
 	if req.IsExpiredGroup != nil && *req.IsExpiredGroup {
 		// 过期节点组不参与分组计算
-		falseValue := false
-		nodeGroup.ForCalculation = &falseValue
+		create.SetForCalculation(false)
 
 		if req.ExpiredDaysLimit != nil {
-			nodeGroup.ExpiredDaysLimit = *req.ExpiredDaysLimit
+			create.SetExpiredDaysLimit(*req.ExpiredDaysLimit)
 		} else {
-			nodeGroup.ExpiredDaysLimit = 7 // 默认7天
+			create.SetExpiredDaysLimit(7) // 默认7天
 		}
 		if req.SpeedLimit != nil {
-			nodeGroup.SpeedLimit = *req.SpeedLimit
+			create.SetSpeedLimit(*req.SpeedLimit)
 		}
 	}
 
-	if err := l.svcCtx.Store.DB().Create(nodeGroup).Error; err != nil {
+	nodeGroup, err := create.Save(l.ctx)
+	if err != nil {
 		logger.Errorf("failed to create node group: %v", err)
 		return err
 	}
 
-	logger.Infof("created node group: node_group_id=%d", nodeGroup.Id)
+	logger.Infof("created node group: node_group_id=%d", nodeGroup.ID)
 	return nil
 }

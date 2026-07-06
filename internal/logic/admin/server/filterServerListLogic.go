@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/perfect-panel/server/ent"
 	"context"
 	"time"
 
@@ -12,8 +13,7 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
-)
+	)
 
 type FilterServerListLogic struct {
 	logger.Logger
@@ -124,7 +124,7 @@ func (l *FilterServerListLogic) handlerServerStatus(id int64, protocols []types.
 			// get subscribe info
 			info, err := userStore.FindOneUserSubscribe(l.ctx, item.SubscribeId)
 			if err != nil {
-				if !errors.Is(err, gorm.ErrRecordNotFound) {
+				if !ent.IsNotFound(err) {
 					l.Errorw("[handlerServerStatus] FindOneSubscribe Error: ", logger.Field("error", err.Error()), logger.Field("subscribe_id", item.SubscribeId))
 				}
 				continue

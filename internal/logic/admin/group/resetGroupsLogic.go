@@ -3,10 +3,7 @@ package group
 import (
 	"context"
 
-	"github.com/perfect-panel/server/internal/model/group"
-	"github.com/perfect-panel/server/internal/model/node"
-	"github.com/perfect-panel/server/internal/model/subscribe"
-	"github.com/perfect-panel/server/internal/model/system"
+	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/logger"
 )
@@ -28,7 +25,7 @@ func NewResetGroupsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Reset
 
 func (l *ResetGroupsLogic) ResetGroups() error {
 	// 1. Delete all node groups
-	err := l.svcCtx.Store.DB().Where("1 = 1").Delete(&group.NodeGroup{}).Error
+	_, err := l.svcCtx.Ent.NodeGroup.Delete().Exec(l.ctx)
 	if err != nil {
 		l.Errorw("Failed to delete all node groups", logger.Field("error", err.Error()))
 		return err
@@ -36,7 +33,7 @@ func (l *ResetGroupsLogic) ResetGroups() error {
 	l.Infow("Successfully deleted all node groups")
 
 	// 2. Clear node_group_ids for all subscribes (products)
-	err = l.svcCtx.Store.DB().Model(&subscribe.Subscribe{}).Where("1 = 1").Update("node_group_ids", "[]").Error
+	_, err = l.svcCtx.Ent.Subscribe.Update().SetNodeGroupIds([]int64{}).Save(l.ctx)
 	if err != nil {
 		l.Errorw("Failed to clear subscribes' node_group_ids", logger.Field("error", err.Error()))
 		return err
@@ -44,7 +41,7 @@ func (l *ResetGroupsLogic) ResetGroups() error {
 	l.Infow("Successfully cleared all subscribes' node_group_ids")
 
 	// 3. Clear node_group_ids for all nodes
-	err = l.svcCtx.Store.DB().Model(&node.Node{}).Where("1 = 1").Update("node_group_ids", "[]").Error
+	_, err = l.svcCtx.Ent.Node.Update().SetNodeGroupIds([]int64{}).Save(l.ctx)
 	if err != nil {
 		l.Errorw("Failed to clear nodes' node_group_ids", logger.Field("error", err.Error()))
 		return err
@@ -52,7 +49,7 @@ func (l *ResetGroupsLogic) ResetGroups() error {
 	l.Infow("Successfully cleared all nodes' node_group_ids")
 
 	// 4. Clear group history
-	err = l.svcCtx.Store.DB().Where("1 = 1").Delete(&group.GroupHistory{}).Error
+	_, err = l.svcCtx.Ent.GroupHistory.Delete().Exec(l.ctx)
 	if err != nil {
 		l.Errorw("Failed to clear group history", logger.Field("error", err.Error()))
 		// Non-critical error, continue anyway
@@ -61,7 +58,7 @@ func (l *ResetGroupsLogic) ResetGroups() error {
 	}
 
 	// 7. Clear group history details
-	err = l.svcCtx.Store.DB().Where("1 = 1").Delete(&group.GroupHistoryDetail{}).Error
+	_, err = l.svcCtx.Ent.GroupHistoryDetail.Delete().Exec(l.ctx)
 	if err != nil {
 		l.Errorw("Failed to clear group history details", logger.Field("error", err.Error()))
 		// Non-critical error, continue anyway
@@ -70,7 +67,7 @@ func (l *ResetGroupsLogic) ResetGroups() error {
 	}
 
 	// 5. Delete all group config settings
-	err = l.svcCtx.Store.DB().Where("`category` = ?", "group").Delete(&system.System{}).Error
+	_, err = l.svcCtx.Ent.System.Delete().Where(entsystem.Category("group")).Exec(l.ctx)
 	if err != nil {
 		l.Errorw("Failed to delete group config", logger.Field("error", err.Error()))
 		return err

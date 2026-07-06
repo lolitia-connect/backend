@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 
-	"github.com/perfect-panel/server/internal/model/group"
-	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/ent/grouphistorydetail"
+	"github.com/perfect-panel/server/ent/nodegroup"
+	"github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
@@ -38,8 +40,8 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 	if req.HistoryId != nil {
 		// 导出指定历史的详细结果
 		// 1. 查询分组历史详情
-		var details []group.GroupHistoryDetail
-		if err := l.svcCtx.Store.DB().Where("history_id = ?", *req.HistoryId).Find(&details).Error; err != nil {
+		details, err := l.svcCtx.Ent.GroupHistoryDetail.Query().Where(grouphistorydetail.HistoryID(*req.HistoryId)).All(l.ctx)
+		if err != nil {
 			logger.Errorf("failed to get group history details: %v", err)
 			return nil, "", err
 		}
@@ -52,22 +54,26 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 				Email string `json:"email"`
 			}
 			var users []UserInfo
-			if err := l.svcCtx.Store.DB().Raw("SELECT * FROM JSON_ARRAY(?)", detail.UserData).Scan(&users).Error; err != nil {
-				// 如果解析失败，尝试用标准 JSON 解析
+			if err := json.Unmarshal([]byte(detail.UserData), &users); err != nil {
 				logger.Errorf("failed to parse user data: %v", err)
 				continue
 			}
 
 			// 查询节点组名称
-			var nodeGroup group.NodeGroup
-			l.svcCtx.Store.DB().Where("id = ?", detail.NodeGroupId).First(&nodeGroup)
+			nodeGroup, _ := l.svcCtx.Ent.NodeGroup.Query().Where(nodegroup.ID(detail.NodeGroupID)).Only(l.ctx)
 
 			// 为每个用户生成记录
-			for _, user := range users {
+			for _, item := range users {
+				nodeGroupID := detail.NodeGroupID
+				nodeGroupName := ""
+				if nodeGroup != nil {
+					nodeGroupID = nodeGroup.ID
+					nodeGroupName = nodeGroup.Name
+				}
 				records = append(records, []string{
-					fmt.Sprintf("%d", user.Id),
-					fmt.Sprintf("%d", nodeGroup.Id),
-					nodeGroup.Name,
+					fmt.Sprintf("%d", item.Id),
+					fmt.Sprintf("%d", nodeGroupID),
+					nodeGroupName,
 				})
 			}
 		}
@@ -77,28 +83,31 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 			Id          int64 `json:"id"`
 			NodeGroupId int64 `json:"node_group_id"`
 		}
-		var userSubscribes []UserNodeGroupInfo
-		if err := l.svcCtx.Store.DB().Model(&user.Subscribe{}).
-			Select("DISTINCT user_id as id, node_group_id").
-			Where("node_group_id > ?", 0).
-			Find(&userSubscribes).Error; err != nil {
+		userSubscribes, err := l.svcCtx.Ent.UserSubscribe.Query().Where(usersubscribe.NodeGroupIDGT(0)).All(l.ctx)
+		if err != nil {
 			logger.Errorf("failed to get users: %v", err)
 			return nil, "", err
 		}
+		seen := make(map[string]struct{})
 
 		// 为每个用户生成记录
 		for _, us := range userSubscribes {
+			key := fmt.Sprintf("%d:%d", us.UserID, us.NodeGroupID)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
 			// 查询节点组信息
-			var nodeGroup group.NodeGroup
-			if err := l.svcCtx.Store.DB().Where("id = ?", us.NodeGroupId).First(&nodeGroup).Error; err != nil {
+			nodeGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(nodegroup.ID(us.NodeGroupID)).Only(l.ctx)
+			if err != nil {
 				logger.Errorf("failed to find node group: %v", err)
 				// 跳过该用户
 				continue
 			}
 
 			records = append(records, []string{
-				fmt.Sprintf("%d", us.Id),
-				fmt.Sprintf("%d", nodeGroup.Id),
+				fmt.Sprintf("%d", us.UserID),
+				fmt.Sprintf("%d", nodeGroup.ID),
 				nodeGroup.Name,
 			})
 		}

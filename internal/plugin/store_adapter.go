@@ -1,10 +1,10 @@
 package plugin
 
 import (
+	"database/sql"
 	"fmt"
+	"strings"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 // modelWhitelist 定义插件可查询的数据库表白名单
@@ -142,14 +142,15 @@ func allowFields(fields ...string) map[string]bool {
 	return allowed
 }
 
-// StoreAdapter 将 *gorm.DB 适配为 StoreClient 接口
+// StoreAdapter 将 database/sql 适配为 StoreClient 接口
 type StoreAdapter struct {
-	db *gorm.DB
+	db      *sql.DB
+	dialect string
 }
 
 // NewStoreAdapter 创建数据库 Store 适配器
-func NewStoreAdapter(db *gorm.DB) *StoreAdapter {
-	return &StoreAdapter{db: db}
+func NewStoreAdapter(db *sql.DB, dialect string) *StoreAdapter {
+	return &StoreAdapter{db: db, dialect: dialect}
 }
 
 // Query 执行数据库查询（安全：仅白名单表 + 白名单操作）
@@ -188,72 +189,74 @@ func (a *StoreAdapter) query(
 		return nil, 0, err
 	}
 
-	query := a.db.Table(table)
-
-	// 应用查询条件
-	if len(conditions) > 0 {
-		query = query.Where(conditions)
-	}
+	where, args := a.whereClause(conditions, 1)
 
 	// 统计总数
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", quoteIdentifier(table), where)
+	if err := a.db.QueryRow(countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count %s: %w", model, err)
 	}
 
-	// 应用字段选择
+	selectFields := "*"
 	if len(fields) > 0 {
-		// 安全：只选白名单字段（使用 GORM Select 会自动引用）
-		query = query.Select(fields)
-	}
-
-	// 分页
-	if limit > 0 {
-		query = query.Limit(int(limit))
-	}
-	if offset > 0 {
-		query = query.Offset(int(offset))
+		quoted := make([]string, 0, len(fields))
+		for _, field := range fields {
+			quoted = append(quoted, quoteIdentifier(field))
+		}
+		selectFields = strings.Join(quoted, ", ")
 	}
 
 	switch operation {
 	case "list", "find":
-		// 读取操作：返回行列表
-		var rows []map[string]interface{}
-		if err := query.Find(&rows).Error; err != nil {
+		querySQL := fmt.Sprintf("SELECT %s FROM %s%s", selectFields, quoteIdentifier(table), where)
+		queryArgs := append([]interface{}{}, args...)
+		if limit > 0 {
+			querySQL += fmt.Sprintf(" LIMIT %s", a.placeholder(len(queryArgs)+1))
+			queryArgs = append(queryArgs, int(limit))
+		}
+		if offset > 0 {
+			querySQL += fmt.Sprintf(" OFFSET %s", a.placeholder(len(queryArgs)+1))
+			queryArgs = append(queryArgs, int(offset))
+		}
+		rows, err := a.queryRows(querySQL, queryArgs...)
+		if err != nil {
 			return nil, 0, fmt.Errorf("query %s: %w", model, err)
 		}
 		return rows, total, nil
 
 	case "create":
-		// 写入操作：插入
 		if len(conditions) > 0 {
-			err := query.Create(conditions).Error
+			columns, placeholders, insertArgs := a.insertParts(conditions)
+			result, err := a.db.Exec(fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", quoteIdentifier(table), columns, placeholders), insertArgs...)
 			if err != nil {
 				return nil, 0, fmt.Errorf("create %s: %w", model, err)
 			}
-			return []map[string]interface{}{{"affected": 1}}, 1, nil
+			affected, _ := result.RowsAffected()
+			return []map[string]interface{}{{"affected": affected}}, affected, nil
 		}
 		return nil, 0, fmt.Errorf("create requires conditions")
 
 	case "update":
-		// 更新操作
 		if len(conditions) > 0 {
-			result := query.Updates(conditions)
-			if result.Error != nil {
-				return nil, 0, fmt.Errorf("update %s: %w", model, result.Error)
+			setClause, updateArgs := a.setClause(conditions)
+			result, err := a.db.Exec(fmt.Sprintf("UPDATE %s SET %s%s", quoteIdentifier(table), setClause, where), append(updateArgs, args...)...)
+			if err != nil {
+				return nil, 0, fmt.Errorf("update %s: %w", model, err)
 			}
-			return []map[string]interface{}{{"affected": result.RowsAffected}}, result.RowsAffected, nil
+			affected, _ := result.RowsAffected()
+			return []map[string]interface{}{{"affected": affected}}, affected, nil
 		}
 		return nil, 0, fmt.Errorf("update requires conditions")
 
 	case "delete":
-		// 删除操作
 		if len(conditions) > 0 {
-			result := query.Delete(nil)
-			if result.Error != nil {
-				return nil, 0, fmt.Errorf("delete %s: %w", model, result.Error)
+			result, err := a.db.Exec(fmt.Sprintf("DELETE FROM %s%s", quoteIdentifier(table), where), args...)
+			if err != nil {
+				return nil, 0, fmt.Errorf("delete %s: %w", model, err)
 			}
-			return []map[string]interface{}{{"affected": result.RowsAffected}}, result.RowsAffected, nil
+			affected, _ := result.RowsAffected()
+			return []map[string]interface{}{{"affected": affected}}, affected, nil
 		}
 		return nil, 0, fmt.Errorf("delete requires conditions (use specific conditions to avoid mass deletion)")
 
@@ -287,34 +290,40 @@ func (a *StoreAdapter) createTicketReply(operation string, conditions map[string
 		replyType = 1
 	}
 
-	err := a.db.Transaction(func(tx *gorm.DB) error {
+	tx, err := a.db.Begin()
+	if err != nil {
+		return nil, 0, err
+	}
+	err = func() error {
 		var count int64
-		if err := tx.Table("ticket").Where("id = ?", ticketID).Count(&count).Error; err != nil {
+		if err := tx.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s = %s", quoteIdentifier("ticket"), quoteIdentifier("id"), a.placeholder(1)), ticketID).Scan(&count); err != nil {
 			return fmt.Errorf("find ticket: %w", err)
 		}
 		if count == 0 {
 			return fmt.Errorf("ticket %d not found", ticketID)
 		}
 
-		if err := tx.Table("ticket_follow").Create(map[string]interface{}{
-			"ticket_id":  ticketID,
-			"from":       from,
-			"type":       uint8(replyType),
-			"content":    content,
-			"created_at": time.Now(),
-		}).Error; err != nil {
+		_, err := tx.Exec(fmt.Sprintf("INSERT INTO %s (%s, %s, %s, %s, %s) VALUES (%s, %s, %s, %s, %s)",
+			quoteIdentifier("ticket_follow"), quoteIdentifier("ticket_id"), quoteIdentifier("from"), quoteIdentifier("type"), quoteIdentifier("content"), quoteIdentifier("created_at"),
+			a.placeholder(1), a.placeholder(2), a.placeholder(3), a.placeholder(4), a.placeholder(5)),
+			ticketID, from, uint8(replyType), content, time.Now())
+		if err != nil {
 			return fmt.Errorf("create ticket follow: %w", err)
 		}
 
-		if err := tx.Table("ticket").Where("id = ?", ticketID).Updates(map[string]interface{}{
-			"status":     2,
-			"updated_at": time.Now(),
-		}).Error; err != nil {
+		_, err = tx.Exec(fmt.Sprintf("UPDATE %s SET %s = %s, %s = %s WHERE %s = %s",
+			quoteIdentifier("ticket"), quoteIdentifier("status"), a.placeholder(1), quoteIdentifier("updated_at"), a.placeholder(2), quoteIdentifier("id"), a.placeholder(3)),
+			2, time.Now(), ticketID)
+		if err != nil {
 			return fmt.Errorf("update ticket status: %w", err)
 		}
 		return nil
-	})
+	}()
 	if err != nil {
+		_ = tx.Rollback()
+		return nil, 0, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, 0, err
 	}
 
@@ -358,6 +367,92 @@ func int64FromValue(value interface{}) (int64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func (a *StoreAdapter) placeholder(index int) string {
+	if a.dialect == "postgres" || a.dialect == "pgx" {
+		return fmt.Sprintf("$%d", index)
+	}
+	return "?"
+}
+
+func (a *StoreAdapter) whereClause(conditions map[string]interface{}, start int) (string, []interface{}) {
+	if len(conditions) == 0 {
+		return "", nil
+	}
+	parts := make([]string, 0, len(conditions))
+	args := make([]interface{}, 0, len(conditions))
+	idx := start
+	for field, value := range conditions {
+		parts = append(parts, fmt.Sprintf("%s = %s", quoteIdentifier(field), a.placeholder(idx)))
+		args = append(args, value)
+		idx++
+	}
+	return " WHERE " + strings.Join(parts, " AND "), args
+}
+
+func (a *StoreAdapter) insertParts(values map[string]interface{}) (string, string, []interface{}) {
+	columns := make([]string, 0, len(values))
+	placeholders := make([]string, 0, len(values))
+	args := make([]interface{}, 0, len(values))
+	idx := 1
+	for field, value := range values {
+		columns = append(columns, quoteIdentifier(field))
+		placeholders = append(placeholders, a.placeholder(idx))
+		args = append(args, value)
+		idx++
+	}
+	return strings.Join(columns, ", "), strings.Join(placeholders, ", "), args
+}
+
+func (a *StoreAdapter) setClause(values map[string]interface{}) (string, []interface{}) {
+	parts := make([]string, 0, len(values))
+	args := make([]interface{}, 0, len(values))
+	idx := 1
+	for field, value := range values {
+		parts = append(parts, fmt.Sprintf("%s = %s", quoteIdentifier(field), a.placeholder(idx)))
+		args = append(args, value)
+		idx++
+	}
+	return strings.Join(parts, ", "), args
+}
+
+func (a *StoreAdapter) queryRows(query string, args ...interface{}) ([]map[string]interface{}, error) {
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		values := make([]interface{}, len(columns))
+		ptrs := make([]interface{}, len(columns))
+		for i := range values {
+			ptrs[i] = &values[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		row := make(map[string]interface{}, len(columns))
+		for i, column := range columns {
+			if b, ok := values[i].([]byte); ok {
+				row[column] = string(b)
+			} else {
+				row[column] = values[i]
+			}
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+func quoteIdentifier(identifier string) string {
+	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`"
 }
 
 func validateDBConditionFields(model string, conditions map[string]interface{}) error {

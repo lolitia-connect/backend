@@ -2,13 +2,12 @@ package log
 
 import (
 	"context"
-	"errors"
 
-	"github.com/perfect-panel/server/pkg/orm"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entsystemlog "github.com/perfect-panel/server/ent/systemlog"
 )
 
-func NewModel(db *gorm.DB) Model {
+func NewModel(db *ent.Client) Model {
 	return &customSystemLogModel{
 		defaultLogModel: newSystemLogModel(db),
 	}
@@ -30,7 +29,6 @@ type customSystemLogLogicModel interface {
 }
 
 func (m *customSystemLogModel) FilterSystemLog(ctx context.Context, filter *FilterParams) ([]*SystemLog, int64, error) {
-	tx := m.WithContext(ctx).Model(&SystemLog{}).Order("id DESC")
 	if filter == nil {
 		filter = &FilterParams{
 			Page: 1,
@@ -45,44 +43,59 @@ func (m *customSystemLogModel) FilterSystemLog(ctx context.Context, filter *Filt
 		filter.Size = 10
 	}
 
+	query := m.db.SystemLog.Query()
 	if filter.Type != 0 {
-		tx = tx.Where("type = ?", filter.Type)
+		query = query.Where(entsystemlog.TypeEQ(filter.Type))
 	}
 
 	if filter.Data != "" {
-		tx = tx.Where("date = ?", filter.Data)
+		query = query.Where(entsystemlog.DateEQ(filter.Data))
 	}
 
 	if filter.ObjectID != 0 {
-		tx = tx.Where("object_id = ?", filter.ObjectID)
+		query = query.Where(entsystemlog.ObjectIDEQ(filter.ObjectID))
 	}
 	if filter.Search != "" {
-		tx = tx.Scopes(orm.ContainsLike([]string{"content"}, filter.Search))
+		query = query.Where(entsystemlog.ContentContains(filter.Search))
 	}
 
-	var total int64
-	var logs []*SystemLog
-	err := tx.Count(&total).Limit(filter.Size).Offset((filter.Page - 1) * filter.Size).Find(&logs).Error
-	return logs, total, err
+	total, err := query.Clone().Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	items, err := query.Order(ent.Desc(entsystemlog.FieldID)).Limit(filter.Size).Offset((filter.Page - 1) * filter.Size).All(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	logs := make([]*SystemLog, 0, len(items))
+	for _, item := range items {
+		logs = append(logs, logFromEnt(item))
+	}
+	return logs, int64(total), nil
 }
 
 func (m *customSystemLogModel) FindFirstByDateType(ctx context.Context, date string, typ uint8) (*SystemLog, error) {
-	var data SystemLog
-	err := m.WithContext(ctx).Model(&SystemLog{}).Where("date = ? AND type = ?", date, typ).First(&data).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	data, err := m.db.SystemLog.Query().Where(entsystemlog.DateEQ(date), entsystemlog.TypeEQ(typ)).First(ctx)
+	if ent.IsNotFound(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return &data, nil
+	return logFromEnt(data), nil
 }
 
 func (m *customSystemLogModel) FindByDatesType(ctx context.Context, dates []string, typ uint8) ([]*SystemLog, error) {
-	var data []*SystemLog
 	if len(dates) == 0 {
-		return data, nil
+		return []*SystemLog{}, nil
 	}
-	err := m.WithContext(ctx).Model(&SystemLog{}).Where("date IN ? AND type = ?", dates, typ).Find(&data).Error
-	return data, err
+	items, err := m.db.SystemLog.Query().Where(entsystemlog.DateIn(dates...), entsystemlog.TypeEQ(typ)).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]*SystemLog, 0, len(items))
+	for _, item := range items {
+		data = append(data, logFromEnt(item))
+	}
+	return data, nil
 }

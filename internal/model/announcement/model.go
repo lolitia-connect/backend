@@ -3,10 +3,8 @@ package announcement
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/orm"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
+	"github.com/perfect-panel/server/ent"
+	entannouncement "github.com/perfect-panel/server/ent/announcement"
 )
 
 type customAnnouncementLogicModel interface {
@@ -14,9 +12,9 @@ type customAnnouncementLogicModel interface {
 }
 
 // NewModel returns a model for the database table.
-func NewModel(conn *gorm.DB, c *redis.Client) Model {
+func NewModel(conn *ent.Client) Model {
 	return &customAnnouncementModel{
-		defaultAnnouncementModel: newAnnouncementModel(conn, c),
+		defaultAnnouncementModel: newAnnouncementModel(conn),
 	}
 }
 
@@ -32,26 +30,30 @@ func (m *customAnnouncementModel) GetAnnouncementListByPage(ctx context.Context,
 	if size == 0 {
 		size = 10
 	}
-	var list []*Announcement
-	var total int64
-	err := m.QueryNoCacheCtx(ctx, &list, func(conn *gorm.DB, v interface{}) error {
-		conn = conn.Model(&Announcement{})
-		if filter.Show != nil {
-			conn = conn.Where(clause.Eq{
-				Column: clause.Column{Name: "show"},
-				Value:  *filter.Show,
-			})
-		}
-		if filter.Pinned != nil {
-			conn = conn.Where("pinned = ?", *filter.Pinned)
-		}
-		if filter.Popup != nil {
-			conn = conn.Where("popup = ?", *filter.Popup)
-		}
-		if filter.Search != "" {
-			conn = conn.Scopes(orm.ContainsLike([]string{"title", "content"}, filter.Search))
-		}
-		return conn.Count(&total).Offset((page - 1) * size).Limit(size).Find(&list).Error
-	})
-	return total, list, err
+	query := m.db.Announcement.Query()
+	if filter.Show != nil {
+		query = query.Where(entannouncement.Show(*filter.Show))
+	}
+	if filter.Pinned != nil {
+		query = query.Where(entannouncement.Pinned(*filter.Pinned))
+	}
+	if filter.Popup != nil {
+		query = query.Where(entannouncement.Popup(*filter.Popup))
+	}
+	if filter.Search != "" {
+		query = query.Where(entannouncement.Or(entannouncement.TitleContains(filter.Search), entannouncement.ContentContains(filter.Search)))
+	}
+	total, err := query.Count(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	items, err := query.Offset((page - 1) * size).Limit(size).All(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	list := make([]*Announcement, 0, len(items))
+	for _, item := range items {
+		list = append(list, announcementFromEnt(item))
+	}
+	return int64(total), list, nil
 }

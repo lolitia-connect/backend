@@ -7,6 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
+	"github.com/perfect-panel/server/ent/trafficlog"
+	"github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/subscribe"
@@ -274,27 +278,26 @@ func (l *GetServerUserListLogic) shouldIncludeServerUser(userSub *user.Subscribe
 }
 
 func (l *GetServerUserListLogic) getExpiredUsers(serverNodeGroupIds []int64) ([]types.ServerUser, int64) {
-	var expiredGroup group.NodeGroup
-	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error; err != nil {
+	entExpiredGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).First(l.ctx)
+	if err != nil {
 		return nil, 0
 	}
-	if expiredGroup.Id == 0 {
-		return nil, 0
-	}
+	expiredGroup := entNodeGroupToModel(entExpiredGroup)
 
 	if !tool.Contains(serverNodeGroupIds, expiredGroup.Id) {
 		return nil, 0
 	}
 
-	var expiredSubs []*user.Subscribe
-	if err := l.svcCtx.Store.DB().Where("status = ?", 3).Find(&expiredSubs).Error; err != nil {
+	entExpiredSubs, err := l.svcCtx.Ent.UserSubscribe.Query().Where(usersubscribe.Status(3)).All(l.ctx)
+	if err != nil {
 		l.Errorw("query expired subscriptions failed", logger.Field("error", err.Error()))
 		return nil, 0
 	}
 
 	users := make([]types.ServerUser, 0)
 	seen := make(map[int64]bool)
-	for _, userSub := range expiredSubs {
+	for _, entUserSub := range entExpiredSubs {
+		userSub := entUserSubscribeToModel(entUserSub)
 		if !l.checkExpiredUserEligibility(userSub, &expiredGroup) {
 			continue
 		}
@@ -328,13 +331,11 @@ func (l *GetServerUserListLogic) checkExpiredUserEligibility(userSub *user.Subsc
 }
 
 func (l *GetServerUserListLogic) canUseExpiredNodeGroup(userSub *user.Subscribe, serverNodeGroupIds []int64) bool {
-	var expiredGroup group.NodeGroup
-	if err := l.svcCtx.Store.DB().Where("is_expired_group = ?", true).Find(&expiredGroup).Error; err != nil {
+	entExpiredGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).First(l.ctx)
+	if err != nil {
 		return false
 	}
-	if expiredGroup.Id == 0 {
-		return false
-	}
+	expiredGroup := entNodeGroupToModel(entExpiredGroup)
 
 	if !tool.Contains(serverNodeGroupIds, expiredGroup.Id) {
 		return false
@@ -353,6 +354,54 @@ func (l *GetServerUserListLogic) canUseExpiredNodeGroup(userSub *user.Subscribe,
 	}
 
 	return true
+}
+
+func entNodeGroupToModel(ng *ent.NodeGroup) group.NodeGroup {
+	forCalculation := ng.ForCalculation
+	isExpiredGroup := ng.IsExpiredGroup
+	return group.NodeGroup{
+		Id:                  ng.ID,
+		Name:                ng.Name,
+		Type:                ng.Type,
+		Description:         ng.Description,
+		Sort:                ng.Sort,
+		ForCalculation:      &forCalculation,
+		IsExpiredGroup:      &isExpiredGroup,
+		ExpiredDaysLimit:    ng.ExpiredDaysLimit,
+		MaxTrafficGBExpired: ng.MaxTrafficGBExpired,
+		SpeedLimit:          ng.SpeedLimit,
+		MinTrafficGB:        ng.MinTrafficGB,
+		MaxTrafficGB:        ng.MaxTrafficGB,
+		CreatedAt:           ng.CreatedAt,
+		UpdatedAt:           ng.UpdatedAt,
+	}
+}
+
+func entUserSubscribeToModel(sub *ent.UserSubscribe) *user.Subscribe {
+	groupLocked := sub.GroupLocked
+	return &user.Subscribe{
+		Id:               sub.ID,
+		UserId:           sub.UserID,
+		OrderId:          sub.OrderID,
+		SubscribeId:      sub.SubscribeID,
+		NodeGroupId:      sub.NodeGroupID,
+		GroupLocked:      &groupLocked,
+		StartTime:        sub.StartTime,
+		ExpireTime:       sub.ExpireTime,
+		FinishedAt:       sub.FinishedAt,
+		Traffic:          sub.Traffic,
+		TrafficUnlimited: sub.TrafficUnlimited,
+		Download:         sub.Download,
+		Upload:           sub.Upload,
+		ExpiredDownload:  sub.ExpiredDownload,
+		ExpiredUpload:    sub.ExpiredUpload,
+		Token:            sub.Token,
+		UUID:             sub.UUID,
+		Status:           sub.Status,
+		Note:             sub.Note,
+		CreatedAt:        sub.CreatedAt,
+		UpdatedAt:        sub.UpdatedAt,
+	}
 }
 
 // calculateEffectiveSpeedLimit 计算用户的实际限速值（考虑按量限速规则）
@@ -401,18 +450,12 @@ func (l *GetServerUserListLogic) calculateEffectiveSpeedLimit(sub *subscribe.Sub
 			continue
 		}
 
-		// 查询该时段的流量使用
-		var usedTraffic struct {
-			Upload   int64
-			Download int64
-		}
-		err := l.svcCtx.Store.DB().WithContext(l.ctx).
-			Table("traffic_log").
-			Select("COALESCE(SUM(upload), 0) as upload, COALESCE(SUM(download), 0) as download").
-			Where("user_id = ? AND subscribe_id = ? AND timestamp >= ? AND timestamp < ?",
-				userSub.UserId, userSub.Id, startTime, endTime).
-			Scan(&usedTraffic).Error
-
+		usedTraffic, err := l.svcCtx.Ent.TrafficLog.Query().Where(
+			trafficlog.UserID(userSub.UserId),
+			trafficlog.SubscribeID(userSub.Id),
+			trafficlog.TimestampGTE(startTime),
+			trafficlog.TimestampLT(endTime),
+		).Aggregate(ent.Sum(trafficlog.FieldUpload), ent.Sum(trafficlog.FieldDownload)).Ints(l.ctx)
 		if err != nil {
 			l.Errorw("[calculateEffectiveSpeedLimit] Failed to query traffic usage",
 				logger.Field("error", err.Error()),
@@ -420,9 +463,16 @@ func (l *GetServerUserListLogic) calculateEffectiveSpeedLimit(sub *subscribe.Sub
 				logger.Field("subscribe_id", userSub.Id))
 			continue
 		}
+		upload, download := int64(0), int64(0)
+		if len(usedTraffic) > 0 {
+			upload = int64(usedTraffic[0])
+		}
+		if len(usedTraffic) > 1 {
+			download = int64(usedTraffic[1])
+		}
 
 		// 计算已使用流量（GB）
-		usedGB := float64(usedTraffic.Upload+usedTraffic.Download) / (1024 * 1024 * 1024)
+		usedGB := float64(upload+download) / (1024 * 1024 * 1024)
 
 		// 如果已使用流量达到或超过阈值，应用限速
 		if usedGB >= float64(rule.TrafficUsage) {

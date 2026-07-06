@@ -2,12 +2,9 @@ package ads
 
 import (
 	"context"
-	"errors"
-	"fmt"
 
-	"github.com/perfect-panel/server/pkg/cache"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/gorm"
+	"github.com/perfect-panel/server/ent"
+	entads "github.com/perfect-panel/server/ent/ads"
 )
 
 var _ Model = (*customAdsModel)(nil)
@@ -25,87 +22,93 @@ type (
 		FindOne(ctx context.Context, id int64) (*Ads, error)
 		Update(ctx context.Context, data *Ads) error
 		Delete(ctx context.Context, id int64) error
-		Transaction(ctx context.Context, fn func(db *gorm.DB) error) error
 	}
 
 	customAdsModel struct {
 		*defaultAdsModel
 	}
 	defaultAdsModel struct {
-		cache.CachedConn
-		table string
+		db *ent.Client
 	}
 )
 
-func newAdsModel(db *gorm.DB, c *redis.Client) *defaultAdsModel {
+func newAdsModel(db *ent.Client) *defaultAdsModel {
 	return &defaultAdsModel{
-		CachedConn: cache.NewConn(db, c),
-		table:      "ads",
+		db: db,
 	}
-}
-
-//nolint:unused
-func (m *defaultAdsModel) batchGetCacheKeys(ads ...*Ads) []string {
-	var keys []string
-	for _, ad := range ads {
-		keys = append(keys, m.getCacheKeys(ad)...)
-	}
-	return keys
-
-}
-func (m *defaultAdsModel) getCacheKeys(data *Ads) []string {
-	if data == nil {
-		return []string{}
-	}
-	adsIdKey := fmt.Sprintf("%s%v", cacheAdsIdPrefix, data.Id)
-	cacheKeys := []string{
-		adsIdKey,
-	}
-	return cacheKeys
 }
 
 func (m *defaultAdsModel) Insert(ctx context.Context, data *Ads) error {
-	err := m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		return conn.Create(&data).Error
-	}, m.getCacheKeys(data)...)
-	return err
+	created, err := m.db.Ads.Create().
+		SetTitle(data.Title).
+		SetType(data.Type).
+		SetContent(data.Content).
+		SetDescription(data.Description).
+		SetTargetURL(data.TargetURL).
+		SetStartTime(data.StartTime).
+		SetEndTime(data.EndTime).
+		SetStatus(data.Status).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	copyFromEnt(data, created)
+	return nil
 }
 
 func (m *defaultAdsModel) FindOne(ctx context.Context, id int64) (*Ads, error) {
-	var resp Ads
-	err := m.QueryNoCacheCtx(ctx, &resp, func(conn *gorm.DB, v interface{}) error {
-		return conn.Model(&Ads{}).Where("id = ?", id).First(&resp).Error
-	})
-	return &resp, err
+	data, err := m.db.Ads.Query().Where(entads.ID(id)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return adsFromEnt(data), nil
 }
 
 func (m *defaultAdsModel) Update(ctx context.Context, data *Ads) error {
-	old, err := m.FindOne(ctx, data.Id)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	updated, err := m.db.Ads.UpdateOneID(data.Id).
+		SetTitle(data.Title).
+		SetType(data.Type).
+		SetContent(data.Content).
+		SetDescription(data.Description).
+		SetTargetURL(data.TargetURL).
+		SetStartTime(data.StartTime).
+		SetEndTime(data.EndTime).
+		SetStatus(data.Status).
+		Save(ctx)
+	if err != nil {
 		return err
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Save(data).Error
-	}, m.getCacheKeys(old)...)
-	return err
+	copyFromEnt(data, updated)
+	return nil
 }
 
 func (m *defaultAdsModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+	err := m.db.Ads.DeleteOneID(id).Exec(ctx)
+	if ent.IsNotFound(err) {
+		return nil
 	}
-	err = m.ExecCtx(ctx, func(conn *gorm.DB) error {
-		db := conn
-		return db.Delete(&Ads{}, id).Error
-	}, m.getCacheKeys(data)...)
 	return err
 }
 
-func (m *defaultAdsModel) Transaction(ctx context.Context, fn func(db *gorm.DB) error) error {
-	return m.TransactCtx(ctx, fn)
+func adsFromEnt(data *ent.Ads) *Ads {
+	if data == nil {
+		return nil
+	}
+	var resp Ads
+	copyFromEnt(&resp, data)
+	return &resp
+}
+
+func copyFromEnt(dst *Ads, src *ent.Ads) {
+	dst.Id = src.ID
+	dst.Title = src.Title
+	dst.Type = src.Type
+	dst.Content = src.Content
+	dst.Description = src.Description
+	dst.TargetURL = src.TargetURL
+	dst.StartTime = src.StartTime
+	dst.EndTime = src.EndTime
+	dst.Status = src.Status
+	dst.CreatedAt = src.CreatedAt
+	dst.UpdatedAt = src.UpdatedAt
 }

@@ -1,14 +1,13 @@
 package migrate
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
-
-	"gorm.io/gorm"
 )
 
 // ExecuteSQLFile 执行嵌入的 SQL 文件，去除注释
-func ExecuteSQLFile(tx *gorm.DB, path string) error {
+func ExecuteSQLFile(tx *sql.Tx, path string) error {
 	// 读取 SQL 文件内容
 	sqlContent, err := sqlFiles.ReadFile(path)
 	if err != nil {
@@ -28,7 +27,7 @@ func ExecuteSQLFile(tx *gorm.DB, path string) error {
 			continue
 		}
 		// 执行 SQL 语句
-		if err := tx.Exec(stmt).Error; err != nil {
+		if _, err := tx.Exec(stmt); err != nil {
 			return fmt.Errorf("failed to execute SQL statement: %v \nSQL: %s", err.Error(), stmt)
 		}
 	}

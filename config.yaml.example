@@ -14,16 +14,15 @@ Logger: # 日志配置
   Compress: true # 是否压缩日志文件
   Level: debug # 日志级别: debug, info, warn, error, panic, fatal
 
-MySQL:
-  Addr: 127.0.0.1:3306 # MySQL地址
-  Username: root # MySQL用户名 (与创建的用户一致)
-  Password: password # MySQL密码 (换成之前生成的随机密码)
-  Dbname: ppanel # MySQL数据库名 (与脚本创建的数据库一致)
-  Config: charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai
+Database:
+  Driver: postgres # 数据库驱动: postgres 或 mysql
+  Addr: 127.0.0.1:5432 # 数据库地址，格式：host:port
+  Username: ppanel # 数据库用户名 (与创建的用户一致)
+  Password: password # 数据库密码 (换成之前生成的随机密码)
+  Dbname: ppanel # 数据库名 (与脚本创建的数据库一致)
+  Config: sslmode=disable&TimeZone=Asia/Shanghai # PostgreSQL配置；MySQL使用 charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai
   MaxIdleConns: 10
-  MaxOpenConns: 100
-  LogMode: debug
-  LogZap: true
+  MaxOpenConns: 10
   SlowThreshold: 1000
 
 Redis:

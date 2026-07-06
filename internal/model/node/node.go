@@ -69,7 +69,3 @@ type Node struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
-
-func (n *Node) TableName() string {
-	return "nodes"
-}

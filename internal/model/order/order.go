@@ -35,7 +35,3 @@ type OrdersTotal struct {
 	NewOrderAmount     int64
 	RenewalOrderAmount int64
 }
-
-func (Order) TableName() string {
-	return "order"
-}

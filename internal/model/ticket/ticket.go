@@ -19,10 +19,6 @@ type Ticket struct {
 	UpdatedAt   time.Time
 }
 
-func (Ticket) TableName() string {
-	return "ticket"
-}
-
 type Follow struct {
 	Id        int64
 	TicketId  int64
@@ -30,8 +26,4 @@ type Follow struct {
 	Type      uint8
 	Content   string
 	CreatedAt time.Time
-}
-
-func (Follow) TableName() string {
-	return "ticket_follow"
 }

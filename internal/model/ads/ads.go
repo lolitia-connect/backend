@@ -15,7 +15,3 @@ type Ads struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
-
-func (Ads) TableName() string {
-	return "ads"
-}

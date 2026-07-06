@@ -23,9 +23,3 @@ func TestTrafficRanges(t *testing.T) {
 		t.Fatalf("unexpected month end: %v", end)
 	}
 }
-
-func TestTrafficLogTableName(t *testing.T) {
-	if (TrafficLog{}).TableName() != "traffic_log" {
-		t.Fatalf("unexpected table name: %s", (TrafficLog{}).TableName())
-	}
-}

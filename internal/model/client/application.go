@@ -20,10 +20,6 @@ type SubscribeApplication struct {
 	UpdatedAt         time.Time
 }
 
-func (SubscribeApplication) TableName() string {
-	return "subscribe_application"
-}
-
 type DownloadLink struct {
 	IOS     string `json:"ios,omitempty"`
 	Android string `json:"android,omitempty"`

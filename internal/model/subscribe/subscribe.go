@@ -83,10 +83,6 @@ type Subscribe struct {
 	UpdatedAt         time.Time
 }
 
-func (*Subscribe) TableName() string {
-	return "subscribe"
-}
-
 type Discount struct {
 	Months   int64 `json:"months"`
 	Discount int64 `json:"discount"`
@@ -98,8 +94,4 @@ type Group struct {
 	Description string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-}
-
-func (Group) TableName() string {
-	return "subscribe_group"
 }

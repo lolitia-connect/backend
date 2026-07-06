@@ -26,10 +26,6 @@ type Task struct {
 	UpdatedAt time.Time
 }
 
-func (Task) TableName() string {
-	return "task"
-}
-
 type ScopeType int8
 
 const (

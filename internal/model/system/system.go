@@ -12,7 +12,3 @@ type System struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
-
-func (System) TableName() string {
-	return "system"
-}

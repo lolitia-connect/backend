@@ -42,8 +42,3 @@ type OrdersTotalWithDate struct {
 	NewOrderAmount     int64
 	RenewalOrderAmount int64
 }
-
-type UserCounts struct {
-	NewUsers     int64
-	RenewalUsers int64
-}

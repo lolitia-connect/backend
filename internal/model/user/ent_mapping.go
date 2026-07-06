@@ -11,6 +11,7 @@ import (
 	entrecord "github.com/perfect-panel/server/ent/userdeviceonlinerecord"
 	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 	entwithdrawal "github.com/perfect-panel/server/ent/userwithdrawal"
+	modelsubscribe "github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -135,6 +136,47 @@ func entToSubscribeDetails(e *ent.UserSubscribe) *SubscribeDetails {
 		Note:             e.Note,
 		CreatedAt:        e.CreatedAt,
 		UpdatedAt:        e.UpdatedAt,
+	}
+}
+
+func entToSubscribePlan(e *ent.Subscribe) *modelsubscribe.Subscribe {
+	if e == nil {
+		return nil
+	}
+	show := e.Show
+	sell := e.Sell
+	allowDeduction := e.AllowDeduction
+	renewalReset := e.RenewalReset
+	return &modelsubscribe.Subscribe{
+		Id:                e.ID,
+		Name:              e.Name,
+		Language:          e.Language,
+		Description:       e.Description,
+		UnitPrice:         e.UnitPrice,
+		UnitTime:          e.UnitTime,
+		Discount:          e.Discount,
+		Replacement:       e.Replacement,
+		Inventory:         e.Inventory,
+		Traffic:           e.Traffic,
+		TrafficUnlimited:  e.TrafficUnlimited,
+		SpeedLimit:        e.SpeedLimit,
+		DeviceLimit:       e.DeviceLimit,
+		Quota:             e.Quota,
+		Nodes:             e.Nodes,
+		NodeTags:          e.NodeTags,
+		NodeGroupIds:      modelsubscribe.JSONInt64Slice(e.NodeGroupIds),
+		NodeGroupId:       e.NodeGroupID,
+		TrafficLimit:      e.TrafficLimit,
+		Show:              &show,
+		Sell:              &sell,
+		Sort:              e.Sort,
+		DeductionRatio:    e.DeductionRatio,
+		AllowDeduction:    &allowDeduction,
+		ResetCycle:        e.ResetCycle,
+		RenewalReset:      &renewalReset,
+		ShowOriginalPrice: e.ShowOriginalPrice,
+		CreatedAt:         e.CreatedAt,
+		UpdatedAt:         e.UpdatedAt,
 	}
 }
 

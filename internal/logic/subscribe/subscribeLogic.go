@@ -184,7 +184,7 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 				}
 				return userSubscribe.Traffic
 			}(),
-			userSubscribe.ExpireTime.Unix(),
+			tool.Unix(userSubscribe.ExpireTime),
 		),
 		Headers: headers,
 	}
@@ -441,7 +441,8 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 }
 
 func (l *SubscribeLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
-	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
+	expireTime := tool.Unix(userSub.ExpireTime)
+	return expireTime < time.Now().Unix() && expireTime != 0
 }
 
 // isGroupEnabled 判断分组功能是否启用

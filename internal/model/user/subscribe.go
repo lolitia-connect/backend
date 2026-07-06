@@ -8,6 +8,8 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/predicate"
+	entplan "github.com/perfect-panel/server/ent/subscribe"
+	entuser "github.com/perfect-panel/server/ent/user"
 	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 )
 
@@ -107,6 +109,10 @@ func (m *defaultUserModel) QueryUserSubscribe(ctx context.Context, userId int64,
 	key := fmt.Sprintf("%s%d", cacheUserSubscribeUserPrefix, userId)
 	var list []*SubscribeDetails
 	if err := getJSONCache(ctx, m.redis, key, &list); err == nil {
+		if err := m.hydrateSubscribeDetails(ctx, list...); err != nil {
+			return nil, err
+		}
+		_ = setJSONCache(ctx, m.redis, key, list)
 		return list, nil
 	}
 	now := time.Now()
@@ -122,6 +128,9 @@ func (m *defaultUserModel) QueryUserSubscribe(ctx context.Context, userId int64,
 		return nil, err
 	}
 	list = entSubscribeDetailsToModels(items)
+	if err := m.hydrateSubscribeDetails(ctx, list...); err != nil {
+		return nil, err
+	}
 	_ = setJSONCache(ctx, m.redis, key, list)
 	return list, nil
 }
@@ -131,7 +140,68 @@ func (m *defaultUserModel) FindOneUserSubscribe(ctx context.Context, id int64) (
 	//TODO cache
 	//key := fmt.Sprintf("%s%d", cacheUserSubscribeUserPrefix, userId)
 	item, err := m.db.UserSubscribe.Get(ctx, id)
-	return entToSubscribeDetails(item), err
+	data := entToSubscribeDetails(item)
+	if err != nil || data == nil {
+		return data, err
+	}
+	if err := m.hydrateSubscribeDetails(ctx, data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func (m *defaultUserModel) hydrateSubscribeDetails(ctx context.Context, list ...*SubscribeDetails) error {
+	if len(list) == 0 {
+		return nil
+	}
+	userIds := make([]int64, 0, len(list))
+	subscribeIds := make([]int64, 0, len(list))
+	seenUsers := make(map[int64]struct{}, len(list))
+	seenSubscribes := make(map[int64]struct{}, len(list))
+	for _, item := range list {
+		if item == nil {
+			continue
+		}
+		if _, ok := seenUsers[item.UserId]; !ok && item.UserId > 0 {
+			seenUsers[item.UserId] = struct{}{}
+			userIds = append(userIds, item.UserId)
+		}
+		if _, ok := seenSubscribes[item.SubscribeId]; !ok && item.SubscribeId > 0 {
+			seenSubscribes[item.SubscribeId] = struct{}{}
+			subscribeIds = append(subscribeIds, item.SubscribeId)
+		}
+	}
+
+	users := make(map[int64]*User, len(userIds))
+	if len(userIds) > 0 {
+		items, err := m.db.User.Query().Where(entuser.IDIn(userIds...)).All(ctx)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			users[item.ID] = entToUser(item)
+		}
+	}
+
+	subscribes := make(map[int64]*ent.Subscribe, len(subscribeIds))
+	if len(subscribeIds) > 0 {
+		items, err := m.db.Subscribe.Query().Where(entplan.IDIn(subscribeIds...)).All(ctx)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			subscribes[item.ID] = item
+		}
+	}
+
+	for _, item := range list {
+		if item == nil {
+			continue
+		}
+		item.User = users[item.UserId]
+		item.Subscribe = entToSubscribePlan(subscribes[item.SubscribeId])
+	}
+	return nil
 }
 
 // FindOneSubscribeByToken  finds a record by token.

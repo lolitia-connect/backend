@@ -66,5 +66,12 @@ func (m *customUserModel) FindOneByReferCode(ctx context.Context, referCode stri
 
 func (m *customUserModel) FindOneSubscribeDetailsById(ctx context.Context, id int64) (*SubscribeDetails, error) {
 	item, err := m.db.UserSubscribe.Get(ctx, id)
-	return entToSubscribeDetails(item), err
+	data := entToSubscribeDetails(item)
+	if err != nil || data == nil {
+		return data, err
+	}
+	if err := m.hydrateSubscribeDetails(ctx, data); err != nil {
+		return nil, err
+	}
+	return data, nil
 }

@@ -68,15 +68,15 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 			UserId:           userSubscribe.UserId,
 			OrderId:          userSubscribe.OrderId,
 			SubscribeId:      userSubscribe.SubscribeId,
-			StartTime:        userSubscribe.StartTime.Unix(),
-			ExpireTime:       userSubscribe.ExpireTime.Unix(),
+			StartTime:        tool.Unix(userSubscribe.StartTime),
+			ExpireTime:       tool.Unix(userSubscribe.ExpireTime),
 			Status:           userSubscribe.Status,
-			CreatedAt:        userSubscribe.CreatedAt.Unix(),
-			UpdatedAt:        userSubscribe.UpdatedAt.Unix(),
+			CreatedAt:        tool.Unix(userSubscribe.CreatedAt),
+			UpdatedAt:        tool.Unix(userSubscribe.UpdatedAt),
 		}
 
 		if userSubscribe.FinishedAt != nil {
-			userSubscribeInfo.FinishedAt = userSubscribe.FinishedAt.Unix()
+			userSubscribeInfo.FinishedAt = tool.UnixPtr(userSubscribe.FinishedAt)
 		}
 
 		if l.svcCtx.Config.Register.EnableTrial && l.svcCtx.Config.Register.TrialSubscribe == userSubscribe.SubscribeId {
@@ -228,7 +228,8 @@ func (l *QueryUserSubscribeNodeListLogic) filterSubscribeNodes(nodeIds []int64, 
 }
 
 func (l *QueryUserSubscribeNodeListLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
-	return userSub.ExpireTime.Unix() < time.Now().Unix() && userSub.ExpireTime.Unix() != 0
+	expireTime := tool.Unix(userSub.ExpireTime)
+	return expireTime < time.Now().Unix() && expireTime != 0
 }
 
 // isTrafficExhausted reports whether the subscription has used up its traffic

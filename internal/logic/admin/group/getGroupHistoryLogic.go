@@ -9,6 +9,7 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/tool"
 )
 
 type GetGroupHistoryLogic struct {
@@ -60,11 +61,11 @@ func (l *GetGroupHistoryLogic) GetGroupHistory(req *types.GetGroupHistoryRequest
 	for _, h := range histories {
 		var startTime, endTime *int64
 		if h.StartTime != nil {
-			t := h.StartTime.Unix()
+			t := tool.UnixPtr(h.StartTime)
 			startTime = &t
 		}
 		if h.EndTime != nil {
-			t := h.EndTime.Unix()
+			t := tool.UnixPtr(h.EndTime)
 			endTime = &t
 		}
 
@@ -78,7 +79,7 @@ func (l *GetGroupHistoryLogic) GetGroupHistory(req *types.GetGroupHistoryRequest
 			StartTime:    startTime,
 			EndTime:      endTime,
 			ErrorLog:     h.ErrorMessage,
-			CreatedAt:    h.CreatedAt.Unix(),
+			CreatedAt:    tool.Unix(h.CreatedAt),
 		})
 	}
 

@@ -13,16 +13,16 @@ import (
 	"github.com/perfect-panel/server/internal/model/traffic"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 const consoleServerTotalDataCacheKey = "console:server_total_data"
 const consoleServerTotalDataCacheTTL = 60 * time.Second
 
 type QueryServerTotalDataLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -30,7 +30,7 @@ type QueryServerTotalDataLogic struct {
 // NewQueryServerTotalDataLogic Query server total data
 func NewQueryServerTotalDataLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryServerTotalDataLogic {
 	return &QueryServerTotalDataLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -90,15 +90,15 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 	wg.Wait()
 
 	if userErr != nil {
-		logger.Errorf("[QueryServerTotalData] Query user traffic failed: %v", userErr.Error())
+		zap.S().Errorf("[QueryServerTotalData] Query user traffic failed: %v", userErr.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query user traffic failed: %v", userErr.Error())
 	}
 	if serverErr != nil {
-		logger.Errorf("[QueryServerTotalData] Query server traffic failed: %v", serverErr.Error())
+		zap.S().Errorf("[QueryServerTotalData] Query server traffic failed: %v", serverErr.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query server traffic failed: %v", serverErr.Error())
 	}
 	if trafficErr != nil {
-		logger.Errorf("[QueryServerTotalData] Sum today traffic failed: %v", trafficErr.Error())
+		zap.S().Errorf("[QueryServerTotalData] Sum today traffic failed: %v", trafficErr.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Sum today traffic failed: %v", trafficErr.Error())
 	}
 
@@ -117,7 +117,7 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 
 	yesterdayLog, err := logStore.FindFirstByDateType(l.ctx, yesterday, log.TypeUserTrafficRank.Uint8())
 	if err != nil {
-		l.Errorw("[QueryServerTotalDataLogic] Query yesterday user traffic rank log error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryServerTotalDataLogic] Query yesterday user traffic rank log error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query yesterday user traffic rank log error: %v", err)
 	}
 
@@ -126,7 +126,7 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 		var rank log.UserTrafficRank
 		err = rank.Unmarshal([]byte(yesterdayLog.Content))
 		if err != nil {
-			l.Errorw("[QueryServerTotalDataLogic] Unmarshal yesterday user traffic rank log error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[QueryServerTotalDataLogic] Unmarshal yesterday user traffic rank log error", zap.Any("error", err.Error()))
 		}
 		// Extract and sort keys to maintain rank order
 		keys := make([]uint8, 0, len(rank.Rank))
@@ -153,7 +153,7 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 	if len(serverIDs) > 0 {
 		servers, err := nodeStore.QueryServerList(l.ctx, serverIDs)
 		if err != nil {
-			l.Errorw("[QueryServerTotalDataLogic] Batch fetch servers error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[QueryServerTotalDataLogic] Batch fetch servers error", zap.Any("error", err.Error()))
 		}
 		for _, s := range servers {
 			serverMap[s.Id] = s.Name
@@ -178,14 +178,14 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 	var yesterdayTop10Server []types.ServerTrafficData
 	yesterdayServerTrafficLog, err := logStore.FindFirstByDateType(l.ctx, yesterday, log.TypeServerTrafficRank.Uint8())
 	if err != nil {
-		l.Errorw("[QueryServerTotalDataLogic] Query yesterday server traffic rank log error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryServerTotalDataLogic] Query yesterday server traffic rank log error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query yesterday server traffic rank log error: %v", err)
 	}
 	if yesterdayServerTrafficLog != nil {
 		var rank log.ServerTrafficRank
 		err = rank.Unmarshal([]byte(yesterdayServerTrafficLog.Content))
 		if err != nil {
-			l.Errorw("[QueryServerTotalDataLogic] Unmarshal yesterday server traffic rank log error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[QueryServerTotalDataLogic] Unmarshal yesterday server traffic rank log error", zap.Any("error", err.Error()))
 		}
 
 		// Extract and sort keys to maintain rank order
@@ -229,14 +229,14 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 	// Query online user count
 	onlineUsers, err := l.svcCtx.Store.Node().OnlineUserSubscribeGlobal(l.ctx)
 	if err != nil {
-		l.Errorw("[QueryServerTotalDataLogic] OnlineUserSubscribeGlobal error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryServerTotalDataLogic] OnlineUserSubscribeGlobal error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "OnlineUserSubscribeGlobal error: %v", err)
 	}
 
 	// Query online/offline server count
 	onlineServers, offlineServers, err := nodeStore.CountServersByReportStatus(l.ctx, now.Add(-5*time.Minute))
 	if err != nil {
-		l.Errorw("[QueryServerTotalDataLogic] Count online servers error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryServerTotalDataLogic] Count online servers error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Count online servers error: %v", err)
 	}
 
@@ -257,14 +257,14 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 
 		dailyLogs, err := logStore.FindByDatesType(l.ctx, dates, log.TypeTrafficStat.Uint8())
 		if err != nil {
-			l.Errorw("[QueryServerTotalDataLogic] Batch query daily traffic stats error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[QueryServerTotalDataLogic] Batch query daily traffic stats error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Batch query daily traffic stats error: %v", err)
 		}
 
 		for _, logInfo := range dailyLogs {
 			var stat log.TrafficStat
 			if err := stat.Unmarshal([]byte(logInfo.Content)); err != nil {
-				l.Errorw("[QueryServerTotalDataLogic] Unmarshal daily traffic stat error", logger.Field("error", err.Error()), logger.Field("date", logInfo.Date))
+				l.Logger.Errorw("[QueryServerTotalDataLogic] Unmarshal daily traffic stat error", zap.Any("error", err.Error()), zap.Any("date", logInfo.Date))
 				continue
 			}
 			monthlyUpload += stat.Upload

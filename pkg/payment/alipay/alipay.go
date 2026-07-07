@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/pkg/errors"
 	"github.com/smartwalle/alipay/v3"
+	"go.uber.org/zap"
 )
 
 type Config struct {
@@ -47,12 +47,12 @@ type Order struct {
 func NewClient(c Config) *Client {
 	client, err := alipay.New(c.AppId, c.PrivateKey, !c.Sandbox)
 	if err != nil {
-		logger.Error("[Alipay] NewClient failed: ", logger.Field("errors", err), logger.Field("config", c))
+		zap.S().Error("[Alipay] NewClient failed: ", zap.Any("errors", err), zap.Any("config", c))
 		return nil
 	}
 	err = client.LoadAliPayPublicKey(c.PublicKey)
 	if err != nil {
-		logger.Error("[Alipay] NewClient failed: ", logger.Field("errors", err), logger.Field("config", c))
+		zap.S().Error("[Alipay] NewClient failed: ", zap.Any("errors", err), zap.Any("config", c))
 	}
 	return &Client{
 		Config: c,

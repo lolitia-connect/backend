@@ -15,10 +15,10 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/hertzx"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/result"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // RegisterPluginHandlers 注册固定插件入口，具体插件路由由 Manager 动态分发。
@@ -26,7 +26,7 @@ func RegisterPluginHandlers(router *hertzx.Engine, svcCtx *svc.ServiceContext, m
 	handler := buildPluginDispatcher(svcCtx, mgr)
 	router.Any("/v1/plugin/:plugin", handler)
 	router.Any("/v1/plugin/:plugin/*path", handler)
-	logger.Info("registered plugin dispatcher")
+	zap.S().Info("registered plugin dispatcher")
 }
 
 func buildPluginDispatcher(svcCtx *svc.ServiceContext, mgr *plugin.Manager) hertzx.HandlerFunc {
@@ -65,7 +65,7 @@ func buildPluginDispatcher(svcCtx *svc.ServiceContext, mgr *plugin.Manager) hert
 		req := buildPluginHandleRequest(c)
 		resp, err := mgr.CallPlugin(ctx, pluginName, route.Handler, req)
 		if err != nil {
-			logger.Errorf("plugin %q handler %q error: %v", pluginName, route.Handler, err)
+			zap.S().Errorf("plugin %q handler %q error: %v", pluginName, route.Handler, err)
 			result.HttpResult(c, nil, fmt.Errorf("plugin error: %w", err))
 			return
 		}
@@ -174,7 +174,7 @@ func applyWASMMiddleware(c *hertzx.Context, mgr *plugin.Manager, mw plugin.Middl
 	req := buildPluginHandleRequest(c)
 	resp, err := mgr.CallPluginMiddleware(ctx, mw.PluginName, mw.Handler, req)
 	if err != nil {
-		logger.Errorf("plugin %q middleware %q error: %v", mw.PluginName, mw.Handler, err)
+		zap.S().Errorf("plugin %q middleware %q error: %v", mw.PluginName, mw.Handler, err)
 		c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": err.Error()})
 		c.Abort()
 		return false

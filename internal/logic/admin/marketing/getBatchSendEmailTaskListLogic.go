@@ -7,12 +7,12 @@ import (
 	"github.com/perfect-panel/server/internal/model/task"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"go.uber.org/zap"
 )
 
 type GetBatchSendEmailTaskListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type GetBatchSendEmailTaskListLogic struct {
 // NewGetBatchSendEmailTaskListLogic Get batch send email task list
 func NewGetBatchSendEmailTaskListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetBatchSendEmailTaskListLogic {
 	return &GetBatchSendEmailTaskListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -42,7 +42,7 @@ func (l *GetBatchSendEmailTaskListLogic) GetBatchSendEmailTaskList(req *types.Ge
 		Scope:  req.Scope,
 	})
 	if err != nil {
-		l.Errorf("failed to get email tasks: %v", err)
+		l.Logger.Errorf("failed to get email tasks: %v", err)
 		return nil, xerr.NewErrCode(xerr.DatabaseQueryError)
 	}
 
@@ -51,12 +51,12 @@ func (l *GetBatchSendEmailTaskListLogic) GetBatchSendEmailTaskList(req *types.Ge
 	for _, t := range tasks {
 		var scopeInfo task.EmailScope
 		if err = scopeInfo.Unmarshal([]byte(t.Scope)); err != nil {
-			l.Errorf("[GetBatchSendEmailTaskList] failed to unmarshal email task scope: %v", err.Error())
+			l.Logger.Errorf("[GetBatchSendEmailTaskList] failed to unmarshal email task scope: %v", err.Error())
 			continue
 		}
 		var contentInfo task.EmailContent
 		if err = contentInfo.Unmarshal([]byte(t.Content)); err != nil {
-			l.Errorf("[GetBatchSendEmailTaskList] failed to unmarshal email task content: %v", err.Error())
+			l.Logger.Errorf("[GetBatchSendEmailTaskList] failed to unmarshal email task content: %v", err.Error())
 			continue
 		}
 

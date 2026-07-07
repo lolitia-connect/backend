@@ -14,13 +14,13 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/payment"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"github.com/perfect-panel/server/queue/types"
+	"go.uber.org/zap"
 )
 
 type StripeNotifyLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -28,7 +28,7 @@ type StripeNotifyLogic struct {
 // NewStripeNotifyLogic Stripe notify
 func NewStripeNotifyLogic(ctx context.Context, svcCtx *svc.ServiceContext) *StripeNotifyLogic {
 	return &StripeNotifyLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -40,7 +40,7 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
 	webhookPayload, err := io.ReadAll(r.Body)
 	if err != nil {
-		l.Errorw("[StripeNotify] error", logger.Field("errors", err.Error()))
+		l.Logger.Errorw("[StripeNotify] error", zap.Any("errors", err.Error()))
 		return err
 	}
 	signature := r.Header.Get("Stripe-Signature")
@@ -60,7 +60,7 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 
 	notify, err := client.ParseNotify(webhookPayload, signature)
 	if err != nil {
-		l.Errorw("[StripeNotify] error", logger.Field("errors", err.Error()))
+		l.Logger.Errorw("[StripeNotify] error", zap.Any("errors", err.Error()))
 		return err
 	}
 
@@ -71,13 +71,13 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 
 	// Validate order number
 	if notify.OrderNo == "" {
-		l.Errorw("[StripeNotify] order_no is empty in webhook", logger.Field("eventType", notify.EventType), logger.Field("tradeNo", notify.TradeNo))
+		l.Logger.Errorw("[StripeNotify] order_no is empty in webhook", zap.Any("eventType", notify.EventType), zap.Any("tradeNo", notify.TradeNo))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "order_no is empty in webhook event: %s, trade_no: %s", notify.EventType, notify.TradeNo)
 	}
 
 	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, notify.OrderNo)
 	if err != nil {
-		l.Logger.Error("[StripeNotify] Find order failed", logger.Field("error", err.Error()), logger.Field("orderNo", notify.OrderNo))
+		l.Logger.Error("[StripeNotify] Find order failed", zap.Any("error", err.Error()), zap.Any("orderNo", notify.OrderNo))
 		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
 	}
 	if orderInfo.Status == 5 {
@@ -94,15 +94,15 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 	}
 	taskBytes, err := json.Marshal(activatePayload)
 	if err != nil {
-		l.Errorw("[StripeNotify] Marshal error", logger.Field("errors", err.Error()), logger.Field("payload", activatePayload))
+		l.Logger.Errorw("[StripeNotify] Marshal error", zap.Any("errors", err.Error()), zap.Any("payload", activatePayload))
 		return err
 	}
 	task := asynq.NewTask(types.ForthwithActivateOrder, taskBytes, asynq.MaxRetry(5))
 	_, err = l.svcCtx.Queue.Enqueue(task)
 	if err != nil {
-		l.Errorw("[StripeNotify] Enqueue error", logger.Field("errors", err.Error()))
+		l.Logger.Errorw("[StripeNotify] Enqueue error", zap.Any("errors", err.Error()))
 		return err
 	}
-	l.Infow("[StripeNotify] success", logger.Field("orderNo", notify.OrderNo))
+	l.Logger.Infow("[StripeNotify] success", zap.Any("orderNo", notify.OrderNo))
 	return nil
 }

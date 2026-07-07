@@ -13,13 +13,13 @@ import (
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetStatLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -27,7 +27,7 @@ type GetStatLogic struct {
 // Get Tos
 func NewGetStatLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetStatLogic {
 	return &GetStatLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -46,7 +46,7 @@ func (l *GetStatLogic) GetStat() (resp *types.GetStatResponse, err error) {
 	nodeStore := l.svcCtx.Store.Node()
 	u, err := userStore.CountEnabledUsers(l.ctx)
 	if err != nil {
-		l.Logger.Error("[GetStatLogic] get user count failed: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[GetStatLogic] get user count failed: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get user count failed: %v", err.Error())
 	}
 	if u > 100 {
@@ -58,12 +58,12 @@ func (l *GetStatLogic) GetStat() (resp *types.GetStatResponse, err error) {
 	}
 	n, err := nodeStore.CountEnabledNodes(l.ctx)
 	if err != nil {
-		l.Logger.Error("[GetStatLogic] get server count failed: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[GetStatLogic] get server count failed: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get server count failed: %v", err.Error())
 	}
 	nodeaddr, err := nodeStore.QueryServerAddresses(l.ctx)
 	if err != nil {
-		l.Logger.Error("[GetStatLogic] get server_addr failed: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[GetStatLogic] get server_addr failed: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get server_addr failed: %v", err.Error())
 	}
 	type apireq struct {
@@ -114,7 +114,7 @@ func (l *GetStatLogic) GetStat() (resp *types.GetStatResponse, err error) {
 	protocolDict := make(map[string]void)
 	protocol, err := nodeStore.QueryEnabledNodeProtocols(l.ctx)
 	if err != nil {
-		l.Logger.Error("[GetStatLogic] get protocol failed: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[GetStatLogic] get protocol failed: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get protocol failed: %v", err.Error())
 	}
 

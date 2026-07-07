@@ -5,12 +5,12 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment"
+	"go.uber.org/zap"
 )
 
 type GetPaymentPlatformLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -18,7 +18,7 @@ type GetPaymentPlatformLogic struct {
 // Get supported payment platform
 func NewGetPaymentPlatformLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetPaymentPlatformLogic {
 	return &GetPaymentPlatformLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}

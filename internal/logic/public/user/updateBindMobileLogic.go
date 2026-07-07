@@ -15,11 +15,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type UpdateBindMobileLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -27,7 +27,7 @@ type UpdateBindMobileLogic struct {
 // Update Bind Mobile
 func NewUpdateBindMobileLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateBindMobileLogic {
 	return &UpdateBindMobileLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -36,7 +36,7 @@ func NewUpdateBindMobileLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	// verify mobile
@@ -47,13 +47,13 @@ func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequ
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.Register, phoneNumber)
 	code, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 	if err != nil {
-		l.Errorw("Redis Error", logger.Field("error", err.Error()), logger.Field("cacheKey", cacheKey))
+		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
 		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 	}
 	var payload CacheKeyPayload
 	err = json.Unmarshal([]byte(code), &payload)
 	if err != nil {
-		l.Errorw("Redis Error", logger.Field("error", err.Error()), logger.Field("cacheKey", cacheKey))
+		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
 		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 	}
 	if payload.Code != req.Code {

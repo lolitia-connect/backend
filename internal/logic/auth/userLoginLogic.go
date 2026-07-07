@@ -10,7 +10,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
@@ -25,7 +25,7 @@ import (
 )
 
 type UserLoginLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -33,7 +33,7 @@ type UserLoginLogic struct {
 // NewUserLoginLogic User login
 func NewUserLoginLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UserLoginLogic {
 	return &UserLoginLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -59,10 +59,10 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 				ObjectID: userInfo.Id,
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()),
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()),
 				)
 			}
 		}
@@ -79,7 +79,7 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 		if ent.IsNotFound(err) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user email not exist: %v", req.Email)
 		}
-		logger.WithContext(l.ctx).Error(err)
+		zap.S().Error(err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	}
 	if userInfo.DeletedAt != nil {
@@ -100,10 +100,10 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 	if req.Identifier != "" {
 		bindLogic := NewBindDeviceLogic(l.ctx, l.svcCtx)
 		if err := bindLogic.BindDeviceToUser(req.Identifier, req.IP, req.UserAgent, userInfo.Id); err != nil {
-			l.Errorw("failed to bind device to user",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to bind device to user",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			// Don't fail login if device binding fails, just log the error
 		}
@@ -124,7 +124,7 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 		jwt.WithOption("CtxLoginType", req.LoginType),
 	)
 	if err != nil {
-		l.Logger.Error("[UserLogin] token generate error", logger.Field("error", err.Error()))
+		l.Logger.Error("[UserLogin] token generate error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "token generate error: %v", err.Error())
 	}
 	sessionIdCacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
@@ -140,7 +140,7 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 func (l *UserLoginLogic) verifyCaptcha(req *types.UserLoginRequest) error {
 	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
-		l.Logger.Error("[UserLoginLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[UserLoginLogic] GetVerifyConfig error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 

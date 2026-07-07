@@ -18,15 +18,15 @@ import (
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UserRegisterLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -34,7 +34,7 @@ type UserRegisterLogic struct {
 // NewUserRegisterLogic User register
 func NewUserRegisterLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UserRegisterLogic {
 	return &UserRegisterLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -59,7 +59,7 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 		// Check if the invite code is valid
 		referer, err = l.svcCtx.Store.User().FindOneByReferCode(l.ctx, req.Invite)
 		if err != nil {
-			l.Errorw("FindOneByReferCode Error", logger.Field("error", err))
+			l.Logger.Errorw("FindOneByReferCode Error", zap.Any("error", err))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InviteCodeError), "invite code is invalid")
 		}
 	}
@@ -69,13 +69,13 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 		cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeCacheKey, constant.Register, req.Email)
 		value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 		if err != nil {
-			l.Errorw("Redis Error", logger.Field("error", err.Error()), logger.Field("cacheKey", cacheKey))
+			l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 		}
 		var payload common.CacheKeyPayload
 		err = json.Unmarshal([]byte(value), &payload)
 		if err != nil {
-			l.Errorw("Unmarshal Error", logger.Field("error", err.Error()), logger.Field("value", value))
+			l.Logger.Errorw("Unmarshal Error", zap.Any("error", err.Error()), zap.Any("value", value))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 		}
 		if payload.Code != req.Code {
@@ -91,7 +91,7 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 	// Check if the user exists
 	u, err := l.svcCtx.Store.User().FindOneByEmail(l.ctx, req.Email)
 	if err != nil && !ent.IsNotFound(err) {
-		l.Errorw("FindOneByEmail Error", logger.Field("error", err))
+		l.Logger.Errorw("FindOneByEmail Error", zap.Any("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	} else if err == nil && u.DeletedAt == nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "user email exist: %v", req.Email)
@@ -153,10 +153,10 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 	if req.Identifier != "" {
 		bindLogic := NewBindDeviceLogic(l.ctx, l.svcCtx)
 		if err := bindLogic.BindDeviceToUser(req.Identifier, req.IP, req.UserAgent, userInfo.Id); err != nil {
-			l.Errorw("failed to bind device to user",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to bind device to user",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			// Don't fail register if device binding fails, just log the error
 		}
@@ -176,7 +176,7 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 		jwt.WithOption("LoginType", req.LoginType),
 	)
 	if err != nil {
-		l.Logger.Error("[UserLogin] token generate error", logger.Field("error", err.Error()))
+		l.Logger.Error("[UserLogin] token generate error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "token generate error: %v", err.Error())
 	}
 	// Set session id
@@ -202,10 +202,10 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 				ObjectID: userInfo.Id,
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()),
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()),
 				)
 			}
 
@@ -224,10 +224,10 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 				Date:     time.Now().Format("2006-01-02"),
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()))
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()))
 			}
 		}
 	}()
@@ -260,7 +260,7 @@ func (l *UserRegisterLogic) activeTrial(store repository.Store, uid int64) (*use
 func (l *UserRegisterLogic) verifyCaptcha(req *types.UserRegisterRequest) error {
 	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
-		l.Logger.Error("[UserRegisterLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[UserRegisterLogic] GetVerifyConfig error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 

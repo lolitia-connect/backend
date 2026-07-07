@@ -104,15 +104,7 @@ func applyOrderListFilters(query *ent.OrderQuery, status uint8, user, subscribe 
 }
 
 func (m *customOrderModel) UpdateOrderStatus(ctx context.Context, orderNo string, status uint8) error {
-	orderInfo, err := m.FindOneByOrderNo(ctx, orderNo)
-	if err != nil {
-		return err
-	}
-	if err = m.db.Order.Update().Where(entorder.OrderNo(orderNo)).SetStatus(status).Exec(ctx); err != nil {
-		return err
-	}
-	orderInfo.Status = status
-	return m.delCache(ctx, orderInfo)
+	return m.db.Order.Update().Where(entorder.OrderNo(orderNo)).SetStatus(status).Exec(ctx)
 }
 
 func (m *customOrderModel) FindOneDetailsByOrderNo(ctx context.Context, orderNo string) (*Details, error) {

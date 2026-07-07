@@ -1,9 +1,9 @@
 package order
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
@@ -17,14 +17,14 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
-	
+
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type PurchaseLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -37,7 +37,7 @@ const (
 // It initializes the logger with context and sets up the service context for database operations.
 func NewPurchaseLogic(ctx context.Context, svcCtx *svc.ServiceContext) *PurchaseLogic {
 	return &PurchaseLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -51,25 +51,25 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
 	if req.Quantity <= 0 {
-		l.Debugf("[Purchase] Quantity is less than or equal to 0, setting to 1")
+		l.Logger.Debugf("[Purchase] Quantity is less than or equal to 0, setting to 1")
 		req.Quantity = 1
 	}
 
 	// Validate quantity limit
 	if req.Quantity > MaxQuantity {
-		l.Errorw("[Purchase] Quantity exceeds maximum limit", logger.Field("quantity", req.Quantity), logger.Field("max", MaxQuantity))
+		l.Logger.Errorw("[Purchase] Quantity exceeds maximum limit", zap.Any("quantity", req.Quantity), zap.Any("max", MaxQuantity))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "quantity exceeds maximum limit of %d", MaxQuantity)
 	}
 
 	// find user subscription
 	userSub, err := store.User().QueryUserSubscribe(l.ctx, u.Id)
 	if err != nil {
-		l.Errorw("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id))
+		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user subscription error: %v", err.Error())
 	}
 	if l.svcCtx.Config.Subscribe.SingleModel {
@@ -82,7 +82,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	sub, err := store.Subscribe().FindOne(l.ctx, req.SubscribeId)
 
 	if err != nil {
-		l.Errorw("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("subscribe_id", req.SubscribeId))
+		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("subscribe_id", req.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 	// check subscribe plan status
@@ -108,11 +108,11 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 
 	// Validate amount to prevent overflow
 	if amount > MaxOrderAmount {
-		l.Errorw("[Purchase] Order amount exceeds maximum limit",
-			logger.Field("amount", amount),
-			logger.Field("max", MaxOrderAmount),
-			logger.Field("user_id", u.Id),
-			logger.Field("subscribe_id", req.SubscribeId))
+		l.Logger.Errorw("[Purchase] Order amount exceeds maximum limit",
+			zap.Any("amount", amount),
+			zap.Any("max", MaxOrderAmount),
+			zap.Any("user_id", u.Id),
+			zap.Any("subscribe_id", req.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
 	}
 
@@ -138,7 +138,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		}
 		count, err := store.Order().CountUserCouponUsage(l.ctx, u.Id, req.Coupon)
 		if err != nil {
-			l.Errorw("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id), logger.Field("coupon", req.Coupon))
+			l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id), zap.Any("coupon", req.Coupon))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())
 		}
 		if couponInfo.UserLimit > 0 && count >= couponInfo.UserLimit {
@@ -151,7 +151,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	// find payment method
 	payment, err := store.Payment().FindOne(l.ctx, req.Payment)
 	if err != nil {
-		l.Errorw("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("payment", req.Payment))
+		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
 	}
 	var feeAmount int64
@@ -162,10 +162,10 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 
 		// Final validation after adding fee
 		if amount > MaxOrderAmount {
-			l.Errorw("[Purchase] Final order amount exceeds maximum limit after fee",
-				logger.Field("amount", amount),
-				logger.Field("max", MaxOrderAmount),
-				logger.Field("user_id", u.Id))
+			l.Logger.Errorw("[Purchase] Final order amount exceeds maximum limit after fee",
+				zap.Any("amount", amount),
+				zap.Any("max", MaxOrderAmount),
+				zap.Any("user_id", u.Id))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
 		}
 	}
@@ -185,7 +185,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	// query user is new purchase or renewal
 	isNew, err := store.Order().IsUserEligibleForNewOrder(l.ctx, u.Id)
 	if err != nil {
-		l.Errorw("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id))
+		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user order error: %v", err.Error())
 	}
 	// create order
@@ -212,7 +212,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		if sub.Quota > 0 {
 			count, e := txStore.User().CountUserSubscribesByUserAndSubscribe(l.ctx, u.Id, req.SubscribeId)
 			if e != nil {
-				l.Errorw("[Purchase] Database query error", logger.Field("error", e.Error()), logger.Field("user_id", u.Id), logger.Field("subscribe_id", req.SubscribeId))
+				l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", e.Error()), zap.Any("user_id", u.Id), zap.Any("subscribe_id", req.SubscribeId))
 				return e
 			}
 			if count >= sub.Quota {
@@ -225,7 +225,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 			// update user deduction && Pre deduction ,Return after canceling the order
 			u.GiftAmount -= orderInfo.GiftAmount
 			if e := txStore.User().Update(l.ctx, u); e != nil {
-				l.Errorw("[Purchase] Database update error", logger.Field("error", e.Error()), logger.Field("user", u))
+				l.Logger.Errorw("[Purchase] Database update error", zap.Any("error", e.Error()), zap.Any("user", u))
 				return e
 			}
 			// create deduction record
@@ -246,9 +246,9 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 				ObjectID: u.Id,
 				Content:  string(content),
 			}); e != nil {
-				l.Errorw("[Purchase] Database insert error",
-					logger.Field("error", e.Error()),
-					logger.Field("deductionLog", giftLog),
+				l.Logger.Errorw("[Purchase] Database insert error",
+					zap.Any("error", e.Error()),
+					zap.Any("deductionLog", giftLog),
 				)
 				return e
 			}
@@ -259,7 +259,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 			sub.Inventory -= 1
 			// update subscribe plan stock
 			if err = txStore.Subscribe().Update(l.ctx, sub); err != nil {
-				l.Errorw("[Purchase] Database update error", logger.Field("error", err.Error()), logger.Field("subscribe", sub))
+				l.Logger.Errorw("[Purchase] Database update error", zap.Any("error", err.Error()), zap.Any("subscribe", sub))
 				return err
 			}
 		}
@@ -268,7 +268,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		return txStore.Order().Insert(l.ctx, orderInfo)
 	})
 	if err != nil {
-		l.Errorw("[Purchase] Database insert error", logger.Field("error", err.Error()), logger.Field("orderInfo", orderInfo))
+		l.Logger.Errorw("[Purchase] Database insert error", zap.Any("error", err.Error()), zap.Any("orderInfo", orderInfo))
 		var codeErr *xerr.CodeError
 		if errors.As(err, &codeErr) {
 			return nil, err
@@ -281,14 +281,14 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	}
 	val, err := json.Marshal(payload)
 	if err != nil {
-		l.Errorw("[Purchase] Marshal payload error", logger.Field("error", err.Error()), logger.Field("payload", payload))
+		l.Logger.Errorw("[Purchase] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
 	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
-		l.Errorw("[Purchase] Enqueue task error", logger.Field("error", err.Error()), logger.Field("task", task))
+		l.Logger.Errorw("[Purchase] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", task))
 	} else {
-		l.Infow("[Purchase] Enqueue task success", logger.Field("TaskID", taskInfo.ID))
+		l.Logger.Infow("[Purchase] Enqueue task success", zap.Any("TaskID", taskInfo.ID))
 	}
 
 	return &types.PurchaseOrderResponse{

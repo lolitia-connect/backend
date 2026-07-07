@@ -3,7 +3,7 @@ package config
 import (
 	"encoding/json"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/pkg/orm"
 )
 
@@ -15,7 +15,7 @@ type Config struct {
 	Transport     TransportConfig `yaml:"Transport"`
 	TLS           TLS             `yaml:"TLS"`
 	JwtAuth       JwtAuth         `yaml:"JwtAuth"`
-	Logger        logger.LogConf  `yaml:"Logger"`
+	Logger        logging.LogConf `yaml:"Logger"`
 	Database      orm.Config      `yaml:"Database"`
 	MySQL         *orm.Config     `yaml:"MySQL,omitempty"` // Deprecated: use Database.
 	Redis         RedisConfig     `yaml:"Redis"`
@@ -237,7 +237,7 @@ type File struct {
 	TLS       TLS             `yaml:"TLS"`
 	Debug     bool            `yaml:"Debug" default:"true"`
 	JwtAuth   JwtAuth         `yaml:"JwtAuth"`
-	Logger    logger.LogConf  `yaml:"Logger"`
+	Logger    logging.LogConf `yaml:"Logger"`
 	Database  orm.Config      `yaml:"Database"`
 	MySQL     *orm.Config     `yaml:"MySQL,omitempty"` // Deprecated: use Database.
 	Redis     RedisConfig     `yaml:"Redis"`

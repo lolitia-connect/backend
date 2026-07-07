@@ -3,7 +3,7 @@ package tool
 import (
 	"time"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func AddTime(unit string, quantity int64, baseTime ...time.Time) time.Time {
@@ -29,7 +29,7 @@ func AddTime(unit string, quantity int64, baseTime ...time.Time) time.Time {
 	case "NoLimit":
 		return time.UnixMilli(0)
 	default:
-		logger.Error("[Tool] Unknown time unit", logger.Field("unit", unit))
+		zap.S().Error("[Tool] Unknown time unit", zap.Any("unit", unit))
 		return basic
 	}
 }

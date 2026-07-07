@@ -2,10 +2,10 @@ package initialize
 
 import (
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func OAuth(svc *svc.ServiceContext) {
-	logger.Debug("OAuth config initialization")
+	zap.S().Debug("OAuth config initialization")
 
 }

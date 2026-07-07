@@ -5,14 +5,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetVerifyCodeConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type GetVerifyCodeConfigLogic struct {
 // Get Verify Code Config
 func NewGetVerifyCodeConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetVerifyCodeConfigLogic {
 	return &GetVerifyCodeConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -29,7 +29,7 @@ func NewGetVerifyCodeConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext
 func (l *GetVerifyCodeConfigLogic) GetVerifyCodeConfig() (resp *types.VerifyCodeConfig, err error) {
 	data, err := l.svcCtx.Store.System().GetVerifyCodeConfig(l.ctx)
 	if err != nil {
-		l.Errorw("Get Verify Code Config Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("Get Verify Code Config Error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Get Verify Code Config Error: %s", err.Error())
 	}
 	resp = &types.VerifyCodeConfig{}

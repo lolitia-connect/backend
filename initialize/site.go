@@ -3,7 +3,7 @@ package initialize
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
@@ -11,7 +11,7 @@ import (
 )
 
 func Site(ctx *svc.ServiceContext) {
-	logger.Debug("initialize site config")
+	zap.S().Debug("initialize site config")
 	configs, err := ctx.Store.System().GetSiteConfig(context.Background())
 	if err != nil {
 		panic(err)

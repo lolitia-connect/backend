@@ -13,6 +13,7 @@ Logger: # 日志配置
   MaxAge: 30 # 日志文件最大保存时间,单位天
   Compress: true # 是否压缩日志文件
   Level: debug # 日志级别: debug, info, warn, error, panic, fatal
+  Color: true # 控制台彩色输出, 默认: true
 
 Database:
   Driver: postgres # 数据库驱动: postgres 或 mysql

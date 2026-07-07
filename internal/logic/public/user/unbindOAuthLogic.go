@@ -8,13 +8,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UnbindOAuthLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type UnbindOAuthLogic struct {
 // Unbind OAuth
 func NewUnbindOAuthLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UnbindOAuthLogic {
 	return &UnbindOAuthLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,7 +31,7 @@ func NewUnbindOAuthLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Unbin
 func (l *UnbindOAuthLogic) UnbindOAuth(req *types.UnbindOAuthRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	if !l.validator(req) {
@@ -39,7 +39,7 @@ func (l *UnbindOAuthLogic) UnbindOAuth(req *types.UnbindOAuthRequest) error {
 	}
 	err := l.svcCtx.Store.User().DeleteUserAuthMethods(l.ctx, u.Id, req.Method)
 	if err != nil {
-		l.Errorw("delete user auth methods failed:", logger.Field("error", err.Error()))
+		l.Logger.Errorw("delete user auth methods failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "delete user auth methods failed: %v", err.Error())
 	}
 

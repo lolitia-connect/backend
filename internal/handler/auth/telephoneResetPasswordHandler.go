@@ -33,9 +33,9 @@ func TelephoneResetPasswordHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Co
 		}
 
 		var config struct {
-			CaptchaType                     string `json:"captcha_type"`
+			CaptchaType                    string `json:"captcha_type"`
 			EnableUserResetPasswordCaptcha bool   `json:"enable_user_reset_password_captcha"`
-			TurnstileSecret                 string `json:"turnstile_secret"`
+			TurnstileSecret                string `json:"turnstile_secret"`
 		}
 		tool.SystemConfigSliceReflectToStruct(verifyCfg, &config)
 

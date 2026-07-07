@@ -8,14 +8,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/coupon"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateCouponLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type UpdateCouponLogic struct {
 // Update coupon
 func NewUpdateCouponLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateCouponLogic {
 	return &UpdateCouponLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,7 +37,7 @@ func (l *UpdateCouponLogic) UpdateCoupon(req *types.UpdateCouponRequest) error {
 	couponInfo.Subscribe = strings.Join(req.Subscribe, ",")
 	err := l.svcCtx.Store.Coupon().Update(l.ctx, couponInfo)
 	if err != nil {
-		l.Errorw("[UpdateCoupon] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateCoupon] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update coupon error: %v", err.Error())
 	}
 	return nil

@@ -2,7 +2,6 @@ package order
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/perfect-panel/server/ent"
 	entorder "github.com/perfect-panel/server/ent/order"
@@ -10,10 +9,6 @@ import (
 )
 
 var _ Model = (*customOrderModel)(nil)
-var (
-	cacheOrderIdPrefix = "cache:order:id:"
-	cacheOrderNoPrefix = "cache:order:no:"
-)
 
 type (
 	Model interface {
@@ -46,35 +41,13 @@ func newOrderModel(db *ent.Client, c *redis.Client) *defaultOrderModel {
 	}
 }
 
-//nolint:unused
-func (m *defaultOrderModel) batchGetCacheKeys(Orders ...*Order) []string {
-	var keys []string
-	for _, order := range Orders {
-		keys = append(keys, m.getCacheKeys(order)...)
-	}
-	return keys
-
-}
-func (m *defaultOrderModel) getCacheKeys(data *Order) []string {
-	if data == nil {
-		return []string{}
-	}
-	orderIdKey := fmt.Sprintf("%s%v", cacheOrderIdPrefix, data.Id)
-	orderNoKey := fmt.Sprintf("%s%v", cacheOrderNoPrefix, data.OrderNo)
-	cacheKeys := []string{
-		orderIdKey,
-		orderNoKey,
-	}
-	return cacheKeys
-}
-
 func (m *defaultOrderModel) Insert(ctx context.Context, data *Order) error {
 	saved, err := m.orderCreate(data).Save(ctx)
 	if err != nil {
 		return err
 	}
 	*data = *entToOrder(saved)
-	return m.delCache(ctx, data)
+	return nil
 }
 
 func (m *defaultOrderModel) FindOne(ctx context.Context, id int64) (*Order, error) {
@@ -88,18 +61,18 @@ func (m *defaultOrderModel) FindOneByOrderNo(ctx context.Context, orderNo string
 }
 
 func (m *defaultOrderModel) Update(ctx context.Context, data *Order) error {
-	old, err := m.FindOne(ctx, data.Id)
+	_, err := m.FindOne(ctx, data.Id)
 	if err != nil && !ent.IsNotFound(err) {
 		return err
 	}
 	if _, err = m.orderUpdate(data).Save(ctx); err != nil {
 		return err
 	}
-	return m.delCache(ctx, old, data)
+	return nil
 }
 
 func (m *defaultOrderModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
+	_, err := m.FindOne(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil
@@ -109,16 +82,5 @@ func (m *defaultOrderModel) Delete(ctx context.Context, id int64) error {
 	if err = m.db.Order.DeleteOneID(id).Exec(ctx); err != nil {
 		return err
 	}
-	return m.delCache(ctx, data)
-}
-
-func (m *defaultOrderModel) delCache(ctx context.Context, orders ...*Order) error {
-	if m.redis == nil {
-		return nil
-	}
-	keys := m.batchGetCacheKeys(orders...)
-	if len(keys) == 0 {
-		return nil
-	}
-	return m.redis.Del(ctx, keys...).Err()
+	return nil
 }

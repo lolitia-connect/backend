@@ -16,10 +16,10 @@ import (
 	"github.com/perfect-panel/server/internal/report"
 	"github.com/perfect-panel/server/pkg/conf"
 	"github.com/perfect-panel/server/pkg/hertzx"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/orm"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,17 +43,17 @@ func Config(path string) (chan bool, *http.Server) {
 		// get free port
 		freePort, err := report.ModulePort()
 		if err != nil {
-			logger.Errorf("get module port error: %s", err.Error())
+			zap.S().Errorf("get module port error: %s", err.Error())
 			panic(err)
 		}
 		port = freePort
 		// register module
 		err = report.RegisterModule(port)
 		if err != nil {
-			logger.Errorf("register module error: %s", err.Error())
+			zap.S().Errorf("register module error: %s", err.Error())
 			panic(err)
 		}
-		logger.Infof("module registered on port %d", port)
+		zap.S().Infof("module registered on port %d", port)
 	}
 	// Create a new HTTP server
 	server := &http.Server{
@@ -162,7 +162,7 @@ func handleInitConfig(c *hertzx.Context) {
 	defer db.Close()
 	// migrate database
 	if err = migrate.Migrate(dbClient.Driver(), dbClient.MigrationDsn()).Up(); err != nil {
-		logger.Errorf("[Init Database] Migrate failed: %v", err.Error())
+		zap.S().Errorf("[Init Database] Migrate failed: %v", err.Error())
 		c.JSON(http.StatusOK, hertzx.H{
 			"code": 500,
 			"msg":  "Database migration failed",
@@ -174,7 +174,7 @@ func handleInitConfig(c *hertzx.Context) {
 
 	// create admin user
 	if err = migrate.CreateAdminUser(context.Background(), request.AdminEmail, request.AdminPassword, orm.NewEntClient(db, dbClient.Driver())); err != nil {
-		logger.Errorf("[Init Database] Create admin user failed: %v", err.Error())
+		zap.S().Errorf("[Init Database] Create admin user failed: %v", err.Error())
 		c.JSON(http.StatusOK, hertzx.H{
 			"code": 500,
 			"msg":  "Admin user creation failed",
@@ -240,7 +240,7 @@ func HandleDatabaseTest(c *hertzx.Context) {
 	}
 	db, driverName, err := orm.OpenSQL(orm.Mysql{Config: dbConfig})
 	if err != nil {
-		logger.Errorf("connect database failed, err: %v\n", err.Error())
+		zap.S().Errorf("connect database failed, err: %v\n", err.Error())
 		status = false
 		message = "Database connection failed"
 		goto result
@@ -250,14 +250,14 @@ func HandleDatabaseTest(c *hertzx.Context) {
 		defer tx.Close()
 	}
 	if err := tx.Ping(); err != nil {
-		logger.Errorf("ping database failed, err: %v\n", err.Error())
+		zap.S().Errorf("ping database failed, err: %v\n", err.Error())
 		status = false
 		message = "Database connection failed"
 	}
 
 	tables, err = listDatabaseTables(tx, driverName)
 	if err != nil {
-		logger.Errorf("database table check failed, err: %v\n", err.Error())
+		zap.S().Errorf("database table check failed, err: %v\n", err.Error())
 		status = false
 		message = "Database table check failed"
 		goto result

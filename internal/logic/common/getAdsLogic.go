@@ -3,15 +3,15 @@ package common
 import (
 	"context"
 
-	entads "github.com/perfect-panel/server/ent/ads"
+	model "github.com/perfect-panel/server/internal/model/ads"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type GetAdsLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type GetAdsLogic struct {
 // Get Ads
 func NewGetAdsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetAdsLogic {
 	return &GetAdsLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -27,11 +27,8 @@ func NewGetAdsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetAdsLogi
 
 func (l *GetAdsLogic) GetAds(req *types.GetAdsRequest) (resp *types.GetAdsResponse, err error) {
 	// todo: add ads position and device
-	data, err := l.svcCtx.Ent.Ads.Query().
-		Where(entads.Status(1)).
-		Offset(0).
-		Limit(200).
-		All(l.ctx)
+	status := 1
+	_, data, err := l.svcCtx.Store.Ads().GetAdsListByPage(l.ctx, 1, 200, model.Filter{Status: &status})
 	if err != nil {
 		return nil, err
 	}

@@ -4,21 +4,19 @@ import (
 	"context"
 	"fmt"
 
-	entuser "github.com/perfect-panel/server/ent/user"
-	"github.com/perfect-panel/server/ent/userauthmethod"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UnbindDeviceLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -26,7 +24,7 @@ type UnbindDeviceLogic struct {
 // Unbind Device
 func NewUnbindDeviceLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UnbindDeviceLogic {
 	return &UnbindDeviceLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -51,13 +49,13 @@ func (l *UnbindDeviceLogic) UnbindDevice(req *types.UnbindDeviceRequest) error {
 		if err = store.User().DeleteUserAuthMethodByIdentifier(l.ctx, "device", device.Identifier); err != nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find device online record err: %v", err)
 		}
-		count, err := store.Ent().UserAuthMethod.Query().Where(userauthmethod.UserID(device.UserId)).Count(l.ctx)
+		count, err := store.User().CountUserAuthMethods(l.ctx, device.UserId)
 		if err != nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "count user auth methods err: %v", err)
 		}
 
 		if count < 1 {
-			_, _ = store.Ent().User.Delete().Where(entuser.ID(device.UserId)).Exec(l.ctx)
+			_ = store.User().Delete(l.ctx, device.UserId)
 		}
 
 		//remove device cache

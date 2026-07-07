@@ -13,8 +13,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
-	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 const (
@@ -54,9 +53,9 @@ func (l *QuotaTaskLogic) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	}
 
 	if taskInfo.Status != 0 {
-		logger.WithContext(ctx).Info("[QuotaTaskLogic.ProcessTask] task already processed",
-			logger.Field("taskID", taskID),
-			logger.Field("status", taskInfo.Status),
+		zap.S().Info("[QuotaTaskLogic.ProcessTask] task already processed",
+			zap.Any("taskID", taskID),
+			zap.Any("status", taskInfo.Status),
 		)
 		return nil
 	}
@@ -73,48 +72,20 @@ func (l *QuotaTaskLogic) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	if err = l.processSubscribes(ctx, subscribes, content, taskInfo); err != nil {
 		return err
 	}
-	// 清理用户缓存（仅在有赠送金时清理）
-	if content.GiftValue != 0 {
-		var userIds []int64
-		for _, sub := range subscribes {
-			userIds = append(userIds, sub.UserId)
-		}
-		userIds = tool.RemoveDuplicateElements(userIds...)
-		users, err := l.svcCtx.Store.User().FindUsersByIds(ctx, userIds)
-		if err != nil {
-			logger.WithContext(ctx).Error("[QuotaTaskLogic.ProcessTask] find users error",
-				logger.Field("error", err.Error()),
-				logger.Field("userIDs", userIds))
-		}
-		err = l.svcCtx.Store.User().ClearUserCache(ctx, users...)
-		if err != nil {
-			logger.WithContext(ctx).Error("[QuotaTaskLogic.ProcessTask] clear user cache error",
-				logger.Field("error", err.Error()),
-				logger.Field("userIDs", userIds))
-		}
-	}
-
-	// 清理用户订阅缓存
-	err = l.svcCtx.Store.User().ClearSubscribeCache(ctx, subscribes...)
-	if err != nil {
-		logger.WithContext(ctx).Error("[QuotaTaskLogic.ProcessTask] clear subscribe cache error",
-			logger.Field("error", err.Error()))
-	}
-
 	return nil
 }
 
 func (l *QuotaTaskLogic) parseTaskID(ctx context.Context, payload []byte) (int64, error) {
 	if len(payload) == 0 {
-		logger.WithContext(ctx).Error("[QuotaTaskLogic.parseTaskID] empty payload")
+		zap.S().Error("[QuotaTaskLogic.parseTaskID] empty payload")
 		return 0, asynq.SkipRetry
 	}
 
 	taskID, err := strconv.ParseInt(string(payload), 10, 64)
 	if err != nil {
-		logger.WithContext(ctx).Error("[QuotaTaskLogic.parseTaskID] invalid task ID",
-			logger.Field("error", err.Error()),
-			logger.Field("payload", string(payload)),
+		zap.S().Error("[QuotaTaskLogic.parseTaskID] invalid task ID",
+			zap.Any("error", err.Error()),
+			zap.Any("payload", string(payload)),
 		)
 		return 0, asynq.SkipRetry
 	}
@@ -124,9 +95,9 @@ func (l *QuotaTaskLogic) parseTaskID(ctx context.Context, payload []byte) (int64
 func (l *QuotaTaskLogic) getTaskInfo(ctx context.Context, taskID int64) (*task.Task, error) {
 	taskInfo, err := l.svcCtx.Store.Task().FindOne(ctx, taskID)
 	if err != nil {
-		logger.WithContext(ctx).Error("[QuotaTaskLogic.getTaskInfo] find task error",
-			logger.Field("error", err.Error()),
-			logger.Field("taskID", taskID),
+		zap.S().Error("[QuotaTaskLogic.getTaskInfo] find task error",
+			zap.Any("error", err.Error()),
+			zap.Any("taskID", taskID),
 		)
 		return nil, asynq.SkipRetry
 	}
@@ -136,16 +107,16 @@ func (l *QuotaTaskLogic) getTaskInfo(ctx context.Context, taskID int64) (*task.T
 func (l *QuotaTaskLogic) parseTaskData(ctx context.Context, taskInfo *task.Task) (task.QuotaScope, task.QuotaContent, error) {
 	var scope task.QuotaScope
 	if err := scope.Unmarshal([]byte(taskInfo.Scope)); err != nil {
-		logger.WithContext(ctx).Error("[QuotaTaskLogic.parseTaskData] unmarshal scope error",
-			logger.Field("error", err.Error()),
+		zap.S().Error("[QuotaTaskLogic.parseTaskData] unmarshal scope error",
+			zap.Any("error", err.Error()),
 		)
 		return scope, task.QuotaContent{}, asynq.SkipRetry
 	}
 
 	var content task.QuotaContent
 	if err := content.Unmarshal([]byte(taskInfo.Content)); err != nil {
-		logger.WithContext(ctx).Error("[QuotaTaskLogic.parseTaskData] unmarshal content error",
-			logger.Field("error", err.Error()),
+		zap.S().Error("[QuotaTaskLogic.parseTaskData] unmarshal content error",
+			zap.Any("error", err.Error()),
 		)
 		return scope, content, asynq.SkipRetry
 	}
@@ -155,9 +126,9 @@ func (l *QuotaTaskLogic) parseTaskData(ctx context.Context, taskInfo *task.Task)
 func (l *QuotaTaskLogic) getSubscribes(ctx context.Context, subscriberIDs []int64) ([]*user.Subscribe, error) {
 	subscribes, err := l.svcCtx.Store.User().FindSubscribesByIds(ctx, subscriberIDs)
 	if err != nil {
-		logger.WithContext(ctx).Error("[QuotaTaskLogic.getSubscribes] find subscribes error",
-			logger.Field("error", err.Error()),
-			logger.Field("subscribers", subscriberIDs),
+		zap.S().Error("[QuotaTaskLogic.getSubscribes] find subscribes error",
+			zap.Any("error", err.Error()),
+			zap.Any("subscribers", subscriberIDs),
 		)
 		return nil, asynq.SkipRetry
 	}
@@ -178,9 +149,9 @@ func (l *QuotaTaskLogic) processSubscribes(ctx context.Context, subscribes []*us
 		// 根据错误情况决定任务状态
 		status := int8(2) // Completed
 		if len(errors) > 0 {
-			logger.WithContext(ctx).Error("[QuotaTaskLogic.processSubscribes] some subscriptions failed",
-				logger.Field("total", len(subscribes)),
-				logger.Field("failed", len(errors)),
+			zap.S().Error("[QuotaTaskLogic.processSubscribes] some subscriptions failed",
+				zap.Any("total", len(subscribes)),
+				zap.Any("failed", len(errors)),
 			)
 			// 如果所有订阅都失败，标记为失败状态
 			if len(errors) == len(subscribes) {
@@ -188,8 +159,8 @@ func (l *QuotaTaskLogic) processSubscribes(ctx context.Context, subscribes []*us
 			}
 			errs, err := json.Marshal(errors)
 			if err != nil {
-				logger.WithContext(ctx).Error("[QuotaTaskLogic.processSubscribes] marshal errors failed",
-					logger.Field("error", err.Error()),
+				zap.S().Error("[QuotaTaskLogic.processSubscribes] marshal errors failed",
+					zap.Any("error", err.Error()),
 				)
 				return err
 			}
@@ -199,9 +170,9 @@ func (l *QuotaTaskLogic) processSubscribes(ctx context.Context, subscribes []*us
 		taskInfo.Current = uint64(len(subscribes))
 		taskInfo.Status = status
 		if err := store.Task().Update(ctx, taskInfo); err != nil {
-			logger.WithContext(ctx).Error("[QuotaTaskLogic.processSubscribes] update task status error",
-				logger.Field("error", err.Error()),
-				logger.Field("taskID", taskInfo.Id),
+			zap.S().Error("[QuotaTaskLogic.processSubscribes] update task status error",
+				zap.Any("error", err.Error()),
+				zap.Any("taskID", taskInfo.Id),
 			)
 			return err
 		}

@@ -5,14 +5,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type BatchDeleteCouponLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type BatchDeleteCouponLogic struct {
 // Batch delete coupon
 func NewBatchDeleteCouponLogic(ctx context.Context, svcCtx *svc.ServiceContext) *BatchDeleteCouponLogic {
 	return &BatchDeleteCouponLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -30,7 +30,7 @@ func (l *BatchDeleteCouponLogic) BatchDeleteCoupon(req *types.BatchDeleteCouponR
 	// batch delete coupon by ids
 	err := l.svcCtx.Store.Coupon().BatchDelete(l.ctx, tool.StringSliceToInt64Slice(req.Ids))
 	if err != nil {
-		l.Errorw("[BatchDeleteCoupon] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[BatchDeleteCoupon] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "batch delete coupon error: %v", err.Error())
 	}
 	return nil

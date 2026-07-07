@@ -12,8 +12,8 @@ import (
 	"time"
 
 	pluginv1 "github.com/perfect-panel/server/api/plugin/v1"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/tetratelabs/wazero/api"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -28,15 +28,15 @@ func wrapHostLog(pluginName string) api.GoModuleFunc {
 			msg := fmt.Sprintf("[plugin:%s] %s", name, req.Message)
 			switch req.Level {
 			case "info":
-				logger.Info(msg)
+				zap.S().Info(msg)
 			case "warn":
-				logger.Infof("WARN %s", msg) // logger 无 Warn 级别，用 Info 替代
+				zap.S().Infof("WARN %s", msg) // logger 无 Warn 级别，用 Info 替代
 			case "error":
-				logger.Error(msg)
+				zap.S().Error(msg)
 			case "debug":
-				logger.Debug(msg)
+				zap.S().Debug(msg)
 			default:
-				logger.Info(msg)
+				zap.S().Info(msg)
 			}
 			return &pluginv1.BoolResult{Success: true}, nil
 		},

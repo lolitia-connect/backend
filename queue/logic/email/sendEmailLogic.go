@@ -7,7 +7,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/log"
@@ -28,9 +28,9 @@ func NewSendEmailLogic(svcCtx *svc.ServiceContext) *SendEmailLogic {
 func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	var payload types.SendEmailPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-		logger.WithContext(ctx).Error("[SendEmailLogic] Unmarshal payload failed",
-			logger.Field("error", err.Error()),
-			logger.Field("payload", task.Payload()),
+		zap.S().Error("[SendEmailLogic] Unmarshal payload failed",
+			zap.Any("error", err.Error()),
+			zap.Any("payload", task.Payload()),
 		)
 		return nil
 	}
@@ -42,7 +42,7 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 	}
 	sender, err := email.NewSender(l.svcCtx.Config.Email.Platform, l.svcCtx.Config.Email.PlatformConfig, l.svcCtx.Config.Site.SiteName)
 	if err != nil {
-		logger.WithContext(ctx).Error("[SendEmailLogic] NewSender failed", logger.Field("error", err.Error()))
+		zap.S().Error("[SendEmailLogic] NewSender failed", zap.Any("error", err.Error()))
 		return nil
 	}
 	var content string
@@ -55,9 +55,9 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 
 		err = tpl.Execute(&result, payload.Content)
 		if err != nil {
-			logger.WithContext(ctx).Error("[SendEmailLogic] Execute template failed",
-				logger.Field("error", err.Error()),
-				logger.Field("data", payload.Content),
+			zap.S().Error("[SendEmailLogic] Execute template failed",
+				zap.Any("error", err.Error()),
+				zap.Any("data", payload.Content),
 			)
 			return nil
 		}
@@ -67,10 +67,10 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		var result bytes.Buffer
 		err = tpl.Execute(&result, payload.Content)
 		if err != nil {
-			logger.WithContext(ctx).Error("[SendEmailLogic] Execute template failed",
-				logger.Field("error", err.Error()),
-				logger.Field("template", l.svcCtx.Config.Email.MaintenanceEmailTemplate),
-				logger.Field("data", payload.Content),
+			zap.S().Error("[SendEmailLogic] Execute template failed",
+				zap.Any("error", err.Error()),
+				zap.Any("template", l.svcCtx.Config.Email.MaintenanceEmailTemplate),
+				zap.Any("data", payload.Content),
 			)
 			return nil
 		}
@@ -80,10 +80,10 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		var result bytes.Buffer
 		err = tpl.Execute(&result, payload.Content)
 		if err != nil {
-			logger.WithContext(ctx).Error("[SendEmailLogic] Execute template failed",
-				logger.Field("error", err.Error()),
-				logger.Field("template", l.svcCtx.Config.Email.ExpirationEmailTemplate),
-				logger.Field("data", payload.Content),
+			zap.S().Error("[SendEmailLogic] Execute template failed",
+				zap.Any("error", err.Error()),
+				zap.Any("template", l.svcCtx.Config.Email.ExpirationEmailTemplate),
+				zap.Any("data", payload.Content),
 			)
 			return nil
 		}
@@ -93,48 +93,48 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		var result bytes.Buffer
 		err = tpl.Execute(&result, payload.Content)
 		if err != nil {
-			logger.WithContext(ctx).Error("[SendEmailLogic] Execute template failed",
-				logger.Field("error", err.Error()),
-				logger.Field("template", l.svcCtx.Config.Email.TrafficExceedEmailTemplate),
-				logger.Field("data", payload.Content),
+			zap.S().Error("[SendEmailLogic] Execute template failed",
+				zap.Any("error", err.Error()),
+				zap.Any("template", l.svcCtx.Config.Email.TrafficExceedEmailTemplate),
+				zap.Any("data", payload.Content),
 			)
 			return nil
 		}
 		content = result.String()
 	case types.EmailTypeCustom:
 		if payload.Content == nil {
-			logger.WithContext(ctx).Error("[SendEmailLogic] Custom email content is empty",
-				logger.Field("payload", payload),
+			zap.S().Error("[SendEmailLogic] Custom email content is empty",
+				zap.Any("payload", payload),
 			)
 			return nil
 		}
 		if tpl, ok := payload.Content["content"].(string); !ok {
-			logger.WithContext(ctx).Error("[SendEmailLogic] Custom email content is not a string",
-				logger.Field("payload", payload),
+			zap.S().Error("[SendEmailLogic] Custom email content is not a string",
+				zap.Any("payload", payload),
 			)
 			return nil
 		} else {
 			content = tpl
 		}
 	default:
-		logger.WithContext(ctx).Error("[SendEmailLogic] Unsupported email type",
-			logger.Field("type", payload.Type),
-			logger.Field("payload", payload),
+		zap.S().Error("[SendEmailLogic] Unsupported email type",
+			zap.Any("type", payload.Type),
+			zap.Any("payload", payload),
 		)
 		return nil
 	}
 
 	err = sender.Send([]string{payload.Email}, payload.Subject, content)
 	if err != nil {
-		logger.WithContext(ctx).Error("[SendEmailLogic] Send email failed", logger.Field("error", err.Error()))
+		zap.S().Error("[SendEmailLogic] Send email failed", zap.Any("error", err.Error()))
 		return nil
 	}
 	messageLog.Status = 1
 	emailLog, err := messageLog.Marshal()
 	if err != nil {
-		logger.WithContext(ctx).Error("[SendEmailLogic] Marshal message log failed",
-			logger.Field("error", err.Error()),
-			logger.Field("messageLog", messageLog),
+		zap.S().Error("[SendEmailLogic] Marshal message log failed",
+			zap.Any("error", err.Error()),
+			zap.Any("messageLog", messageLog),
 		)
 		return nil
 	}
@@ -145,9 +145,9 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		ObjectID: 0,
 		Content:  string(emailLog),
 	}); err != nil {
-		logger.WithContext(ctx).Error("[SendEmailLogic] Insert email log failed",
-			logger.Field("error", err.Error()),
-			logger.Field("emailLog", string(emailLog)),
+		zap.S().Error("[SendEmailLogic] Insert email log failed",
+			zap.Any("error", err.Error()),
+			zap.Any("emailLog", string(emailLog)),
 		)
 		return nil
 	}

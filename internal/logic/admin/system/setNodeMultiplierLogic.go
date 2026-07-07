@@ -7,13 +7,13 @@ import (
 	"github.com/perfect-panel/server/initialize"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type SetNodeMultiplierLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type SetNodeMultiplierLogic struct {
 // Set Node Multiplier
 func NewSetNodeMultiplierLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SetNodeMultiplierLogic {
 	return &SetNodeMultiplierLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -30,11 +30,11 @@ func NewSetNodeMultiplierLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 func (l *SetNodeMultiplierLogic) SetNodeMultiplier(req *types.SetNodeMultiplierRequest) error {
 	data, err := json.Marshal(req.Periods)
 	if err != nil {
-		l.Logger.Error("Marshal Node Multiplier Config Error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("Marshal Node Multiplier Config Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Marshal Node Multiplier Config Error: %s", err.Error())
 	}
 	if err = l.svcCtx.Store.System().UpdateNodeMultiplierConfig(l.ctx, string(data)); err != nil {
-		l.Logger.Error("Update Node Multiplier Config Error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("Update Node Multiplier Config Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update Node Multiplier Config Error: %s", err.Error())
 	}
 	// update Node Multiplier

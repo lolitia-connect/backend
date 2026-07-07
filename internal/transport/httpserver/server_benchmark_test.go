@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func BenchmarkHTTPServerNativeServerForbidden(b *testing.B) {
@@ -27,7 +27,7 @@ func BenchmarkHTTPServerLegacyHeartbeat(b *testing.B) {
 func benchmarkRequest(b *testing.B, method, uri string, body []byte, expectedStatus int) {
 	b.Helper()
 
-	logger.Disable()
+	zap.ReplaceGlobals(zap.NewNop())
 	app := newTestServer("secret")
 	b.ReportAllocs()
 	b.ResetTimer()

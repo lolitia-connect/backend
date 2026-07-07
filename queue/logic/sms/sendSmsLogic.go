@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/log"
@@ -33,15 +33,15 @@ func NewSendSmsLogic(svcCtx *svc.ServiceContext) *SendSmsLogic {
 func (l *SendSmsLogic) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	var payload types.SendSmsPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-		logger.WithContext(ctx).Error("[SendSmsLogic] Unmarshal payload failed",
-			logger.Field("error", err.Error()),
-			logger.Field("payload", task.Payload()),
+		zap.S().Error("[SendSmsLogic] Unmarshal payload failed",
+			zap.Any("error", err.Error()),
+			zap.Any("payload", task.Payload()),
 		)
 		return nil
 	}
 	client, err := sms.NewSender(l.svcCtx.Config.Mobile.Platform, l.svcCtx.Config.Mobile.PlatformConfig)
 	if err != nil {
-		logger.WithContext(ctx).Error("[SendSmsLogic] New send sms client failed", logger.Field("error", err.Error()), logger.Field("payload", payload))
+		zap.S().Error("[SendSmsLogic] New send sms client failed", zap.Any("error", err.Error()), zap.Any("payload", payload))
 		return err
 	}
 	createSms := &log.Message{
@@ -55,7 +55,7 @@ func (l *SendSmsLogic) ProcessTask(ctx context.Context, task *asynq.Task) error 
 	err = client.SendCode(payload.TelephoneArea, payload.Telephone, payload.Content)
 
 	if err != nil {
-		logger.WithContext(ctx).Error("[SendSmsLogic] Send sms failed", logger.Field("error", err.Error()), logger.Field("payload", payload))
+		zap.S().Error("[SendSmsLogic] Send sms failed", zap.Any("error", err.Error()), zap.Any("payload", payload))
 		if l.svcCtx.Config.Model != constant.DevMode {
 			createSms.Status = 2
 		} else {
@@ -63,7 +63,7 @@ func (l *SendSmsLogic) ProcessTask(ctx context.Context, task *asynq.Task) error 
 		}
 	}
 	createSms.Status = 1
-	logger.WithContext(ctx).Info("[SendSmsLogic] Send sms", logger.Field("telephone", payload.Telephone), logger.Field("content", createSms.Content))
+	zap.S().Info("[SendSmsLogic] Send sms", zap.Any("telephone", payload.Telephone), zap.Any("content", createSms.Content))
 
 	content, _ := createSms.Marshal()
 	err = l.svcCtx.Store.Log().Insert(ctx, &log.SystemLog{
@@ -73,7 +73,7 @@ func (l *SendSmsLogic) ProcessTask(ctx context.Context, task *asynq.Task) error 
 		Content:  string(content),
 	})
 	if err != nil {
-		logger.WithContext(ctx).Error("[SendSmsLogic] Send sms failed", logger.Field("error", err.Error()), logger.Field("payload", payload))
+		zap.S().Error("[SendSmsLogic] Send sms failed", zap.Any("error", err.Error()), zap.Any("payload", payload))
 		return nil
 	}
 	return nil

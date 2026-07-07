@@ -8,13 +8,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateUserTicketStatusLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type UpdateUserTicketStatusLogic struct {
 // Update ticket status
 func NewUpdateUserTicketStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateUserTicketStatusLogic {
 	return &UpdateUserTicketStatusLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,12 +31,12 @@ func NewUpdateUserTicketStatusLogic(ctx context.Context, svcCtx *svc.ServiceCont
 func (l *UpdateUserTicketStatusLogic) UpdateUserTicketStatus(req *types.UpdateUserTicketStatusRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	err := l.svcCtx.Store.Ticket().UpdateTicketStatus(l.ctx, req.Id, u.Id, *req.Status)
 	if err != nil {
-		l.Errorw("[UpdateUserTicketStatusLogic] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateUserTicketStatusLogic] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update ticket error: %v", err.Error())
 	}
 	return nil

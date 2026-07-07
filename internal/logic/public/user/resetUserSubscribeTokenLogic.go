@@ -12,15 +12,15 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type ResetUserSubscribeTokenLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -28,7 +28,7 @@ type ResetUserSubscribeTokenLogic struct {
 // NewResetUserSubscribeTokenLogic Reset User Subscribe Token
 func NewResetUserSubscribeTokenLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ResetUserSubscribeTokenLogic {
 	return &ResetUserSubscribeTokenLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,16 +37,16 @@ func NewResetUserSubscribeTokenLogic(ctx context.Context, svcCtx *svc.ServiceCon
 func (l *ResetUserSubscribeTokenLogic) ResetUserSubscribeToken(req *types.ResetUserSubscribeTokenRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	userSub, err := l.svcCtx.Store.User().FindOneUserSubscribe(l.ctx, req.UserSubscribeId)
 	if err != nil {
-		l.Errorw("FindOneUserSubscribe failed:", logger.Field("error", err.Error()))
+		l.Logger.Errorw("FindOneUserSubscribe failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe failed: %v", err.Error())
 	}
 	if userSub.UserId != u.Id {
-		l.Errorw("UserSubscribeId does not belong to the current user")
+		l.Logger.Errorw("UserSubscribeId does not belong to the current user")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "UserSubscribeId does not belong to the current user")
 	}
 
@@ -55,7 +55,7 @@ func (l *ResetUserSubscribeTokenLogic) ResetUserSubscribeToken(req *types.ResetU
 	if userSub.OrderId != 0 {
 		orderDetails, err = l.svcCtx.Store.Order().FindOneDetails(l.ctx, userSub.OrderId)
 		if err != nil {
-			l.Errorw("FindOneDetails failed:", logger.Field("error", err.Error()))
+			l.Logger.Errorw("FindOneDetails failed:", zap.Any("error", err.Error()))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneDetails failed: %v", err.Error())
 		}
 	} else {
@@ -70,21 +70,16 @@ func (l *ResetUserSubscribeTokenLogic) ResetUserSubscribeToken(req *types.ResetU
 
 	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, &newSub)
 	if err != nil {
-		l.Errorw("UpdateSubscribe failed:", logger.Field("error", err.Error()))
+		l.Logger.Errorw("UpdateSubscribe failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "UpdateSubscribe failed: %v", err.Error())
-	}
-	//clear user subscription cache
-	if err = l.svcCtx.Store.User().ClearSubscribeCache(l.ctx, &newSub); err != nil {
-		l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", userSub.Id))
-		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "ClearSubscribeCache failed: %v", err.Error())
 	}
 	// Clear subscription cache
 	if err = l.svcCtx.Store.Subscribe().ClearCache(l.ctx, userSub.SubscribeId); err != nil {
-		l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", userSub.SubscribeId))
+		l.Logger.Errorw("ClearSubscribeCache failed", zap.Any("error", err.Error()), zap.Any("subscribeId", userSub.SubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "ClearSubscribeCache failed: %v", err.Error())
 	}
 	if err = l.svcCtx.Store.Node().ClearServerAllCache(l.ctx); err != nil {
-		l.Errorf("ClearServerAllCache error: %v", err.Error())
+		l.Logger.Errorf("ClearServerAllCache error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "failed to clear server cache: %v", err.Error())
 	}
 	return nil

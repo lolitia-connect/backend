@@ -5,14 +5,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetServerProtocolsLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type GetServerProtocolsLogic struct {
 // Get Server Protocols
 func NewGetServerProtocolsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetServerProtocolsLogic {
 	return &GetServerProtocolsLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -30,7 +30,7 @@ func (l *GetServerProtocolsLogic) GetServerProtocols(req *types.GetServerProtoco
 	// find server
 	data, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.Id)
 	if err != nil {
-		l.Errorf("[GetServerProtocols] FindOneServer Error: %s", err.Error())
+		l.Logger.Errorf("[GetServerProtocols] FindOneServer Error: %s", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "[GetServerProtocols] FindOneServer Error: %s", err.Error())
 	}
 
@@ -38,7 +38,7 @@ func (l *GetServerProtocolsLogic) GetServerProtocols(req *types.GetServerProtoco
 	var protocols []types.Protocol
 	dst, err := data.UnmarshalProtocols()
 	if err != nil {
-		l.Errorf("[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
+		l.Logger.Errorf("[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
 	}
 	tool.DeepCopy(&protocols, dst)

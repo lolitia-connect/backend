@@ -3,8 +3,9 @@ package queue
 import (
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/queue/handler"
+	"go.uber.org/zap"
 )
 
 type Service struct {
@@ -20,20 +21,17 @@ func NewService(svc *svc.ServiceContext) *Service {
 }
 
 func (m *Service) Start() {
-	logger.Infof("start consumer service")
+	zap.S().Infof("start consumer service")
 	mux := asynq.NewServeMux()
 	// register tasks
 	handler.RegisterHandlers(mux, m.svc)
 	if err := m.server.Run(mux); err != nil {
-		logger.Error("consumer service error", logger.LogField{
-			Key:   "error",
-			Value: err.Error(),
-		})
+		zap.L().Error("consumer service error", zap.Any("error", err.Error()))
 	}
 }
 
 func (m *Service) Stop() {
-	logger.Info("stop consumer service")
+	zap.S().Info("stop consumer service")
 	m.server.Stop()
 }
 
@@ -41,8 +39,9 @@ func initService(svc *svc.ServiceContext) *asynq.Server {
 	return asynq.NewServer(
 		asynq.RedisClientOpt{Addr: svc.Config.Redis.Host, Password: svc.Config.Redis.Pass, DB: 5},
 		asynq.Config{
+			Logger: logging.NewAsynqLogger(),
 			IsFailure: func(err error) bool {
-				logger.Error("consumer service error", logger.Field("error", err.Error()))
+				zap.S().Error("consumer service error", zap.Any("error", err.Error()))
 				return true
 			},
 			Concurrency: 20,

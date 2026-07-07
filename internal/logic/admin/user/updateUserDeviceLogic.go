@@ -5,13 +5,13 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateUserDeviceLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type UpdateUserDeviceLogic struct {
 // User device
 func NewUpdateUserDeviceLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateUserDeviceLogic {
 	return &UpdateUserDeviceLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func (l *UpdateUserDeviceLogic) UpdateUserDevice(req *types.UserDevice) error {
 	device.Enabled = req.Enabled
 	err = l.svcCtx.Store.User().UpdateDevice(l.ctx, device)
 	if err != nil {
-		l.Logger.Error("[UpdateUserDeviceLogic] Update Device Error:", logger.Field("err", err.Error()))
+		l.Logger.Error("[UpdateUserDeviceLogic] Update Device Error:", zap.Any("err", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update Device error: %v", err.Error())
 	}
 	return nil

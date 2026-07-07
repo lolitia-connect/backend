@@ -5,13 +5,13 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type DeleteNodeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type DeleteNodeLogic struct {
 // NewDeleteNodeLogic Delete Node
 func NewDeleteNodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DeleteNodeLogic {
 	return &DeleteNodeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -29,13 +29,13 @@ func (l *DeleteNodeLogic) DeleteNode(req *types.DeleteNodeRequest) error {
 	nodeStore := l.svcCtx.Store.Node()
 	data, err := nodeStore.FindOneNode(l.ctx, req.Id)
 	if err != nil {
-		l.Errorw("[DeleteNode] Query Database Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[DeleteNode] Query Database Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "[DeleteNode] Query Database Error")
 	}
 
 	err = nodeStore.DeleteNode(l.ctx, req.Id)
 	if err != nil {
-		l.Errorw("[DeleteNode] Delete Database Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[DeleteNode] Delete Database Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "[DeleteNode] Delete Database Error")
 	}
 

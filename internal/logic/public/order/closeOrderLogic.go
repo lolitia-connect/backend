@@ -14,13 +14,13 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/alipay"
 	"github.com/perfect-panel/server/pkg/payment/alipayplus"
+	"go.uber.org/zap"
 )
 
 type CloseOrderLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -28,7 +28,7 @@ type CloseOrderLogic struct {
 // NewCloseOrderLogic Close order
 func NewCloseOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CloseOrderLogic {
 	return &CloseOrderLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -39,17 +39,17 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 	// Find order information by order number
 	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, req.OrderNo)
 	if err != nil {
-		l.Errorw("[CloseOrder] Find order info failed",
-			logger.Field("error", err.Error()),
-			logger.Field("orderNo", req.OrderNo),
+		l.Logger.Errorw("[CloseOrder] Find order info failed",
+			zap.Any("error", err.Error()),
+			zap.Any("orderNo", req.OrderNo),
 		)
 		return nil
 	}
 	// If the order status is not 1, it means that the order has been closed or paid
 	if orderInfo.Status != 1 {
-		l.Infow("[CloseOrder] Order status is not 1",
-			logger.Field("orderNo", req.OrderNo),
-			logger.Field("status", orderInfo.Status),
+		l.Logger.Infow("[CloseOrder] Order status is not 1",
+			zap.Any("orderNo", req.OrderNo),
+			zap.Any("status", orderInfo.Status),
 		)
 		return nil
 	}
@@ -59,9 +59,9 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 	if orderInfo.SubscribeId > 0 {
 		sub, err = store.Subscribe().FindOne(l.ctx, orderInfo.SubscribeId)
 		if err != nil {
-			l.Errorw("[CloseOrder] Find subscribe info failed",
-				logger.Field("error", err.Error()),
-				logger.Field("subscribeId", orderInfo.SubscribeId),
+			l.Logger.Errorw("[CloseOrder] Find subscribe info failed",
+				zap.Any("error", err.Error()),
+				zap.Any("subscribeId", orderInfo.SubscribeId),
 			)
 			return nil
 		}
@@ -71,9 +71,9 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 		// update order status
 		err := txStore.Order().UpdateOrderStatus(l.ctx, req.OrderNo, 3)
 		if err != nil {
-			l.Errorw("[CloseOrder] Update order status failed",
-				logger.Field("error", err.Error()),
-				logger.Field("orderNo", req.OrderNo),
+			l.Logger.Errorw("[CloseOrder] Update order status failed",
+				zap.Any("error", err.Error()),
+				zap.Any("orderNo", req.OrderNo),
 			)
 			return err
 		}
@@ -81,9 +81,9 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 		if orderInfo.UserId == 0 {
 			err = txStore.Order().Delete(l.ctx, orderInfo.Id)
 			if err != nil {
-				l.Errorw("[CloseOrder] Delete order failed",
-					logger.Field("error", err.Error()),
-					logger.Field("orderNo", req.OrderNo),
+				l.Logger.Errorw("[CloseOrder] Delete order failed",
+					zap.Any("error", err.Error()),
+					zap.Any("orderNo", req.OrderNo),
 				)
 				return err
 			}
@@ -93,9 +93,9 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 		if orderInfo.GiftAmount > 0 {
 			userInfo, err := txStore.User().FindOne(l.ctx, orderInfo.UserId)
 			if err != nil {
-				l.Errorw("[CloseOrder] Find user info failed",
-					logger.Field("error", err.Error()),
-					logger.Field("user_id", orderInfo.UserId),
+				l.Logger.Errorw("[CloseOrder] Find user info failed",
+					zap.Any("error", err.Error()),
+					zap.Any("user_id", orderInfo.UserId),
 				)
 				return err
 			}
@@ -103,10 +103,10 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 			userInfo.GiftAmount = deduction
 			err = txStore.User().Update(l.ctx, userInfo)
 			if err != nil {
-				l.Errorw("[CloseOrder] Refund deduction amount failed",
-					logger.Field("error", err.Error()),
-					logger.Field("uid", orderInfo.UserId),
-					logger.Field("deduction", orderInfo.GiftAmount),
+				l.Logger.Errorw("[CloseOrder] Refund deduction amount failed",
+					zap.Any("error", err.Error()),
+					zap.Any("uid", orderInfo.UserId),
+					zap.Any("deduction", orderInfo.GiftAmount),
 				)
 				return err
 			}
@@ -131,10 +131,10 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 				Content:  string(content),
 			})
 			if err != nil {
-				l.Errorw("[CloseOrder] Record cancellation refund log failed",
-					logger.Field("error", err.Error()),
-					logger.Field("uid", orderInfo.UserId),
-					logger.Field("deduction", orderInfo.GiftAmount),
+				l.Logger.Errorw("[CloseOrder] Record cancellation refund log failed",
+					zap.Any("error", err.Error()),
+					zap.Any("uid", orderInfo.UserId),
+					zap.Any("deduction", orderInfo.GiftAmount),
 				)
 				return err
 			}
@@ -145,9 +145,9 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 			if sub.Inventory != -1 {
 				sub.Inventory++
 				if e := txStore.Subscribe().Update(l.ctx, sub); e != nil {
-					l.Errorw("[CloseOrder] Restore subscribe inventory failed",
-						logger.Field("error", e.Error()),
-						logger.Field("subscribeId", sub.Id),
+					l.Logger.Errorw("[CloseOrder] Restore subscribe inventory failed",
+						zap.Any("error", e.Error()),
+						zap.Any("subscribeId", sub.Id),
 					)
 					return e
 				}
@@ -157,7 +157,7 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 		return nil
 	})
 	if err != nil {
-		logger.Errorf("[CloseOrder] Transaction failed: %v", err.Error())
+		zap.S().Errorf("[CloseOrder] Transaction failed: %v", err.Error())
 		return err
 	}
 	return nil
@@ -169,7 +169,7 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 func (l *CloseOrderLogic) confirmationPayment(order *order.Order) bool {
 	paymentConfig, err := l.svcCtx.Store.Payment().FindOne(l.ctx, order.PaymentId)
 	if err != nil {
-		l.Errorw("[CloseOrder] Find payment config failed", logger.Field("error", err.Error()), logger.Field("paymentMark", order.Method))
+		l.Logger.Errorw("[CloseOrder] Find payment config failed", zap.Any("error", err.Error()), zap.Any("paymentMark", order.Method))
 		return false
 	}
 	switch order.Method {
@@ -190,7 +190,7 @@ func (l *CloseOrderLogic) confirmationPayment(order *order.Order) bool {
 			return true
 		}
 	default:
-		l.Infow("[CloseOrder] Unsupported payment method", logger.Field("paymentMethod", order.Method))
+		l.Logger.Infow("[CloseOrder] Unsupported payment method", zap.Any("paymentMethod", order.Method))
 	}
 	return false
 }
@@ -201,7 +201,7 @@ func (l *CloseOrderLogic) confirmationPayment(order *order.Order) bool {
 func (l *CloseOrderLogic) queryAlipay(paymentConfig *payment.Payment, TradeNo string) bool {
 	config := payment.AlipayF2FConfig{}
 	if err := json.Unmarshal([]byte(paymentConfig.Config), &config); err != nil {
-		l.Errorw("[CloseOrder] Unmarshal payment config failed", logger.Field("error", err.Error()), logger.Field("config", paymentConfig.Config))
+		l.Logger.Errorw("[CloseOrder] Unmarshal payment config failed", zap.Any("error", err.Error()), zap.Any("config", paymentConfig.Config))
 		return false
 	}
 	client := alipay.NewClient(alipay.Config{
@@ -213,7 +213,7 @@ func (l *CloseOrderLogic) queryAlipay(paymentConfig *payment.Payment, TradeNo st
 	})
 	status, err := client.QueryTrade(l.ctx, TradeNo)
 	if err != nil {
-		l.Errorw("[CloseOrder] Query trade failed", logger.Field("error", err.Error()), logger.Field("TradeNo", TradeNo))
+		l.Logger.Errorw("[CloseOrder] Query trade failed", zap.Any("error", err.Error()), zap.Any("TradeNo", TradeNo))
 		return false
 	}
 	if status == alipay.Success || status == alipay.Finished {
@@ -228,7 +228,7 @@ func (l *CloseOrderLogic) queryAlipay(paymentConfig *payment.Payment, TradeNo st
 func (l *CloseOrderLogic) queryAlipayPlus(paymentConfig *payment.Payment, TradeNo string) bool {
 	config := payment.AlipayPlusConfig{}
 	if err := json.Unmarshal([]byte(paymentConfig.Config), &config); err != nil {
-		l.Errorw("[CloseOrder] Unmarshal payment config failed", logger.Field("error", err.Error()), logger.Field("config", paymentConfig.Config))
+		l.Logger.Errorw("[CloseOrder] Unmarshal payment config failed", zap.Any("error", err.Error()), zap.Any("config", paymentConfig.Config))
 		return false
 	}
 	client := alipayplus.NewClient(alipayplus.Config{
@@ -242,7 +242,7 @@ func (l *CloseOrderLogic) queryAlipayPlus(paymentConfig *payment.Payment, TradeN
 	})
 	status, err := client.QueryTrade(l.ctx, TradeNo)
 	if err != nil {
-		l.Errorw("[CloseOrder] Query trade failed", logger.Field("error", err.Error()), logger.Field("TradeNo", TradeNo))
+		l.Logger.Errorw("[CloseOrder] Query trade failed", zap.Any("error", err.Error()), zap.Any("TradeNo", TradeNo))
 		return false
 	}
 	if status == alipayplus.Success {
@@ -257,7 +257,7 @@ func (l *CloseOrderLogic) queryAlipayPlus(paymentConfig *payment.Payment, TradeN
 func (l *CloseOrderLogic) queryStripe(paymentConfig *payment.Payment, TradeNo string) bool {
 	config := payment.StripeConfig{}
 	if err := json.Unmarshal([]byte(paymentConfig.Config), &config); err != nil {
-		l.Errorw("[CloseOrder] Unmarshal payment config failed", logger.Field("error", err.Error()), logger.Field("config", paymentConfig.Config))
+		l.Logger.Errorw("[CloseOrder] Unmarshal payment config failed", zap.Any("error", err.Error()), zap.Any("config", paymentConfig.Config))
 		return false
 	}
 	client := stripe.NewClient(stripe.Config{
@@ -267,7 +267,7 @@ func (l *CloseOrderLogic) queryStripe(paymentConfig *payment.Payment, TradeNo st
 	})
 	status, err := client.QueryOrderStatus(TradeNo)
 	if err != nil {
-		l.Errorw("[CloseOrder] Query order status failed", logger.Field("error", err.Error()), logger.Field("TradeNo", TradeNo))
+		l.Logger.Errorw("[CloseOrder] Query order status failed", zap.Any("error", err.Error()), zap.Any("TradeNo", TradeNo))
 		return false
 	}
 	return status

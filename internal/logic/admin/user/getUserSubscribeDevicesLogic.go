@@ -9,11 +9,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type GetUserSubscribeDevicesLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type GetUserSubscribeDevicesLogic struct {
 // Get user subcribe devices
 func NewGetUserSubscribeDevicesLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserSubscribeDevicesLogic {
 	return &GetUserSubscribeDevicesLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}

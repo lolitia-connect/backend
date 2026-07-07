@@ -9,8 +9,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/mysql"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/orm"
+	"go.uber.org/zap"
 )
 
 //go:embed database/mysql/*.sql database/postgres/*.sql
@@ -28,17 +28,17 @@ func Migrate(driver, dsn string) *migrate.Migrate {
 		sourcePath = "database/postgres"
 		databaseURL = ensureScheme(orm.DriverPostgres, dsn)
 	default:
-		logger.Errorf("[Migrate] unsupported database driver: %s", driver)
+		zap.S().Errorf("[Migrate] unsupported database driver: %s", driver)
 		panic(fmt.Errorf("unsupported database driver: %s", driver))
 	}
 	d, err := iofs.New(sqlFiles, sourcePath)
 	if err != nil {
-		logger.Errorf("[Migrate] iofs.New error: %v", err.Error())
+		zap.S().Errorf("[Migrate] iofs.New error: %v", err.Error())
 		panic(err)
 	}
 	client, err := migrate.NewWithSourceInstance("iofs", d, databaseURL)
 	if err != nil {
-		logger.Errorf("[Migrate] NewWithSourceInstance error: %v", err.Error())
+		zap.S().Errorf("[Migrate] NewWithSourceInstance error: %v", err.Error())
 		panic(err)
 	}
 	return client

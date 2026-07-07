@@ -1,7 +1,6 @@
 package auth
 
 import (
-
 	"github.com/perfect-panel/server/internal/logic/auth"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"

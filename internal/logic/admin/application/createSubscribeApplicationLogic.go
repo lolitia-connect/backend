@@ -6,14 +6,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/client"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type CreateSubscribeApplicationLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type CreateSubscribeApplicationLogic struct {
 // NewCreateSubscribeApplicationLogic Create subscribe application
 func NewCreateSubscribeApplicationLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateSubscribeApplicationLogic {
 	return &CreateSubscribeApplicationLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -32,7 +32,7 @@ func (l *CreateSubscribeApplicationLogic) CreateSubscribeApplication(req *types.
 	tool.DeepCopy(&link, req.DownloadLink)
 	linkData, err := link.Marshal()
 	if err != nil {
-		l.Errorf("Failed to marshal download link: %v", err)
+		l.Logger.Errorf("Failed to marshal download link: %v", err)
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), " Failed to marshal download link")
 	}
 	data := &client.SubscribeApplication{
@@ -49,7 +49,7 @@ func (l *CreateSubscribeApplicationLogic) CreateSubscribeApplication(req *types.
 
 	err = l.svcCtx.Store.Client().Insert(l.ctx, data)
 	if err != nil {
-		l.Errorf("Failed to create subscribe application: %v", err)
+		l.Logger.Errorf("Failed to create subscribe application: %v", err)
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.DatabaseInsertError), "Failed to create subscribe application")
 	}
 

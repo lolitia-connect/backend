@@ -7,14 +7,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterNodeListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type FilterNodeListLogic struct {
 // NewFilterNodeListLogic Filter Node List
 func NewFilterNodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterNodeListLogic {
 	return &FilterNodeListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -40,7 +40,7 @@ func (l *FilterNodeListLogic) FilterNodeList(req *types.FilterNodeListRequest) (
 	total, data, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, params)
 
 	if err != nil {
-		l.Errorw("[FilterNodeList] Query Database Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[FilterNodeList] Query Database Error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "[FilterNodeList] Query Database Error")
 	}
 

@@ -5,7 +5,7 @@ import (
 
 	"github.com/perfect-panel/server/pkg/constant"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
@@ -16,7 +16,7 @@ import (
 )
 
 type GetUserTicketListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type GetUserTicketListLogic struct {
 // Get ticket list
 func NewGetUserTicketListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserTicketListLogic {
 	return &GetUserTicketListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -38,7 +38,7 @@ func (l *GetUserTicketListLogic) GetUserTicketList(req *types.GetUserTicketListR
 	l.Logger.Debugf("Current user: %v", u.Id)
 	total, list, err := l.svcCtx.Store.Ticket().QueryTicketList(l.ctx, req.Page, req.Size, u.Id, req.Status, req.Search)
 	if err != nil {
-		l.Errorw("[GetUserTicketListLogic] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetUserTicketListLogic] Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryTicketList error: %v", err)
 	}
 	resp = &types.GetUserTicketListResponse{

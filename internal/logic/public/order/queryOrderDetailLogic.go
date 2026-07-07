@@ -5,14 +5,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type QueryOrderDetailLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type QueryOrderDetailLogic struct {
 // Get order
 func NewQueryOrderDetailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryOrderDetailLogic {
 	return &QueryOrderDetailLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -29,7 +29,7 @@ func NewQueryOrderDetailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 func (l *QueryOrderDetailLogic) QueryOrderDetail(req *types.QueryOrderDetailRequest) (resp *types.OrderDetail, err error) {
 	orderInfo, err := l.svcCtx.Store.Order().FindOneDetailsByOrderNo(l.ctx, req.OrderNo)
 	if err != nil {
-		l.Errorw("[QueryOrderDetail] Database query error", logger.Field("error", err.Error()), logger.Field("order_no", req.OrderNo))
+		l.Logger.Errorw("[QueryOrderDetail] Database query error", zap.Any("error", err.Error()), zap.Any("order_no", req.OrderNo))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find order error: %v", err.Error())
 	}
 	resp = &types.OrderDetail{}

@@ -5,9 +5,9 @@ import (
 	"github.com/perfect-panel/server/internal/logic/telegram"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/hertzx"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/result"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 func RegisterTelegramHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
@@ -19,14 +19,14 @@ func TelegramHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 		// auth secret
 		secret := c.Query("secret")
 		if secret != tool.Md5Encode(svcCtx.Config.Telegram.BotToken, false) {
-			logger.WithContext(c.Request.Context()).Error("[TelegramHandler] Secret is wrong", logger.Field("request secret", secret), logger.Field("config secret", tool.Md5Encode(svcCtx.Config.Telegram.BotToken, false)), logger.Field("token", svcCtx.Config.Telegram.BotToken))
+			zap.L().Error("[TelegramHandler] Secret is wrong", zap.Any("request secret", secret), zap.Any("config secret", tool.Md5Encode(svcCtx.Config.Telegram.BotToken, false)), zap.Any("token", svcCtx.Config.Telegram.BotToken))
 			c.Abort()
 			result.HttpResult(c, nil, nil)
 			return
 		}
 		var request tgbotapi.Update
 		if err := c.BindJSON(&request); err != nil {
-			logger.WithContext(c.Request.Context()).Error("[TelegramHandler] Failed to bind request", logger.Field("error", err.Error()))
+			zap.L().Error("[TelegramHandler] Failed to bind request", zap.Any("error", err.Error()))
 			c.Abort()
 			result.HttpResult(c, nil, err)
 		}

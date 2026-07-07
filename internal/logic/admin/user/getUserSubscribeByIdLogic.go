@@ -5,14 +5,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetUserSubscribeByIdLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,17 +20,17 @@ type GetUserSubscribeByIdLogic struct {
 // Get user subcribe by id
 func NewGetUserSubscribeByIdLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserSubscribeByIdLogic {
 	return &GetUserSubscribeByIdLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
 func (l *GetUserSubscribeByIdLogic) GetUserSubscribeById(req *types.GetUserSubscribeByIdRequest) (resp *types.UserSubscribeDetail, err error) {
-	sub, err := l.svcCtx.Store.User().FindOneSubscribeDetailsById(l.ctx, req.Id)
+	sub, err := l.svcCtx.Store.User().FindOneUserSubscribe(l.ctx, req.Id)
 	if err != nil {
-		l.Errorw("[GetUserSubscribeByIdLogic] FindOneSubscribeDetailsById error", logger.Field("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneSubscribeDetailsById error: %v", err.Error())
+		l.Logger.Errorw("[GetUserSubscribeByIdLogic] FindOneUserSubscribe error", zap.Any("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe error: %v", err.Error())
 	}
 	var subscribeDetails types.UserSubscribeDetail
 	tool.DeepCopy(&subscribeDetails, sub)

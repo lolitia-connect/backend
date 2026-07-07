@@ -8,11 +8,11 @@ import (
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type ServerPushStatusLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type ServerPushStatusLogic struct {
 // NewServerPushStatusLogic Push server status
 func NewServerPushStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ServerPushStatusLogic {
 	return &ServerPushStatusLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -35,7 +35,7 @@ func (l *ServerPushStatusLogic) ServerPushStatus(req *types.ServerPushStatusRequ
 		UpdatedAt: req.UpdatedAt,
 	})
 	if err != nil {
-		l.Errorw("[ServerPushStatus] UpdateNodeStatus error", logger.Field("error", err))
+		l.Logger.Errorw("[ServerPushStatus] UpdateNodeStatus error", zap.Any("error", err))
 		return errors.New("update node status failed")
 	}
 
@@ -43,7 +43,7 @@ func (l *ServerPushStatusLogic) ServerPushStatus(req *types.ServerPushStatusRequ
 	// when multiple nodes report status simultaneously.
 	now := time.Now().UTC() // Use UTC explicitly to avoid timezone mismatch with PostgreSQL session timezone (#146)
 	if err := l.svcCtx.Store.Node().UpdateServerLastReportedAt(l.ctx, req.ServerId, now); err != nil {
-		l.Errorw("[ServerPushStatus] UpdateServerLastReportedAt error", logger.Field("error", err))
+		l.Logger.Errorw("[ServerPushStatus] UpdateServerLastReportedAt error", zap.Any("error", err))
 	}
 
 	return nil

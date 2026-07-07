@@ -2,48 +2,31 @@ package group
 
 import (
 	"context"
-	"fmt"
 
-	"entgo.io/ent/dialect/sql"
-	"github.com/perfect-panel/server/ent"
-	entnode "github.com/perfect-panel/server/ent/node"
-	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
-	"github.com/perfect-panel/server/ent/predicate"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type GetNodeGroupListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
 func NewGetNodeGroupListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetNodeGroupListLogic {
 	return &GetNodeGroupListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
 func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequest) (resp *types.GetNodeGroupListResponse, err error) {
-	query := l.svcCtx.Ent.NodeGroup.Query()
-
-	// 获取总数
-	total, err := query.Clone().Count(l.ctx)
+	total, nodeGroups, err := l.svcCtx.Store.Group().QueryNodeGroupList(l.ctx, req.Page, req.Size)
 	if err != nil {
-		logger.Errorf("failed to count node groups: %v", err)
-		return nil, err
-	}
-
-	// 分页查询
-	offset := (req.Page - 1) * req.Size
-	nodeGroups, err := query.Order(ent.Asc(entnodegroup.FieldSort)).Offset(offset).Limit(req.Size).All(l.ctx)
-	if err != nil {
-		logger.Errorf("failed to find node groups: %v", err)
+		zap.S().Errorf("failed to find node groups: %v", err)
 		return nil, err
 	}
 
@@ -51,17 +34,18 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 	var list []types.NodeGroup
 	for _, ng := range nodeGroups {
 		// 统计该组的节点数（JSON数组查询）
-		nodeCount, _ := l.svcCtx.Ent.Node.Query().Where(predicate.Node(func(s *sql.Selector) {
-			s.Where(sql.P(func(b *sql.Builder) {
-				b.WriteString("JSON_CONTAINS(").Ident(entnode.FieldNodeGroupIds).WriteString(", ").Arg(fmt.Sprintf("[%d]", ng.ID)).WriteByte(')')
-			}))
-		})).Count(l.ctx)
+		nodeCount, _ := l.svcCtx.Store.Group().CountNodesByNodeGroupId(l.ctx, ng.Id)
 
 		// 处理指针类型的字段
 		var forCalculation bool
-		forCalculation = ng.ForCalculation
+		if ng.ForCalculation != nil {
+			forCalculation = *ng.ForCalculation
+		}
 
-		isExpiredGroup := ng.IsExpiredGroup
+		var isExpiredGroup bool
+		if ng.IsExpiredGroup != nil {
+			isExpiredGroup = *ng.IsExpiredGroup
+		}
 
 		var minTrafficGB, maxTrafficGB, maxTrafficGBExpired int64
 		if ng.MinTrafficGB != nil {
@@ -75,7 +59,7 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 		}
 
 		list = append(list, types.NodeGroup{
-			Id:                  ng.ID,
+			Id:                  ng.Id,
 			Name:                ng.Name,
 			Type:                group.MustNodeGroupType(ng.Type),
 			Description:         ng.Description,
@@ -94,7 +78,7 @@ func (l *GetNodeGroupListLogic) GetNodeGroupList(req *types.GetNodeGroupListRequ
 	}
 
 	resp = &types.GetNodeGroupListResponse{
-		Total: int64(total),
+		Total: total,
 		List:  list,
 	}
 

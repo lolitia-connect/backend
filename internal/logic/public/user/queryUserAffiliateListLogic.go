@@ -11,11 +11,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type QueryUserAffiliateListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type QueryUserAffiliateListLogic struct {
 // Query User Affiliate List
 func NewQueryUserAffiliateListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryUserAffiliateListLogic {
 	return &QueryUserAffiliateListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -32,12 +32,12 @@ func NewQueryUserAffiliateListLogic(ctx context.Context, svcCtx *svc.ServiceCont
 func (l *QueryUserAffiliateListLogic) QueryUserAffiliateList(req *types.QueryUserAffiliateListRequest) (resp *types.QueryUserAffiliateListResponse, err error) {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	data, total, err := l.svcCtx.Store.User().QueryAffiliateList(l.ctx, u.Id, req.Page, req.Size)
 	if err != nil {
-		l.Errorw("Query User Affiliate List failed: %v", logger.Field("error", err.Error()))
+		l.Logger.Errorw("Query User Affiliate List failed: %v", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query User Affiliate List failed: %v", err.Error())
 	}
 

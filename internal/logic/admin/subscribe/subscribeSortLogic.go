@@ -10,11 +10,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type SubscribeSortLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type SubscribeSortLogic struct {
 // NewSubscribeSortLogic Subscribe sort
 func NewSubscribeSortLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SubscribeSortLogic {
 	return &SubscribeSortLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -38,7 +38,7 @@ func (l *SubscribeSortLogic) SubscribeSort(req *types.SubscribeSortRequest) erro
 	// query min sort by ids
 	minSort, err := l.svcCtx.Store.Subscribe().QuerySubscribeMinSortByIds(l.ctx, ids)
 	if err != nil {
-		l.Logger.Error("[SubscribeSortLogic] query subscribe list by ids error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[SubscribeSortLogic] query subscribe list by ids error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query subscribe list by ids error: %v", err.Error())
 	}
 	_, subs, err := l.svcCtx.Store.Subscribe().FilterList(l.ctx, &subscribe.FilterParams{
@@ -47,7 +47,7 @@ func (l *SubscribeSortLogic) SubscribeSort(req *types.SubscribeSortRequest) erro
 		Ids:  ids,
 	})
 	if err != nil {
-		l.Logger.Error("[SubscribeSortLogic] query subscribe list by ids error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[SubscribeSortLogic] query subscribe list by ids error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query subscribe list by ids error: %v", err.Error())
 	}
 	// reordering
@@ -61,7 +61,7 @@ func (l *SubscribeSortLogic) SubscribeSort(req *types.SubscribeSortRequest) erro
 		return store.Subscribe().UpdateSort(l.ctx, subs)
 	})
 	if err != nil {
-		l.Logger.Error("[SubscribeSortLogic] update subscribe sort error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[SubscribeSortLogic] update subscribe sort error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update subscribe sort error: %v", err.Error())
 	}
 	l.Logger.Info("[UpdateSubscribeSort] Successfully updated subscribe sort")

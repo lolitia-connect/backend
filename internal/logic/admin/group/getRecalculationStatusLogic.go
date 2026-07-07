@@ -4,14 +4,13 @@ import (
 	"context"
 
 	"github.com/perfect-panel/server/ent"
-	"github.com/perfect-panel/server/ent/grouphistory"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type GetRecalculationStatusLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +18,7 @@ type GetRecalculationStatusLogic struct {
 // Get recalculation status
 func NewGetRecalculationStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetRecalculationStatusLogic {
 	return &GetRecalculationStatusLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -27,7 +26,7 @@ func NewGetRecalculationStatusLogic(ctx context.Context, svcCtx *svc.ServiceCont
 
 func (l *GetRecalculationStatusLogic) GetRecalculationStatus() (resp *types.RecalculationState, err error) {
 	// 返回最近的一条 GroupHistory 记录
-	history, err := l.svcCtx.Ent.GroupHistory.Query().Order(ent.Desc(grouphistory.FieldID)).First(l.ctx)
+	history, err := l.svcCtx.Store.Group().FindLatestGroupHistory(l.ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			// 如果没有历史记录，返回空闲状态
@@ -38,7 +37,7 @@ func (l *GetRecalculationStatusLogic) GetRecalculationStatus() (resp *types.Reca
 			}
 			return resp, nil
 		}
-		l.Errorw("failed to get group history", logger.Field("error", err.Error()))
+		l.Logger.Errorw("failed to get group history", zap.Any("error", err.Error()))
 		return nil, err
 	}
 

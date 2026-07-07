@@ -7,14 +7,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetSubscriptionLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type GetSubscriptionLogic struct {
 // NewGetSubscriptionLogic Get Subscription
 func NewGetSubscriptionLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetSubscriptionLogic {
 	return &GetSubscriptionLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -41,7 +41,7 @@ func (l *GetSubscriptionLogic) GetSubscription(req *types.GetSubscriptionRequest
 		DefaultLanguage: true,
 	})
 	if err != nil {
-		l.Errorw("[Site GetSubscription]", logger.Field("err", err.Error()))
+		l.Logger.Errorw("[Site GetSubscription]", zap.Any("err", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get subscription list error: %v", err.Error())
 	}
 	list := make([]types.Subscribe, len(data))

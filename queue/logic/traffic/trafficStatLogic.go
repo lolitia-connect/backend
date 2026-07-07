@@ -8,7 +8,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type StatLogic struct {
@@ -33,7 +33,7 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 		// 查询用户流量统计, 按用户和订阅分组
 		userTraffic, err := store.TrafficLog().QueryUserTrafficRanking(ctx, start, end)
 		if err != nil {
-			logger.Errorf("[Traffic Stat Queue] Query user traffic failed: %v", err.Error())
+			zap.S().Errorf("[Traffic Stat Queue] Query user traffic failed: %v", err.Error())
 			return err
 		}
 
@@ -64,7 +64,7 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 				Content:  string(content),
 			})
 			if err != nil {
-				logger.Errorf("[Traffic Stat Queue] Create user traffic log failed: %v", err.Error())
+				zap.S().Errorf("[Traffic Stat Queue] Create user traffic log failed: %v", err.Error())
 				return err
 			}
 		}
@@ -79,14 +79,14 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 			Content:  string(userTop10Content),
 		})
 		if err != nil {
-			logger.Errorf("[Traffic Stat Queue] Create user traffic rank log failed: %v", err.Error())
+			zap.S().Errorf("[Traffic Stat Queue] Create user traffic rank log failed: %v", err.Error())
 			return err
 		}
 
 		// 统计服务器流量
 		serverTraffic, err := store.TrafficLog().QueryServerTrafficRanking(ctx, start, end)
 		if err != nil {
-			logger.Errorf("[Traffic Stat Queue] Query server traffic failed: %v", err.Error())
+			zap.S().Errorf("[Traffic Stat Queue] Query server traffic failed: %v", err.Error())
 			return err
 		}
 
@@ -112,7 +112,7 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 				Content:  string(content),
 			})
 			if err != nil {
-				logger.Errorf("[Traffic Stat Queue] Create server traffic log failed: %v", err.Error())
+				zap.S().Errorf("[Traffic Stat Queue] Create server traffic log failed: %v", err.Error())
 				return err
 			}
 		}
@@ -125,14 +125,14 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 			Content:  string(serverTop10Content),
 		})
 		if err != nil {
-			logger.Errorf("[Traffic Stat Queue] Create server traffic rank log failed: %v", err.Error())
+			zap.S().Errorf("[Traffic Stat Queue] Create server traffic rank log failed: %v", err.Error())
 			return err
 		}
 
 		// traffic stat
 		summary, err := store.TrafficLog().QueryTrafficSummary(ctx, start, end)
 		if err != nil {
-			logger.Errorf("[Traffic Stat Queue] Query traffic stat failed: %v", err.Error())
+			zap.S().Errorf("[Traffic Stat Queue] Query traffic stat failed: %v", err.Error())
 			return err
 		}
 		stat := log.TrafficStat{
@@ -150,7 +150,7 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 			Content:  string(content),
 		})
 		if err != nil {
-			logger.Errorf("[Traffic Stat Queue] Create traffic stat log failed: %v", err.Error())
+			zap.S().Errorf("[Traffic Stat Queue] Create traffic stat log failed: %v", err.Error())
 			return err
 		}
 
@@ -158,15 +158,15 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 		if l.svc.Config.Log.AutoClear {
 			err = store.TrafficLog().DeleteBefore(ctx, end.AddDate(0, 0, int(-l.svc.Config.Log.ClearDays)))
 			if err != nil {
-				logger.Errorf("[Traffic Stat Queue] Delete server traffic log failed: %v", err.Error())
+				zap.S().Errorf("[Traffic Stat Queue] Delete server traffic log failed: %v", err.Error())
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		logger.Errorf("[Traffic Stat Queue] Process task failed: %v", err.Error())
+		zap.S().Errorf("[Traffic Stat Queue] Process task failed: %v", err.Error())
 		return err
 	}
-	logger.Infof("[Traffic Stat Queue] Process task completed successfully, consuming: %s", time.Since(now).String())
+	zap.S().Infof("[Traffic Stat Queue] Process task completed successfully, consuming: %s", time.Since(now).String())
 	return nil
 }

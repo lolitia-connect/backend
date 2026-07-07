@@ -11,7 +11,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 
 	"github.com/perfect-panel/server/pkg/device"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
@@ -23,7 +23,7 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 		oneDevice, err := srv.Store.User().FindOneDeviceByIdentifier(ctx, deviceID)
 		if err != nil {
 			if !ent.IsNotFound(err) {
-				logger.Errorw("failed to find device", logger.Field("error", err.Error()), logger.Field("device_id", deviceID))
+				zap.S().Errorw("failed to find device", zap.Any("error", err.Error()), zap.Any("device_id", deviceID))
 			}
 			return
 		}
@@ -32,7 +32,7 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 		oneDevice.Online = false
 		err = srv.Store.User().UpdateDevice(ctx, oneDevice)
 		if err != nil {
-			logger.Errorw("[DeviceManager] failed to update device", logger.Field("error", err.Error()), logger.Field("device_id", deviceID))
+			zap.S().Errorw("[DeviceManager] failed to update device", zap.Any("error", err.Error()), zap.Any("device_id", deviceID))
 		}
 
 		//当前时间为设备离线时间
@@ -59,7 +59,7 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 		}
 
 		if err := srv.Store.User().InsertDeviceOnlineRecord(ctx, &deviceOnlineRecord); err != nil {
-			logger.Errorw("[DeviceOnlineRecord] failed to DeviceOnlineRecord", logger.Field("error", err.Error()), logger.Field("device_id", deviceID))
+			zap.S().Errorw("[DeviceOnlineRecord] failed to DeviceOnlineRecord", zap.Any("error", err.Error()), zap.Any("device_id", deviceID))
 		}
 	}
 
@@ -68,14 +68,14 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 		oneDevice, err := srv.Store.User().FindOneDeviceByIdentifier(ctx, deviceID)
 		if err != nil {
 			if !ent.IsNotFound(err) {
-				logger.Errorw("failed to find device", logger.Field("error", err.Error()), logger.Field("device_id", deviceID))
+				zap.S().Errorw("failed to find device", zap.Any("error", err.Error()), zap.Any("device_id", deviceID))
 			}
 			return
 		}
 		oneDevice.Online = true
 		err = srv.Store.User().UpdateDevice(ctx, oneDevice)
 		if err != nil {
-			logger.Errorw("[DeviceManager] failed to update device", logger.Field("error", err.Error()), logger.Field("device_id", deviceID))
+			zap.S().Errorw("[DeviceManager] failed to update device", zap.Any("error", err.Error()), zap.Any("device_id", deviceID))
 			return
 		}
 	}
@@ -102,7 +102,7 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 	}
 
 	manager.OnMessage = func(userID int64, deviceID, session string, message string) {
-		logger.Infof("userid: %d ,device_number: %s,session: %s, message: %v", userID, deviceID, session, message)
+		zap.S().Infof("userid: %d ,device_number: %s,session: %s, message: %v", userID, deviceID, session, message)
 	}
 	return manager
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/client"
 	"github.com/perfect-panel/server/internal/model/coupon"
 	"github.com/perfect-panel/server/internal/model/document"
+	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/order"
@@ -32,6 +33,7 @@ type Store interface {
 	Client() client.Model
 	Coupon() coupon.Model
 	Document() document.Model
+	Group() group.Model
 	Log() log.Model
 	Node() node.Model
 	Order() order.Model
@@ -60,6 +62,7 @@ type StoreImpl struct {
 	client           client.Model
 	coupon           coupon.Model
 	document         document.Model
+	group            group.Model
 	log              log.Model
 	node             node.Model
 	order            order.Model
@@ -86,6 +89,7 @@ func NewStore(ec *ent.Client, rds *redis.Client) *StoreImpl {
 		client:           client.NewSubscribeApplicationModel(ec),
 		coupon:           coupon.NewModel(ec),
 		document:         document.NewModel(ec),
+		group:            group.NewModel(ec),
 		log:              log.NewModel(ec),
 		node:             node.NewModel(ec, rds),
 		order:            order.NewModel(ec, rds),
@@ -123,6 +127,10 @@ func (s *StoreImpl) Coupon() coupon.Model {
 
 func (s *StoreImpl) Document() document.Model {
 	return s.document
+}
+
+func (s *StoreImpl) Group() group.Model {
+	return s.group
 }
 
 func (s *StoreImpl) Log() log.Model {

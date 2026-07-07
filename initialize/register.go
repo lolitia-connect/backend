@@ -3,7 +3,7 @@ package initialize
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
@@ -11,10 +11,10 @@ import (
 )
 
 func Register(ctx *svc.ServiceContext) {
-	logger.Debug("Register config initialization")
+	zap.S().Debug("Register config initialization")
 	configs, err := ctx.Store.System().GetRegisterConfig(context.Background())
 	if err != nil {
-		logger.Errorf("[Init Register Config] Get Register Config Error: %s", err.Error())
+		zap.S().Errorf("[Init Register Config] Get Register Config Error: %s", err.Error())
 		return
 	}
 	var registerConfig config.RegisterConfig

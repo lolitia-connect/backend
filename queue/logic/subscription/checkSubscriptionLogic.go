@@ -7,7 +7,7 @@ import (
 
 	queue "github.com/perfect-panel/server/queue/types"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/user"
@@ -26,12 +26,12 @@ func NewCheckSubscriptionLogic(svc *svc.ServiceContext) *CheckSubscriptionLogic 
 }
 
 func (l *CheckSubscriptionLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
-	logger.Infof("[CheckSubscription] Start check subscription: %s", time.Now().Format("2006-01-02 15:04:05"))
+	zap.S().Infof("[CheckSubscription] Start check subscription: %s", time.Now().Format("2006-01-02 15:04:05"))
 	// Check subscription traffic
 	err := l.svc.Store.InTx(ctx, func(store repository.Store) error {
 		list, err := store.User().FindTrafficExceededSubscribes(ctx)
 		if err != nil {
-			logger.Errorw("[Check Subscription Traffic] Query subscribe failed", logger.Field("error", err.Error()))
+			zap.S().Errorw("[Check Subscription Traffic] Query subscribe failed", zap.Any("error", err.Error()))
 			return err
 		}
 		var ids []int64
@@ -40,37 +40,31 @@ func (l *CheckSubscriptionLogic) ProcessTask(ctx context.Context, _ *asynq.Task)
 		}
 		if len(ids) > 0 {
 			if err = store.User().MarkSubscribesFinished(ctx, ids, 2, time.Now()); err != nil {
-				logger.Errorw("[Check Subscription Traffic] Update subscribe status failed", logger.Field("error", err.Error()))
+				zap.S().Errorw("[Check Subscription Traffic] Update subscribe status failed", zap.Any("error", err.Error()))
 				return nil
 			}
 			err = l.sendTrafficNotify(ctx, ids)
 			if err != nil {
-				logger.Errorw("[Check Subscription Traffic] Send email failed", logger.Field("error", err.Error()))
+				zap.S().Errorw("[Check Subscription Traffic] Send email failed", zap.Any("error", err.Error()))
 				return nil
 			}
 
-			if len(list) > 0 {
-				if err = store.User().ClearSubscribeCache(ctx, list...); err != nil {
-					logger.Errorw("[Check Subscription Traffic] Clear subscribe cache failed", logger.Field("error", err.Error()))
-					return err
-				}
-			}
 			l.clearServerCache(ctx, list...)
-			logger.Infow("[Check Subscription Traffic] Update subscribe status", logger.Field("user_ids", ids), logger.Field("count", int64(len(ids))))
+			zap.S().Infow("[Check Subscription Traffic] Update subscribe status", zap.Any("user_ids", ids), zap.Any("count", int64(len(ids))))
 		} else {
-			logger.Info("[Check Subscription Traffic] No subscribe need to update")
+			zap.S().Info("[Check Subscription Traffic] No subscribe need to update")
 		}
 
 		return nil
 	})
 	if err != nil {
-		logger.Error("[CheckSubscription] Transaction failed", logger.Field("error", err.Error()))
+		zap.S().Error("[CheckSubscription] Transaction failed", zap.Any("error", err.Error()))
 	}
 	// Check subscription expire
 	err = l.svc.Store.InTx(ctx, func(store repository.Store) error {
 		list, err := store.User().FindExpiredSubscribes(ctx, time.Now())
 		if err != nil {
-			logger.Error("[Check Subscription] Find subscribe failed", logger.Field("error", err.Error()))
+			zap.S().Error("[Check Subscription] Find subscribe failed", zap.Any("error", err.Error()))
 			return err
 		}
 		var ids []int64
@@ -79,29 +73,25 @@ func (l *CheckSubscriptionLogic) ProcessTask(ctx context.Context, _ *asynq.Task)
 		}
 		if len(ids) > 0 {
 			if err = store.User().MarkSubscribesFinished(ctx, ids, 3, time.Now()); err != nil {
-				logger.Error("[Check Subscription Expire] Update subscribe status failed", logger.Field("error", err.Error()))
+				zap.S().Error("[Check Subscription Expire] Update subscribe status failed", zap.Any("error", err.Error()))
 				return err
 			}
 			err = l.sendExpiredNotify(ctx, ids)
 			if err != nil {
-				logger.Error("[Check Subscription Expire] Send email failed", logger.Field("error", err.Error()))
+				zap.S().Error("[Check Subscription Expire] Send email failed", zap.Any("error", err.Error()))
 				return nil
-			}
-			if err = store.User().ClearSubscribeCache(ctx, list...); err != nil {
-				logger.Errorw("[Check Subscription Traffic] Clear subscribe cache failed", logger.Field("error", err.Error()))
-				return err
 			}
 			l.clearServerCache(ctx, list...)
 
-			logger.Info("[Check Subscription Expire] Update subscribe status", logger.Field("user_ids", ids), logger.Field("count", int64(len(ids))))
+			zap.S().Info("[Check Subscription Expire] Update subscribe status", zap.Any("user_ids", ids), zap.Any("count", int64(len(ids))))
 		} else {
-			logger.Info("[Check Subscription Expire] No subscribe need to update")
+			zap.S().Info("[Check Subscription Expire] No subscribe need to update")
 		}
 
 		return nil
 	})
 	if err != nil {
-		logger.Info("[CheckSubscription] Transaction failed", logger.Field("error", err.Error()))
+		zap.S().Info("[CheckSubscription] Transaction failed", zap.Any("error", err.Error()))
 	}
 	return nil
 }
@@ -110,12 +100,12 @@ func (l *CheckSubscriptionLogic) sendExpiredNotify(ctx context.Context, subs []i
 	for _, id := range subs {
 		sub, err := l.svc.Store.User().FindOneUserSubscribe(ctx, id)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] FindOneUserSubscribe failed", logger.Field("error", err.Error()))
+			zap.S().Errorw("[CheckSubscription] FindOneUserSubscribe failed", zap.Any("error", err.Error()))
 			continue
 		}
 		method, err := l.svc.Store.User().FindUserAuthMethodByUserId(ctx, "email", sub.UserId)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] FindUserAuthMethodByUserId failed", logger.Field("error", err.Error()), logger.Field("user_id", sub.UserId))
+			zap.S().Errorw("[CheckSubscription] FindUserAuthMethodByUserId failed", zap.Any("error", err.Error()), zap.Any("user_id", sub.UserId))
 			continue
 		}
 		var taskPayload queue.SendEmailPayload
@@ -129,18 +119,18 @@ func (l *CheckSubscriptionLogic) sendExpiredNotify(ctx context.Context, subs []i
 		}
 		payloadBuy, err := json.Marshal(taskPayload)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] Marshal payload failed", logger.Field("error", err.Error()))
+			zap.S().Errorw("[CheckSubscription] Marshal payload failed", zap.Any("error", err.Error()))
 			continue
 		}
 		task := asynq.NewTask(queue.ForthwithSendEmail, payloadBuy, asynq.MaxRetry(3))
 		taskInfo, err := l.svc.Queue.Enqueue(task)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] Enqueue task failed", logger.Field("error", err.Error()), logger.Field("payload", string(payloadBuy)))
+			zap.S().Errorw("[CheckSubscription] Enqueue task failed", zap.Any("error", err.Error()), zap.Any("payload", string(payloadBuy)))
 			continue
 		}
-		logger.Infow("[CheckSubscription] Send email success",
-			logger.Field("taskID", taskInfo.ID), logger.Field("User", sub.UserId),
-			logger.Field("Email", method.AuthIdentifier),
+		zap.S().Infow("[CheckSubscription] Send email success",
+			zap.Any("taskID", taskInfo.ID), zap.Any("User", sub.UserId),
+			zap.Any("Email", method.AuthIdentifier),
 		)
 	}
 	return nil
@@ -150,12 +140,12 @@ func (l *CheckSubscriptionLogic) sendTrafficNotify(ctx context.Context, subs []i
 	for _, id := range subs {
 		sub, err := l.svc.Store.User().FindOneUserSubscribe(ctx, id)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] FindOneUserSubscribe failed", logger.Field("error", err.Error()))
+			zap.S().Errorw("[CheckSubscription] FindOneUserSubscribe failed", zap.Any("error", err.Error()))
 			continue
 		}
 		method, err := l.svc.Store.User().FindUserAuthMethodByUserId(ctx, "email", sub.UserId)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] FindUserAuthMethodByUserId failed", logger.Field("error", err.Error()), logger.Field("user_id", sub.UserId))
+			zap.S().Errorw("[CheckSubscription] FindUserAuthMethodByUserId failed", zap.Any("error", err.Error()), zap.Any("user_id", sub.UserId))
 			continue
 		}
 		var taskPayload queue.SendEmailPayload
@@ -168,18 +158,18 @@ func (l *CheckSubscriptionLogic) sendTrafficNotify(ctx context.Context, subs []i
 		}
 		payloadBuy, err := json.Marshal(taskPayload)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] Marshal payload failed", logger.Field("error", err.Error()))
+			zap.S().Errorw("[CheckSubscription] Marshal payload failed", zap.Any("error", err.Error()))
 			continue
 		}
 		task := asynq.NewTask(queue.ForthwithSendEmail, payloadBuy, asynq.MaxRetry(3))
 		taskInfo, err := l.svc.Queue.Enqueue(task)
 		if err != nil {
-			logger.Errorw("[CheckSubscription] Enqueue task failed", logger.Field("error", err.Error()), logger.Field("payload", string(payloadBuy)))
+			zap.S().Errorw("[CheckSubscription] Enqueue task failed", zap.Any("error", err.Error()), zap.Any("payload", string(payloadBuy)))
 			continue
 		}
-		logger.Infow("[CheckSubscription] Send email success",
-			logger.Field("taskID", taskInfo.ID), logger.Field("User", sub.UserId),
-			logger.Field("Email", method.AuthIdentifier),
+		zap.S().Infow("[CheckSubscription] Send email success",
+			zap.Any("taskID", taskInfo.ID), zap.Any("User", sub.UserId),
+			zap.Any("Email", method.AuthIdentifier),
 		)
 	}
 	return nil
@@ -195,7 +185,7 @@ func (l *CheckSubscriptionLogic) clearServerCache(ctx context.Context, userSubs 
 
 	for sub, _ := range subs {
 		if err := l.svc.Store.Subscribe().ClearCache(ctx, sub); err != nil {
-			logger.Errorw("[CheckSubscription] ClearCache failed", logger.Field("error", err.Error()), logger.Field("subscribe_id", sub))
+			zap.S().Errorw("[CheckSubscription] ClearCache failed", zap.Any("error", err.Error()), zap.Any("subscribe_id", sub))
 		}
 	}
 }

@@ -5,11 +5,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type TelephoneRegisterLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -17,7 +17,7 @@ type TelephoneRegisterLogic struct {
 // User Telephone register
 func NewTelephoneRegisterLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TelephoneRegisterLogic {
 	return &TelephoneRegisterLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}

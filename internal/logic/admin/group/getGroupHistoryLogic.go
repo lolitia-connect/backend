@@ -3,56 +3,31 @@ package group
 import (
 	"context"
 
-	"github.com/perfect-panel/server/ent"
-	"github.com/perfect-panel/server/ent/grouphistory"
-	"github.com/perfect-panel/server/ent/predicate"
+	model "github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type GetGroupHistoryLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
 func NewGetGroupHistoryLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetGroupHistoryLogic {
 	return &GetGroupHistoryLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
 func (l *GetGroupHistoryLogic) GetGroupHistory(req *types.GetGroupHistoryRequest) (resp *types.GetGroupHistoryResponse, err error) {
-	query := l.svcCtx.Ent.GroupHistory.Query()
-	predicates := make([]predicate.GroupHistory, 0, 2)
-
-	// 添加过滤条件
-	if req.GroupMode != "" {
-		predicates = append(predicates, grouphistory.GroupMode(req.GroupMode))
-	}
-	if req.TriggerType != "" {
-		predicates = append(predicates, grouphistory.TriggerType(req.TriggerType))
-	}
-	if len(predicates) > 0 {
-		query = query.Where(predicates...)
-	}
-
-	// 获取总数
-	total, err := query.Clone().Count(l.ctx)
+	total, histories, err := l.svcCtx.Store.Group().QueryGroupHistory(l.ctx, &model.GroupHistoryFilter{Page: req.Page, Size: req.Size, GroupMode: req.GroupMode, TriggerType: req.TriggerType})
 	if err != nil {
-		logger.Errorf("failed to count group histories: %v", err)
-		return nil, err
-	}
-
-	// 分页查询
-	offset := (req.Page - 1) * req.Size
-	histories, err := query.Order(ent.Desc(grouphistory.FieldID)).Offset(offset).Limit(req.Size).All(l.ctx)
-	if err != nil {
-		logger.Errorf("failed to find group histories: %v", err)
+		zap.S().Errorf("failed to find group histories: %v", err)
 		return nil, err
 	}
 
@@ -70,7 +45,7 @@ func (l *GetGroupHistoryLogic) GetGroupHistory(req *types.GetGroupHistoryRequest
 		}
 
 		list = append(list, types.GroupHistory{
-			Id:           h.ID,
+			Id:           h.Id,
 			GroupMode:    h.GroupMode,
 			TriggerType:  h.TriggerType,
 			TotalUsers:   h.TotalUsers,
@@ -84,7 +59,7 @@ func (l *GetGroupHistoryLogic) GetGroupHistory(req *types.GetGroupHistoryRequest
 	}
 
 	resp = &types.GetGroupHistoryResponse{
-		Total: int64(total),
+		Total: total,
 		List:  list,
 	}
 

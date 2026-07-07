@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 func IsUserAgentAllowed(ctx context.Context, svc *svc.ServiceContext, userAgent string) bool {
@@ -17,7 +17,7 @@ func IsUserAgentAllowed(ctx context.Context, svc *svc.ServiceContext, userAgent 
 	keywords := tool.RemoveDuplicateElements(strings.Split(svc.Config.Subscribe.UserAgentList, "\n")...)
 	clients, err := svc.Store.Client().List(ctx)
 	if err != nil {
-		logger.WithContext(ctx).Errorw("[Subscribe] Query client list failed", logger.Field("error", err.Error()))
+		zap.S().Errorw("[Subscribe] Query client list failed", zap.Any("error", err.Error()))
 	}
 	for _, item := range clients {
 		keywords = append(keywords, item.UserAgent)

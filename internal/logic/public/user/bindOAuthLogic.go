@@ -15,11 +15,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type BindOAuthLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -27,7 +27,7 @@ type BindOAuthLogic struct {
 // Bind OAuth
 func NewBindOAuthLogic(ctx context.Context, svcCtx *svc.ServiceContext) *BindOAuthLogic {
 	return &BindOAuthLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -47,11 +47,11 @@ func (l *BindOAuthLogic) BindOAuth(req *types.BindOAuthRequest) (resp *types.Bin
 	case "facebook":
 		uri, err = l.facebook()
 	default:
-		l.Errorw("oauth login method not support: %v", logger.Field("method", req.Method))
+		l.Logger.Errorw("oauth login method not support: %v", zap.Any("method", req.Method))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "oauth login method not support: %v", req.Method)
 	}
 	if err != nil {
-		l.Errorw("error bind oauth", logger.Field("error", err.Error()))
+		l.Logger.Errorw("error bind oauth", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "error bind oauth: %v", err.Error())
 	}
 	return &types.BindOAuthResponse{
@@ -67,7 +67,7 @@ func (l *BindOAuthLogic) google(req *types.BindOAuthRequest) (string, error) {
 	cfg := new(auth.GoogleAuthConfig)
 	err = cfg.Unmarshal(authMethod.Config)
 	if err != nil {
-		l.Errorw("error unmarshal google config: %v", logger.Field("config", authMethod.Config), logger.Field("error", err.Error()))
+		l.Logger.Errorw("error unmarshal google config: %v", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
 		return "", err
 	}
 	client := google.New(&google.Config{
@@ -97,7 +97,7 @@ func (l *BindOAuthLogic) apple(req *types.BindOAuthRequest) (string, error) {
 	var cfg auth.AppleAuthConfig
 	err = cfg.Unmarshal(authMethod.Config)
 	if err != nil {
-		l.Errorw("error unmarshal apple config: %v", logger.Field("config", authMethod.Config), logger.Field("error", err.Error()))
+		l.Logger.Errorw("error unmarshal apple config: %v", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
 		return "", err
 	}
 	uri := "https://appleid.apple.com/auth/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s&scope=name email&response_mode=form_post"
@@ -106,7 +106,7 @@ func (l *BindOAuthLogic) apple(req *types.BindOAuthRequest) (string, error) {
 	// save the state code
 	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("apple:%s", code), req.Redirect, 5*60*time.Second).Err()
 	if err != nil {
-		l.Errorw("error save state code to redis: %v", logger.Field("code", code), logger.Field("error", err.Error()))
+		l.Logger.Errorw("error save state code to redis: %v", zap.Any("code", code), zap.Any("error", err.Error()))
 	}
 	return fmt.Sprintf(uri, cfg.ClientId, fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL), code), nil
 }
@@ -122,7 +122,7 @@ func (l *BindOAuthLogic) telegram(req *types.BindOAuthRequest) (string, error) {
 	var cfg auth.TelegramAuthConfig
 	err = cfg.Unmarshal(authMethod.Config)
 	if err != nil {
-		l.Errorw("error unmarshal telegram config", logger.Field("config", authMethod.Config), logger.Field("error", err.Error()))
+		l.Logger.Errorw("error unmarshal telegram config", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
 		return "", err
 	}
 	code := random.KeyNew(8, 1)

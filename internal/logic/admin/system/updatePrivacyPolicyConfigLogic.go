@@ -9,11 +9,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type UpdatePrivacyPolicyConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type UpdatePrivacyPolicyConfigLogic struct {
 // Update Privacy Policy Config
 func NewUpdatePrivacyPolicyConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdatePrivacyPolicyConfigLogic {
 	return &UpdatePrivacyPolicyConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -30,7 +30,7 @@ func NewUpdatePrivacyPolicyConfigLogic(ctx context.Context, svcCtx *svc.ServiceC
 func (l *UpdatePrivacyPolicyConfigLogic) UpdatePrivacyPolicyConfig(req *types.PrivacyPolicyConfig) error {
 	err := updateConfigFields(l.ctx, l.svcCtx, "tos", convertedConfigFields(*req), config.TosConfigKey)
 	if err != nil {
-		l.Errorw("[UpdateTosConfigLogic] update tos config error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateTosConfigLogic] update tos config error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update tos config error: %v", err)
 	}
 

@@ -2,7 +2,6 @@ package user
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
@@ -11,38 +10,20 @@ import (
 )
 
 func (m *customUserModel) FindOneDevice(ctx context.Context, id int64) (*Device, error) {
-	deviceIdKey := fmt.Sprintf("%s%v", cacheUserDeviceIdPrefix, id)
-	var resp Device
-	if err := getJSONCache(ctx, m.redis, deviceIdKey, &resp); err == nil {
-		return &resp, nil
-	}
 	item, err := m.db.UserDevice.Get(ctx, id)
-	resp = *entToDevice(item)
-	if err == nil {
-		_ = setJSONCache(ctx, m.redis, deviceIdKey, &resp)
-	}
 	switch {
 	case err == nil:
-		return &resp, nil
+		return entToDevice(item), nil
 	default:
 		return nil, err
 	}
 }
 
 func (m *customUserModel) FindOneDeviceByIdentifier(ctx context.Context, id string) (*Device, error) {
-	deviceIdKey := fmt.Sprintf("%s%v", cacheUserDeviceNumberPrefix, id)
-	var resp Device
-	if err := getJSONCache(ctx, m.redis, deviceIdKey, &resp); err == nil {
-		return &resp, nil
-	}
 	item, err := m.db.UserDevice.Query().Where(entdevice.Identifier(id)).First(ctx)
-	resp = *entToDevice(item)
-	if err == nil {
-		_ = setJSONCache(ctx, m.redis, deviceIdKey, &resp)
-	}
 	switch {
 	case err == nil:
-		return &resp, nil
+		return entToDevice(item), nil
 	default:
 		return nil, err
 	}
@@ -71,7 +52,7 @@ func (m *customUserModel) QueryDeviceList(ctx context.Context, userId int64) ([]
 }
 
 func (m *customUserModel) UpdateDevice(ctx context.Context, data *Device) error {
-	old, err := m.FindOneDevice(ctx, data.Id)
+	_, err := m.FindOneDevice(ctx, data.Id)
 	if err != nil {
 		return err
 	}
@@ -80,11 +61,11 @@ func (m *customUserModel) UpdateDevice(ctx context.Context, data *Device) error 
 		return err
 	}
 	*data = *entToDevice(updated)
-	return m.GetCacheManager().ClearCache(ctx, old.GetCacheKeys()...)
+	return nil
 }
 
 func (m *customUserModel) DeleteDevice(ctx context.Context, id int64) error {
-	data, err := m.FindOneDevice(ctx, id)
+	_, err := m.FindOneDevice(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil
@@ -94,16 +75,10 @@ func (m *customUserModel) DeleteDevice(ctx context.Context, id int64) error {
 	if err = m.db.UserDevice.DeleteOneID(id).Exec(ctx); err != nil {
 		return err
 	}
-	return m.GetCacheManager().ClearCache(ctx, data.GetCacheKeys()...)
+	return nil
 }
 
 func (m *customUserModel) InsertDevice(ctx context.Context, data *Device) error {
-	defer func() {
-		if clearErr := m.ClearDeviceCache(ctx, data); clearErr != nil {
-			// log cache clear error
-		}
-	}()
-
 	created, err := deviceCreate(m.db.UserDevice.Create(), data).Save(ctx)
 	if err != nil {
 		return err
@@ -115,6 +90,33 @@ func (m *customUserModel) InsertDevice(ctx context.Context, data *Device) error 
 func (m *customUserModel) FindDeviceOnlineRecord(ctx context.Context, userId int64, startTime, endTime string) (*DeviceOnlineRecord, error) {
 	item, err := m.db.UserDeviceOnlineRecord.Query().Where(entrecord.UserID(userId), entrecord.CreatedAtGTE(parseTime(startTime)), entrecord.CreatedAtLT(parseTime(endTime))).First(ctx)
 	return entToDeviceOnlineRecord(item), err
+}
+
+func (m *customUserModel) FindMaxDeviceOnlineSeconds(ctx context.Context, userId int64) (int64, error) {
+	item, err := m.db.UserDeviceOnlineRecord.Query().Where(entrecord.UserID(userId)).Order(ent.Desc(entrecord.FieldOnlineSeconds)).First(ctx)
+	if ent.IsNotFound(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return item.OnlineSeconds, nil
+}
+
+func (m *customUserModel) FindMaxDeviceDurationDays(ctx context.Context, userId int64) (int64, error) {
+	item, err := m.db.UserDeviceOnlineRecord.Query().Where(entrecord.UserID(userId)).Order(ent.Desc(entrecord.FieldDurationDays)).First(ctx)
+	if ent.IsNotFound(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return int64(item.DurationDays), nil
+}
+
+func (m *customUserModel) FindDeviceOnlineRecordsSince(ctx context.Context, userId int64, since time.Time) ([]*DeviceOnlineRecord, error) {
+	items, err := m.db.UserDeviceOnlineRecord.Query().Where(entrecord.UserID(userId), entrecord.CreatedAtGTE(since)).Order(ent.Asc(entrecord.FieldCreatedAt)).All(ctx)
+	return entDeviceOnlineRecordsToModels(items), err
 }
 
 func (m *customUserModel) InsertDeviceOnlineRecord(ctx context.Context, data *DeviceOnlineRecord) error {

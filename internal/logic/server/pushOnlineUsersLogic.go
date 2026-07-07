@@ -8,11 +8,11 @@ import (
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type PushOnlineUsersLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type PushOnlineUsersLogic struct {
 // NewPushOnlineUsersLogic Push online users
 func NewPushOnlineUsersLogic(ctx context.Context, svcCtx *svc.ServiceContext) *PushOnlineUsersLogic {
 	return &PushOnlineUsersLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -42,7 +42,7 @@ func (l *PushOnlineUsersLogic) PushOnlineUsers(req *types.OnlineUsersRequest) er
 	// Find server info
 	_, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.ServerId)
 	if err != nil {
-		l.Errorw("[PushOnlineUsers] FindOne error", logger.Field("error", err))
+		l.Logger.Errorw("[PushOnlineUsers] FindOne error", zap.Any("error", err))
 		return fmt.Errorf("server not found: %w", err)
 	}
 
@@ -59,14 +59,14 @@ func (l *PushOnlineUsersLogic) PushOnlineUsers(req *types.OnlineUsersRequest) er
 	}
 	err = l.svcCtx.Store.Node().UpdateOnlineUserSubscribe(l.ctx, req.ServerId, fmt.Sprintf("%s:%s", req.Protocol, req.ProtocolId), onlineUsers)
 	if err != nil {
-		l.Errorw("[PushOnlineUsers] cache operation error", logger.Field("error", err))
+		l.Logger.Errorw("[PushOnlineUsers] cache operation error", zap.Any("error", err))
 		return err
 	}
 
 	err = l.svcCtx.Store.Node().UpdateOnlineUserSubscribeGlobal(l.ctx, onlineUsers)
 
 	if err != nil {
-		l.Errorw("[PushOnlineUsers] cache operation error", logger.Field("error", err))
+		l.Logger.Errorw("[PushOnlineUsers] cache operation error", zap.Any("error", err))
 		return err
 	}
 

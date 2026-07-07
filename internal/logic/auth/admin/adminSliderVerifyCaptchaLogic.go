@@ -6,14 +6,14 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/captcha"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type AdminSliderVerifyCaptchaLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type AdminSliderVerifyCaptchaLogic struct {
 // Verify slider captcha
 func NewAdminSliderVerifyCaptchaLogic(ctx context.Context, svcCtx *svc.ServiceContext) *AdminSliderVerifyCaptchaLogic {
 	return &AdminSliderVerifyCaptchaLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,7 +31,7 @@ func (l *AdminSliderVerifyCaptchaLogic) AdminSliderVerifyCaptcha(req *types.Slid
 	// Get verify config from database
 	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
-		l.Logger.Error("[AdminSliderVerifyCaptchaLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[AdminSliderVerifyCaptchaLogic] GetVerifyConfig error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 
@@ -47,7 +47,7 @@ func (l *AdminSliderVerifyCaptchaLogic) AdminSliderVerifyCaptcha(req *types.Slid
 	sliderSvc := captcha.NewSliderService(l.svcCtx.Redis)
 	token, err := sliderSvc.VerifySlider(l.ctx, req.Id, req.X, req.Y, req.Trail)
 	if err != nil {
-		l.Logger.Error("[AdminSliderVerifyCaptchaLogic] VerifySlider error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[AdminSliderVerifyCaptchaLogic] VerifySlider error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "verify slider error")
 	}
 

@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/perfect-panel/server/internal/model/node"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type Adapter struct {
@@ -100,12 +100,12 @@ func (adapter *Adapter) Proxies(servers []*node.Node) ([]Proxy, error) {
 
 	for _, item := range servers {
 		if item.Server == nil {
-			logger.Errorf("[Adapter] Server is nil for node ID: %d", item.Id)
+			zap.S().Errorf("[Adapter] Server is nil for node ID: %d", item.Id)
 			continue
 		}
 		protocols, err := item.Server.UnmarshalProtocols()
 		if err != nil {
-			logger.Errorf("[Adapter] Unmarshal Protocols error: %s; server id : %d", err.Error(), item.ServerId)
+			zap.S().Errorf("[Adapter] Unmarshal Protocols error: %s; server id : %d", err.Error(), item.ServerId)
 			continue
 		}
 		for _, protocol := range protocols {

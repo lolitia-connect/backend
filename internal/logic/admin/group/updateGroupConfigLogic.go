@@ -3,17 +3,15 @@ package group
 import (
 	"context"
 	"encoding/json"
-	"time"
 
-	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateGroupConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +19,7 @@ type UpdateGroupConfigLogic struct {
 // Update group config
 func NewUpdateGroupConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateGroupConfigLogic {
 	return &UpdateGroupConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -56,7 +54,7 @@ func (l *UpdateGroupConfigLogic) UpdateGroupConfig(req *types.UpdateGroupConfigR
 			}
 			jsonBytes, marshalErr := json.Marshal(config)
 			if marshalErr != nil {
-				l.Errorw("failed to marshal "+key, logger.Field("error", marshalErr.Error()))
+				l.Logger.Errorw("failed to marshal "+key, zap.Any("error", marshalErr.Error()))
 				err = errors.Wrap(marshalErr, "failed to marshal "+key)
 				break
 			}
@@ -68,34 +66,14 @@ func (l *UpdateGroupConfigLogic) UpdateGroupConfig(req *types.UpdateGroupConfigR
 	}
 
 	if err != nil {
-		l.Errorw("failed to update group config", logger.Field("error", err.Error()))
+		l.Logger.Errorw("failed to update group config", zap.Any("error", err.Error()))
 		return err
 	}
 
-	l.Infof("group config updated successfully: enabled=%v, mode=%s", req.Enabled, req.Mode)
+	l.Logger.Infof("group config updated successfully: enabled=%v, mode=%s", req.Enabled, req.Mode)
 	return nil
 }
 
 func (l *UpdateGroupConfigLogic) upsertGroupConfig(key, value, desc string) error {
-	affected, err := l.svcCtx.Ent.System.Update().Where(
-		entsystem.Category("group"),
-		entsystem.Key(key),
-	).SetValue(value).SetUpdatedAt(time.Now()).Save(l.ctx)
-	if err != nil {
-		l.Errorw("failed to update group config", logger.Field("key", key), logger.Field("error", err.Error()))
-		return err
-	}
-	if affected > 0 {
-		return nil
-	}
-	now := time.Now()
-	return l.svcCtx.Ent.System.Create().
-		SetCategory("group").
-		SetKey(key).
-		SetValue(value).
-		SetType("string").
-		SetDesc(desc).
-		SetCreatedAt(now).
-		SetUpdatedAt(now).
-		Exec(l.ctx)
+	return l.svcCtx.Store.System().UpsertByCategoryKey(l.ctx, "group", key, value, "string", desc)
 }

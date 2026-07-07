@@ -10,13 +10,13 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type CommissionWithdrawLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type CommissionWithdrawLogic struct {
 // Commission Withdraw
 func NewCommissionWithdrawLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CommissionWithdrawLogic {
 	return &CommissionWithdrawLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,12 +33,12 @@ func NewCommissionWithdrawLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdrawRequest) (resp *types.WithdrawalLog, err error) {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
 	if u.Commission < req.Amount {
-		logger.Errorf("User %d has insufficient commission balance: %.2f, requested: %.2f", u.Id, float64(u.Commission)/100, float64(req.Amount)/100)
+		zap.S().Errorf("User %d has insufficient commission balance: %.2f, requested: %.2f", u.Id, float64(u.Commission)/100, float64(req.Amount)/100)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserCommissionNotEnough), "User %d has insufficient commission balance", u.Id)
 	}
 
@@ -51,7 +51,7 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 	b, err := logInfo.Marshal()
 
 	if err != nil {
-		l.Errorf("Failed to marshal commission log for user %d: %v", u.Id, err)
+		l.Logger.Errorf("Failed to marshal commission log for user %d: %v", u.Id, err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Failed to marshal commission log for user %d: %v", u.Id, err)
 	}
 
@@ -59,7 +59,7 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 		updatedUser := *u
 		updatedUser.Commission -= req.Amount
 		if err = store.User().Update(l.ctx, &updatedUser); err != nil {
-			l.Errorf("Failed to update user %d commission balance: %v", u.Id, err)
+			l.Logger.Errorf("Failed to update user %d commission balance: %v", u.Id, err)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Failed to update user %d commission balance: %v", u.Id, err)
 		}
 
@@ -70,7 +70,7 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 			Content:   string(b),
 			CreatedAt: time.Now(),
 		}); err != nil {
-			l.Errorf("Failed to create commission log for user %d: %v", u.Id, err)
+			l.Logger.Errorf("Failed to create commission log for user %d: %v", u.Id, err)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Failed to create commission log for user %d: %v", u.Id, err)
 		}
 
@@ -81,7 +81,7 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 			Status:  0,
 			Reason:  "",
 		}); err != nil {
-			l.Errorf("Failed to create withdrawal log for user %d: %v", u.Id, err)
+			l.Logger.Errorf("Failed to create withdrawal log for user %d: %v", u.Id, err)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Failed to create withdrawal log for user %d: %v", u.Id, err)
 		}
 		return nil

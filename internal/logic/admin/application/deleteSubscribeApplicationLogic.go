@@ -5,13 +5,13 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type DeleteSubscribeApplicationLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type DeleteSubscribeApplicationLogic struct {
 // NewDeleteSubscribeApplicationLogic Delete subscribe application
 func NewDeleteSubscribeApplicationLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DeleteSubscribeApplicationLogic {
 	return &DeleteSubscribeApplicationLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -28,7 +28,7 @@ func NewDeleteSubscribeApplicationLogic(ctx context.Context, svcCtx *svc.Service
 func (l *DeleteSubscribeApplicationLogic) DeleteSubscribeApplication(req *types.DeleteSubscribeApplicationRequest) error {
 	err := l.svcCtx.Store.Client().Delete(l.ctx, req.Id)
 	if err != nil {
-		l.Errorf("Failed to delete subscribe application with ID %d: %v", req.Id, err)
+		l.Logger.Errorf("Failed to delete subscribe application with ID %d: %v", req.Id, err)
 		return errors.Wrap(xerr.NewErrCode(xerr.DatabaseDeletedError), err.Error())
 	}
 	return nil

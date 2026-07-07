@@ -24,19 +24,19 @@ import (
 	"github.com/perfect-panel/server/internal/model/payment"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/alipay"
 	"github.com/perfect-panel/server/pkg/payment/alipayplus"
 	"github.com/perfect-panel/server/pkg/payment/epay"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // PurchaseCheckoutLogic handles the checkout process for various payment methods
 // including EPay, Stripe, Alipay F2F, and balance payments
 type PurchaseCheckoutLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -45,7 +45,7 @@ type PurchaseCheckoutLogic struct {
 // for handling purchase checkout operations across different payment platforms
 func NewPurchaseCheckoutLogic(ctx context.Context, svcCtx *svc.ServiceContext) *PurchaseCheckoutLogic {
 	return &PurchaseCheckoutLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -58,20 +58,20 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 	// Validate and retrieve order information
 	orderInfo, err := l.svcCtx.Store.Order().FindOneByOrderNo(l.ctx, req.OrderNo)
 	if err != nil {
-		l.Logger.Error("[PurchaseCheckout] Find order failed", logger.Field("error", err.Error()), logger.Field("orderNo", req.OrderNo))
+		l.Logger.Error("[PurchaseCheckout] Find order failed", zap.Any("error", err.Error()), zap.Any("orderNo", req.OrderNo))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", req.OrderNo)
 	}
 
 	// Verify order is in pending payment status (status = 1)
 	if orderInfo.Status != 1 {
-		l.Logger.Error("[PurchaseCheckout] Order status error", logger.Field("status", orderInfo.Status))
+		l.Logger.Error("[PurchaseCheckout] Order status error", zap.Any("status", orderInfo.Status))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.OrderStatusError), "order status error: %v", orderInfo.Status)
 	}
 
 	// Retrieve payment method configuration
 	paymentConfig, err := l.svcCtx.Store.Payment().FindOne(l.ctx, orderInfo.PaymentId)
 	if err != nil {
-		l.Logger.Error("[PurchaseCheckout] Database query error", logger.Field("error", err.Error()), logger.Field("payment", orderInfo.Method))
+		l.Logger.Error("[PurchaseCheckout] Database query error", zap.Any("error", err.Error()), zap.Any("payment", orderInfo.Method))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
 	}
 	// Route to appropriate payment handler based on payment platform
@@ -80,7 +80,7 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		// Process EPay payment - generates payment URL for redirect
 		url, err := l.epayPayment(paymentConfig, orderInfo, req.ReturnUrl)
 		if err != nil {
-			l.Logger.Error("[PurchaseCheckout] epay error", logger.Field("error", err.Error()))
+			l.Logger.Error("[PurchaseCheckout] epay error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "epayPayment error: %v", err.Error())
 		}
 		resp = &types.CheckoutOrderResponse{
@@ -103,7 +103,7 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		// Process Alipay Face-to-Face payment - generates QR code
 		url, err := l.alipayF2fPayment(paymentConfig, orderInfo)
 		if err != nil {
-			l.Errorw("[PurchaseCheckout] alipayF2fPayment error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[PurchaseCheckout] alipayF2fPayment error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "alipayF2fPayment error: %v", err.Error())
 		}
 		resp = &types.CheckoutOrderResponse{
@@ -114,7 +114,7 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 	case paymentPlatform.AlipayPlus:
 		url, err := l.alipayPlusPayment(paymentConfig, orderInfo, req.ReturnUrl)
 		if err != nil {
-			l.Errorw("[PurchaseCheckout] alipayPlusPayment error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[PurchaseCheckout] alipayPlusPayment error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "alipayPlusPayment error: %v", err.Error())
 		}
 		resp = &types.CheckoutOrderResponse{
@@ -136,14 +136,14 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 	case paymentPlatform.Balance:
 		// Process balance payment - validate user and process payment immediately
 		if orderInfo.UserId == 0 {
-			l.Errorw("[PurchaseCheckout] user not found", logger.Field("userId", orderInfo.UserId))
+			l.Logger.Errorw("[PurchaseCheckout] user not found", zap.Any("userId", orderInfo.UserId))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user not found")
 		}
 
 		// Retrieve user information for balance validation
 		userInfo, err := l.svcCtx.Store.User().FindOne(l.ctx, orderInfo.UserId)
 		if err != nil {
-			l.Errorw("[PurchaseCheckout] FindOne User error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[PurchaseCheckout] FindOne User error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOne error: %s", err.Error())
 		}
 
@@ -157,7 +157,7 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		}
 
 	default:
-		l.Errorw("[PurchaseCheckout] payment method not found", logger.Field("method", orderInfo.Method))
+		l.Logger.Errorw("[PurchaseCheckout] payment method not found", zap.Any("method", orderInfo.Method))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "payment method not found")
 	}
 	return
@@ -169,7 +169,7 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 	// Parse Alipay F2F configuration from payment settings
 	f2FConfig := &payment.AlipayF2FConfig{}
 	if err := f2FConfig.Unmarshal([]byte(pay.Config)); err != nil {
-		l.Errorw("[PurchaseCheckout] Unmarshal Alipay config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Unmarshal Alipay config error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 
@@ -206,7 +206,7 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 	// Convert order amount to CNY using current exchange rate
 	amount, err := l.queryPaymentMethodExchangeRate(pay, info.Amount, "CNY")
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", err.Error())
 	}
 	convertAmount := int64(amount * 100) // Convert to cents for API
@@ -217,7 +217,7 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 		Amount:  convertAmount,
 	})
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] PreCreateTrade error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] PreCreateTrade error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "PreCreateTrade error: %s", err.Error())
 	}
 	return QRCode, nil
@@ -226,18 +226,18 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *order.Order, returnURL string) (string, error) {
 	config := &payment.AlipayPlusConfig{}
 	if err := config.Unmarshal([]byte(pay.Config)); err != nil {
-		l.Errorw("[PurchaseCheckout] Unmarshal AlipayPlus config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Unmarshal AlipayPlus config error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 
 	targetCurrency := strings.ToUpper(strings.TrimSpace(pay.CurrencyUnit))
 	paymentMethod := strings.ToUpper(strings.TrimSpace(config.PaymentMethod))
 	if targetCurrency == "" {
-		l.Errorw("[PurchaseCheckout] AlipayPlus currency is empty")
+		l.Logger.Errorw("[PurchaseCheckout] AlipayPlus currency is empty")
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "AlipayPlus currency is empty")
 	}
 	if paymentMethod == "" {
-		l.Errorw("[PurchaseCheckout] AlipayPlus payment method is empty")
+		l.Logger.Errorw("[PurchaseCheckout] AlipayPlus payment method is empty")
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "AlipayPlus payment method is empty")
 	}
 
@@ -280,7 +280,7 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 
 	amount, err := l.queryPaymentMethodExchangeRate(pay, info.Amount, targetCurrency)
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", err.Error())
 	}
 	convertAmount := int64(amount * 100)
@@ -291,13 +291,13 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		ReferenceBuyerId: strconv.FormatInt(info.UserId, 10),
 	})
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] AlipayPlus PreCreateTrade error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] AlipayPlus PreCreateTrade error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "PreCreateTrade error: %s", err.Error())
 	}
 
 	info.TradeNo = info.OrderNo
 	if err := l.svcCtx.Store.Order().Update(l.ctx, info); err != nil {
-		l.Errorw("[PurchaseCheckout] Update order error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Update order error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
 	}
 
@@ -311,7 +311,7 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	stripeConfig := &payment.StripeConfig{}
 
 	if err := stripeConfig.Unmarshal([]byte(pay.Config)); err != nil {
-		l.Errorw("[PurchaseCheckout] Unmarshal Stripe config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Unmarshal Stripe config error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 
@@ -331,7 +331,7 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	// Apply exchange rate conversion
 	convertedAmount, convertErr := l.queryPaymentMethodExchangeRate(pay, info.Amount, "")
 	if convertErr != nil {
-		l.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", convertErr.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", convertErr.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", convertErr.Error())
 	}
 	// Convert back to cents for Stripe API
@@ -368,7 +368,7 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 		cancelURL,
 	)
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] CreateCheckoutSession error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] CreateCheckoutSession error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CreateCheckoutSession error: %s", err.Error())
 	}
 
@@ -376,7 +376,7 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	info.TradeNo = result.TradeNo
 	err = l.svcCtx.Store.Order().Update(l.ctx, info)
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] Update order error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Update order error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
 	}
 	return result.CheckoutURL, nil
@@ -389,7 +389,7 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 	// Parse EPay configuration from payment settings
 	epayConfig := &payment.EPayConfig{}
 	if err := epayConfig.Unmarshal([]byte(config.Config)); err != nil {
-		l.Errorw("[PurchaseCheckout] Unmarshal EPay config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Unmarshal EPay config error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 	// Initialize EPay client with merchant credentials
@@ -399,7 +399,7 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 		// Use per-payment exchange rate
 		converted, convertErr := l.queryPaymentMethodExchangeRate(config, info.Amount, "CNY")
 		if convertErr != nil {
-			l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate error", logger.Field("error", convertErr.Error()))
+			l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", convertErr.Error()))
 			return "", convertErr
 		}
 		amount = converted
@@ -407,7 +407,7 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 		// Convert order amount to CNY using current exchange rate
 		amount, err = l.queryExchangeRate("CNY", info.Amount)
 		if err != nil {
-			l.Logger.Error("[PurchaseCheckout] queryExchangeRate error", logger.Field("error", err.Error()))
+			l.Logger.Error("[PurchaseCheckout] queryExchangeRate error", zap.Any("error", err.Error()))
 			return "", err
 		}
 	} else {
@@ -465,7 +465,7 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 	// Parse EPay configuration from payment settings
 	epayConfig := &payment.CryptoSaaSConfig{}
 	if err := epayConfig.Unmarshal([]byte(config.Config)); err != nil {
-		l.Errorw("[PurchaseCheckout] Unmarshal EPay config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Unmarshal EPay config error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 	// Initialize EPay client with merchant credentials
@@ -559,7 +559,7 @@ func (l *PurchaseCheckoutLogic) queryExchangeRate(to string, src int64) (amount 
 	// Convert currency if system currency differs from target currency
 	result, err := exchangeRate.GetExchangeRete(l.svcCtx.Config.Currency.Unit, to, l.svcCtx.Config.Currency.AccessKey, 1)
 	if err != nil {
-		l.Logger.Error("[PurchaseCheckout] QueryExchangeRate error", logger.Field("error", err.Error()))
+		l.Logger.Error("[PurchaseCheckout] QueryExchangeRate error", zap.Any("error", err.Error()))
 		return 0, err
 	}
 	l.svcCtx.ExchangeRate = result
@@ -587,7 +587,7 @@ func (l *PurchaseCheckoutLogic) queryPaymentMethodExchangeRate(pay *payment.Paym
 		if l.svcCtx.Config.Currency.AccessKey != "" {
 			result, fetchErr := exchangeRate.GetExchangeRete(l.svcCtx.Config.Currency.Unit, strings.ToUpper(pay.CurrencyUnit), l.svcCtx.Config.Currency.AccessKey, 1)
 			if fetchErr != nil {
-				l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate auto-fetch error", logger.Field("error", fetchErr.Error()))
+				l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate auto-fetch error", zap.Any("error", fetchErr.Error()))
 				return amount, nil // Fallback to 1:1
 			}
 			return result * amount, nil
@@ -633,15 +633,15 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 		// No payment required for zero-amount orders
 		l.Logger.Info(
 			"[PurchaseCheckout] No payment required for zero-amount order",
-			logger.Field("orderNo", o.OrderNo),
-			logger.Field("userId", u.Id),
+			zap.Any("orderNo", o.OrderNo),
+			zap.Any("userId", u.Id),
 		)
 		err = l.svcCtx.Store.Order().UpdateOrderStatus(l.ctx, o.OrderNo, 2)
 		if err != nil {
-			l.Errorw("[PurchaseCheckout] Update order status error",
-				logger.Field("error", err.Error()),
-				logger.Field("orderNo", o.OrderNo),
-				logger.Field("userId", u.Id))
+			l.Logger.Errorw("[PurchaseCheckout] Update order status error",
+				zap.Any("error", err.Error()),
+				zap.Any("orderNo", o.OrderNo),
+				zap.Any("userId", u.Id))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update order status error: %s", err.Error())
 		}
 		goto activation
@@ -740,10 +740,10 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 	})
 
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] Balance payment transaction error",
-			logger.Field("error", err.Error()),
-			logger.Field("orderNo", o.OrderNo),
-			logger.Field("userId", u.Id))
+		l.Logger.Errorw("[PurchaseCheckout] Balance payment transaction error",
+			zap.Any("error", err.Error()),
+			zap.Any("orderNo", o.OrderNo),
+			zap.Any("userId", u.Id))
 		return err
 	}
 
@@ -754,19 +754,19 @@ activation:
 	}
 	bytes, err := json.Marshal(payload)
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] Marshal activation payload error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Marshal activation payload error", zap.Any("error", err.Error()))
 		return err
 	}
 
 	task := asynq.NewTask(queueType.ForthwithActivateOrder, bytes, asynq.MaxRetry(5))
 	_, err = l.svcCtx.Queue.EnqueueContext(l.ctx, task)
 	if err != nil {
-		l.Errorw("[PurchaseCheckout] Enqueue activation task error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[PurchaseCheckout] Enqueue activation task error", zap.Any("error", err.Error()))
 		return err
 	}
 
 	l.Logger.Info("[PurchaseCheckout] Balance payment completed successfully",
-		logger.Field("orderNo", o.OrderNo),
-		logger.Field("userId", u.Id))
+		zap.Any("orderNo", o.OrderNo),
+		zap.Any("userId", u.Id))
 	return nil
 }

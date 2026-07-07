@@ -12,8 +12,8 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/queue/types"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
@@ -60,14 +60,14 @@ func (l *ResetTrafficLogic) ProcessTask(ctx context.Context, _ *asynq.Task) erro
 
 	// Get current retry count
 	retryCount := l.getRetryCount(ctx)
-	logger.Infow("[ResetTraffic] Starting task execution",
-		logger.Field("retryCount", retryCount),
-		logger.Field("startTime", startTime))
+	zap.S().Infow("[ResetTraffic] Starting task execution",
+		zap.Any("retryCount", retryCount),
+		zap.Any("startTime", startTime))
 
 	// Acquire distributed lock to prevent duplicate execution
 	lockAcquired := l.acquireLock(ctx)
 	if !lockAcquired {
-		logger.Infow("[ResetTraffic] Another task is already running, skipping execution")
+		zap.S().Infow("[ResetTraffic] Another task is already running, skipping execution")
 		return nil
 	}
 	defer l.releaseLock(ctx)
@@ -83,26 +83,26 @@ func (l *ResetTrafficLogic) ProcessTask(ctx context.Context, _ *asynq.Task) erro
 				task := asynq.NewTask(types.SchedulerResetTraffic, nil)
 				_, retryErr := l.svc.Queue.Enqueue(task, asynq.ProcessIn(retryDelay))
 				if retryErr != nil {
-					logger.Errorw("[ResetTraffic] Failed to enqueue retry task",
-						logger.Field("error", retryErr.Error()),
-						logger.Field("retryCount", retryCount))
+					zap.S().Errorw("[ResetTraffic] Failed to enqueue retry task",
+						zap.Any("error", retryErr.Error()),
+						zap.Any("retryCount", retryCount))
 				} else {
-					logger.Infow("[ResetTraffic] Task failed, retrying in 30 minutes",
-						logger.Field("error", err.Error()),
-						logger.Field("retryCount", retryCount+1),
-						logger.Field("maxRetryAttempts", maxRetryAttempts))
+					zap.S().Infow("[ResetTraffic] Task failed, retrying in 30 minutes",
+						zap.Any("error", err.Error()),
+						zap.Any("retryCount", retryCount+1),
+						zap.Any("maxRetryAttempts", maxRetryAttempts))
 				}
 			} else {
 				// Max retries reached or non-retryable error
 				if retryCount >= maxRetryAttempts {
-					logger.Errorw("[ResetTraffic] Max retry attempts reached, giving up",
-						logger.Field("retryCount", retryCount),
-						logger.Field("maxRetryAttempts", maxRetryAttempts),
-						logger.Field("error", err.Error()))
+					zap.S().Errorw("[ResetTraffic] Max retry attempts reached, giving up",
+						zap.Any("retryCount", retryCount),
+						zap.Any("maxRetryAttempts", maxRetryAttempts),
+						zap.Any("error", err.Error()))
 				} else {
-					logger.Errorw("[ResetTraffic] Non-retryable error, not retrying",
-						logger.Field("error", err.Error()),
-						logger.Field("retryCount", retryCount))
+					zap.S().Errorw("[ResetTraffic] Non-retryable error, not retrying",
+						zap.Any("error", err.Error()),
+						zap.Any("retryCount", retryCount))
 				}
 				// Reset retry count for next scheduled task
 				l.clearRetryCount(ctx)
@@ -110,9 +110,9 @@ func (l *ResetTrafficLogic) ProcessTask(ctx context.Context, _ *asynq.Task) erro
 		} else {
 			// Task completed successfully, reset retry count
 			l.clearRetryCount(ctx)
-			logger.Infow("[ResetTraffic] Task completed successfully",
-				logger.Field("processingTime", time.Since(startTime)),
-				logger.Field("retryCount", retryCount))
+			zap.S().Infow("[ResetTraffic] Task completed successfully",
+				zap.Any("processingTime", time.Since(startTime)),
+				zap.Any("retryCount", retryCount))
 		}
 	}()
 
@@ -121,37 +121,37 @@ func (l *ResetTrafficLogic) ProcessTask(ctx context.Context, _ *asynq.Task) erro
 	cacheData, err := l.svc.Redis.Get(ctx, cacheKey).Result()
 	if err != nil {
 		if !errors.Is(err, redis.Nil) {
-			logger.Errorw("[ResetTraffic] Failed to get cache", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to get cache", zap.Any("error", err.Error()))
 		}
 		// Set default value if cache not found
 		cache = resetTrafficCache{}
-		logger.Infow("[ResetTraffic] Using default cache value", logger.Field("lastResetTime", cache.LastResetTime))
+		zap.S().Infow("[ResetTraffic] Using default cache value", zap.Any("lastResetTime", cache.LastResetTime))
 	} else {
 		// Parse JSON data
 		if err := json.Unmarshal([]byte(cacheData), &cache); err != nil {
-			logger.Errorw("[ResetTraffic] Failed to unmarshal cache", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to unmarshal cache", zap.Any("error", err.Error()))
 			cache = resetTrafficCache{}
 		} else {
-			logger.Infow("[ResetTraffic] Cache loaded successfully", logger.Field("lastResetTime", cache.LastResetTime))
+			zap.S().Infow("[ResetTraffic] Cache loaded successfully", zap.Any("lastResetTime", cache.LastResetTime))
 		}
 	}
 
 	// Execute reset operations in order: yearly -> monthly (1st) -> monthly (cycle)
 	err = l.resetYear(ctx)
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Yearly reset failed", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Yearly reset failed", zap.Any("error", err.Error()))
 		return err
 	}
 
 	err = l.reset1st(ctx, cache)
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Monthly 1st reset failed", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Monthly 1st reset failed", zap.Any("error", err.Error()))
 		return err
 	}
 
 	err = l.resetMonth(ctx)
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Monthly cycle reset failed", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Monthly cycle reset failed", zap.Any("error", err.Error()))
 		return err
 	}
 
@@ -161,14 +161,14 @@ func (l *ResetTrafficLogic) ProcessTask(ctx context.Context, _ *asynq.Task) erro
 	}
 	cacheDataBytes, marshalErr := json.Marshal(updatedCache)
 	if marshalErr != nil {
-		logger.Errorw("[ResetTraffic] Failed to marshal cache", logger.Field("error", marshalErr.Error()))
+		zap.S().Errorw("[ResetTraffic] Failed to marshal cache", zap.Any("error", marshalErr.Error()))
 	} else {
 		cacheErr := l.svc.Redis.Set(ctx, cacheKey, cacheDataBytes, 0).Err()
 		if cacheErr != nil {
-			logger.Errorw("[ResetTraffic] Failed to update cache", logger.Field("error", cacheErr.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to update cache", zap.Any("error", cacheErr.Error()))
 			// Don't return error here as the main task completed successfully
 		} else {
-			logger.Infow("[ResetTraffic] Cache updated successfully", logger.Field("newLastResetTime", startTime))
+			zap.S().Infow("[ResetTraffic] Cache updated successfully", zap.Any("newLastResetTime", startTime))
 		}
 	}
 
@@ -184,51 +184,51 @@ func (l *ResetTrafficLogic) resetMonth(ctx context.Context) error {
 		// Get all subscriptions that reset monthly based on start date
 		resetMonthSubIds, err := store.Subscribe().QueryResetCycleSubscribeIds(ctx, 2)
 		if err != nil {
-			logger.Errorw("[ResetTraffic] Failed to query monthly subscriptions", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to query monthly subscriptions", zap.Any("error", err.Error()))
 			return err
 		}
 
 		if len(resetMonthSubIds) == 0 {
-			logger.Infow("[ResetTraffic] No monthly cycle subscriptions found")
+			zap.S().Infow("[ResetTraffic] No monthly cycle subscriptions found")
 			return nil
 		}
 
 		// Query users for monthly reset based on subscription start date cycle
 		monthlyResetUsers, err := store.User().QueryMonthlyResetSubscribeIds(ctx, resetMonthSubIds, now)
 		if err != nil {
-			logger.Errorw("[ResetTraffic] Failed to query monthly reset users", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to query monthly reset users", zap.Any("error", err.Error()))
 			return err
 		}
 
 		if len(monthlyResetUsers) > 0 {
-			logger.Infow("[ResetTraffic] Found users for monthly reset",
-				logger.Field("count", len(monthlyResetUsers)),
-				logger.Field("userIds", monthlyResetUsers))
+			zap.S().Infow("[ResetTraffic] Found users for monthly reset",
+				zap.Any("count", len(monthlyResetUsers)),
+				zap.Any("userIds", monthlyResetUsers))
 
 			if err = store.User().ResetSubscribeTrafficByIds(ctx, monthlyResetUsers); err != nil {
-				logger.Errorw("[ResetTraffic] Failed to update monthly reset users", logger.Field("error", err.Error()))
+				zap.S().Errorw("[ResetTraffic] Failed to update monthly reset users", zap.Any("error", err.Error()))
 				return err
 			}
 			// Find user subscriptions for these users
 			userSubs, err := store.User().FindSubscribesByIds(ctx, monthlyResetUsers)
 			if err != nil {
-				logger.Errorw("[ResetTraffic] Failed to find user subscriptions for 1st reset", logger.Field("error", err.Error()))
+				zap.S().Errorw("[ResetTraffic] Failed to find user subscriptions for 1st reset", zap.Any("error", err.Error()))
 				return err
 			}
 			// Clear cache for these subscriptions
 			l.clearCache(ctx, userSubs)
-			logger.Infow("[ResetTraffic] Monthly reset completed", logger.Field("count", len(monthlyResetUsers)))
+			zap.S().Infow("[ResetTraffic] Monthly reset completed", zap.Any("count", len(monthlyResetUsers)))
 		} else {
-			logger.Infow("[ResetTraffic] No users found for monthly reset")
+			zap.S().Infow("[ResetTraffic] No users found for monthly reset")
 		}
 		return store.Subscribe().ClearCache(ctx, resetMonthSubIds...)
 	})
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Monthly reset transaction failed", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Monthly reset transaction failed", zap.Any("error", err.Error()))
 		return err
 	}
 
-	logger.Infow("[ResetTraffic] Monthly reset process completed")
+	zap.S().Infow("[ResetTraffic] Monthly reset process completed")
 	return nil
 }
 
@@ -239,15 +239,15 @@ func (l *ResetTrafficLogic) reset1st(ctx context.Context, cache resetTrafficCach
 
 	// Check if we already reset this month using cache
 	if firstDayResetAlreadyProcessed(now, cache) {
-		logger.Infow("[ResetTraffic] Already reset this month, skipping 1st reset",
-			logger.Field("lastResetTime", cache.LastResetTime),
-			logger.Field("currentTime", now))
+		zap.S().Infow("[ResetTraffic] Already reset this month, skipping 1st reset",
+			zap.Any("lastResetTime", cache.LastResetTime),
+			zap.Any("currentTime", now))
 		return nil
 	}
 
 	// Only reset if it's the 1st day of the month
 	if now.Day() != 1 {
-		logger.Infow("[ResetTraffic] Not 1st day of month, skipping 1st reset", logger.Field("currentDay", now.Day()))
+		zap.S().Infow("[ResetTraffic] Not 1st day of month, skipping 1st reset", zap.Any("currentDay", now.Day()))
 		return nil
 	}
 
@@ -255,53 +255,53 @@ func (l *ResetTrafficLogic) reset1st(ctx context.Context, cache resetTrafficCach
 		// Get all subscriptions that reset on 1st of month
 		reset1stSubIds, err := store.Subscribe().QueryResetCycleSubscribeIds(ctx, 1)
 		if err != nil {
-			logger.Errorw("[ResetTraffic] Failed to query 1st reset subscriptions", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to query 1st reset subscriptions", zap.Any("error", err.Error()))
 			return err
 		}
 
 		if len(reset1stSubIds) == 0 {
-			logger.Infow("[ResetTraffic] No 1st reset subscriptions found")
+			zap.S().Infow("[ResetTraffic] No 1st reset subscriptions found")
 			return nil
 		}
 
 		// Get all active users with these subscriptions
 		users1stReset, err := store.User().QueryFirstResetSubscribeIds(ctx, reset1stSubIds, now)
 		if err != nil {
-			logger.Errorw("[ResetTraffic] Failed to query 1st reset users", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to query 1st reset users", zap.Any("error", err.Error()))
 			return err
 		}
 
 		if len(users1stReset) > 0 {
-			logger.Infow("[ResetTraffic] Found users for 1st reset",
-				logger.Field("count", len(users1stReset)),
-				logger.Field("userIds", users1stReset))
+			zap.S().Infow("[ResetTraffic] Found users for 1st reset",
+				zap.Any("count", len(users1stReset)),
+				zap.Any("userIds", users1stReset))
 
 			// Reset upload and download traffic to zero
 			if err = store.User().ResetSubscribeTrafficByIds(ctx, users1stReset); err != nil {
-				logger.Errorw("[ResetTraffic] Failed to update 1st reset users", logger.Field("error", err.Error()))
+				zap.S().Errorw("[ResetTraffic] Failed to update 1st reset users", zap.Any("error", err.Error()))
 				return err
 			}
 			userSubs, err := store.User().FindSubscribesByIds(ctx, users1stReset)
 			if err != nil {
-				logger.Errorw("[ResetTraffic] Failed to find user subscriptions for 1st reset", logger.Field("error", err.Error()))
+				zap.S().Errorw("[ResetTraffic] Failed to find user subscriptions for 1st reset", zap.Any("error", err.Error()))
 				return err
 			}
 
 			// Clear cache for these subscriptions
 			l.clearCache(ctx, userSubs)
-			logger.Infow("[ResetTraffic] 1st reset completed", logger.Field("count", len(users1stReset)))
+			zap.S().Infow("[ResetTraffic] 1st reset completed", zap.Any("count", len(users1stReset)))
 		} else {
-			logger.Infow("[ResetTraffic] No users found for 1st reset")
+			zap.S().Infow("[ResetTraffic] No users found for 1st reset")
 		}
 
 		return store.Subscribe().ClearCache(ctx, reset1stSubIds...)
 	})
 
 	if err != nil {
-		logger.Errorw("[ResetTraffic] 1st reset transaction failed", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] 1st reset transaction failed", zap.Any("error", err.Error()))
 		return err
 	}
-	logger.Infow("[ResetTraffic] 1st reset process completed")
+	zap.S().Infow("[ResetTraffic] 1st reset process completed")
 	return nil
 }
 
@@ -320,57 +320,57 @@ func (l *ResetTrafficLogic) resetYear(ctx context.Context) error {
 		// Get all subscriptions that reset yearly
 		resetYearSubIds, err := store.Subscribe().QueryResetCycleSubscribeIds(ctx, 3)
 		if err != nil {
-			logger.Errorw("[ResetTraffic] Failed to query yearly subscriptions", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to query yearly subscriptions", zap.Any("error", err.Error()))
 			return err
 		}
 
 		if len(resetYearSubIds) == 0 {
-			logger.Infow("[ResetTraffic] No yearly reset subscriptions found")
+			zap.S().Infow("[ResetTraffic] No yearly reset subscriptions found")
 			return nil
 		}
 
 		// Query users for yearly reset based on subscription start date anniversary
 		usersYearReset, err := store.User().QueryYearlyResetSubscribeIds(ctx, resetYearSubIds, now)
 		if err != nil {
-			logger.Errorw("[ResetTraffic] Query yearly reset users failed", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Query yearly reset users failed", zap.Any("error", err.Error()))
 			return err
 		}
 
 		if len(usersYearReset) > 0 {
-			logger.Infow("[ResetTraffic] Found users for yearly reset",
-				logger.Field("count", len(usersYearReset)),
-				logger.Field("userIds", usersYearReset))
+			zap.S().Infow("[ResetTraffic] Found users for yearly reset",
+				zap.Any("count", len(usersYearReset)),
+				zap.Any("userIds", usersYearReset))
 
 			// Reset upload and download traffic to zero
 			if err = store.User().ResetSubscribeTrafficByIds(ctx, usersYearReset); err != nil {
-				logger.Errorw("[ResetTraffic] Failed to update yearly reset users", logger.Field("error", err.Error()))
+				zap.S().Errorw("[ResetTraffic] Failed to update yearly reset users", zap.Any("error", err.Error()))
 				return err
 			}
 			// Find user subscriptions for these users
 			userSubs, err := store.User().FindSubscribesByIds(ctx, usersYearReset)
 			if err != nil {
-				logger.Errorw("[ResetTraffic] Failed to find user subscriptions for 1st reset", logger.Field("error", err.Error()))
+				zap.S().Errorw("[ResetTraffic] Failed to find user subscriptions for 1st reset", zap.Any("error", err.Error()))
 				return err
 			}
 			// Clear cache for these subscriptions
 			l.clearCache(ctx, userSubs)
-			logger.Infow("[ResetTraffic] Yearly reset completed", logger.Field("count", len(usersYearReset)))
+			zap.S().Infow("[ResetTraffic] Yearly reset completed", zap.Any("count", len(usersYearReset)))
 		} else {
-			logger.Infow("[ResetTraffic] No users found for yearly reset")
+			zap.S().Infow("[ResetTraffic] No users found for yearly reset")
 		}
 		err = store.Subscribe().ClearCache(ctx, resetYearSubIds...)
 		if err != nil {
-			logger.Errorw("[ResetTraffic] Failed to clear yearly reset subscription cache", logger.Field("error", err.Error()))
+			zap.S().Errorw("[ResetTraffic] Failed to clear yearly reset subscription cache", zap.Any("error", err.Error()))
 		}
 		return nil
 	})
 
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Yearly reset transaction failed", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Yearly reset transaction failed", zap.Any("error", err.Error()))
 		return err
 	}
 
-	logger.Infow("[ResetTraffic] Yearly reset process completed")
+	zap.S().Infow("[ResetTraffic] Yearly reset process completed")
 	return nil
 }
 
@@ -381,13 +381,13 @@ func (l *ResetTrafficLogic) getRetryCount(ctx context.Context) int {
 		if errors.Is(err, redis.Nil) {
 			return 0 // No retry count found, start with 0
 		}
-		logger.Errorw("[ResetTraffic] Failed to get retry count", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Failed to get retry count", zap.Any("error", err.Error()))
 		return 0
 	}
 
 	count, err := strconv.Atoi(countStr)
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Invalid retry count format", logger.Field("value", countStr))
+		zap.S().Errorw("[ResetTraffic] Invalid retry count format", zap.Any("value", countStr))
 		return 0
 	}
 
@@ -398,9 +398,9 @@ func (l *ResetTrafficLogic) getRetryCount(ctx context.Context) int {
 func (l *ResetTrafficLogic) setRetryCount(ctx context.Context, count int) {
 	err := l.svc.Redis.Set(ctx, retryCountKey, count, 24*time.Hour).Err()
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Failed to set retry count",
-			logger.Field("count", count),
-			logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Failed to set retry count",
+			zap.Any("count", count),
+			zap.Any("error", err.Error()))
 	}
 }
 
@@ -408,7 +408,7 @@ func (l *ResetTrafficLogic) setRetryCount(ctx context.Context, count int) {
 func (l *ResetTrafficLogic) clearRetryCount(ctx context.Context) {
 	err := l.svc.Redis.Del(ctx, retryCountKey).Err()
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Failed to clear retry count", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Failed to clear retry count", zap.Any("error", err.Error()))
 	}
 }
 
@@ -417,14 +417,14 @@ func (l *ResetTrafficLogic) acquireLock(ctx context.Context) bool {
 	result := l.svc.Redis.SetNX(ctx, lockKey, "locked", lockTimeout)
 	acquired, err := result.Result()
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Failed to acquire lock", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Failed to acquire lock", zap.Any("error", err.Error()))
 		return false
 	}
 
 	if acquired {
-		logger.Infow("[ResetTraffic] Lock acquired successfully")
+		zap.S().Infow("[ResetTraffic] Lock acquired successfully")
 	} else {
-		logger.Infow("[ResetTraffic] Lock already exists, another task is running")
+		zap.S().Infow("[ResetTraffic] Lock already exists, another task is running")
 	}
 
 	return acquired
@@ -434,9 +434,9 @@ func (l *ResetTrafficLogic) acquireLock(ctx context.Context) bool {
 func (l *ResetTrafficLogic) releaseLock(ctx context.Context) {
 	err := l.svc.Redis.Del(ctx, lockKey).Err()
 	if err != nil {
-		logger.Errorw("[ResetTraffic] Failed to release lock", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Failed to release lock", zap.Any("error", err.Error()))
 	} else {
-		logger.Infow("[ResetTraffic] Lock released successfully")
+		zap.S().Infow("[ResetTraffic] Lock released successfully")
 	}
 }
 
@@ -485,9 +485,9 @@ func (l *ResetTrafficLogic) isRetryableError(err error) bool {
 	// Check for non-retryable errors first
 	for _, nonRetryable := range nonRetryableErrors {
 		if strings.Contains(errorMessage, nonRetryable) {
-			logger.Infow("[ResetTraffic] Non-retryable error detected",
-				logger.Field("error", err.Error()),
-				logger.Field("pattern", nonRetryable))
+			zap.S().Infow("[ResetTraffic] Non-retryable error detected",
+				zap.Any("error", err.Error()),
+				zap.Any("pattern", nonRetryable))
 			return false
 		}
 	}
@@ -495,16 +495,16 @@ func (l *ResetTrafficLogic) isRetryableError(err error) bool {
 	// Check for retryable errors
 	for _, retryable := range retryableErrors {
 		if strings.Contains(errorMessage, retryable) {
-			logger.Infow("[ResetTraffic] Retryable error detected",
-				logger.Field("error", err.Error()),
-				logger.Field("pattern", retryable))
+			zap.S().Infow("[ResetTraffic] Retryable error detected",
+				zap.Any("error", err.Error()),
+				zap.Any("pattern", retryable))
 			return true
 		}
 	}
 
 	// Default: treat unknown errors as retryable, but log for analysis
-	logger.Infow("[ResetTraffic] Unknown error type, treating as retryable",
-		logger.Field("error", err.Error()))
+	zap.S().Infow("[ResetTraffic] Unknown error type, treating as retryable",
+		zap.Any("error", err.Error()))
 	return true
 }
 
@@ -518,14 +518,6 @@ func (l *ResetTrafficLogic) clearCache(_ context.Context, list []*user.Subscribe
 
 		for _, sub := range list {
 			if sub.SubscribeId > 0 {
-				cacheCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				err := l.svc.Store.User().ClearSubscribeCache(cacheCtx, sub)
-				cancel()
-				if err != nil {
-					logger.Errorw("[ResetTraffic] Failed to clear cache for subscription",
-						logger.Field("subscribeId", sub.SubscribeId),
-						logger.Field("error", err.Error()))
-				}
 				if _, ok := subs[sub.SubscribeId]; !ok {
 					subs[sub.SubscribeId] = true
 				}
@@ -537,9 +529,9 @@ func (l *ResetTrafficLogic) clearCache(_ context.Context, list []*user.Subscribe
 		for sub := range subs {
 			subCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			if err := l.svc.Store.Subscribe().ClearCache(subCtx, sub); err != nil {
-				logger.Errorw("[ResetTraffic] Failed to clear subscription cache",
-					logger.Field("subscribeId", sub),
-					logger.Field("error", err.Error()),
+				zap.S().Errorw("[ResetTraffic] Failed to clear subscription cache",
+					zap.Any("subscribeId", sub),
+					zap.Any("error", err.Error()),
 				)
 			}
 			cancel()
@@ -564,6 +556,6 @@ func (l *ResetTrafficLogic) insertLog(subId, userId int64) {
 		Date:     time.Now().Format(time.DateOnly),
 		Content:  string(content),
 	}); err != nil {
-		logger.Errorw("[ResetTraffic] Failed to create system log for subscription", logger.Field("error", err.Error()))
+		zap.S().Errorw("[ResetTraffic] Failed to create system log for subscription", zap.Any("error", err.Error()))
 	}
 }

@@ -6,7 +6,6 @@ import (
 	"github.com/perfect-panel/server/ent"
 	entnode "github.com/perfect-panel/server/ent/node"
 	entserver "github.com/perfect-panel/server/ent/server"
-	entserverconfigoverride "github.com/perfect-panel/server/ent/serverconfigoverride"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -126,53 +125,6 @@ func (m *defaultServerModel) DeleteServer(ctx context.Context, id int64) error {
 	return err
 }
 
-func (m *defaultServerModel) FindServerConfigOverride(ctx context.Context, serverId int64) (*ServerConfigOverride, error) {
-	data, err := m.db.ServerConfigOverride.Query().Where(entserverconfigoverride.ServerID(serverId)).First(ctx)
-	if ent.IsNotFound(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return entToServerConfigOverride(data), nil
-}
-
-func (m *defaultServerModel) SaveServerConfigOverride(ctx context.Context, data *ServerConfigOverride) error {
-	old, err := m.FindServerConfigOverride(ctx, data.ServerId)
-	if err != nil {
-		return err
-	}
-	if old != nil {
-		data.Id = old.Id
-		data.CreatedAt = old.CreatedAt
-		return m.db.ServerConfigOverride.UpdateOneID(old.Id).
-			SetNillableIPStrategy(data.IPStrategy).
-			SetNillableDNS(data.DNS).
-			SetNillableBlock(data.Block).
-			SetNillableOutbound(data.Outbound).
-			Exec(ctx)
-	}
-	created, err := m.db.ServerConfigOverride.Create().
-		SetServerID(data.ServerId).
-		SetNillableIPStrategy(data.IPStrategy).
-		SetNillableDNS(data.DNS).
-		SetNillableBlock(data.Block).
-		SetNillableOutbound(data.Outbound).
-		Save(ctx)
-	if err != nil {
-		return err
-	}
-	data.Id = created.ID
-	data.CreatedAt = created.CreatedAt
-	data.UpdatedAt = created.UpdatedAt
-	return nil
-}
-
-func (m *defaultServerModel) DeleteServerConfigOverride(ctx context.Context, serverId int64) error {
-	_, err := m.db.ServerConfigOverride.Delete().Where(entserverconfigoverride.ServerID(serverId)).Exec(ctx)
-	return err
-}
-
 func (m *defaultServerModel) InsertNode(ctx context.Context, data *Node) error {
 	if data.Sort == 0 {
 		maxSort, err := m.db.Node.Query().Aggregate(ent.Max(entnode.FieldSort)).Int(ctx)
@@ -219,51 +171,4 @@ func (m *defaultServerModel) DeleteNode(ctx context.Context, id int64) error {
 	}
 	_, err = m.db.Node.Update().Where(entnode.SortGT(old.Sort)).AddSort(-1).Save(ctx)
 	return err
-}
-
-func (m *defaultServerModel) nodeCreate(data *Node) *ent.NodeCreate {
-	return m.db.Node.Create().SetName(data.Name).SetTags(data.Tags).SetPort(data.Port).SetAddress(data.Address).SetServerID(data.ServerId).SetProtocol(data.Protocol).SetProtocolID(data.ProtocolId).SetNillableEnabled(data.Enabled).SetNodeType(data.NodeType).SetNillableIsHidden(data.IsHidden).SetSort(data.Sort).SetNodeGroupIds([]int64(data.NodeGroupIds))
-}
-
-func (m *defaultServerModel) nodeUpdate(data *Node) *ent.NodeUpdateOne {
-	return m.db.Node.UpdateOneID(data.Id).SetName(data.Name).SetTags(data.Tags).SetPort(data.Port).SetAddress(data.Address).SetServerID(data.ServerId).SetProtocol(data.Protocol).SetProtocolID(data.ProtocolId).SetNillableEnabled(data.Enabled).SetNodeType(data.NodeType).SetNillableIsHidden(data.IsHidden).SetSort(data.Sort).SetNodeGroupIds([]int64(data.NodeGroupIds))
-}
-
-func (m *defaultServerModel) ensureUniqueServerSort(ctx context.Context, data *Server) error {
-	count, err := m.db.Server.Query().Where(entserver.Sort(data.Sort), entserver.IDNEQ(data.Id)).Count(ctx)
-	if err != nil || count <= 1 {
-		return err
-	}
-	if err := m.reorderServers(ctx); err != nil {
-		return err
-	}
-	maxSort, err := m.db.Server.Query().Aggregate(ent.Max(entserver.FieldSort)).Int(ctx)
-	if err != nil {
-		return err
-	}
-	data.Sort = maxSort + 1
-	return nil
-}
-
-func (m *defaultServerModel) ensureUniqueNodeSort(ctx context.Context, data *Node) error {
-	count, err := m.db.Node.Query().Where(entnode.Sort(data.Sort), entnode.IDNEQ(data.Id)).Count(ctx)
-	if err != nil || count <= 1 {
-		return err
-	}
-	if err := m.reorderNodes(ctx); err != nil {
-		return err
-	}
-	maxSort, err := m.db.Node.Query().Aggregate(ent.Max(entnode.FieldSort)).Int(ctx)
-	if err != nil {
-		return err
-	}
-	data.Sort = maxSort + 1
-	return nil
-}
-
-func nilIfEmpty(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
 }

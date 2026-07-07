@@ -15,11 +15,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type UnsubscribeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -27,7 +27,7 @@ type UnsubscribeLogic struct {
 // NewUnsubscribeLogic creates a new instance of UnsubscribeLogic for handling subscription cancellation
 func NewUnsubscribeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UnsubscribeLogic {
 	return &UnsubscribeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -38,14 +38,14 @@ func NewUnsubscribeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Unsub
 func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
 	// find user subscription by ID
 	userSub, err := l.svcCtx.Store.User().FindOneSubscribe(l.ctx, req.Id)
 	if err != nil {
-		l.Errorw("FindOneSubscribe failed", logger.Field("error", err.Error()), logger.Field("reqId", req.Id))
+		l.Logger.Errorw("FindOneSubscribe failed", zap.Any("error", err.Error()), zap.Any("reqId", req.Id))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneSubscribe failed: %v", err.Error())
 	}
 
@@ -53,7 +53,7 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 
 	if !tool.Contains(activate, userSub.Status) {
 		// Only active (2) or paused (5) subscriptions can be cancelled
-		l.Errorw("Subscription status invalid for cancellation", logger.Field("userSubscribeId", userSub.Id), logger.Field("status", userSub.Status))
+		l.Logger.Errorw("Subscription status invalid for cancellation", zap.Any("userSubscribeId", userSub.Id), zap.Any("status", userSub.Status))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Subscription status invalid for cancellation")
 	}
 
@@ -148,18 +148,13 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 	})
 
 	if err != nil {
-		l.Errorw("Unsubscribe transaction failed", logger.Field("error", err.Error()), logger.Field("userId", u.Id), logger.Field("reqId", req.Id))
+		l.Logger.Errorw("Unsubscribe transaction failed", zap.Any("error", err.Error()), zap.Any("userId", u.Id), zap.Any("reqId", req.Id))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unsubscribe transaction failed: %v", err.Error())
 	}
 
-	//clear user subscription cache
-	if err = l.svcCtx.Store.User().ClearSubscribeCache(l.ctx, userSub); err != nil {
-		l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", userSub.Id))
-		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "ClearSubscribeCache failed: %v", err.Error())
-	}
 	// Clear subscription cache
 	if err = l.svcCtx.Store.Subscribe().ClearCache(l.ctx, userSub.SubscribeId); err != nil {
-		l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", userSub.SubscribeId))
+		l.Logger.Errorw("ClearSubscribeCache failed", zap.Any("error", err.Error()), zap.Any("subscribeId", userSub.SubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "ClearSubscribeCache failed: %v", err.Error())
 	}
 

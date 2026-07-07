@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/node"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/traffic"
@@ -28,22 +28,22 @@ func NewTrafficStatisticsLogic(svc *svc.ServiceContext) *TrafficStatisticsLogic 
 func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	var payload types.TrafficStatistics
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-		logger.WithContext(ctx).Error("[TrafficStatistics] Unmarshal payload failed",
-			logger.Field("error", err.Error()),
-			logger.Field("payload", string(task.Payload())),
+		zap.S().Error("[TrafficStatistics] Unmarshal payload failed",
+			zap.Any("error", err.Error()),
+			zap.Any("payload", string(task.Payload())),
 		)
 		return nil
 	}
 	if len(payload.Logs) == 0 {
-		logger.WithContext(ctx).Error("[TrafficStatistics] Payload is empty")
+		zap.S().Error("[TrafficStatistics] Payload is empty")
 		return nil
 	}
 	// query server info
 	serverInfo, err := l.svc.Store.Node().FindOneServer(ctx, payload.ServerId)
 	if err != nil {
-		logger.WithContext(ctx).Error("[TrafficStatistics] Find server info failed",
-			logger.Field("serverId", payload.ServerId),
-			logger.Field("error", err.Error()),
+		zap.S().Error("[TrafficStatistics] Find server info failed",
+			zap.Any("serverId", payload.ServerId),
+			zap.Any("error", err.Error()),
 		)
 		return nil
 	}
@@ -52,7 +52,7 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 
 	protocols, err := serverInfo.UnmarshalProtocols()
 	if err != nil {
-		logger.Errorf("[TrafficStatistics] Unmarshal protocols failed: %s", err.Error())
+		zap.S().Errorf("[TrafficStatistics] Unmarshal protocols failed: %s", err.Error())
 		return nil
 	}
 	var protocol *node.Protocol
@@ -67,10 +67,10 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 	}
 
 	if protocol == nil {
-		logger.WithContext(ctx).Error("[TrafficStatistics] Protocol not found",
-			logger.Field("server_id", payload.ServerId),
-			logger.Field("protocol", payload.Protocol),
-			logger.Field("protocol_id", payload.ProtocolId),
+		zap.S().Error("[TrafficStatistics] Protocol not found",
+			zap.Any("server_id", payload.ServerId),
+			zap.Any("protocol", payload.Protocol),
+			zap.Any("protocol_id", payload.ProtocolId),
 		)
 		return nil
 	}
@@ -82,14 +82,14 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 
 	now := time.Now()
 	realTimeMultiplier := l.svc.NodeMultiplierManager.GetMultiplier(now)
-	logger.Debugf("[TrafficStatisticsLogic] Current time traffic multiplier: %.2f", realTimeMultiplier)
+	zap.S().Debugf("[TrafficStatisticsLogic] Current time traffic multiplier: %.2f", realTimeMultiplier)
 	for _, log := range payload.Logs {
 		// query user Subscribe Info
 		sub, err := l.svc.Store.User().FindOneSubscribe(ctx, log.SID)
 		if err != nil {
-			logger.WithContext(ctx).Error("[TrafficStatistics] Find user Subscribe Info failed",
-				logger.Field("uid", log.SID),
-				logger.Field("error", err.Error()),
+			zap.S().Error("[TrafficStatistics] Find user Subscribe Info failed",
+				zap.Any("uid", log.SID),
+				zap.Any("error", err.Error()),
 			)
 			continue
 		}
@@ -107,12 +107,12 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 		// The FindOneSubscribe call has been removed from inside the method
 		// to avoid PXC's SELECT→UPDATE row-level conflict (Error 1020).
 		if err := l.svc.Store.User().UpdateUserSubscribeWithTraffic(ctx, sub.Id, d, u, isExpired); err != nil {
-			logger.WithContext(ctx).Error("[TrafficStatistics] Update user subscribe with log failed",
-				logger.Field("uid", log.SID),
-				logger.Field("download", float32(log.Download)*ratio),
-				logger.Field("upload", float32(log.Upload)*ratio),
-				logger.Field("is_expired", isExpired),
-				logger.Field("error", err.Error()),
+			zap.S().Error("[TrafficStatistics] Update user subscribe with log failed",
+				zap.Any("uid", log.SID),
+				zap.Any("download", float32(log.Download)*ratio),
+				zap.Any("upload", float32(log.Upload)*ratio),
+				zap.Any("is_expired", isExpired),
+				zap.Any("error", err.Error()),
 			)
 			continue
 		}
@@ -126,11 +126,11 @@ func (l *TrafficStatisticsLogic) ProcessTask(ctx context.Context, task *asynq.Ta
 			Download:    d,
 			Timestamp:   now,
 		}); err != nil {
-			logger.WithContext(ctx).Error("[TrafficStatistics] Insert traffic log failed",
-				logger.Field("uid", log.SID),
-				logger.Field("download", float32(log.Download)*ratio),
-				logger.Field("upload", float32(log.Upload)*ratio),
-				logger.Field("error", err.Error()),
+			zap.S().Error("[TrafficStatistics] Insert traffic log failed",
+				zap.Any("uid", log.SID),
+				zap.Any("download", float32(log.Download)*ratio),
+				zap.Any("upload", float32(log.Upload)*ratio),
+				zap.Any("error", err.Error()),
 			)
 		}
 	}

@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
@@ -17,13 +17,13 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type CacheKeyPayload struct {
 	Code   string `json:"code"`
@@ -31,7 +31,7 @@ type CacheKeyPayload struct {
 }
 
 type TelephoneUserRegisterLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -39,7 +39,7 @@ type TelephoneUserRegisterLogic struct {
 // NewTelephoneUserRegisterLogic User Telephone register
 func NewTelephoneUserRegisterLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TelephoneUserRegisterLogic {
 	return &TelephoneUserRegisterLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -69,14 +69,14 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.ParseVerifyType(uint8(constant.Register)), phoneNumber)
 	value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 	if err != nil {
-		l.Errorw("Redis Error", logger.Field("error", err.Error()), logger.Field("cacheKey", cacheKey))
+		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 	}
 
 	var payload CacheKeyPayload
 	err = json.Unmarshal([]byte(value), &payload)
 	if err != nil {
-		l.Errorw("Unmarshal Error", logger.Field("error", err.Error()), logger.Field("value", value))
+		l.Logger.Errorw("Unmarshal Error", zap.Any("error", err.Error()), zap.Any("value", value))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 	}
 	if payload.Code != req.Code {
@@ -92,7 +92,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	// Check if the user exists
 	_, err = l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
 	if err != nil && !ent.IsNotFound(err) {
-		l.Errorw("FindOneByTelephone Error", logger.Field("error", err))
+		l.Logger.Errorw("FindOneByTelephone Error", zap.Any("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	}
 	if !ent.IsNotFound(err) {
@@ -107,7 +107,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		// Check if the invite code is valid
 		referer, err = l.svcCtx.Store.User().FindOneByReferCode(l.ctx, req.Invite)
 		if err != nil {
-			l.Errorw("FindOneByReferCode Error", logger.Field("error", err))
+			l.Logger.Errorw("FindOneByReferCode Error", zap.Any("error", err))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InviteCodeError), "invite code is invalid")
 		}
 	}
@@ -160,10 +160,10 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	if req.Identifier != "" {
 		bindLogic := NewBindDeviceLogic(l.ctx, l.svcCtx)
 		if err := bindLogic.BindDeviceToUser(req.Identifier, req.IP, req.UserAgent, userInfo.Id); err != nil {
-			l.Errorw("failed to bind device to user",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to bind device to user",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			// Don't fail register if device binding fails, just log the error
 		}
@@ -184,7 +184,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		jwt.WithOption("CtxLoginType", req.LoginType),
 	)
 	if err != nil {
-		l.Logger.Error("[UserLogin] token generate error", logger.Field("error", err.Error()))
+		l.Logger.Error("[UserLogin] token generate error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "token generate error: %v", err.Error())
 	}
 	sessionIdCacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
@@ -209,10 +209,10 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 				ObjectID: userInfo.Id,
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()),
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()),
 				)
 			}
 
@@ -231,10 +231,10 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 				Date:     time.Now().Format("2006-01-02"),
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()))
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()))
 			}
 		}
 	}()
@@ -268,7 +268,7 @@ func (l *TelephoneUserRegisterLogic) activeTrial(store repository.Store, uid int
 func (l *TelephoneUserRegisterLogic) verifyCaptcha(req *types.TelephoneRegisterRequest) error {
 	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
-		l.Logger.Error("[TelephoneUserRegisterLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[TelephoneUserRegisterLogic] GetVerifyConfig error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 

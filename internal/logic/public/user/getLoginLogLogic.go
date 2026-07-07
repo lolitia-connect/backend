@@ -9,13 +9,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetLoginLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type GetLoginLogLogic struct {
 // Get Login Log
 func NewGetLoginLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetLoginLogLogic {
 	return &GetLoginLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -32,7 +32,7 @@ func NewGetLoginLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetLo
 func (l *GetLoginLogLogic) GetLoginLog(req *types.GetLoginLogRequest) (resp *types.GetLoginLogResponse, err error) {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
@@ -42,7 +42,7 @@ func (l *GetLoginLogLogic) GetLoginLog(req *types.GetLoginLogRequest) (resp *typ
 		ObjectID: u.Id,
 	})
 	if err != nil {
-		l.Errorw("find login log failed:", logger.Field("error", err.Error()), logger.Field("user_id", u.Id))
+		l.Logger.Errorw("find login log failed:", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find login log failed: %v", err.Error())
 	}
 	list := make([]types.UserLoginLog, 0)
@@ -50,7 +50,7 @@ func (l *GetLoginLogLogic) GetLoginLog(req *types.GetLoginLogRequest) (resp *typ
 	for _, datum := range data {
 		var content log.Login
 		if err = content.Unmarshal([]byte(datum.Content)); err != nil {
-			l.Errorf("[GetUserLoginLogs] unmarshal login log content failed: %v", err.Error())
+			l.Logger.Errorf("[GetUserLoginLogs] unmarshal login log content failed: %v", err.Error())
 			continue
 		}
 		list = append(list, types.UserLoginLog{

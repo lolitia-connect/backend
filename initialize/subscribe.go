@@ -3,7 +3,7 @@ package initialize
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
@@ -11,10 +11,10 @@ import (
 )
 
 func Subscribe(svc *svc.ServiceContext) {
-	logger.Debug("Subscribe config initialization")
+	zap.S().Debug("Subscribe config initialization")
 	configs, err := svc.Store.System().GetSubscribeConfig(context.Background())
 	if err != nil {
-		logger.Error("[Init Subscribe Config] Get Subscribe Config Error: ", logger.Field("error", err.Error()))
+		zap.S().Error("[Init Subscribe Config] Get Subscribe Config Error: ", zap.Any("error", err.Error()))
 		return
 	}
 

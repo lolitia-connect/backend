@@ -6,12 +6,12 @@ import (
 	"github.com/perfect-panel/server/internal/model/task"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type QueryQuotaTaskListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type QueryQuotaTaskListLogic struct {
 // NewQueryQuotaTaskListLogic Query quota task list
 func NewQueryQuotaTaskListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryQuotaTaskListLogic {
 	return &QueryQuotaTaskListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -40,7 +40,7 @@ func (l *QueryQuotaTaskListLogic) QueryQuotaTaskList(req *types.QueryQuotaTaskLi
 		Status: req.Status,
 	})
 	if err != nil {
-		l.Errorf("[QueryQuotaTaskList] failed to get quota tasks: %v", err)
+		l.Logger.Errorf("[QueryQuotaTaskList] failed to get quota tasks: %v", err)
 		return nil, err
 	}
 
@@ -48,12 +48,12 @@ func (l *QueryQuotaTaskListLogic) QueryQuotaTaskList(req *types.QueryQuotaTaskLi
 	for _, item := range data {
 		var scopeInfo task.QuotaScope
 		if err = scopeInfo.Unmarshal([]byte(item.Scope)); err != nil {
-			l.Errorf("[QueryQuotaTaskList] failed to unmarshal quota task scope: %v", err.Error())
+			l.Logger.Errorf("[QueryQuotaTaskList] failed to unmarshal quota task scope: %v", err.Error())
 			continue
 		}
 		var contentInfo task.QuotaContent
 		if err = contentInfo.Unmarshal([]byte(item.Content)); err != nil {
-			l.Errorf("[QueryQuotaTaskList] failed to unmarshal quota task content: %v", err.Error())
+			l.Logger.Errorf("[QueryQuotaTaskList] failed to unmarshal quota task content: %v", err.Error())
 			continue
 		}
 		list = append(list, types.QuotaTask{

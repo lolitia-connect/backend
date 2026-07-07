@@ -5,7 +5,7 @@ import (
 	"log"
 	"runtime/debug"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // Recover is used with defer to do cleanup on panics.
@@ -29,6 +29,6 @@ func RecoverCtx(ctx context.Context, cleanups ...func()) {
 	}
 
 	if p := recover(); p != nil {
-		logger.WithContext(ctx).Errorf("%+v\n%s", p, debug.Stack())
+		zap.S().Errorf("%+v\n%s", p, debug.Stack())
 	}
 }

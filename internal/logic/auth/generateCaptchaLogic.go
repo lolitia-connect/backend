@@ -6,14 +6,14 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/captcha"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GenerateCaptchaLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type GenerateCaptchaLogic struct {
 // Generate captcha
 func NewGenerateCaptchaLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GenerateCaptchaLogic {
 	return &GenerateCaptchaLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func (l *GenerateCaptchaLogic) GenerateCaptcha() (resp *types.GenerateCaptchaRes
 	// Get verify config from database
 	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
-		l.Logger.Error("[GenerateCaptchaLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[GenerateCaptchaLogic] GetVerifyConfig error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 
@@ -55,7 +55,7 @@ func (l *GenerateCaptchaLogic) GenerateCaptcha() (resp *types.GenerateCaptchaRes
 
 		id, image, err := captchaService.Generate(l.ctx)
 		if err != nil {
-			l.Logger.Error("[GenerateCaptchaLogic] Generate captcha error: ", logger.Field("error", err.Error()))
+			l.Logger.Error("[GenerateCaptchaLogic] Generate captcha error: ", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Generate captcha error: %v", err.Error())
 		}
 
@@ -69,7 +69,7 @@ func (l *GenerateCaptchaLogic) GenerateCaptcha() (resp *types.GenerateCaptchaRes
 		sliderSvc := captcha.NewSliderService(l.svcCtx.Redis)
 		id, bgImage, blockImage, err := sliderSvc.GenerateSlider(l.ctx)
 		if err != nil {
-			l.Logger.Error("[GenerateCaptchaLogic] Generate slider captcha error: ", logger.Field("error", err.Error()))
+			l.Logger.Error("[GenerateCaptchaLogic] Generate slider captcha error: ", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Generate slider captcha error: %v", err.Error())
 		}
 		resp.Id = id

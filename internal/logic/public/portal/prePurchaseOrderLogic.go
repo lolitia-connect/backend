@@ -1,21 +1,21 @@
 package portal
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/pkg/tool"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type PrePurchaseOrderLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type PrePurchaseOrderLogic struct {
 // Pre Purchase Order
 func NewPrePurchaseOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *PrePurchaseOrderLogic {
 	return &PrePurchaseOrderLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 	// find subscribe plan
 	sub, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, req.SubscribeId)
 	if err != nil {
-		l.Errorw("[PreCreateOrder] Database query error", logger.Field("error", err.Error()), logger.Field("subscribe_id", req.SubscribeId))
+		l.Logger.Errorw("[PreCreateOrder] Database query error", zap.Any("error", err.Error()), zap.Any("subscribe_id", req.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 	var discount float64 = 1
@@ -73,7 +73,7 @@ func (l *PrePurchaseOrderLogic) PrePurchaseOrder(req *types.PrePurchaseOrderRequ
 	if req.Payment != 0 {
 		payment, err := l.svcCtx.Store.Payment().FindOne(l.ctx, req.Payment)
 		if err != nil {
-			l.Logger.Error("[PreCreateOrder] Database query error", logger.Field("error", err.Error()), logger.Field("payment", req.Payment))
+			l.Logger.Error("[PreCreateOrder] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
 		}
 		// Calculate the handling fee

@@ -6,12 +6,12 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/email"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"go.uber.org/zap"
 )
 
 type StopBatchSendEmailTaskLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type StopBatchSendEmailTaskLogic struct {
 // NewStopBatchSendEmailTaskLogic Stop a batch send email task
 func NewStopBatchSendEmailTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *StopBatchSendEmailTaskLogic {
 	return &StopBatchSendEmailTaskLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -29,12 +29,12 @@ func (l *StopBatchSendEmailTaskLogic) StopBatchSendEmailTask(req *types.StopBatc
 	if email.Manager != nil {
 		email.Manager.RemoveWorker(req.Id)
 	} else {
-		logger.Error("[StopBatchSendEmailTaskLogic] email.Manager is nil, cannot stop task")
+		zap.S().Error("[StopBatchSendEmailTaskLogic] email.Manager is nil, cannot stop task")
 	}
 	err = l.svcCtx.Store.Task().UpdateStatus(l.ctx, req.Id, 2)
 
 	if err != nil {
-		l.Errorf("failed to stop email task, error: %v", err)
+		l.Logger.Errorf("failed to stop email task, error: %v", err)
 		return xerr.NewErrCode(xerr.DatabaseUpdateError)
 	}
 	return

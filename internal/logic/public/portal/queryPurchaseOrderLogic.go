@@ -15,14 +15,14 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type QueryPurchaseOrderLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -30,7 +30,7 @@ type QueryPurchaseOrderLogic struct {
 // NewQueryPurchaseOrderLogic Query Purchase Order
 func NewQueryPurchaseOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryPurchaseOrderLogic {
 	return &QueryPurchaseOrderLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -81,13 +81,13 @@ func (l *QueryPurchaseOrderLogic) handleTemporaryOrder(orderInfo *order.Order, r
 	cacheKey := fmt.Sprintf(constant.TempOrderCacheKey, orderInfo.OrderNo)
 	cacheValue, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 	if err != nil {
-		l.Errorw("Get TempOrderCacheKey Error", logger.Field("cacheKey", cacheKey), logger.Field("error", err.Error()))
+		l.Logger.Errorw("Get TempOrderCacheKey Error", zap.Any("cacheKey", cacheKey), zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Get TempOrderCacheKey Error: %v", err.Error())
 	}
 
 	var tempOrder constant.TemporaryOrderInfo
 	if err := json.Unmarshal([]byte(cacheValue), &tempOrder); err != nil {
-		l.Errorw("JSON Unmarshal Error", logger.Field("error", err.Error()), logger.Field("cacheValue", cacheValue))
+		l.Logger.Errorw("JSON Unmarshal Error", zap.Any("error", err.Error()), zap.Any("cacheValue", cacheValue))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "JSON Unmarshal Error: %v", err.Error())
 	}
 	if tempOrder.OrderNo != orderInfo.OrderNo {
@@ -132,7 +132,7 @@ func (l *QueryPurchaseOrderLogic) generateSessionToken(userId int64) (string, er
 		jwt.WithOption("SessionId", sessionId),
 	)
 	if err != nil {
-		l.Errorw("Token Generation Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("Token Generation Error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Token generation error")
 	}
 

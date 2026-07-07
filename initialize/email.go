@@ -8,13 +8,13 @@ import (
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 // Email get email smtp config
 func Email(ctx *svc.ServiceContext) {
-	logger.Debug("Email config initialization")
+	zap.S().Debug("Email config initialization")
 	method, err := ctx.Store.Auth().FindOneByMethod(context.Background(), "email")
 	if err != nil {
 		panic(fmt.Sprintf("[Error] Initialization Failed to find email auth method: %v", err.Error()))

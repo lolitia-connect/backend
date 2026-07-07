@@ -7,13 +7,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterUserSubscribeTrafficLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type FilterUserSubscribeTrafficLogLogic struct {
 // NewFilterUserSubscribeTrafficLogLogic Filter user subscribe traffic log
 func NewFilterUserSubscribeTrafficLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterUserSubscribeTrafficLogLogic {
 	return &FilterUserSubscribeTrafficLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -46,7 +46,7 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 
 		userTraffic, err := l.svcCtx.Store.TrafficLog().QueryUserTrafficRanking(l.ctx, start, end)
 		if err != nil {
-			l.Errorw("[FilterUserSubscribeTrafficLog] Query Database Error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[FilterUserSubscribeTrafficLog] Query Database Error", zap.Any("error", err.Error()))
 			return nil, err
 		}
 
@@ -85,7 +85,7 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 		})
 
 		if err != nil {
-			l.Errorw("[FilterUserSubscribeTrafficLog] Query Database Error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[FilterUserSubscribeTrafficLog] Query Database Error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "[FilterUserSubscribeTrafficLog] Query Database Error")
 		}
 
@@ -93,7 +93,7 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 			var item log.UserTraffic
 			err = item.Unmarshal([]byte(datum.Content))
 			if err != nil {
-				l.Errorw("[FilterUserSubscribeTrafficLog] Unmarshal Content Error", logger.Field("error", err.Error()))
+				l.Logger.Errorw("[FilterUserSubscribeTrafficLog] Unmarshal Content Error", zap.Any("error", err.Error()))
 				continue
 			}
 			list = append(list, types.UserSubscribeTrafficLog{
@@ -125,14 +125,14 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 		Data: req.Date,
 	})
 	if err != nil {
-		l.Errorw("[FilterUserSubscribeTrafficLog] Query Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[FilterUserSubscribeTrafficLog] Query Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "[FilterUserSubscribeTrafficLog] Query Database Error")
 	}
 	for _, datum := range data {
 		var item log.UserTraffic
 		err = item.Unmarshal([]byte(datum.Content))
 		if err != nil {
-			l.Errorw("[FilterUserSubscribeTrafficLog] Unmarshal Content Error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[FilterUserSubscribeTrafficLog] Unmarshal Content Error", zap.Any("error", err.Error()))
 			continue
 		}
 		list = append(list, types.UserSubscribeTrafficLog{

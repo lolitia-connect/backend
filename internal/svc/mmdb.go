@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/oschwald/geoip2-golang"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const GeoIPDBURL = "https://raw.githubusercontent.com/adysec/IP_database/main/geolite/GeoLite2-City.mmdb"
@@ -21,14 +21,14 @@ func NewIPLocation(path string) (*IPLocation, error) {
 
 	// 检查文件是否存在
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		logger.Infof("[GeoIP] Database not found, downloading from %s", GeoIPDBURL)
+		zap.S().Infof("[GeoIP] Database not found, downloading from %s", GeoIPDBURL)
 		// 文件不存在，下载数据库
 		err := DownloadGeoIPDatabase(GeoIPDBURL, path)
 		if err != nil {
-			logger.Errorf("[GeoIP] Failed to download database: %v", err.Error())
+			zap.S().Errorf("[GeoIP] Failed to download database: %v", err.Error())
 			return nil, err
 		}
-		logger.Infof("[GeoIP] Database downloaded successfully")
+		zap.S().Infof("[GeoIP] Database downloaded successfully")
 	}
 
 	db, err := geoip2.Open(path)
@@ -50,7 +50,7 @@ func DownloadGeoIPDatabase(url, path string) error {
 	// 创建路径, 确保目录存在
 	err := os.MkdirAll(filepath.Dir(path), 0755)
 	if err != nil {
-		logger.Errorf("[GeoIP] Failed to create directory: %v", err.Error())
+		zap.S().Errorf("[GeoIP] Failed to create directory: %v", err.Error())
 		return err
 	}
 

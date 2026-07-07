@@ -8,14 +8,14 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/ip"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateServerLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type UpdateServerLogic struct {
 // NewUpdateServerLogic Update Server
 func NewUpdateServerLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateServerLogic {
 	return &UpdateServerLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 	nodeStore := l.svcCtx.Store.Node()
 	data, err := nodeStore.FindOneServer(l.ctx, req.Id)
 	if err != nil {
-		l.Errorf("[UpdateServer] FindOneServer Error: %v", err.Error())
+		l.Logger.Errorf("[UpdateServer] FindOneServer Error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server error: %v", err.Error())
 	}
 	data.Name = req.Name
@@ -44,7 +44,7 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 		// query server ip location
 		result, err := ip.GetRegionByIp(req.Address)
 		if err != nil {
-			l.Errorf("[UpdateServer] GetRegionByIp Error: %v", err.Error())
+			l.Logger.Errorf("[UpdateServer] GetRegionByIp Error: %v", err.Error())
 		} else {
 			data.City = result.City
 			data.Country = result.Country
@@ -70,7 +70,7 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 				if protocol.RealityPublicKey == "" {
 					public, private, err := tool.Curve25519Genkey(false, "")
 					if err != nil {
-						l.Errorf("[CreateServer] Generate Reality Key Error: %v", err.Error())
+						l.Logger.Errorf("[CreateServer] Generate Reality Key Error: %v", err.Error())
 						return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "generate reality key error: %v", err)
 					}
 					protocol.RealityPublicKey = public
@@ -105,13 +105,13 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 	}
 	err = data.MarshalProtocols(protocols)
 	if err != nil {
-		l.Errorf("[UpdateServer] Marshal Protocols Error: %v", err.Error())
+		l.Logger.Errorf("[UpdateServer] Marshal Protocols Error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCodeMsg(xerr.InvalidParams, "protocols marshal error"), "protocols marshal error: %v", err)
 	}
 
 	err = nodeStore.UpdateServer(l.ctx, data)
 	if err != nil {
-		l.Errorf("[UpdateServer] UpdateServer Error: %v", err.Error())
+		l.Logger.Errorf("[UpdateServer] UpdateServer Error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update server error: %v", err.Error())
 	}
 

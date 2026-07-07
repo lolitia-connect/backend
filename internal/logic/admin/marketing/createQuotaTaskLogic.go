@@ -9,15 +9,15 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queueType "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type CreateQuotaTaskLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -25,7 +25,7 @@ type CreateQuotaTaskLogic struct {
 // NewCreateQuotaTaskLogic Create a quota task
 func NewCreateQuotaTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateQuotaTaskLogic {
 	return &CreateQuotaTaskLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -40,7 +40,7 @@ func (l *CreateQuotaTaskLogic) CreateQuotaTask(req *types.CreateQuotaTaskRequest
 		EndTime:     req.EndTime,
 	})
 	if err != nil {
-		l.Errorf("[CreateQuotaTask] find subscribers error: %v", err.Error())
+		l.Logger.Errorf("[CreateQuotaTask] find subscribers error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribers error")
 	}
 	if len(subIds) == 0 {
@@ -74,16 +74,16 @@ func (l *CreateQuotaTaskLogic) CreateQuotaTask(req *types.CreateQuotaTaskRequest
 	}
 
 	if err := l.svcCtx.Store.Task().Insert(l.ctx, newTask); err != nil {
-		l.Errorf("[CreateQuotaTask] create task error: %v", err.Error())
+		l.Logger.Errorf("[CreateQuotaTask] create task error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create task error")
 	}
 
 	// enqueue task
 	queueTask := asynq.NewTask(queueType.ForthwithQuotaTask, []byte(strconv.FormatInt(newTask.Id, 10)))
 	if _, err := l.svcCtx.Queue.EnqueueContext(l.ctx, queueTask); err != nil {
-		l.Errorf("[CreateQuotaTask] enqueue task error: %v", err.Error())
+		l.Logger.Errorf("[CreateQuotaTask] enqueue task error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.QueueEnqueueError), "enqueue task error")
 	}
-	logger.Infof("[CreateQuotaTask] Successfully created task with ID: %d", newTask.Id)
+	zap.S().Infof("[CreateQuotaTask] Successfully created task with ID: %d", newTask.Id)
 	return nil
 }

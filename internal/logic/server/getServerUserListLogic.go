@@ -7,24 +7,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/perfect-panel/server/ent"
-	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
-	"github.com/perfect-panel/server/ent/trafficlog"
-	"github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"go.uber.org/zap"
 )
 
 type GetServerUserListLogic struct {
-	logger.Logger
+	Logger   *zap.SugaredLogger
 	ctx      context.Context
 	svcCtx   *svc.ServiceContext
 	request  RequestMeta
@@ -34,7 +30,7 @@ type GetServerUserListLogic struct {
 // NewGetServerUserListLogic Get user list
 func NewGetServerUserListLogic(ctx context.Context, svcCtx *svc.ServiceContext, request RequestMeta) *GetServerUserListLogic {
 	return &GetServerUserListLogic{
-		Logger:   logger.WithContext(ctx),
+		Logger:   zap.S(),
 		ctx:      ctx,
 		svcCtx:   svcCtx,
 		request:  request,
@@ -115,7 +111,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 		l.response.SetHeader("ETag", etag)
 		err = json.Unmarshal([]byte(cache), resp)
 		if err != nil {
-			l.Errorw("[ServerUserListCacheKey] json unmarshal error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[ServerUserListCacheKey] json unmarshal error", zap.Any("error", err.Error()))
 			return nil, err
 		}
 		return resp, nil
@@ -133,7 +129,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 		ProtocolId: req.ProtocolId,
 	})
 	if err != nil {
-		l.Errorw("FilterNodeList error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("FilterNodeList error", zap.Any("error", err.Error()))
 		return nil, err
 	}
 
@@ -185,7 +181,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 			NodeGroupIds: nodeGroupIds,
 		})
 		if err != nil {
-			l.Errorw("FilterListByNodeGroups error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("FilterListByNodeGroups error", zap.Any("error", err.Error()))
 			return nil, err
 		}
 	} else {
@@ -198,7 +194,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 			Tags: nodeTags,
 		})
 		if err != nil {
-			l.Errorw("FilterList error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("FilterList error", zap.Any("error", err.Error()))
 			return nil, err
 		}
 	}
@@ -256,7 +252,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	l.response.SetHeader("ETag", etag)
 	err = l.svcCtx.Redis.Set(l.ctx, cacheKey, string(val), node.ServerCacheTTL).Err()
 	if err != nil {
-		l.Errorw("[ServerUserListCacheKey] redis set error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[ServerUserListCacheKey] redis set error", zap.Any("error", err.Error()))
 	}
 	//  Check If-None-Match header
 	if match := l.request.IfNoneMatch; match == etag {
@@ -278,27 +274,25 @@ func (l *GetServerUserListLogic) shouldIncludeServerUser(userSub *user.Subscribe
 }
 
 func (l *GetServerUserListLogic) getExpiredUsers(serverNodeGroupIds []int64) ([]types.ServerUser, int64) {
-	entExpiredGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).First(l.ctx)
+	expiredGroup, err := l.svcCtx.Store.Group().FindExpiredNodeGroup(l.ctx)
 	if err != nil {
 		return nil, 0
 	}
-	expiredGroup := entNodeGroupToModel(entExpiredGroup)
 
 	if !tool.Contains(serverNodeGroupIds, expiredGroup.Id) {
 		return nil, 0
 	}
 
-	entExpiredSubs, err := l.svcCtx.Ent.UserSubscribe.Query().Where(usersubscribe.Status(3)).All(l.ctx)
+	expiredSubs, err := l.svcCtx.Store.User().FindUserSubscribesByStatus(l.ctx, 3)
 	if err != nil {
-		l.Errorw("query expired subscriptions failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("query expired subscriptions failed", zap.Any("error", err.Error()))
 		return nil, 0
 	}
 
 	users := make([]types.ServerUser, 0)
 	seen := make(map[int64]bool)
-	for _, entUserSub := range entExpiredSubs {
-		userSub := entUserSubscribeToModel(entUserSub)
-		if !l.checkExpiredUserEligibility(userSub, &expiredGroup) {
+	for _, userSub := range expiredSubs {
+		if !l.checkExpiredUserEligibility(userSub, expiredGroup) {
 			continue
 		}
 		if seen[userSub.Id] {
@@ -331,11 +325,10 @@ func (l *GetServerUserListLogic) checkExpiredUserEligibility(userSub *user.Subsc
 }
 
 func (l *GetServerUserListLogic) canUseExpiredNodeGroup(userSub *user.Subscribe, serverNodeGroupIds []int64) bool {
-	entExpiredGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).First(l.ctx)
+	expiredGroup, err := l.svcCtx.Store.Group().FindExpiredNodeGroup(l.ctx)
 	if err != nil {
 		return false
 	}
-	expiredGroup := entNodeGroupToModel(entExpiredGroup)
 
 	if !tool.Contains(serverNodeGroupIds, expiredGroup.Id) {
 		return false
@@ -356,54 +349,6 @@ func (l *GetServerUserListLogic) canUseExpiredNodeGroup(userSub *user.Subscribe,
 	return true
 }
 
-func entNodeGroupToModel(ng *ent.NodeGroup) group.NodeGroup {
-	forCalculation := ng.ForCalculation
-	isExpiredGroup := ng.IsExpiredGroup
-	return group.NodeGroup{
-		Id:                  ng.ID,
-		Name:                ng.Name,
-		Type:                ng.Type,
-		Description:         ng.Description,
-		Sort:                ng.Sort,
-		ForCalculation:      &forCalculation,
-		IsExpiredGroup:      &isExpiredGroup,
-		ExpiredDaysLimit:    ng.ExpiredDaysLimit,
-		MaxTrafficGBExpired: ng.MaxTrafficGBExpired,
-		SpeedLimit:          ng.SpeedLimit,
-		MinTrafficGB:        ng.MinTrafficGB,
-		MaxTrafficGB:        ng.MaxTrafficGB,
-		CreatedAt:           ng.CreatedAt,
-		UpdatedAt:           ng.UpdatedAt,
-	}
-}
-
-func entUserSubscribeToModel(sub *ent.UserSubscribe) *user.Subscribe {
-	groupLocked := sub.GroupLocked
-	return &user.Subscribe{
-		Id:               sub.ID,
-		UserId:           sub.UserID,
-		OrderId:          sub.OrderID,
-		SubscribeId:      sub.SubscribeID,
-		NodeGroupId:      sub.NodeGroupID,
-		GroupLocked:      &groupLocked,
-		StartTime:        sub.StartTime,
-		ExpireTime:       sub.ExpireTime,
-		FinishedAt:       sub.FinishedAt,
-		Traffic:          sub.Traffic,
-		TrafficUnlimited: sub.TrafficUnlimited,
-		Download:         sub.Download,
-		Upload:           sub.Upload,
-		ExpiredDownload:  sub.ExpiredDownload,
-		ExpiredUpload:    sub.ExpiredUpload,
-		Token:            sub.Token,
-		UUID:             sub.UUID,
-		Status:           sub.Status,
-		Note:             sub.Note,
-		CreatedAt:        sub.CreatedAt,
-		UpdatedAt:        sub.UpdatedAt,
-	}
-}
-
 // calculateEffectiveSpeedLimit 计算用户的实际限速值（考虑按量限速规则）
 func (l *GetServerUserListLogic) calculateEffectiveSpeedLimit(sub *subscribe.Subscribe, userSub *user.Subscribe) int64 {
 	baseSpeedLimit := sub.SpeedLimit
@@ -415,9 +360,9 @@ func (l *GetServerUserListLogic) calculateEffectiveSpeedLimit(sub *subscribe.Sub
 
 	var trafficLimitRules []types.TrafficLimit
 	if err := json.Unmarshal([]byte(sub.TrafficLimit), &trafficLimitRules); err != nil {
-		l.Errorw("[calculateEffectiveSpeedLimit] Failed to unmarshal traffic_limit",
-			logger.Field("error", err.Error()),
-			logger.Field("traffic_limit", sub.TrafficLimit))
+		l.Logger.Errorw("[calculateEffectiveSpeedLimit] Failed to unmarshal traffic_limit",
+			zap.Any("error", err.Error()),
+			zap.Any("traffic_limit", sub.TrafficLimit))
 		return baseSpeedLimit
 	}
 
@@ -450,25 +395,18 @@ func (l *GetServerUserListLogic) calculateEffectiveSpeedLimit(sub *subscribe.Sub
 			continue
 		}
 
-		usedTraffic, err := l.svcCtx.Ent.TrafficLog.Query().Where(
-			trafficlog.UserID(userSub.UserId),
-			trafficlog.SubscribeID(userSub.Id),
-			trafficlog.TimestampGTE(startTime),
-			trafficlog.TimestampLT(endTime),
-		).Aggregate(ent.Sum(trafficlog.FieldUpload), ent.Sum(trafficlog.FieldDownload)).Ints(l.ctx)
+		usedTraffic, err := l.svcCtx.Store.TrafficLog().SumByUserSubscribeAndTimeRange(l.ctx, userSub.UserId, userSub.Id, startTime, endTime)
 		if err != nil {
-			l.Errorw("[calculateEffectiveSpeedLimit] Failed to query traffic usage",
-				logger.Field("error", err.Error()),
-				logger.Field("user_id", userSub.UserId),
-				logger.Field("subscribe_id", userSub.Id))
+			l.Logger.Errorw("[calculateEffectiveSpeedLimit] Failed to query traffic usage",
+				zap.Any("error", err.Error()),
+				zap.Any("user_id", userSub.UserId),
+				zap.Any("subscribe_id", userSub.Id))
 			continue
 		}
 		upload, download := int64(0), int64(0)
-		if len(usedTraffic) > 0 {
-			upload = int64(usedTraffic[0])
-		}
-		if len(usedTraffic) > 1 {
-			download = int64(usedTraffic[1])
+		if usedTraffic != nil {
+			upload = usedTraffic.Upload
+			download = usedTraffic.Download
 		}
 
 		// 计算已使用流量（GB）

@@ -19,8 +19,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/perfect-panel/server/pkg/lang"
-	"github.com/perfect-panel/server/pkg/logger"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"go.uber.org/zap"
 )
 
 const (
@@ -43,7 +43,7 @@ func StartAgent(c Config) {
 	if c.Disabled {
 		return
 	}
-	logger.Info("Starting agent")
+	zap.S().Info("Starting agent")
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -137,7 +137,7 @@ func startAgent(c Config) error {
 	if len(c.Endpoint) > 0 {
 		exp, err := createExporter(c)
 		if err != nil {
-			logger.Error(err)
+			zap.S().Error(err)
 			return err
 		}
 
@@ -148,7 +148,7 @@ func startAgent(c Config) error {
 	tp = sdktrace.NewTracerProvider(opts...)
 	otel.SetTracerProvider(tp)
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
-		logger.Errorf("[otel] error: %v", err)
+		zap.S().Errorf("[otel] error: %v", err)
 	}))
 
 	return nil

@@ -5,14 +5,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type QueryDocumentListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type QueryDocumentListLogic struct {
 // Get document list
 func NewQueryDocumentListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryDocumentListLogic {
 	return &QueryDocumentListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -29,7 +29,7 @@ func NewQueryDocumentListLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 func (l *QueryDocumentListLogic) QueryDocumentList() (resp *types.QueryDocumentListResponse, err error) {
 	total, data, err := l.svcCtx.Store.Document().GetDocumentListByAll(l.ctx)
 	if err != nil {
-		l.Errorw("[QueryDocumentList] error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryDocumentList] error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryDocumentList error: %v", err.Error())
 	}
 	resp = &types.QueryDocumentListResponse{

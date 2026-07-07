@@ -8,13 +8,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type PreviewSubscribeTemplateLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type PreviewSubscribeTemplateLogic struct {
 // Preview Template
 func NewPreviewSubscribeTemplateLogic(ctx context.Context, svcCtx *svc.ServiceContext) *PreviewSubscribeTemplateLogic {
 	return &PreviewSubscribeTemplateLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,13 +37,13 @@ func (l *PreviewSubscribeTemplateLogic) PreviewSubscribeTemplate(req *types.Prev
 		Enabled: &enable,
 	})
 	if err != nil {
-		l.Errorf("[PreviewSubscribeTemplateLogic] FindAllServer error: %v", err.Error())
+		l.Logger.Errorf("[PreviewSubscribeTemplateLogic] FindAllServer error: %v", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindAllServer error: %v", err.Error())
 	}
 
 	data, err := l.svcCtx.Store.Client().FindOne(l.ctx, req.Id)
 	if err != nil {
-		l.Errorf("[PreviewSubscribeTemplateLogic] FindOne error: %v", err.Error())
+		l.Logger.Errorf("[PreviewSubscribeTemplateLogic] FindOne error: %v", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneClient error: %v", err.Error())
 	}
 
@@ -62,12 +62,12 @@ func (l *PreviewSubscribeTemplateLogic) PreviewSubscribeTemplate(req *types.Prev
 	// Get client config
 	a, err := sub.Client()
 	if err != nil {
-		l.Errorf("[PreviewSubscribeTemplateLogic] Client error: %v", err.Error())
+		l.Logger.Errorf("[PreviewSubscribeTemplateLogic] Client error: %v", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrMsg(err.Error()), "Client error: %v", err.Error())
 	}
 	bytes, err := a.Build()
 	if err != nil {
-		l.Errorf("[PreviewSubscribeTemplateLogic] Build error: %v", err.Error())
+		l.Logger.Errorf("[PreviewSubscribeTemplateLogic] Build error: %v", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrMsg(err.Error()), "Build error: %v", err.Error())
 	}
 	return &types.PreviewSubscribeTemplateResponse{

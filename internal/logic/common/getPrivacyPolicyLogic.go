@@ -5,14 +5,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetPrivacyPolicyLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type GetPrivacyPolicyLogic struct {
 // Get Privacy Policy
 func NewGetPrivacyPolicyLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetPrivacyPolicyLogic {
 	return &GetPrivacyPolicyLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,7 +31,7 @@ func (l *GetPrivacyPolicyLogic) GetPrivacyPolicy() (resp *types.PrivacyPolicyCon
 	// get tos config from db
 	configs, err := l.svcCtx.Store.System().GetTosConfig(l.ctx)
 	if err != nil {
-		l.Errorw("[GetTosConfig] GetTosConfig error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetTosConfig] GetTosConfig error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetTosConfig error: %v", err.Error())
 	}
 	// reflect to response

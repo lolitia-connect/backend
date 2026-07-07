@@ -3,7 +3,7 @@ package initialize
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
@@ -19,10 +19,10 @@ type verifyConfig struct {
 }
 
 func Verify(svc *svc.ServiceContext) {
-	logger.Debug("Verify config initialization")
+	zap.S().Debug("Verify config initialization")
 	configs, err := svc.Store.System().GetVerifyConfig(context.Background())
 	if err != nil {
-		logger.Error("[Init Verify Config] Get Verify Config Error: ", logger.Field("error", err.Error()))
+		zap.S().Error("[Init Verify Config] Get Verify Config Error: ", zap.Any("error", err.Error()))
 		return
 	}
 	var verify verifyConfig
@@ -35,12 +35,12 @@ func Verify(svc *svc.ServiceContext) {
 		ResetPasswordVerify: verify.EnableResetPasswordVerify,
 	}
 
-	logger.Debug("Verify code config initialization")
+	zap.S().Debug("Verify code config initialization")
 
 	var verifyCodeConfig config.VerifyCode
 	cfg, err := svc.Store.System().GetVerifyCodeConfig(context.Background())
 	if err != nil {
-		logger.Errorf("[Init Verify Config] Get Verify Code Config Error: %s", err.Error())
+		zap.S().Errorf("[Init Verify Config] Get Verify Code Config Error: %s", err.Error())
 		return
 	}
 	tool.SystemConfigSliceReflectToStruct(cfg, &verifyCodeConfig)

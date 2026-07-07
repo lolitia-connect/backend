@@ -7,13 +7,12 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
-	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/perfect-panel/server/internal/handler"
 	"github.com/perfect-panel/server/internal/middleware"
 	"github.com/perfect-panel/server/internal/plugin"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/hertzx"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type Server struct {
@@ -35,11 +34,7 @@ func New(svc *svc.ServiceContext, addr string, tlsConfig *tls.Config) *Server {
 func newServer(svc *svc.ServiceContext, opts []config.Option) *Server {
 	engine := hertzx.Default(opts...)
 
-	// Suppress noisy Hertz engine errors like "malformed HTTP request"
-	// caused by port scanners sending TLS handshake to HTTP port.
-	hlog.SetSilentMode(true)
-
-	engine.Hertz().Use(middleware.TraceMiddleware(svc), middleware.LoggerMiddleware(svc), middleware.CorsMiddleware)
+	engine.Hertz().Use(middleware.TraceMiddleware(svc), middleware.EntCacheMiddleware(), middleware.LoggerMiddleware(svc), middleware.CorsMiddleware)
 
 	handler.RegisterNativeHandlers(engine.Hertz(), svc)
 	handler.RegisterHandlers(engine, svc)
@@ -56,7 +51,7 @@ func newServer(svc *svc.ServiceContext, opts []config.Option) *Server {
 
 func (s *Server) Start() {
 	if err := s.h.Run(); err != nil {
-		logger.Errorf("server start error: %s", err.Error())
+		zap.S().Errorf("server start error: %s", err.Error())
 		os.Exit(1)
 	}
 }

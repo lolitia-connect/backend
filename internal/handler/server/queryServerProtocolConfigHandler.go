@@ -10,8 +10,8 @@ import (
 	"github.com/perfect-panel/server/internal/logic/server"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 // QueryServerProtocolConfigHandler Get Server Protocol Config
@@ -19,7 +19,7 @@ func QueryServerProtocolConfigHandler(svcCtx *svc.ServiceContext) app.HandlerFun
 	return func(c context.Context, ctx *app.RequestContext) {
 		serverID, err := strconv.ParseInt(ctx.Param("server_id"), 10, 64)
 		if err != nil {
-			logger.WithContext(c).Debugf("[QueryServerProtocolConfigHandler] Parse server_id error: %v, Param: %s", err, ctx.Param("server_id"))
+			zap.S().Debugf("[QueryServerProtocolConfigHandler] Parse server_id error: %v, Param: %s", err, ctx.Param("server_id"))
 			ctx.String(consts.StatusBadRequest, "Invalid Params")
 			ctx.Abort()
 			return

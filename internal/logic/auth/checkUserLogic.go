@@ -1,18 +1,18 @@
 package auth
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type CheckUserLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type CheckUserLogic struct {
 // NewCheckUserLogic Check user is exist
 func NewCheckUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CheckUserLogic {
 	return &CheckUserLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}

@@ -7,23 +7,23 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type BatchDeleteUserLogic struct {
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
-	logger.Logger
+	Logger *zap.SugaredLogger
 }
 
 func NewBatchDeleteUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *BatchDeleteUserLogic {
 	return &BatchDeleteUserLogic{
 		ctx:    ctx,
 		svcCtx: svcCtx,
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 	}
 }
 
@@ -37,7 +37,7 @@ func (l *BatchDeleteUserLogic) BatchDeleteUser(req *types.BatchDeleteUserRequest
 
 	err := l.svcCtx.Store.User().BatchDeleteUser(l.ctx, ids)
 	if err != nil {
-		l.Logger.Error("[BatchDeleteUserLogic] BatchDeleteUser failed: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[BatchDeleteUserLogic] BatchDeleteUser failed: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "BatchDeleteUser failed: %v", err.Error())
 	}
 	return nil

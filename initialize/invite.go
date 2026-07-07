@@ -5,16 +5,16 @@ import (
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 func Invite(ctx *svc.ServiceContext) {
 	// Initialize the system configuration
-	logger.Debug("Register config initialization")
+	zap.S().Debug("Register config initialization")
 	configs, err := ctx.Store.System().GetInviteConfig(context.Background())
 	if err != nil {
-		logger.Error("[Init Invite Config] Get Invite Config Error: ", logger.Field("error", err.Error()))
+		zap.S().Error("[Init Invite Config] Get Invite Config Error: ", zap.Any("error", err.Error()))
 		return
 	}
 	var inviteConfig config.InviteConfig

@@ -7,12 +7,12 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"go.uber.org/zap"
 )
 
 type GetPreSendEmailCountLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type GetPreSendEmailCountLogic struct {
 // NewGetPreSendEmailCountLogic Get pre-send email count
 func NewGetPreSendEmailCountLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetPreSendEmailCountLogic {
 	return &GetPreSendEmailCountLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -34,7 +34,7 @@ func (l *GetPreSendEmailCountLogic) GetPreSendEmailCount(req *types.GetPreSendEm
 		RegisterEndTime:   req.RegisterEndTime,
 	})
 	if err != nil {
-		l.Errorf("[GetPreSendEmailCount] Count error: %v", err)
+		l.Logger.Errorf("[GetPreSendEmailCount] Count error: %v", err)
 		return nil, xerr.NewErrMsg("Failed to count emails")
 	}
 

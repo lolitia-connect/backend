@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -40,6 +41,7 @@ type LogConf struct {
 	TimeFormat          string `yaml:"TimeFormat" default:"2006-01-02 15:04:05.000"`
 	Path                string `yaml:"Path" default:"logs"`
 	FilePath            string `yaml:"FilePath"`
+	Color               bool   `yaml:"Color" default:"true"`
 	Level               string `yaml:"Level" default:"info"`
 	MaxContentLength    uint32 `yaml:"MaxContentLength" default:"0"`
 	Compress            bool   `yaml:"Compress" default:"false"`
@@ -64,6 +66,7 @@ func SetUp(c LogConf) error {
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1), zap.AddStacktrace(zapcore.FatalLevel))
 	zap.ReplaceGlobals(logger)
 	log.SetOutput(zap.NewStdLog(logger).Writer())
+	hlog.SetLogger(NewHertzLogger())
 	return nil
 }
 
@@ -125,6 +128,9 @@ func encoder(c LogConf) zapcore.Encoder {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 	if c.Encoding == plainEncoding {
+		if c.Color {
+			cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		}
 		return zapcore.NewConsoleEncoder(cfg)
 	}
 	return zapcore.NewJSONEncoder(cfg)

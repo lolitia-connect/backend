@@ -3,6 +3,7 @@ package queue
 import (
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/queue/handler"
 	"go.uber.org/zap"
 )
@@ -38,6 +39,7 @@ func initService(svc *svc.ServiceContext) *asynq.Server {
 	return asynq.NewServer(
 		asynq.RedisClientOpt{Addr: svc.Config.Redis.Host, Password: svc.Config.Redis.Pass, DB: 5},
 		asynq.Config{
+			Logger: logging.NewAsynqLogger(),
 			IsFailure: func(err error) bool {
 				zap.S().Error("consumer service error", zap.Any("error", err.Error()))
 				return true

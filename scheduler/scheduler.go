@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/queue/types"
 )
 
@@ -74,6 +75,7 @@ func initService(svc *svc.ServiceContext) *asynq.Scheduler {
 		asynq.RedisClientOpt{Addr: svc.Config.Redis.Host, Password: svc.Config.Redis.Pass, DB: 5},
 		&asynq.SchedulerOpts{
 			Location: location,
+			Logger:   logging.NewAsynqLogger(),
 		},
 	)
 }

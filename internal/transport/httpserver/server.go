@@ -7,7 +7,6 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/config"
-	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"github.com/perfect-panel/server/internal/handler"
 	"github.com/perfect-panel/server/internal/middleware"
 	"github.com/perfect-panel/server/internal/plugin"
@@ -34,10 +33,6 @@ func New(svc *svc.ServiceContext, addr string, tlsConfig *tls.Config) *Server {
 
 func newServer(svc *svc.ServiceContext, opts []config.Option) *Server {
 	engine := hertzx.Default(opts...)
-
-	// Suppress noisy Hertz engine errors like "malformed HTTP request"
-	// caused by port scanners sending TLS handshake to HTTP port.
-	hlog.SetSilentMode(true)
 
 	engine.Hertz().Use(middleware.TraceMiddleware(svc), middleware.EntCacheMiddleware(), middleware.LoggerMiddleware(svc), middleware.CorsMiddleware)
 

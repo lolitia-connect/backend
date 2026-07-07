@@ -10,9 +10,9 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/hertzx"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 func LoggerMiddleware(svc *svc.ServiceContext) app.HandlerFunc {
@@ -26,46 +26,31 @@ func LoggerMiddleware(svc *svc.ServiceContext) app.HandlerFunc {
 		path := string(ctx.Path())
 		host := string(ctx.Host())
 
-		logs := []logger.LogField{
-			{
-				Key:   "status",
-				Value: responseStatus,
-			},
-			{
-				Key:   "request",
-				Value: method + " " + host + string(ctx.URI().RequestURI()),
-			},
-			{
-				Key:   "query",
-				Value: string(ctx.URI().QueryString()),
-			},
-			{
-				Key:   "ip",
-				Value: ctx.ClientIP(),
-			},
-			{
-				Key:   "user-agent",
-				Value: string(ctx.UserAgent()),
-			},
+		logs := []zap.Field{
+			zap.Int("status", responseStatus),
+			zap.String("request", method+" "+host+string(ctx.URI().RequestURI())),
+			zap.String("query", string(ctx.URI().QueryString())),
+			zap.String("ip", ctx.ClientIP()),
+			zap.String("user-agent", string(ctx.UserAgent())),
 		}
 		if errMessage := hertzxErrorMessage(ctx); errMessage != "" {
-			logs = append(logs, logger.Field("error", errMessage))
+			logs = append(logs, zap.Any("error", errMessage))
 		}
 		if shouldLogBody(method, path) {
-			logs = append(logs, logger.Field("request_body", string(maskSensitiveFields(ctx.Request.Body(), []string{"password", "old_password", "new_password"}))))
-			logs = append(logs, logger.Field("response_body", string(ctx.Response.Body())))
+			logs = append(logs, zap.Any("request_body", string(maskSensitiveFields(ctx.Request.Body(), []string{"password", "old_password", "new_password"}))))
+			logs = append(logs, zap.Any("response_body", string(ctx.Response.Body())))
 		} else if isBodyMethod(method) && isServerTelemetryPath(path) {
-			logs = append(logs, logger.Field("body_omitted", true))
+			logs = append(logs, zap.Any("body_omitted", true))
 		}
-		logs = append(logs, logger.Field("duration", cost))
+		logs = append(logs, zap.Any("duration", cost))
 		if responseStatus >= 500 && responseStatus <= 599 {
-			logger.WithContext(c).Errorw("HTTP Error", logs...)
+			zap.L().Error("HTTP Error", logs...)
 		} else {
-			logger.WithContext(c).Infow("HTTP Request", logs...)
+			zap.L().Info("HTTP Request", logs...)
 		}
 
 		if responseStatus == consts.StatusNotFound {
-			logger.WithContext(c).Debugf("404 Not Found: Host:%s Path:%s IsPanDomain:%v", host, path, svc.Config.Subscribe.PanDomain)
+			zap.S().Debugf("404 Not Found: Host:%s Path:%s IsPanDomain:%v", host, path, svc.Config.Subscribe.PanDomain)
 		}
 	}
 }

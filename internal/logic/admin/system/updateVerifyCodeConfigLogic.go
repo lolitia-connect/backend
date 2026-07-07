@@ -10,11 +10,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type UpdateVerifyCodeConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type UpdateVerifyCodeConfigLogic struct {
 // Update Verify Code Config
 func NewUpdateVerifyCodeConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateVerifyCodeConfigLogic {
 	return &UpdateVerifyCodeConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,7 +31,7 @@ func NewUpdateVerifyCodeConfigLogic(ctx context.Context, svcCtx *svc.ServiceCont
 func (l *UpdateVerifyCodeConfigLogic) UpdateVerifyCodeConfig(req *types.VerifyCodeConfig) error {
 	err := updateConfigFields(l.ctx, l.svcCtx, "verify_code", convertedConfigFields(*req), config.VerifyCodeConfigKey)
 	if err != nil {
-		l.Errorw("[UpdateRegisterConfig] update verify code config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateRegisterConfig] update verify code config error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update register config error: %v", err.Error())
 	}
 	return nil

@@ -6,16 +6,15 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/ent"
-	"github.com/perfect-panel/server/ent/userdeviceonlinerecord"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type DeviceOnlineStatisticsLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +22,7 @@ type DeviceOnlineStatisticsLogic struct {
 // Device Online Statistics
 func NewDeviceOnlineStatisticsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DeviceOnlineStatisticsLogic {
 	return &DeviceOnlineStatisticsLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,25 +32,22 @@ func (l *DeviceOnlineStatisticsLogic) DeviceOnlineStatistics() (resp *types.GetD
 	u := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	//获取历史最长在线时间
 	var OnlineSeconds int64
-	if record, err := l.svcCtx.Ent.UserDeviceOnlineRecord.Query().Where(userdeviceonlinerecord.UserID(u.Id)).Order(ent.Desc(userdeviceonlinerecord.FieldOnlineSeconds)).First(l.ctx); err == nil {
-		OnlineSeconds = record.OnlineSeconds
+	if seconds, err := l.svcCtx.Store.User().FindMaxDeviceOnlineSeconds(l.ctx, u.Id); err == nil {
+		OnlineSeconds = seconds
 	} else if !ent.IsNotFound(err) {
 		l.Logger.Error(err)
 	}
 
 	//获取历史连续最长在线天数
 	var DurationDays int64
-	if record, err := l.svcCtx.Ent.UserDeviceOnlineRecord.Query().Where(userdeviceonlinerecord.UserID(u.Id)).Order(ent.Desc(userdeviceonlinerecord.FieldDurationDays)).First(l.ctx); err == nil {
-		DurationDays = record.DurationDays
+	if days, err := l.svcCtx.Store.User().FindMaxDeviceDurationDays(l.ctx, u.Id); err == nil {
+		DurationDays = days
 	} else if !ent.IsNotFound(err) {
 		l.Logger.Error(err)
 	}
 
 	//获取近七天在线情况
-	userOnlineRecord, err := l.svcCtx.Ent.UserDeviceOnlineRecord.Query().Where(
-		userdeviceonlinerecord.UserID(u.Id),
-		userdeviceonlinerecord.CreatedAtGTE(time.Now().AddDate(0, 0, -7)),
-	).Order(ent.Desc(userdeviceonlinerecord.FieldCreatedAt)).All(l.ctx)
+	userOnlineRecord, err := l.svcCtx.Store.User().FindDeviceOnlineRecordsSince(l.ctx, u.Id, time.Now().AddDate(0, 0, -7))
 	if err != nil {
 		l.Logger.Error(err)
 	}

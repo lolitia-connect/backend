@@ -5,12 +5,12 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"go.uber.org/zap"
 )
 
 type GetBatchSendEmailTaskStatusLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -18,7 +18,7 @@ type GetBatchSendEmailTaskStatusLogic struct {
 // NewGetBatchSendEmailTaskStatusLogic Get batch send email task status
 func NewGetBatchSendEmailTaskStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetBatchSendEmailTaskStatusLogic {
 	return &GetBatchSendEmailTaskStatusLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -27,7 +27,7 @@ func NewGetBatchSendEmailTaskStatusLogic(ctx context.Context, svcCtx *svc.Servic
 func (l *GetBatchSendEmailTaskStatusLogic) GetBatchSendEmailTaskStatus(req *types.GetBatchSendEmailTaskStatusRequest) (resp *types.GetBatchSendEmailTaskStatusResponse, err error) {
 	taskInfo, err := l.svcCtx.Store.Task().FindOne(l.ctx, req.Id)
 	if err != nil {
-		l.Errorf("failed to get email task status, error: %v", err)
+		l.Logger.Errorf("failed to get email task status, error: %v", err)
 		return nil, xerr.NewErrCode(xerr.DatabaseQueryError)
 	}
 

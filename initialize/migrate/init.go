@@ -6,9 +6,9 @@ import (
 
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/user"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
+	"go.uber.org/zap"
 )
 
 // CreateAdminUser create admin user
@@ -25,7 +25,7 @@ func CreateAdminUser(ctx context.Context, email, password string, client *ent.Cl
 			return err
 		}
 		if count != 0 {
-			logger.Info("User already exists, skip creating administrator account")
+			zap.S().Info("User already exists, skip creating administrator account")
 			return nil
 		}
 

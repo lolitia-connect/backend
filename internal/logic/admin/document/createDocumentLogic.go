@@ -7,13 +7,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/document"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type CreateDocumentLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type CreateDocumentLogic struct {
 // Create document
 func NewCreateDocumentLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateDocumentLogic {
 	return &CreateDocumentLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -34,7 +34,7 @@ func (l *CreateDocumentLogic) CreateDocument(req *types.CreateDocumentRequest) e
 		Tags:    strings.Join(req.Tags, ","),
 		Show:    req.Show,
 	}); err != nil {
-		l.Errorw("[CreateDocument] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[CreateDocument] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert document error: %v", err.Error())
 	}
 	return nil

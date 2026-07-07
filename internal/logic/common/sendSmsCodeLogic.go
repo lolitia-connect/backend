@@ -1,10 +1,10 @@
 package common
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -13,13 +13,13 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/limit"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/random"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type SmsSendCount struct {
 	Count    int64 `json:"count"`
@@ -27,7 +27,7 @@ type SmsSendCount struct {
 }
 
 type SendSmsCodeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -35,7 +35,7 @@ type SendSmsCodeLogic struct {
 // NewSendSmsCodeLogic Get sms verification code
 func NewSendSmsCodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SendSmsCodeLogic {
 	return &SendSmsCodeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -92,14 +92,14 @@ func (l *SendSmsCodeLogic) SendSmsCode(req *types.SendSmsCodeRequest) (resp *typ
 	// Marshal the payload
 	val, _ := json.Marshal(payload)
 	if err = l.svcCtx.Redis.Set(l.ctx, cacheKey, string(val), time.Second*time.Duration(l.svcCtx.Config.VerifyCode.ExpireTime)).Err(); err != nil {
-		l.Errorw("[SendSmsCode]: Redis Error", logger.Field("error", err.Error()), logger.Field("cacheKey", cacheKey))
+		l.Logger.Errorw("[SendSmsCode]: Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to set verification code")
 	}
 
 	// Marshal the task payload
 	payloadValue, err := json.Marshal(taskPayload)
 	if err != nil {
-		l.Errorw("[SendSmsCode]: Marshal Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[SendSmsCode]: Marshal Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to marshal task payload")
 	}
 	// Create a queue task
@@ -107,10 +107,10 @@ func (l *SendSmsCodeLogic) SendSmsCode(req *types.SendSmsCodeRequest) (resp *typ
 	// Enqueue the task
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task)
 	if err != nil {
-		l.Errorw("[SendSmsCode]: Enqueue Error", logger.Field("error", err.Error()), logger.Field("payload", string(payloadValue)))
+		l.Logger.Errorw("[SendSmsCode]: Enqueue Error", zap.Any("error", err.Error()), zap.Any("payload", string(payloadValue)))
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to enqueue task")
 	}
-	l.Infow("[SendSmsCode]: Enqueue Success", logger.Field("taskID", taskInfo.ID), logger.Field("payload", string(payloadValue)))
+	l.Logger.Infow("[SendSmsCode]: Enqueue Success", zap.Any("taskID", taskInfo.ID), zap.Any("payload", string(payloadValue)))
 	if l.svcCtx.Config.Model == constant.DevMode {
 		return &types.SendCodeResponse{
 			Code:   taskPayload.Content,

@@ -7,14 +7,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type QuerySubscribeListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type QuerySubscribeListLogic struct {
 // Get subscribe list
 func NewQuerySubscribeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QuerySubscribeListLogic {
 	return &QuerySubscribeListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -38,7 +38,7 @@ func (l *QuerySubscribeListLogic) QuerySubscribeList(req *types.QuerySubscribeLi
 		DefaultLanguage: true,
 	})
 	if err != nil {
-		l.Errorw("[QuerySubscribeListLogic] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QuerySubscribeListLogic] Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QuerySubscribeList error: %v", err.Error())
 	}
 

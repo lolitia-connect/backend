@@ -8,11 +8,11 @@ import (
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhookendpoint"
 
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/customer"
 	"github.com/stripe/stripe-go/v81/paymentmethod"
 	"github.com/stripe/stripe-go/v81/webhook"
+	"go.uber.org/zap"
 )
 
 type Config struct {
@@ -113,7 +113,7 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 	case "checkout.session.completed":
 		var sess stripe.CheckoutSession
 		if err := json.Unmarshal(event.Data.Raw, &sess); err != nil {
-			logger.Error("Failed to unmarshal checkout session", logger.Field("error", err.Error()))
+			zap.S().Error("Failed to unmarshal checkout session", zap.Any("error", err.Error()))
 			return nil, err
 		}
 		orderNo := sess.ClientReferenceID
@@ -141,7 +141,7 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 	case "payment_intent.succeeded":
 		var paymentIntent stripe.PaymentIntent
 		if err := json.Unmarshal(event.Data.Raw, &paymentIntent); err != nil {
-			logger.Error("Failed to unmarshal payment intent", logger.Field("error", err.Error()))
+			zap.S().Error("Failed to unmarshal payment intent", zap.Any("error", err.Error()))
 			return nil, err
 		}
 		orderNo := paymentIntent.Metadata["order_no"]
@@ -150,7 +150,7 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 		if paymentIntent.PaymentMethod != nil && paymentIntent.PaymentMethod.ID != "" {
 			result, err := c.RetrievePaymentMethod(paymentIntent.PaymentMethod.ID)
 			if err != nil {
-				logger.Error("[stripe] Payment callback query payment method error", logger.Field("errors", err.Error()))
+				zap.S().Error("[stripe] Payment callback query payment method error", zap.Any("errors", err.Error()))
 			}
 			if result != nil {
 				method = string(result.Type)
@@ -167,13 +167,13 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 		}, nil
 
 	case "payment_intent.payment_failed":
-		logger.Info("[Stripe] Payment failed", logger.Field("event_type", event.Type))
+		zap.S().Info("[Stripe] Payment failed", zap.Any("event_type", event.Type))
 		return &NotifyResult{
 			EventType: string(event.Type),
 		}, nil
 
 	default:
-		logger.Info("[Stripe] Ignoring unhandled event type", logger.Field("event_type", event.Type))
+		zap.S().Info("[Stripe] Ignoring unhandled event type", zap.Any("event_type", event.Type))
 		return &NotifyResult{
 			EventType: string(event.Type),
 		}, nil

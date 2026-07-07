@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/deduction"
@@ -16,7 +16,7 @@ func CalculateRemainingAmount(ctx context.Context, svcCtx *svc.ServiceContext, u
 	// Find User Subscribe
 	userSubscribe, err := svcCtx.Store.User().FindOneUserSubscribe(ctx, userSubscribeId)
 	if err != nil {
-		logger.WithContext(ctx).Error("[func CalculateRemainingAmount(ctx context.Context, svcCtx *svc.ServiceContext, userSubscribeId int64) (int64, error) {\n] FindOneUserSubscribe", logger.Field("err", err.Error()), logger.Field("id", userSubscribeId))
+		zap.S().Error("[func CalculateRemainingAmount(ctx context.Context, svcCtx *svc.ServiceContext, userSubscribeId int64) (int64, error) {\n] FindOneUserSubscribe", zap.Any("err", err.Error()), zap.Any("id", userSubscribeId))
 		return 0, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe failed, id: %d", userSubscribeId)
 	}
 	if userSubscribe.OrderId == 0 {
@@ -32,7 +32,7 @@ func CalculateRemainingAmount(ctx context.Context, svcCtx *svc.ServiceContext, u
 	// Find Order Details
 	orderDetails, err := svcCtx.Store.Order().FindOneDetails(ctx, userSubscribe.OrderId)
 	if err != nil {
-		logger.WithContext(ctx).Error("[PreUnsubscribe] FindOneDetails", logger.Field("err", err.Error()), logger.Field("id", userSubscribe.OrderId))
+		zap.S().Error("[PreUnsubscribe] FindOneDetails", zap.Any("err", err.Error()), zap.Any("id", userSubscribe.OrderId))
 		return 0, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneDetails failed, id: %d", userSubscribe.OrderId)
 	}
 	// Calculate Order Quantity

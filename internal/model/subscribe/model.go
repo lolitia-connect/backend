@@ -51,6 +51,10 @@ type customSubscribeLogicModel interface {
 	QueryResetCycleSubscribeIds(ctx context.Context, resetCycle int) ([]int64, error)
 	UpdateSort(ctx context.Context, data []*Subscribe) error
 	QueryGroupList(ctx context.Context) (int64, []*Group, error)
+	QueryAll(ctx context.Context) ([]*Subscribe, error)
+	FindByIds(ctx context.Context, ids []int64) ([]*Subscribe, error)
+	CountByDefaultNodeGroup(ctx context.Context, nodeGroupId int64) (int64, error)
+	ClearAllNodeGroupIds(ctx context.Context) error
 	CreateGroup(ctx context.Context, data *Group) error
 	UpdateGroup(ctx context.Context, data *Group) error
 	DeleteGroup(ctx context.Context, id int64) error
@@ -64,6 +68,26 @@ func NewModel(conn *ent.Client, c *redis.Client) Model {
 	}
 }
 
+func (m *customSubscribeModel) QueryAll(ctx context.Context) ([]*Subscribe, error) {
+	items, err := m.db.Subscribe.Query().All(ctx)
+	return entSubscribesToModel(items), err
+}
+
+func (m *customSubscribeModel) FindByIds(ctx context.Context, ids []int64) ([]*Subscribe, error) {
+	items, err := m.db.Subscribe.Query().Where(entsubscribe.IDIn(ids...)).All(ctx)
+	return entSubscribesToModel(items), err
+}
+
+func (m *customSubscribeModel) CountByDefaultNodeGroup(ctx context.Context, nodeGroupId int64) (int64, error) {
+	count, err := m.db.Subscribe.Query().Where(entsubscribe.NodeGroupID(nodeGroupId)).Count(ctx)
+	return int64(count), err
+}
+
+func (m *customSubscribeModel) ClearAllNodeGroupIds(ctx context.Context) error {
+	_, err := m.db.Subscribe.Update().SetNodeGroupIds([]int64{}).Save(ctx)
+	return err
+}
+
 func (m *customSubscribeModel) QuerySubscribeMinSortByIds(ctx context.Context, ids []int64) (int64, error) {
 	minSort, err := m.db.Subscribe.Query().Where(entsubscribe.IDIn(ids...)).Aggregate(ent.Min(entsubscribe.FieldSort)).Int(ctx)
 	return int64(minSort), err
@@ -74,7 +98,7 @@ func (m *customSubscribeModel) QueryResetCycleSubscribeIds(ctx context.Context, 
 }
 
 func (m *customSubscribeModel) ClearCache(ctx context.Context, ids ...int64) error {
-	if len(ids) <= 0 {
+	if len(ids) == 0 {
 		return nil
 	}
 

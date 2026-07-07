@@ -9,16 +9,16 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 const consoleRevenueStatisticsCacheKey = "console:revenue_statistics"
 const consoleRevenueStatisticsCacheTTL = 60 * time.Second
 
 type QueryRevenueStatisticsLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -26,7 +26,7 @@ type QueryRevenueStatisticsLogic struct {
 // NewQueryRevenueStatisticsLogic Query revenue statistics
 func NewQueryRevenueStatisticsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryRevenueStatisticsLogic {
 	return &QueryRevenueStatisticsLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -51,7 +51,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	// Get today's revenue statistics
 	todayData, err := l.svcCtx.Store.Order().QueryDateOrders(l.ctx, now)
 	if err != nil {
-		l.Errorw("[QueryRevenueStatisticsLogic] QueryDateOrders error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryDateOrders error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryDateOrders error: %v", err)
 	} else {
 		today = types.OrdersStatistics{
@@ -63,7 +63,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	// Get monthly's revenue statistics
 	monthlyData, err := l.svcCtx.Store.Order().QueryMonthlyOrders(l.ctx, now)
 	if err != nil {
-		l.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrders error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrders error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryMonthlyOrders error: %v", err)
 	} else {
 		monthly = types.OrdersStatistics{
@@ -77,7 +77,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	// Get monthly daily list for the current month (from 1st to current date)
 	monthlyListData, err := l.svcCtx.Store.Order().QueryDailyOrdersList(l.ctx, now)
 	if err != nil {
-		l.Errorw("[QueryRevenueStatisticsLogic] QueryDailyOrdersList error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryDailyOrdersList error", zap.Any("error", err.Error()))
 		// Don't return error, just log it and continue with empty list
 	} else {
 		monthlyList := make([]types.OrdersStatistics, len(monthlyListData))
@@ -95,7 +95,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	// Get all revenue statistics
 	allData, err := l.svcCtx.Store.Order().QueryTotalOrders(l.ctx)
 	if err != nil {
-		l.Errorw("[QueryRevenueStatisticsLogic] QueryTotalOrders error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryTotalOrders error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryTotalOrders error: %v", err)
 	} else {
 		all = types.OrdersStatistics{
@@ -109,7 +109,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	// Get all monthly list for the past 6 months
 	allListData, err := l.svcCtx.Store.Order().QueryMonthlyOrdersList(l.ctx, now)
 	if err != nil {
-		l.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrdersList error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrdersList error", zap.Any("error", err.Error()))
 		// Don't return error, just log it and continue with empty list
 	} else {
 		allList := make([]types.OrdersStatistics, len(allListData))

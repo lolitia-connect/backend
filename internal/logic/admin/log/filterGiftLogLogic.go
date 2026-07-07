@@ -6,13 +6,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterGiftLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type FilterGiftLogLogic struct {
 // Filter gift log
 func NewFilterGiftLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterGiftLogLogic {
 	return &FilterGiftLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,7 +37,7 @@ func (l *FilterGiftLogLogic) FilterGiftLog(req *types.FilterGiftLogRequest) (res
 	})
 
 	if err != nil {
-		l.Errorf("[FilterGiftLog] failed to filter system log: %v", err.Error())
+		l.Logger.Errorf("[FilterGiftLog] failed to filter system log: %v", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "failed to filter system log: %v", err.Error())
 	}
 
@@ -46,7 +46,7 @@ func (l *FilterGiftLogLogic) FilterGiftLog(req *types.FilterGiftLogRequest) (res
 		var content log.Gift
 		err = content.Unmarshal([]byte(datum.Content))
 		if err != nil {
-			l.Errorf("[FilterGiftLog] failed to unmarshal content: %v", err.Error())
+			l.Logger.Errorf("[FilterGiftLog] failed to unmarshal content: %v", err.Error())
 			continue
 		}
 		list = append(list, types.GiftLog{

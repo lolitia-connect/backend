@@ -8,10 +8,10 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // Subscription-gated conditional blocks in document content. Stripped
@@ -23,7 +23,7 @@ var (
 )
 
 type QueryDocumentDetailLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -31,7 +31,7 @@ type QueryDocumentDetailLogic struct {
 // Get document detail
 func NewQueryDocumentDetailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryDocumentDetailLogic {
 	return &QueryDocumentDetailLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -41,7 +41,7 @@ func (l *QueryDocumentDetailLogic) QueryDocumentDetail(req *types.QueryDocumentD
 	// find document
 	data, err := l.svcCtx.Store.Document().FindOne(l.ctx, req.Id)
 	if err != nil {
-		l.Errorw("[QueryDocumentDetailLogic] FindOne error", logger.Field("id", req.Id), logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryDocumentDetailLogic] FindOne error", zap.Any("id", req.Id), zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOne error: %s", err.Error())
 	}
 	resp = &types.Document{}
@@ -64,7 +64,7 @@ func (l *QueryDocumentDetailLogic) renderConditional(content string) string {
 		// status 1 = active
 		subs, err := l.svcCtx.Store.User().QueryUserSubscribe(l.ctx, u.Id, 1)
 		if err != nil {
-			l.Errorw("[QueryDocumentDetailLogic] QueryUserSubscribe error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id))
+			l.Logger.Errorw("[QueryDocumentDetailLogic] QueryUserSubscribe error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
 		} else {
 			hasSubscription = len(subs) > 0
 		}

@@ -7,13 +7,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/document"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateDocumentLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type UpdateDocumentLogic struct {
 // Update document
 func NewUpdateDocumentLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateDocumentLogic {
 	return &UpdateDocumentLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -35,7 +35,7 @@ func (l *UpdateDocumentLogic) UpdateDocument(req *types.UpdateDocumentRequest) e
 		Tags:    strings.Join(req.Tags, ","),
 		Show:    req.Show,
 	}); err != nil {
-		l.Errorw("[UpdateDocument] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateDocument] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "failed to update document: %v", err.Error())
 	}
 	return nil

@@ -6,13 +6,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetUserSubscribeResetTrafficLogsLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type GetUserSubscribeResetTrafficLogsLogic struct {
 // Get user subcribe reset traffic logs
 func NewGetUserSubscribeResetTrafficLogsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserSubscribeResetTrafficLogsLogic {
 	return &GetUserSubscribeResetTrafficLogsLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -34,7 +34,7 @@ func (l *GetUserSubscribeResetTrafficLogsLogic) GetUserSubscribeResetTrafficLogs
 		ObjectID: req.UserSubscribeId,
 	})
 	if err != nil {
-		l.Errorf("[ResetSubscribeTrafficLog] failed to filter system log: %v", err)
+		l.Logger.Errorf("[ResetSubscribeTrafficLog] failed to filter system log: %v", err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FilterSystemLog failed, err: %v", err)
 	}
 
@@ -43,7 +43,7 @@ func (l *GetUserSubscribeResetTrafficLogsLogic) GetUserSubscribeResetTrafficLogs
 	for _, item := range data {
 		var content log.ResetSubscribe
 		if err = content.Unmarshal([]byte(item.Content)); err != nil {
-			l.Errorf("[ResetSubscribeTrafficLog] failed to unmarshal log: %v", err)
+			l.Logger.Errorf("[ResetSubscribeTrafficLog] failed to unmarshal log: %v", err)
 			continue
 		}
 		list = append(list, types.ResetSubscribeTrafficLog{

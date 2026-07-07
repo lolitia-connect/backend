@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/auth"
@@ -13,7 +13,7 @@ import (
 )
 
 func Mobile(ctx *svc.ServiceContext) {
-	logger.Debug("Mobile config initialization")
+	zap.S().Debug("Mobile config initialization")
 	method, err := ctx.Store.Auth().FindOneByMethod(context.Background(), "mobile")
 	if err != nil {
 		panic(err)

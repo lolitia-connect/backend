@@ -7,22 +7,22 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type DeleteUserLogic struct {
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
-	logger.Logger
+	Logger *zap.SugaredLogger
 }
 
 func NewDeleteUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DeleteUserLogic {
 	return &DeleteUserLogic{
 		ctx:    ctx,
 		svcCtx: svcCtx,
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 	}
 }
 

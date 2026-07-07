@@ -1,10 +1,10 @@
 package common
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -13,16 +13,16 @@ import (
 	"github.com/perfect-panel/server/pkg/limit"
 	"github.com/perfect-panel/server/pkg/random"
 	"github.com/pkg/errors"
-	
+
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
+	"go.uber.org/zap"
 )
 
 type SendEmailCodeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -46,7 +46,7 @@ type CacheKeyPayload struct {
 // NewSendEmailCodeLogic Get verification code
 func NewSendEmailCodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *SendEmailCodeLogic {
 	return &SendEmailCodeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -104,14 +104,14 @@ func (l *SendEmailCodeLogic) SendEmailCode(req *types.SendCodeRequest) (resp *ty
 	// Marshal the payload
 	val, _ := json.Marshal(payload)
 	if err = l.svcCtx.Redis.Set(l.ctx, cacheKey, string(val), time.Second*IntervalTime*5).Err(); err != nil {
-		l.Errorw("[SendEmailCode]: Redis Error", logger.Field("error", err.Error()), logger.Field("cacheKey", cacheKey))
+		l.Logger.Errorw("[SendEmailCode]: Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to set verification code")
 	}
 
 	// Marshal the task payload
 	payloadBuy, err := json.Marshal(taskPayload)
 	if err != nil {
-		l.Errorw("[SendEmailCode]: Marshal Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[SendEmailCode]: Marshal Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to marshal task payload")
 	}
 	// Create a queue task
@@ -119,10 +119,10 @@ func (l *SendEmailCodeLogic) SendEmailCode(req *types.SendCodeRequest) (resp *ty
 	// Enqueue the task
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task)
 	if err != nil {
-		l.Errorw("[SendEmailCode]: Enqueue Error", logger.Field("error", err.Error()), logger.Field("payload", string(payloadBuy)))
+		l.Logger.Errorw("[SendEmailCode]: Enqueue Error", zap.Any("error", err.Error()), zap.Any("payload", string(payloadBuy)))
 		return nil, errors.Wrap(xerr.NewErrCode(xerr.ERROR), "Failed to enqueue task")
 	}
-	l.Infow("[SendEmailCode]: Enqueue Success", logger.Field("taskID", taskInfo.ID), logger.Field("payload", string(payloadBuy)))
+	l.Logger.Infow("[SendEmailCode]: Enqueue Success", zap.Any("taskID", taskInfo.ID), zap.Any("payload", string(payloadBuy)))
 	if l.svcCtx.Config.Model == constant.DevMode {
 		return &types.SendCodeResponse{
 			Code:   payload.Code,

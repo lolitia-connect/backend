@@ -9,13 +9,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type QueryUserBalanceLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type QueryUserBalanceLogLogic struct {
 // NewQueryUserBalanceLogLogic Query User Balance Log
 func NewQueryUserBalanceLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryUserBalanceLogLogic {
 	return &QueryUserBalanceLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -32,7 +32,7 @@ func NewQueryUserBalanceLogLogic(ctx context.Context, svcCtx *svc.ServiceContext
 func (l *QueryUserBalanceLogLogic) QueryUserBalanceLog() (resp *types.QueryUserBalanceLogListResponse, err error) {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
@@ -43,7 +43,7 @@ func (l *QueryUserBalanceLogLogic) QueryUserBalanceLog() (resp *types.QueryUserB
 		ObjectID: u.Id,
 	})
 	if err != nil {
-		l.Errorw("[QueryUserBalanceLog] Query User Balance Log Error:", logger.Field("err", err.Error()))
+		l.Logger.Errorw("[QueryUserBalanceLog] Query User Balance Log Error:", zap.Any("err", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query User Balance Log Error")
 	}
 
@@ -51,7 +51,7 @@ func (l *QueryUserBalanceLogLogic) QueryUserBalanceLog() (resp *types.QueryUserB
 	for _, datum := range data {
 		var content log.Balance
 		if err = content.Unmarshal([]byte(datum.Content)); err != nil {
-			l.Errorf("[QueryUserBalanceLog] unmarshal balance log content failed: %v", err.Error())
+			l.Logger.Errorf("[QueryUserBalanceLog] unmarshal balance log content failed: %v", err.Error())
 			continue
 		}
 		list = append(list, types.BalanceLog{

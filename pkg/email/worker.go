@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/task"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type ErrorInfo struct {
@@ -50,45 +50,45 @@ func (w *Worker) Start() {
 	defer limit.Unlock()
 	taskInfo, err := w.tasks.FindOne(w.ctx, w.id)
 	if err != nil {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "Failed to find task"),
-			logger.Field("error", err.Error()),
-			logger.Field("task_id", w.id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "Failed to find task"),
+			zap.Any("error", err.Error()),
+			zap.Any("task_id", w.id),
 		)
 		return
 	}
 	if taskInfo.Status != 0 {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "Task already completed or in progress"),
-			logger.Field("task_id", w.id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "Task already completed or in progress"),
+			zap.Any("task_id", w.id),
 		)
 		return
 	}
 
 	var scope task.EmailScope
 	if err := json.Unmarshal([]byte(taskInfo.Scope), &scope); err != nil {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "Failed to parse task scope"),
-			logger.Field("error", err.Error()),
-			logger.Field("task_id", w.id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "Failed to parse task scope"),
+			zap.Any("error", err.Error()),
+			zap.Any("task_id", w.id),
 		)
 		return
 	}
 
 	if len(scope.Recipients) == 0 && len(scope.Additional) == 0 {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "No recipients or additional emails provided"),
-			logger.Field("task_id", w.id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "No recipients or additional emails provided"),
+			zap.Any("task_id", w.id),
 		)
 		return
 	}
 
 	var content task.EmailContent
 	if err := json.Unmarshal([]byte(taskInfo.Content), &content); err != nil {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "Failed to parse task content"),
-			logger.Field("error", err.Error()),
-			logger.Field("task_id", w.id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "Failed to parse task content"),
+			zap.Any("error", err.Error()),
+			zap.Any("task_id", w.id),
 		)
 		return
 	}
@@ -107,9 +107,9 @@ func (w *Worker) Start() {
 	recipients = tool.RemoveDuplicateElements(recipients...)
 
 	if len(recipients) == 0 {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "No valid recipients found"),
-			logger.Field("task_id", w.id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "No valid recipients found"),
+			zap.Any("task_id", w.id),
 		)
 		w.status = 2 // 设置状态为已完成
 		return
@@ -128,9 +128,9 @@ func (w *Worker) Start() {
 	for _, recipient := range recipients {
 		select {
 		case <-w.ctx.Done():
-			logger.Info("Batch Send Email",
-				logger.Field("message", "Worker stopped by context cancellation"),
-				logger.Field("task_id", w.id),
+			zap.S().Info("Batch Send Email",
+				zap.Any("message", "Worker stopped by context cancellation"),
+				zap.Any("task_id", w.id),
 			)
 			return
 		default:
@@ -140,11 +140,11 @@ func (w *Worker) Start() {
 		}
 
 		if err := w.sender.Send([]string{recipient}, content.Subject, content.Content); err != nil {
-			logger.Error("Batch Send Email",
-				logger.Field("message", "Failed to send email"),
-				logger.Field("error", err.Error()),
-				logger.Field("recipient", recipient),
-				logger.Field("task_id", w.id),
+			zap.S().Error("Batch Send Email",
+				zap.Any("message", "Failed to send email"),
+				zap.Any("error", err.Error()),
+				zap.Any("recipient", recipient),
+				zap.Any("task_id", w.id),
 			)
 			errors = append(errors, ErrorInfo{
 				Error: err.Error(),
@@ -157,10 +157,10 @@ func (w *Worker) Start() {
 		count++
 		taskInfo.Current = count
 		if err := w.tasks.Update(w.ctx, taskInfo); err != nil {
-			logger.Error("Batch Send Email",
-				logger.Field("message", "Failed to update task progress"),
-				logger.Field("error", err.Error()),
-				logger.Field("task_id", w.id),
+			zap.S().Error("Batch Send Email",
+				zap.Any("message", "Failed to update task progress"),
+				zap.Any("error", err.Error()),
+				zap.Any("task_id", w.id),
 			)
 			errors = append(errors, ErrorInfo{
 				Error: err.Error(),
@@ -175,16 +175,16 @@ func (w *Worker) Start() {
 	w.status = 2        // 设置状态为已完成
 
 	if err := w.tasks.Update(w.ctx, taskInfo); err != nil {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "Failed to finalize task"),
-			logger.Field("error", err.Error()),
-			logger.Field("task_id", w.id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "Failed to finalize task"),
+			zap.Any("error", err.Error()),
+			zap.Any("task_id", w.id),
 		)
 	} else {
-		logger.Info("Batch Send Email",
-			logger.Field("message", "Task completed successfully"),
-			logger.Field("task_id", w.id),
-			logger.Field("total_sent", count),
+		zap.S().Info("Batch Send Email",
+			zap.Any("message", "Task completed successfully"),
+			zap.Any("task_id", w.id),
+			zap.Any("total_sent", count),
 		)
 	}
 }

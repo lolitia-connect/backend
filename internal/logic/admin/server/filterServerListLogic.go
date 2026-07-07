@@ -1,22 +1,22 @@
 package server
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
-	)
+	"go.uber.org/zap"
+)
 
 type FilterServerListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type FilterServerListLogic struct {
 // NewFilterServerListLogic Filter Server List
 func NewFilterServerListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterServerListLogic {
 	return &FilterServerListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -38,7 +38,7 @@ func (l *FilterServerListLogic) FilterServerList(req *types.FilterServerListRequ
 		Search: req.Search,
 	})
 	if err != nil {
-		l.Errorw("[FilterServerList] Query Database Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[FilterServerList] Query Database Error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "[FilterServerList] Query Database Error")
 	}
 
@@ -52,7 +52,7 @@ func (l *FilterServerListLogic) FilterServerList(req *types.FilterServerListRequ
 		var protocols []types.Protocol
 		dst, err := datum.UnmarshalProtocols()
 		if err != nil {
-			l.Errorf("[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
+			l.Logger.Errorf("[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
 			continue
 		}
 		tool.DeepCopy(&protocols, dst)
@@ -61,7 +61,7 @@ func (l *FilterServerListLogic) FilterServerList(req *types.FilterServerListRequ
 		nodeStatus, err := nodeStore.StatusCache(l.ctx, datum.Id)
 		if err != nil {
 			if !errors.Is(err, redis.Nil) {
-				l.Errorw("[handlerServerStatus] GetNodeStatus Error: ", logger.Field("error", err.Error()), logger.Field("node_id", datum.Id))
+				l.Logger.Errorw("[handlerServerStatus] GetNodeStatus Error: ", zap.Any("error", err.Error()), zap.Any("node_id", datum.Id))
 			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetNodeStatus Error")
 		}
@@ -91,7 +91,7 @@ func (l *FilterServerListLogic) handlerServerStatus(id int64, protocols []types.
 		data, err := nodeStore.OnlineUserSubscribe(l.ctx, id, protocol.Type+":"+protocol.Id)
 		if err != nil {
 			if !errors.Is(err, redis.Nil) {
-				l.Errorw("[handlerServerStatus] OnlineUserSubscribe Error: ", logger.Field("error", err.Error()), logger.Field("node_id", id), logger.Field("protocol", protocol.Id))
+				l.Logger.Errorw("[handlerServerStatus] OnlineUserSubscribe Error: ", zap.Any("error", err.Error()), zap.Any("node_id", id), zap.Any("protocol", protocol.Id))
 			}
 			continue
 		}
@@ -125,7 +125,7 @@ func (l *FilterServerListLogic) handlerServerStatus(id int64, protocols []types.
 			info, err := userStore.FindOneUserSubscribe(l.ctx, item.SubscribeId)
 			if err != nil {
 				if !ent.IsNotFound(err) {
-					l.Errorw("[handlerServerStatus] FindOneSubscribe Error: ", logger.Field("error", err.Error()), logger.Field("subscribe_id", item.SubscribeId))
+					l.Logger.Errorw("[handlerServerStatus] FindOneSubscribe Error: ", zap.Any("error", err.Error()), zap.Any("subscribe_id", item.SubscribeId))
 				}
 				continue
 			}

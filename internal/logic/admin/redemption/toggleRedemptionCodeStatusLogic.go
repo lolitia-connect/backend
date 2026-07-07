@@ -1,18 +1,18 @@
 package redemption
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type ToggleRedemptionCodeStatusLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type ToggleRedemptionCodeStatusLogic struct {
 // Toggle redemption code status
 func NewToggleRedemptionCodeStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ToggleRedemptionCodeStatusLogic {
 	return &ToggleRedemptionCodeStatusLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,10 +31,10 @@ func (l *ToggleRedemptionCodeStatusLogic) ToggleRedemptionCodeStatus(req *types.
 	codeInfo, err := l.svcCtx.Store.RedemptionCode().FindOne(l.ctx, req.Id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			l.Errorw("[ToggleRedemptionCodeStatus] Redemption code not found", logger.Field("id", req.Id))
+			l.Logger.Errorw("[ToggleRedemptionCodeStatus] Redemption code not found", zap.Any("id", req.Id))
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code not found")
 		}
-		l.Errorw("[ToggleRedemptionCodeStatus] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[ToggleRedemptionCodeStatus] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find redemption code error: %v", err.Error())
 	}
 
@@ -43,13 +43,13 @@ func (l *ToggleRedemptionCodeStatusLogic) ToggleRedemptionCodeStatus(req *types.
 
 	err = l.svcCtx.Store.RedemptionCode().Update(l.ctx, codeInfo)
 	if err != nil {
-		l.Errorw("[ToggleRedemptionCodeStatus] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[ToggleRedemptionCodeStatus] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update redemption code status error: %v", err.Error())
 	}
 
-	l.Infow("[ToggleRedemptionCodeStatus] Successfully toggled redemption code status",
-		logger.Field("id", req.Id),
-		logger.Field("status", req.Status))
+	l.Logger.Infow("[ToggleRedemptionCodeStatus] Successfully toggled redemption code status",
+		zap.Any("id", req.Id),
+		zap.Any("status", req.Status))
 
 	return nil
 }

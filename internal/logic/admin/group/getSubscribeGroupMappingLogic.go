@@ -5,11 +5,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type GetSubscribeGroupMappingLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -17,7 +17,7 @@ type GetSubscribeGroupMappingLogic struct {
 // Get subscribe group mapping
 func NewGetSubscribeGroupMappingLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetSubscribeGroupMappingLogic {
 	return &GetSubscribeGroupMappingLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -25,23 +25,23 @@ func NewGetSubscribeGroupMappingLogic(ctx context.Context, svcCtx *svc.ServiceCo
 
 func (l *GetSubscribeGroupMappingLogic) GetSubscribeGroupMapping(req *types.GetSubscribeGroupMappingRequest) (resp *types.GetSubscribeGroupMappingResponse, err error) {
 	// 1. 查询所有订阅套餐
-	subscribes, err := l.svcCtx.Ent.Subscribe.Query().All(l.ctx)
+	subscribes, err := l.svcCtx.Store.Subscribe().QueryAll(l.ctx)
 	if err != nil {
-		l.Errorw("[GetSubscribeGroupMapping] failed to query subscribes", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetSubscribeGroupMapping] failed to query subscribes", zap.Any("error", err.Error()))
 		return nil, err
 	}
 
 	// 2. 查询所有节点组
-	nodeGroups, err := l.svcCtx.Ent.NodeGroup.Query().All(l.ctx)
+	nodeGroups, err := l.svcCtx.Store.Group().QueryAllNodeGroups(l.ctx)
 	if err != nil {
-		l.Errorw("[GetSubscribeGroupMapping] failed to query node groups", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetSubscribeGroupMapping] failed to query node groups", zap.Any("error", err.Error()))
 		return nil, err
 	}
 
 	// 创建 node_group_id -> node_group_name 的映射
 	nodeGroupMap := make(map[int64]string)
 	for _, ng := range nodeGroups {
-		nodeGroupMap[ng.ID] = ng.Name
+		nodeGroupMap[ng.Id] = ng.Name
 	}
 
 	// 3. 构建映射结果：套餐 -> 默认节点组（一对一）

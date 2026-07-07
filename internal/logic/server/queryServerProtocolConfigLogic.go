@@ -6,12 +6,12 @@ import (
 	"github.com/perfect-panel/server/internal/logic/nodeconfig"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type QueryServerProtocolConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type QueryServerProtocolConfigLogic struct {
 // NewQueryServerProtocolConfigLogic Get Server Protocol Config
 func NewQueryServerProtocolConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryServerProtocolConfigLogic {
 	return &QueryServerProtocolConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -29,7 +29,7 @@ func (l *QueryServerProtocolConfigLogic) QueryServerProtocolConfig(req *types.Qu
 	// find server
 	data, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.ServerID)
 	if err != nil {
-		l.Errorf("[GetServerProtocols] FindOneServer Error: %s", err.Error())
+		l.Logger.Errorf("[GetServerProtocols] FindOneServer Error: %s", err.Error())
 		return nil, err
 	}
 
@@ -37,7 +37,7 @@ func (l *QueryServerProtocolConfigLogic) QueryServerProtocolConfig(req *types.Qu
 	var protocols []types.Protocol
 	dst, err := data.UnmarshalProtocols()
 	if err != nil {
-		l.Errorf("[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
+		l.Logger.Errorf("[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
 		return nil, err
 	}
 	tool.DeepCopy(&protocols, dst)
@@ -70,12 +70,12 @@ func (l *QueryServerProtocolConfigLogic) QueryServerProtocolConfig(req *types.Qu
 	nodeValues := nodeconfig.GlobalValues(l.svcCtx.Config.Node)
 	override, err := l.svcCtx.Store.Node().FindServerConfigOverride(l.ctx, req.ServerID)
 	if err != nil {
-		l.Errorf("[GetServerProtocols] FindServerConfigOverride Error: %s", err.Error())
+		l.Logger.Errorf("[GetServerProtocols] FindServerConfigOverride Error: %s", err.Error())
 		return nil, err
 	}
 	if override != nil {
 		if err = nodeconfig.ApplyOverride(&nodeValues, override); err != nil {
-			l.Errorf("[GetServerProtocols] ApplyOverride Error: %s", err.Error())
+			l.Logger.Errorf("[GetServerProtocols] ApplyOverride Error: %s", err.Error())
 			return nil, err
 		}
 	}

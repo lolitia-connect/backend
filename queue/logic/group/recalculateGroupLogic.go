@@ -8,7 +8,7 @@ import (
 	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 )
@@ -24,20 +24,20 @@ func NewRecalculateGroupLogic(svc *svc.ServiceContext) *RecalculateGroupLogic {
 }
 
 func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) error {
-	logger.Infof("[RecalculateGroup] Starting scheduled group recalculation: %s", time.Now().Format("2006-01-02 15:04:05"))
+	zap.S().Infof("[RecalculateGroup] Starting scheduled group recalculation: %s", time.Now().Format("2006-01-02 15:04:05"))
 
 	// 1. Check if group management is enabled
 	enabledConfig, err := l.svc.Ent.System.Query().
 		Where(entsystem.Category("group"), entsystem.Key("enabled")).
 		Only(ctx)
 	if err != nil {
-		logger.Errorw("[RecalculateGroup] Failed to read group enabled config", logger.Field("error", err.Error()))
+		zap.S().Errorw("[RecalculateGroup] Failed to read group enabled config", zap.Any("error", err.Error()))
 		return err
 	}
 
 	// If not enabled, skip execution
 	if enabledConfig.Value != "true" && enabledConfig.Value != "1" {
-		logger.Debugf("[RecalculateGroup] Group management is not enabled, skipping")
+		zap.S().Debugf("[RecalculateGroup] Group management is not enabled, skipping")
 		return nil
 	}
 
@@ -46,7 +46,7 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 		Where(entsystem.Category("group"), entsystem.Key("mode")).
 		Only(ctx)
 	if err != nil {
-		logger.Errorw("[RecalculateGroup] Failed to read group mode config", logger.Field("error", err.Error()))
+		zap.S().Errorw("[RecalculateGroup] Failed to read group mode config", zap.Any("error", err.Error()))
 		return err
 	}
 
@@ -57,12 +57,12 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 
 	// 3. Only execute if mode is "traffic"
 	if mode != "traffic" {
-		logger.Debugf("[RecalculateGroup] Group mode is not 'traffic' (current: %s), skipping", mode)
+		zap.S().Debugf("[RecalculateGroup] Group mode is not 'traffic' (current: %s), skipping", mode)
 		return nil
 	}
 
 	// 4. Execute traffic-based grouping
-	logger.Infof("[RecalculateGroup] Executing traffic-based grouping")
+	zap.S().Infof("[RecalculateGroup] Executing traffic-based grouping")
 
 	logic := group.NewRecalculateGroupLogic(ctx, l.svc)
 	req := &types.RecalculateGroupRequest{
@@ -71,10 +71,10 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	if err := logic.RecalculateGroup(req); err != nil {
-		logger.Errorw("[RecalculateGroup] Failed to execute traffic grouping", logger.Field("error", err.Error()))
+		zap.S().Errorw("[RecalculateGroup] Failed to execute traffic grouping", zap.Any("error", err.Error()))
 		return err
 	}
 
-	logger.Infof("[RecalculateGroup] Successfully completed traffic-based grouping: %s", time.Now().Format("2006-01-02 15:04:05"))
+	zap.S().Infof("[RecalculateGroup] Successfully completed traffic-based grouping: %s", time.Now().Format("2006-01-02 15:04:05"))
 	return nil
 }

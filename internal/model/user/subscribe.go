@@ -2,7 +2,6 @@ package user
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -12,10 +11,6 @@ import (
 	entuser "github.com/perfect-panel/server/ent/user"
 	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 )
-
-func (m *defaultUserModel) UpdateUserSubscribeCache(ctx context.Context, data *Subscribe) error {
-	return m.ClearSubscribeCacheByModels(ctx, data)
-}
 
 // QueryActiveSubscriptions returns the number of active subscriptions.
 func (m *defaultUserModel) QueryActiveSubscriptions(ctx context.Context, subscribeId ...int64) (map[int64]int64, error) {
@@ -44,18 +39,11 @@ func (m *defaultUserModel) FindOneSubscribeByOrderId(ctx context.Context, orderI
 }
 
 func (m *defaultUserModel) FindOneSubscribe(ctx context.Context, id int64) (*Subscribe, error) {
-	key := fmt.Sprintf("%s%d", cacheUserSubscribeIdPrefix, id)
-	var data Subscribe
-	if err := getJSONCache(ctx, m.redis, key, &data); err == nil {
-		return &data, nil
-	}
 	item, err := m.db.UserSubscribe.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	data = *entToSubscribe(item)
-	_ = setJSONCache(ctx, m.redis, key, &data)
-	return &data, nil
+	return entToSubscribe(item), nil
 }
 
 func (m *defaultUserModel) FindUsersSubscribeBySubscribeId(ctx context.Context, subscribeId int64) ([]*Subscribe, error) {
@@ -72,6 +60,42 @@ func (m *defaultUserModel) FindUserSubscribesByStatus(ctx context.Context, statu
 	return entSubscribesToModels(items), err
 }
 
+func (m *defaultUserModel) FindUserSubscribesWithNodeGroup(ctx context.Context) ([]*Subscribe, error) {
+	items, err := m.db.UserSubscribe.Query().Where(entsub.NodeGroupIDGT(0)).All(ctx)
+	return entSubscribesToModels(items), err
+}
+
+func (m *defaultUserModel) FindUserSubscribesByUserAndStatus(ctx context.Context, userId int64, status ...int64) ([]*Subscribe, error) {
+	q := m.db.UserSubscribe.Query().Where(entsub.UserID(userId))
+	if len(status) > 0 {
+		q = q.Where(entsub.StatusIn(int64ToUint8(status)...))
+	}
+	items, err := q.All(ctx)
+	return entSubscribesToModels(items), err
+}
+
+func (m *defaultUserModel) FindUnlockedUserSubscribesByStatus(ctx context.Context, status ...int64) ([]*Subscribe, error) {
+	q := m.db.UserSubscribe.Query().Where(entsub.GroupLocked(false))
+	if len(status) > 0 {
+		q = q.Where(entsub.StatusIn(int64ToUint8(status)...))
+	}
+	items, err := q.All(ctx)
+	return entSubscribesToModels(items), err
+}
+
+func (m *defaultUserModel) FindUnlockedUserSubscribesStatusNotIn(ctx context.Context, status ...int64) ([]*Subscribe, error) {
+	q := m.db.UserSubscribe.Query().Where(entsub.GroupLocked(false))
+	if len(status) > 0 {
+		q = q.Where(entsub.StatusNotIn(int64ToUint8(status)...))
+	}
+	items, err := q.All(ctx)
+	return entSubscribesToModels(items), err
+}
+
+func (m *defaultUserModel) UpdateUserSubscribeNodeGroup(ctx context.Context, id, nodeGroupId int64) error {
+	return m.db.UserSubscribe.UpdateOneID(id).SetNodeGroupID(nodeGroupId).Exec(ctx)
+}
+
 func (m *defaultUserModel) ActivatePendingSubscribesBySubscribeId(ctx context.Context, subscribeId int64) error {
 	items, err := m.db.UserSubscribe.Query().Where(entsub.SubscribeID(subscribeId), entsub.Status(0)).All(ctx)
 	pending := entSubscribesToModels(items)
@@ -79,15 +103,10 @@ func (m *defaultUserModel) ActivatePendingSubscribesBySubscribeId(ctx context.Co
 		return err
 	}
 
-	cacheKeys := make([]string, 0)
-	for _, sub := range pending {
-		cacheKeys = append(cacheKeys, sub.GetCacheKeys()...)
-	}
-
 	if _, err := m.db.UserSubscribe.Update().Where(entsub.SubscribeID(subscribeId), entsub.Status(0)).SetStatus(1).Save(ctx); err != nil {
 		return err
 	}
-	return m.GetCacheManager().ClearCache(ctx, cacheKeys...)
+	return nil
 }
 
 func (m *defaultUserModel) CountUserSubscribesBySubscribeIdAndStatus(ctx context.Context, subscribeId int64, status ...int64) (int64, error) {
@@ -106,15 +125,6 @@ func (m *defaultUserModel) CountUserSubscribesByUserAndSubscribe(ctx context.Con
 
 // QueryUserSubscribe returns a list of records that meet the conditions.
 func (m *defaultUserModel) QueryUserSubscribe(ctx context.Context, userId int64, status ...int64) ([]*SubscribeDetails, error) {
-	key := fmt.Sprintf("%s%d", cacheUserSubscribeUserPrefix, userId)
-	var list []*SubscribeDetails
-	if err := getJSONCache(ctx, m.redis, key, &list); err == nil {
-		if err := m.hydrateSubscribeDetails(ctx, list...); err != nil {
-			return nil, err
-		}
-		_ = setJSONCache(ctx, m.redis, key, list)
-		return list, nil
-	}
 	now := time.Now()
 	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
 	q := m.db.UserSubscribe.Query().Where(entsub.UserID(userId), predicate.UserSubscribe(func(s *entsql.Selector) {
@@ -127,18 +137,15 @@ func (m *defaultUserModel) QueryUserSubscribe(ctx context.Context, userId int64,
 	if err != nil {
 		return nil, err
 	}
-	list = entSubscribeDetailsToModels(items)
+	list := entSubscribeDetailsToModels(items)
 	if err := m.hydrateSubscribeDetails(ctx, list...); err != nil {
 		return nil, err
 	}
-	_ = setJSONCache(ctx, m.redis, key, list)
 	return list, nil
 }
 
 // FindOneUserSubscribe  finds a subscribeDetails by id.
 func (m *defaultUserModel) FindOneUserSubscribe(ctx context.Context, id int64) (subscribeDetails *SubscribeDetails, err error) {
-	//TODO cache
-	//key := fmt.Sprintf("%s%d", cacheUserSubscribeUserPrefix, userId)
 	item, err := m.db.UserSubscribe.Get(ctx, id)
 	data := entToSubscribeDetails(item)
 	if err != nil || data == nil {
@@ -206,18 +213,11 @@ func (m *defaultUserModel) hydrateSubscribeDetails(ctx context.Context, list ...
 
 // FindOneSubscribeByToken  finds a record by token.
 func (m *defaultUserModel) FindOneSubscribeByToken(ctx context.Context, token string) (*Subscribe, error) {
-	key := fmt.Sprintf("%s%s", cacheUserSubscribeTokenPrefix, token)
-	var data Subscribe
-	if err := getJSONCache(ctx, m.redis, key, &data); err == nil {
-		return &data, nil
-	}
 	item, err := m.db.UserSubscribe.Query().Where(entsub.Token(token)).First(ctx)
 	if err != nil {
 		return nil, err
 	}
-	data = *entToSubscribe(item)
-	_ = setJSONCache(ctx, m.redis, key, &data)
-	return &data, nil
+	return entToSubscribe(item), nil
 }
 
 // UpdateSubscribe updates a record.
@@ -236,13 +236,6 @@ func (m *defaultUserModel) UpdateSubscribe(ctx context.Context, data *Subscribe)
 		}
 	}
 
-	// 使用 defer 确保更新后清理缓存
-	defer func() {
-		if clearErr := m.ClearSubscribeCacheByModels(ctx, old, data); clearErr != nil {
-			// 记录清理缓存错误
-		}
-	}()
-
 	updated, err := subscribeUpdate(m.db.UserSubscribe.UpdateOneID(data.Id), data).Save(ctx)
 	if err != nil {
 		return err
@@ -253,17 +246,10 @@ func (m *defaultUserModel) UpdateSubscribe(ctx context.Context, data *Subscribe)
 
 // DeleteSubscribe deletes a record.
 func (m *defaultUserModel) DeleteSubscribe(ctx context.Context, token string) error {
-	data, err := m.FindOneSubscribeByToken(ctx, token)
+	_, err := m.FindOneSubscribeByToken(ctx, token)
 	if err != nil {
 		return err
 	}
-
-	// 使用 defer 确保删除后清理缓存
-	defer func() {
-		if clearErr := m.ClearSubscribeCacheByModels(ctx, data); clearErr != nil {
-			// 记录清理缓存错误
-		}
-	}()
 
 	_, err = m.db.UserSubscribe.Delete().Where(entsub.Token(token)).Exec(ctx)
 	return err
@@ -271,13 +257,6 @@ func (m *defaultUserModel) DeleteSubscribe(ctx context.Context, token string) er
 
 // InsertSubscribe insert Subscribe into the database.
 func (m *defaultUserModel) InsertSubscribe(ctx context.Context, data *Subscribe) error {
-	// 使用 defer 确保插入后清理相关缓存
-	defer func() {
-		if clearErr := m.ClearSubscribeCacheByModels(ctx, data); clearErr != nil {
-			// 记录清理缓存错误
-		}
-	}()
-
 	created, err := subscribeCreate(m.db.UserSubscribe.Create(), data).Save(ctx)
 	if err != nil {
 		return err
@@ -287,21 +266,10 @@ func (m *defaultUserModel) InsertSubscribe(ctx context.Context, data *Subscribe)
 }
 
 func (m *defaultUserModel) DeleteSubscribeById(ctx context.Context, id int64) error {
-	data, err := m.FindOneSubscribe(ctx, id)
+	_, err := m.FindOneSubscribe(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// 使用 defer 确保删除后清理缓存
-	defer func() {
-		if clearErr := m.ClearSubscribeCacheByModels(ctx, data); clearErr != nil {
-			// 记录清理缓存错误
-		}
-	}()
-
 	return m.db.UserSubscribe.DeleteOneID(id).Exec(ctx)
-}
-
-func (m *defaultUserModel) ClearSubscribeCache(ctx context.Context, data ...*Subscribe) error {
-	return m.ClearSubscribeCacheByModels(ctx, data...)
 }

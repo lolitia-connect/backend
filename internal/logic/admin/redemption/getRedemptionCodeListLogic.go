@@ -5,13 +5,13 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetRedemptionCodeListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type GetRedemptionCodeListLogic struct {
 // Get redemption code list
 func NewGetRedemptionCodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetRedemptionCodeListLogic {
 	return &GetRedemptionCodeListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -35,7 +35,7 @@ func (l *GetRedemptionCodeListLogic) GetRedemptionCodeList(req *types.GetRedempt
 		req.Code,
 	)
 	if err != nil {
-		l.Errorw("[GetRedemptionCodeList] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetRedemptionCodeList] Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get redemption code list error: %v", err.Error())
 	}
 

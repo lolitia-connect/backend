@@ -8,13 +8,13 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateUserRulesLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type UpdateUserRulesLogic struct {
 // NewUpdateUserRulesLogic Update User Rules
 func NewUpdateUserRulesLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateUserRulesLogic {
 	return &UpdateUserRulesLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,7 +31,7 @@ func NewUpdateUserRulesLogic(ctx context.Context, svcCtx *svc.ServiceContext) *U
 func (l *UpdateUserRulesLogic) UpdateUserRules(req *types.UpdateUserRulesRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	if len(req.Rules) > 0 {

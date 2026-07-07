@@ -5,21 +5,20 @@ import (
 	"strings"
 	"time"
 
-	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type QueryUserSubscribeNodeListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -27,7 +26,7 @@ type QueryUserSubscribeNodeListLogic struct {
 // Get user subscribe node info
 func NewQueryUserSubscribeNodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryUserSubscribeNodeListLogic {
 	return &QueryUserSubscribeNodeListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -36,13 +35,13 @@ func NewQueryUserSubscribeNodeListLogic(ctx context.Context, svcCtx *svc.Service
 func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *types.QueryUserSubscribeNodeListResponse, err error) {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
 	userSubscribes, err := l.svcCtx.Store.User().QueryUserSubscribe(l.ctx, u.Id, 1, 2)
 	if err != nil {
-		logger.Errorw("failed to query user subscribe", logger.Field("error", err.Error()), logger.Field("user_id", u.Id))
+		zap.S().Errorw("failed to query user subscribe", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "DB_ERROR")
 	}
 
@@ -50,7 +49,7 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 	for _, us := range userSubscribes {
 		userSubscribe, err := l.getUserSubscribe(us.Token)
 		if err != nil {
-			l.Errorw("[SubscribeLogic] Get user subscribe failed", logger.Field("error", err.Error()), logger.Field("token", userSubscribe.Token))
+			l.Logger.Errorw("[SubscribeLogic] Get user subscribe failed", zap.Any("error", err.Error()), zap.Any("token", userSubscribe.Token))
 			return nil, err
 		}
 		nodes, err := l.getServers(userSubscribe)
@@ -100,7 +99,7 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 
 	subDetails, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, userSub.SubscribeId)
 	if err != nil {
-		l.Debugw("[GetServers] Failed to check group enabled", logger.Field("error", err.Error()))
+		l.Logger.Debugw("[GetServers] Failed to check group enabled", zap.Any("error", err.Error()))
 		// Continue with tag-based filtering
 	}
 	nodeIds := tool.StringToInt64Slice(subDetails.Nodes)
@@ -118,7 +117,7 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 
 	nodes, err := l.filterSubscribeNodes(nodeIds, tags, enable)
 	if err != nil {
-		l.Errorw("[Generate Subscribe]find server details error: %v", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[Generate Subscribe]find server details error: %v", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server details error: %v", err.Error())
 	}
 
@@ -135,7 +134,7 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 
 		servers, err := l.svcCtx.Store.Node().QueryServerList(l.ctx, serverIds)
 		if err != nil {
-			l.Errorw("[Generate Subscribe]find server details error: %v", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[Generate Subscribe]find server details error: %v", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server details error: %v", err.Error())
 		}
 
@@ -169,8 +168,8 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 		}
 	}
 
-	l.Debugf("[Query Subscribe]found servers: %v", len(nodes))
-	logger.Debugf("[Generate Subscribe]found servers: %v", len(nodes))
+	l.Logger.Debugf("[Query Subscribe]found servers: %v", len(nodes))
+	zap.S().Debugf("[Generate Subscribe]found servers: %v", len(nodes))
 	return userSubscribeNodes, nil
 }
 
@@ -240,20 +239,20 @@ func (l *QueryUserSubscribeNodeListLogic) isTrafficExhausted(userSub *user.Subsc
 
 func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Subscribe) ([]*types.UserSubscribeNodeInfo, error) {
 	// 1. 查询过期节点组
-	expiredGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.IsExpiredGroup(true)).First(l.ctx)
+	expiredGroup, err := l.svcCtx.Store.Group().FindExpiredNodeGroup(l.ctx)
 	if err != nil {
-		l.Debugw("no expired node group configured", logger.Field("error", err))
+		l.Logger.Debugw("no expired node group configured", zap.Any("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 	if !group.IsNodeGroupTypeAccessible(expiredGroup.Type, group.NodeGroupAccessApp) {
-		l.Debugf("expired node group %d is not accessible for app output", expiredGroup.ID)
+		l.Logger.Debugf("expired node group %d is not accessible for app output", expiredGroup.Id)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	// 2. 检查用户是否在过期天数限制内
 	expiredDays := int(time.Since(userSub.ExpireTime).Hours() / 24)
 	if expiredDays > expiredGroup.ExpiredDaysLimit {
-		l.Debugf("user subscription expired %d days, exceeds limit %d days", expiredDays, expiredGroup.ExpiredDaysLimit)
+		l.Logger.Debugf("user subscription expired %d days, exceeds limit %d days", expiredDays, expiredGroup.ExpiredDaysLimit)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
@@ -261,7 +260,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 	if expiredGroup.MaxTrafficGBExpired != nil && *expiredGroup.MaxTrafficGBExpired > 0 {
 		usedTrafficGB := (userSub.ExpiredDownload + userSub.ExpiredUpload) / (1024 * 1024 * 1024)
 		if usedTrafficGB >= *expiredGroup.MaxTrafficGBExpired {
-			l.Debugf("user expired traffic %d GB, exceeds expired group limit %d GB", usedTrafficGB, *expiredGroup.MaxTrafficGBExpired)
+			l.Logger.Debugf("user expired traffic %d GB, exceeds expired group limit %d GB", usedTrafficGB, *expiredGroup.MaxTrafficGBExpired)
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 		}
 	}
@@ -272,17 +271,17 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 	_, nodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:         0,
 		Size:         1000,
-		NodeGroupIds: []int64{expiredGroup.ID},
+		NodeGroupIds: []int64{expiredGroup.Id},
 		Enabled:      &enable,
 		IsHidden:     &isHidden,
 	})
 	if err != nil {
-		l.Errorw("failed to query expired group nodes", logger.Field("error", err))
+		l.Logger.Errorw("failed to query expired group nodes", zap.Any("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
 	if len(nodes) == 0 {
-		l.Debug("no nodes found in expired group")
+		l.Logger.Debug("no nodes found in expired group")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
@@ -298,7 +297,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 
 	servers, err := l.svcCtx.Store.Node().QueryServerList(l.ctx, serverIds)
 	if err != nil {
-		l.Errorw("failed to query servers", logger.Field("error", err))
+		l.Logger.Errorw("failed to query servers", zap.Any("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeExpired), "subscribe is expired")
 	}
 
@@ -333,7 +332,7 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 		userSubscribeNodes = append(userSubscribeNodes, userSubscribeNode)
 	}
 
-	l.Infof("returned %d nodes from expired group for user %d (expired %d days)", len(userSubscribeNodes), userSub.UserId, expiredDays)
+	l.Logger.Infof("returned %d nodes from expired group for user %d (expired %d days)", len(userSubscribeNodes), userSub.UserId, expiredDays)
 	return userSubscribeNodes, nil
 }
 
@@ -342,35 +341,34 @@ func (l *QueryUserSubscribeNodeListLogic) getAccessibleNodeGroup(nodeGroupId int
 		return nil
 	}
 
-	entNodeGroup, err := l.svcCtx.Ent.NodeGroup.Query().Where(entnodegroup.ID(nodeGroupId)).Only(l.ctx)
+	nodeGroup, err := l.svcCtx.Store.Group().FindNodeGroup(l.ctx, nodeGroupId)
 	if err != nil {
-		l.Debugw("[GetNodesByGroup] node group not found", logger.Field("nodeGroupId", nodeGroupId), logger.Field("error", err.Error()))
+		l.Logger.Debugw("[GetNodesByGroup] node group not found", zap.Any("nodeGroupId", nodeGroupId), zap.Any("error", err.Error()))
 		return nil
 	}
 
-	if !group.IsNodeGroupTypeAccessible(entNodeGroup.Type, accessType) {
+	if !group.IsNodeGroupTypeAccessible(nodeGroup.Type, accessType) {
 		return nil
 	}
 
-	nodeGroup := group.NodeGroup{Id: entNodeGroup.ID, Type: entNodeGroup.Type}
 	nodeGroup.Type = group.MustNodeGroupType(nodeGroup.Type)
-	return &nodeGroup
+	return nodeGroup
 }
 
 func (l *QueryUserSubscribeNodeListLogic) getUserSubscribe(token string) (*user.Subscribe, error) {
 	userSub, err := l.svcCtx.Store.User().FindOneSubscribeByToken(l.ctx, token)
 	if err != nil {
-		l.Infow("[Generate Subscribe]find subscribe error: %v", logger.Field("error", err.Error()), logger.Field("token", token))
+		l.Logger.Infow("[Generate Subscribe]find subscribe error: %v", zap.Any("error", err.Error()), zap.Any("token", token))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 	if userSub == nil {
-		l.Infow("[Generate Subscribe]subscribe token not found", logger.Field("token", token))
+		l.Logger.Infow("[Generate Subscribe]subscribe token not found", zap.Any("token", token))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe token not found")
 	}
 
 	//  Ignore expiration check
 	//if userSub.Status > 1 {
-	//	l.Infow("[Generate Subscribe]subscribe is not available", logger.Field("status", int(userSub.Status)), logger.Field("token", token))
+	//	l.Logger.Infow("[Generate Subscribe]subscribe is not available", zap.Any("status", int(userSub.Status)), zap.Any("token", token))
 	//	return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe is not available")
 	//}
 

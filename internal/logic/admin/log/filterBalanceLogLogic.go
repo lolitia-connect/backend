@@ -6,13 +6,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterBalanceLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type FilterBalanceLogLogic struct {
 // NewFilterBalanceLogLogic Filter balance log
 func NewFilterBalanceLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterBalanceLogLogic {
 	return &FilterBalanceLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -36,7 +36,7 @@ func (l *FilterBalanceLogLogic) FilterBalanceLog(req *types.FilterBalanceLogRequ
 	})
 
 	if err != nil {
-		l.Errorw("[FilterBalanceLog] Query User Balance Log Error:", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[FilterBalanceLog] Query User Balance Log Error:", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query User Balance Log Error")
 	}
 
@@ -44,7 +44,7 @@ func (l *FilterBalanceLogLogic) FilterBalanceLog(req *types.FilterBalanceLogRequ
 	for _, datum := range data {
 		var content log.Balance
 		if err = content.Unmarshal([]byte(datum.Content)); err != nil {
-			l.Errorf("[QueryUserBalanceLog] unmarshal balance log content failed: %v", err.Error())
+			l.Logger.Errorf("[QueryUserBalanceLog] unmarshal balance log content failed: %v", err.Error())
 			continue
 		}
 		list = append(list, types.BalanceLog{

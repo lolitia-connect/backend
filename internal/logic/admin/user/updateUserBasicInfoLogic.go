@@ -9,14 +9,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateUserBasicInfoLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type UpdateUserBasicInfoLogic struct {
 // NewUpdateUserBasicInfoLogic Update user basic info
 func NewUpdateUserBasicInfoLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateUserBasicInfoLogic {
 	return &UpdateUserBasicInfoLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func NewUpdateUserBasicInfoLogic(ctx context.Context, svcCtx *svc.ServiceContext
 func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasiceInfoRequest) error {
 	userInfo, err := l.svcCtx.Store.User().FindOne(l.ctx, req.UserId)
 	if err != nil {
-		l.Errorw("[UpdateUserBasicInfoLogic] Find User Error:", logger.Field("err", err.Error()), logger.Field("userId", req.UserId))
+		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Find User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find User Error")
 	}
 
@@ -61,7 +61,7 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 			Content:  string(content),
 		})
 		if err != nil {
-			l.Errorw("[UpdateUserBasicInfoLogic] Insert Balance Log Error:", logger.Field("err", err.Error()), logger.Field("userId", req.UserId))
+			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Insert Balance Log Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Insert Balance Log Error")
 		}
 	}
@@ -91,7 +91,7 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 				Content:  string(content),
 			})
 			if err != nil {
-				l.Errorw("[UpdateUserBasicInfoLogic] Insert Balance Log Error:", logger.Field("err", err.Error()), logger.Field("userId", req.UserId))
+				l.Logger.Errorw("[UpdateUserBasicInfoLogic] Insert Balance Log Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 				return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Insert Balance Log Error")
 			}
 		}
@@ -113,7 +113,7 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 			Content:  string(content),
 		})
 		if err != nil {
-			l.Errorw("[UpdateUserBasicInfoLogic] Insert Commission Log Error:", logger.Field("err", err.Error()), logger.Field("userId", req.UserId))
+			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Insert Commission Log Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Insert Commission Log Error")
 		}
 	}
@@ -141,7 +141,7 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 
 	err = l.svcCtx.Store.User().Update(l.ctx, userInfo)
 	if err != nil {
-		l.Errorw("[UpdateUserBasicInfoLogic] Update User Error:", logger.Field("err", err.Error()), logger.Field("userId", req.UserId))
+		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update User Error")
 	}
 

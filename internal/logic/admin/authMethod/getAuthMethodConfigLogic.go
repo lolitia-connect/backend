@@ -6,14 +6,14 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetAuthMethodConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type GetAuthMethodConfigLogic struct {
 // NewGetAuthMethodConfigLogic Get auth method config
 func NewGetAuthMethodConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetAuthMethodConfigLogic {
 	return &GetAuthMethodConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -30,7 +30,7 @@ func NewGetAuthMethodConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext
 func (l *GetAuthMethodConfigLogic) GetAuthMethodConfig(req *types.GetAuthMethodConfigRequest) (resp *types.AuthMethodConfig, err error) {
 	method, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, req.Method)
 	if err != nil {
-		l.Errorw("find one by method failed", logger.Field("method", req.Method), logger.Field("error", err.Error()))
+		l.Logger.Errorw("find one by method failed", zap.Any("method", req.Method), zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find one by method failed: %v", err.Error())
 	}
 
@@ -38,7 +38,7 @@ func (l *GetAuthMethodConfigLogic) GetAuthMethodConfig(req *types.GetAuthMethodC
 	tool.DeepCopy(resp, method)
 	if method.Config != "" {
 		if err := json.Unmarshal([]byte(method.Config), &resp.Config); err != nil {
-			l.Errorw("unmarshal config failed", logger.Field("config", method.Config), logger.Field("error", err.Error()))
+			l.Logger.Errorw("unmarshal config failed", zap.Any("config", method.Config), zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "unmarshal apple config failed: %v", err.Error())
 		}
 	}

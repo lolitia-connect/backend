@@ -10,10 +10,10 @@ import (
 
 	"github.com/perfect-panel/server/initialize/migrate"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/orm"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
+	"go.uber.org/zap"
 )
 
 func Migrate(ctx *svc.ServiceContext) {
@@ -23,13 +23,13 @@ func Migrate(ctx *svc.ServiceContext) {
 	now := time.Now()
 	if err := migrate.Migrate(mc.Driver(), mc.MigrationDsn()).Up(); err != nil {
 		if errors.Is(err, migrate.NoChange) {
-			logger.Info("[Migrate] database not change")
+			zap.S().Info("[Migrate] database not change")
 			return
 		}
-		logger.Errorf("[Migrate] Up error: %v", err.Error())
+		zap.S().Errorf("[Migrate] Up error: %v", err.Error())
 		panic(err)
 	} else {
-		logger.Info("[Migrate] Database change, took " + time.Since(now).String())
+		zap.S().Info("[Migrate] Database change, took " + time.Since(now).String())
 	}
 	// if not found admin user
 	err := ctx.Store.InTx(context.Background(), func(store repository.Store) error {
@@ -45,7 +45,7 @@ func Migrate(ctx *svc.ServiceContext) {
 				ReferCode: uuidx.UserInviteCode(time.Now().Unix()),
 			}
 			if err := store.User().Insert(context.Background(), admin); err != nil {
-				logger.Errorf("[Migrate] CreateAdminUser error: %v", err.Error())
+				zap.S().Errorf("[Migrate] CreateAdminUser error: %v", err.Error())
 				return err
 			}
 			if err := store.User().InsertUserAuthMethods(context.Background(), &user.AuthMethods{
@@ -54,10 +54,10 @@ func Migrate(ctx *svc.ServiceContext) {
 				AuthIdentifier: ctx.Config.Administrator.Email,
 				Verified:       true,
 			}); err != nil {
-				logger.Errorf("[Migrate] CreateAdminUser error: %v", err.Error())
+				zap.S().Errorf("[Migrate] CreateAdminUser error: %v", err.Error())
 				return err
 			}
-			logger.Info("[Migrate] Create admin user success")
+			zap.S().Info("[Migrate] Create admin user success")
 		}
 		return nil
 	})

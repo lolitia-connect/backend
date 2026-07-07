@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type Client struct {
@@ -94,19 +94,19 @@ func (c *Client) QueryOrderStatus(orderNo string) bool {
 	}
 	resp, err := client.Get(c.Url + "/api.php" + "?act=order" + "&pid=" + c.Pid + "&key=" + c.Key + "&out_trade_no=" + orderNo)
 	if err != nil {
-		logger.Error("[Epay] QueryOrderStatus error", logger.Field("orderNo", orderNo), logger.Field("error", err.Error()))
+		zap.S().Error("[Epay] QueryOrderStatus error", zap.Any("orderNo", orderNo), zap.Any("error", err.Error()))
 		return false
 	}
 	defer resp.Body.Close()
 	value, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Error("[Epay] QueryOrderStatus error", logger.Field("orderNo", orderNo), logger.Field("error", err.Error()))
+		zap.S().Error("[Epay] QueryOrderStatus error", zap.Any("orderNo", orderNo), zap.Any("error", err.Error()))
 		return false
 	}
 	var response queryOrderStatusResponse
 	err = json.Unmarshal(value, &response)
 	if err != nil {
-		logger.Error("[Epay] QueryOrderStatus error", logger.Field("orderNo", orderNo), logger.Field("error", err.Error()))
+		zap.S().Error("[Epay] QueryOrderStatus error", zap.Any("orderNo", orderNo), zap.Any("error", err.Error()))
 		return false
 	}
 	return response.Status == 1

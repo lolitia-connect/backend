@@ -10,17 +10,12 @@ import (
 	entnode "github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/predicate"
 	entsubscribe "github.com/perfect-panel/server/ent/subscribe"
-	entusersubscribe "github.com/perfect-panel/server/ent/usersubscribe"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/redis/go-redis/v9"
 )
 
 var _ Model = (*customSubscribeModel)(nil)
-var (
-	cacheSubscribeIdPrefix       = "cache:subscribe:id:"
-	userSubscribeUserCachePrefix = "cache:user:subscribe:user:"
-)
 
 type (
 	Model interface {
@@ -75,19 +70,11 @@ func (m *defaultSubscribeModel) getCacheKeys(data *Subscribe) []string {
 			keys = append(keys, serverUserListKeys(nodes)...)
 		}
 	}
-	return append(keys, fmt.Sprintf("%s%v", cacheSubscribeIdPrefix, data.Id))
+	return keys
 }
 
 func (m *defaultSubscribeModel) getUserSubscribeCacheKeys(ctx context.Context, subscribeId int64) ([]string, error) {
-	var userIds []int64
-	if err := m.db.UserSubscribe.Query().Where(entusersubscribe.SubscribeID(subscribeId), entusersubscribe.StatusIn(0, 1)).Unique(true).Select(entusersubscribe.FieldUserID).Scan(ctx, &userIds); err != nil {
-		return nil, err
-	}
-	keys := make([]string, 0, len(userIds))
-	for _, userId := range userIds {
-		keys = append(keys, fmt.Sprintf("%s%d", userSubscribeUserCachePrefix, userId))
-	}
-	return keys, nil
+	return []string{}, nil
 }
 
 func (m *defaultSubscribeModel) Insert(ctx context.Context, data *Subscribe) error {

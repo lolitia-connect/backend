@@ -14,7 +14,7 @@ import (
 	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/google/uuid"
@@ -86,7 +86,7 @@ func (l *ActivateOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task) 
 	}
 
 	if err = l.processOrderByType(ctx, orderInfo); err != nil {
-		logger.WithContext(ctx).Error("[ActivateOrderLogic] Process task failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ActivateOrderLogic] Process task failed", zap.Any("error", err.Error()))
 		return err
 	}
 
@@ -98,9 +98,9 @@ func (l *ActivateOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task) 
 func (l *ActivateOrderLogic) parsePayload(ctx context.Context, payload []byte) (*queueTypes.ForthwithActivateOrderPayload, error) {
 	var p queueTypes.ForthwithActivateOrderPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
-		logger.WithContext(ctx).Error("[ActivateOrderLogic] Unmarshal payload failed",
-			logger.Field("error", err.Error()),
-			logger.Field("payload", string(payload)),
+		zap.S().Error("[ActivateOrderLogic] Unmarshal payload failed",
+			zap.Any("error", err.Error()),
+			zap.Any("payload", string(payload)),
 		)
 		return nil, err
 	}
@@ -112,24 +112,24 @@ func (l *ActivateOrderLogic) parsePayload(ctx context.Context, payload []byte) (
 func (l *ActivateOrderLogic) validateAndGetOrder(ctx context.Context, orderNo string) (*order.Order, error) {
 	orderInfo, err := l.svc.Store.Order().FindOneByOrderNo(ctx, orderNo)
 	if err != nil {
-		logger.WithContext(ctx).Error("Find order failed",
-			logger.Field("error", err.Error()),
-			logger.Field("order_no", orderNo),
+		zap.S().Error("Find order failed",
+			zap.Any("error", err.Error()),
+			zap.Any("order_no", orderNo),
 		)
 		return nil, err
 	}
 
 	if orderInfo.Status == OrderStatusFinished {
-		logger.WithContext(ctx).Info("Order already finished, skip processing",
-			logger.Field("order_no", orderInfo.OrderNo),
+		zap.S().Info("Order already finished, skip processing",
+			zap.Any("order_no", orderInfo.OrderNo),
 		)
 		return nil, nil
 	}
 
 	if orderInfo.Status != OrderStatusPaid {
-		logger.WithContext(ctx).Error("Order status error",
-			logger.Field("order_no", orderInfo.OrderNo),
-			logger.Field("status", orderInfo.Status),
+		zap.S().Error("Order status error",
+			zap.Any("order_no", orderInfo.OrderNo),
+			zap.Any("status", orderInfo.Status),
 		)
 		return nil, ErrInvalidOrderStatus
 	}
@@ -151,7 +151,7 @@ func (l *ActivateOrderLogic) processOrderByType(ctx context.Context, orderInfo *
 	case OrderTypeRedemption:
 		return l.RedemptionActivate(ctx, orderInfo)
 	default:
-		logger.WithContext(ctx).Error("Order type is invalid", logger.Field("type", orderInfo.Type))
+		zap.S().Error("Order type is invalid", zap.Any("type", orderInfo.Type))
 		return ErrInvalidOrderType
 	}
 }
@@ -162,9 +162,9 @@ func (l *ActivateOrderLogic) finalizeCouponAndOrder(ctx context.Context, orderIn
 	// Update coupon if exists
 	if orderInfo.Coupon != "" {
 		if err := l.svc.Store.Coupon().UpdateCount(ctx, orderInfo.Coupon); err != nil {
-			logger.WithContext(ctx).Error("Update coupon status failed",
-				logger.Field("error", err.Error()),
-				logger.Field("coupon", orderInfo.Coupon),
+			zap.S().Error("Update coupon status failed",
+				zap.Any("error", err.Error()),
+				zap.Any("coupon", orderInfo.Coupon),
 			)
 		}
 	}
@@ -172,9 +172,9 @@ func (l *ActivateOrderLogic) finalizeCouponAndOrder(ctx context.Context, orderIn
 	// Update order status
 	orderInfo.Status = OrderStatusFinished
 	if err := l.svc.Store.Order().Update(ctx, orderInfo); err != nil {
-		logger.WithContext(ctx).Error("Update order status failed",
-			logger.Field("error", err.Error()),
-			logger.Field("order_no", orderInfo.OrderNo),
+		zap.S().Error("Update order status failed",
+			zap.Any("error", err.Error()),
+			zap.Any("order_no", orderInfo.OrderNo),
 		)
 	}
 }
@@ -209,7 +209,7 @@ func (l *ActivateOrderLogic) NewPurchase(ctx context.Context, orderInfo *order.O
 	// Send notifications
 	l.sendNotifications(ctx, orderInfo, userInfo, sub, userSub, telegram.PurchaseNotify)
 
-	logger.WithContext(ctx).Info("Insert user subscribe success")
+	zap.S().Info("Insert user subscribe success")
 	return nil
 }
 
@@ -225,9 +225,9 @@ func (l *ActivateOrderLogic) getUserOrCreate(ctx context.Context, orderInfo *ord
 func (l *ActivateOrderLogic) getExistingUser(ctx context.Context, userId int64) (*user.User, error) {
 	userInfo, err := l.svc.Store.User().FindOne(ctx, userId)
 	if err != nil {
-		logger.WithContext(ctx).Error("Find user failed",
-			logger.Field("error", err.Error()),
-			logger.Field("user_id", userId),
+		zap.S().Error("Find user failed",
+			zap.Any("error", err.Error()),
+			zap.Any("user_id", userId),
 		)
 		return nil, err
 	}
@@ -270,17 +270,17 @@ func (l *ActivateOrderLogic) createGuestUser(ctx context.Context, orderInfo *ord
 	})
 
 	if err != nil {
-		logger.WithContext(ctx).Error("Create user failed", logger.Field("error", err.Error()))
+		zap.S().Error("Create user failed", zap.Any("error", err.Error()))
 		return nil, err
 	}
 
 	// Handle referrer relationship
 	l.handleReferrer(ctx, userInfo, tempOrder.InviteCode)
 
-	logger.WithContext(ctx).Info("Create guest user success",
-		logger.Field("user_id", userInfo.Id),
-		logger.Field("identifier", tempOrder.Identifier),
-		logger.Field("auth_type", tempOrder.AuthType),
+	zap.S().Info("Create guest user success",
+		zap.Any("user_id", userInfo.Id),
+		zap.Any("identifier", tempOrder.Identifier),
+		zap.Any("auth_type", tempOrder.AuthType),
 	)
 
 	return userInfo, nil
@@ -291,19 +291,19 @@ func (l *ActivateOrderLogic) getTempOrderInfo(ctx context.Context, orderNo strin
 	cacheKey := fmt.Sprintf(constant.TempOrderCacheKey, orderNo)
 	data, err := l.svc.Redis.Get(ctx, cacheKey).Result()
 	if err != nil {
-		logger.WithContext(ctx).Error("Get temp order cache failed",
-			logger.Field("error", err.Error()),
-			logger.Field("cache_key", cacheKey),
+		zap.S().Error("Get temp order cache failed",
+			zap.Any("error", err.Error()),
+			zap.Any("cache_key", cacheKey),
 		)
 		return nil, err
 	}
 
 	var tempOrder constant.TemporaryOrderInfo
 	if err = tempOrder.Unmarshal([]byte(data)); err != nil {
-		logger.WithContext(ctx).Error("Unmarshal temp order cache failed",
-			logger.Field("error", err.Error()),
-			logger.Field("cache_key", cacheKey),
-			logger.Field("data", data),
+		zap.S().Error("Unmarshal temp order cache failed",
+			zap.Any("error", err.Error()),
+			zap.Any("cache_key", cacheKey),
+			zap.Any("data", data),
 		)
 		return nil, err
 	}
@@ -319,18 +319,18 @@ func (l *ActivateOrderLogic) handleReferrer(ctx context.Context, userInfo *user.
 
 	referer, err := l.svc.Store.User().FindOneByReferCode(ctx, inviteCode)
 	if err != nil {
-		logger.WithContext(ctx).Error("Find referer failed",
-			logger.Field("error", err.Error()),
-			logger.Field("refer_code", inviteCode),
+		zap.S().Error("Find referer failed",
+			zap.Any("error", err.Error()),
+			zap.Any("refer_code", inviteCode),
 		)
 		return
 	}
 
 	userInfo.RefererId = referer.Id
 	if err = l.svc.Store.User().Update(ctx, userInfo); err != nil {
-		logger.WithContext(ctx).Error("Update user referer failed",
-			logger.Field("error", err.Error()),
-			logger.Field("user_id", userInfo.Id),
+		zap.S().Error("Update user referer failed",
+			zap.Any("error", err.Error()),
+			zap.Any("user_id", userInfo.Id),
 		)
 	}
 }
@@ -339,9 +339,9 @@ func (l *ActivateOrderLogic) handleReferrer(ctx context.Context, userInfo *user.
 func (l *ActivateOrderLogic) getSubscribeInfo(ctx context.Context, subscribeId int64) (*subscribe.Subscribe, error) {
 	sub, err := l.svc.Store.Subscribe().FindOne(ctx, subscribeId)
 	if err != nil {
-		logger.WithContext(ctx).Error("Find subscribe failed",
-			logger.Field("error", err.Error()),
-			logger.Field("subscribe_id", subscribeId),
+		zap.S().Error("Find subscribe failed",
+			zap.Any("error", err.Error()),
+			zap.Any("subscribe_id", subscribeId),
 		)
 		return nil, err
 	}
@@ -375,15 +375,15 @@ func (l *ActivateOrderLogic) createUserSubscription(ctx context.Context, orderIn
 			Where(entusersubscribe.UserID(orderInfo.UserId), entusersubscribe.SubscribeID(orderInfo.SubscribeId)).
 			Count(ctx)
 		if err != nil {
-			logger.WithContext(ctx).Error("Count user subscribe failed", logger.Field("error", err.Error()))
+			zap.S().Error("Count user subscribe failed", zap.Any("error", err.Error()))
 			return nil, err
 		}
 		if int64(count) >= sub.Quota {
-			logger.WithContext(ctx).Infow("Subscribe quota limit exceeded",
-				logger.Field("user_id", orderInfo.UserId),
-				logger.Field("subscribe_id", orderInfo.SubscribeId),
-				logger.Field("quota", sub.Quota),
-				logger.Field("current_count", count),
+			zap.S().Infow("Subscribe quota limit exceeded",
+				zap.Any("user_id", orderInfo.UserId),
+				zap.Any("subscribe_id", orderInfo.SubscribeId),
+				zap.Any("quota", sub.Quota),
+				zap.Any("current_count", count),
 			)
 			return nil, fmt.Errorf("subscribe quota limit exceeded")
 		}
@@ -392,22 +392,22 @@ func (l *ActivateOrderLogic) createUserSubscription(ctx context.Context, orderIn
 	if sub.Quota > 0 {
 		count, err := l.svc.Store.User().CountUserSubscribesByUserAndSubscribe(ctx, orderInfo.UserId, orderInfo.SubscribeId)
 		if err != nil {
-			logger.WithContext(ctx).Error("Count user subscribe failed", logger.Field("error", err.Error()))
+			zap.S().Error("Count user subscribe failed", zap.Any("error", err.Error()))
 			return nil, err
 		}
 		if count >= sub.Quota {
-			logger.WithContext(ctx).Info("Subscribe quota limit exceeded",
-				logger.Field("user_id", orderInfo.UserId),
-				logger.Field("subscribe_id", orderInfo.SubscribeId),
-				logger.Field("quota", sub.Quota),
-				logger.Field("current_count", count),
+			zap.S().Info("Subscribe quota limit exceeded",
+				zap.Any("user_id", orderInfo.UserId),
+				zap.Any("subscribe_id", orderInfo.SubscribeId),
+				zap.Any("quota", sub.Quota),
+				zap.Any("current_count", count),
 			)
 			return nil, fmt.Errorf("subscribe quota limit exceeded")
 		}
 	}
 
 	if err := l.svc.Store.User().InsertSubscribe(ctx, userSub); err != nil {
-		logger.WithContext(ctx).Error("Insert user subscribe failed", logger.Field("error", err.Error()))
+		zap.S().Error("Insert user subscribe failed", zap.Any("error", err.Error()))
 		return nil, err
 	}
 
@@ -423,9 +423,9 @@ func (l *ActivateOrderLogic) handleCommission(ctx context.Context, userInfo *use
 
 	referer, err := l.svc.Store.User().FindOne(ctx, userInfo.RefererId)
 	if err != nil {
-		logger.WithContext(ctx).Error("Find referer failed",
-			logger.Field("error", err.Error()),
-			logger.Field("referer_id", userInfo.RefererId),
+		zap.S().Error("Find referer failed",
+			zap.Any("error", err.Error()),
+			zap.Any("referer_id", userInfo.RefererId),
 		)
 		return
 	}
@@ -472,17 +472,10 @@ func (l *ActivateOrderLogic) handleCommission(ctx context.Context, userInfo *use
 	})
 
 	if err != nil {
-		logger.WithContext(ctx).Error("Update referer commission failed", logger.Field("error", err.Error()))
+		zap.S().Error("Update referer commission failed", zap.Any("error", err.Error()))
 		return
 	}
 
-	// Update cache
-	if err = l.svc.Store.User().UpdateUserCache(ctx, referer); err != nil {
-		logger.WithContext(ctx).Error("Update referer cache failed",
-			logger.Field("error", err.Error()),
-			logger.Field("user_id", referer.Id),
-		)
-	}
 }
 
 // shouldProcessCommission determines if commission should be processed based on
@@ -494,9 +487,9 @@ func (l *ActivateOrderLogic) shouldProcessCommission(userInfo *user.User, isFirs
 
 	referer, err := l.svc.Store.User().FindOne(context.Background(), userInfo.RefererId)
 	if err != nil {
-		logger.Errorw("Find referer failed",
-			logger.Field("error", err.Error()),
-			logger.Field("referer_id", userInfo.RefererId))
+		zap.S().Errorw("Find referer failed",
+			zap.Any("error", err.Error()),
+			zap.Any("referer_id", userInfo.RefererId))
 		return false
 	}
 	if referer == nil {
@@ -530,7 +523,7 @@ func (l *ActivateOrderLogic) calculateCommission(price int64, percentage uint8) 
 // clearServerCache clears user list cache for all servers associated with the subscription
 func (l *ActivateOrderLogic) clearServerCache(ctx context.Context, sub *subscribe.Subscribe) {
 	if err := l.svc.Store.Subscribe().ClearCache(ctx, sub.Id); err != nil {
-		logger.WithContext(ctx).Error("[Order Queue] Clear subscribe cache failed", logger.Field("error", err.Error()))
+		zap.S().Error("[Order Queue] Clear subscribe cache failed", zap.Any("error", err.Error()))
 	}
 }
 
@@ -547,7 +540,7 @@ func (l *ActivateOrderLogic) triggerUserGroupRecalculation(ctx context.Context, 
 			Where(entsystem.Category("group"), entsystem.Key("enabled")).
 			Only(ctx)
 		if err != nil || groupEnabled.Value != "true" && groupEnabled.Value != "1" {
-			logger.Debugf("[Group Trigger] Group management not enabled, skipping recalculation")
+			zap.S().Debugf("[Group Trigger] Group management not enabled, skipping recalculation")
 			return
 		}
 
@@ -556,13 +549,13 @@ func (l *ActivateOrderLogic) triggerUserGroupRecalculation(ctx context.Context, 
 			Where(entsystem.Category("group"), entsystem.Key("mode")).
 			Only(ctx)
 		if err != nil {
-			logger.Errorw("[Group Trigger] Failed to get group mode", logger.Field("error", err.Error()))
+			zap.S().Errorw("[Group Trigger] Failed to get group mode", zap.Any("error", err.Error()))
 			return
 		}
 
 		// Validate group mode
 		if groupMode.Value != "average" && groupMode.Value != "subscribe" && groupMode.Value != "traffic" {
-			logger.Debugf("[Group Trigger] Invalid group mode (current: %s), skipping", groupMode.Value)
+			zap.S().Debugf("[Group Trigger] Invalid group mode (current: %s), skipping", groupMode.Value)
 			return
 		}
 
@@ -573,16 +566,16 @@ func (l *ActivateOrderLogic) triggerUserGroupRecalculation(ctx context.Context, 
 		}
 
 		if err := logic.RecalculateGroup(req); err != nil {
-			logger.Errorw("[Group Trigger] Failed to recalculate user group",
-				logger.Field("user_id", userId),
-				logger.Field("error", err.Error()),
+			zap.S().Errorw("[Group Trigger] Failed to recalculate user group",
+				zap.Any("user_id", userId),
+				zap.Any("error", err.Error()),
 			)
 			return
 		}
 
-		logger.Infow("[Group Trigger] Successfully recalculated user group",
-			logger.Field("user_id", userId),
-			logger.Field("mode", groupMode.Value),
+		zap.S().Infow("[Group Trigger] Successfully recalculated user group",
+			zap.Any("user_id", userId),
+			zap.Any("mode", groupMode.Value),
 		)
 	}()
 }
@@ -609,16 +602,6 @@ func (l *ActivateOrderLogic) Renewal(ctx context.Context, orderInfo *order.Order
 		return err
 	}
 
-	// Clear user subscription cache
-	err = l.svc.Store.User().ClearSubscribeCache(ctx, userSub)
-	if err != nil {
-		logger.WithContext(ctx).Error("Clear user subscribe cache failed",
-			logger.Field("error", err.Error()),
-			logger.Field("subscribe_id", userSub.Id),
-			logger.Field("user_id", userInfo.Id),
-		)
-	}
-
 	// Clear cache
 	l.clearServerCache(ctx, sub)
 
@@ -635,7 +618,7 @@ func (l *ActivateOrderLogic) Renewal(ctx context.Context, orderInfo *order.Order
 func (l *ActivateOrderLogic) getUserSubscription(ctx context.Context, token string) (*user.Subscribe, error) {
 	userSub, err := l.svc.Store.User().FindOneSubscribeByToken(ctx, token)
 	if err != nil {
-		logger.WithContext(ctx).Error("Find user subscribe failed", logger.Field("error", err.Error()))
+		zap.S().Error("Find user subscribe failed", zap.Any("error", err.Error()))
 		return nil, err
 	}
 	return userSub, nil
@@ -675,7 +658,7 @@ func (l *ActivateOrderLogic) updateSubscriptionForRenewal(ctx context.Context, u
 	userSub.ExpiredUpload = 0
 
 	if err := l.svc.Store.User().UpdateSubscribe(ctx, userSub); err != nil {
-		logger.WithContext(ctx).Error("Update user subscribe failed", logger.Field("error", err.Error()))
+		zap.S().Error("Update user subscribe failed", zap.Any("error", err.Error()))
 		return err
 	}
 
@@ -702,23 +685,13 @@ func (l *ActivateOrderLogic) ResetTraffic(ctx context.Context, orderInfo *order.
 	userSub.Status = 1
 
 	if err := l.svc.Store.User().UpdateSubscribe(ctx, userSub); err != nil {
-		logger.WithContext(ctx).Error("Update user subscribe failed", logger.Field("error", err.Error()))
+		zap.S().Error("Update user subscribe failed", zap.Any("error", err.Error()))
 		return err
 	}
 
 	sub, err := l.getSubscribeInfo(ctx, userSub.SubscribeId)
 	if err != nil {
 		return err
-	}
-
-	// Clear user subscription cache
-	err = l.svc.Store.User().ClearSubscribeCache(ctx, userSub)
-	if err != nil {
-		logger.WithContext(ctx).Error("Clear user subscribe cache failed",
-			logger.Field("error", err.Error()),
-			logger.Field("subscribe_id", userSub.Id),
-			logger.Field("user_id", userInfo.Id),
-		)
 	}
 
 	// Clear cache
@@ -739,7 +712,7 @@ func (l *ActivateOrderLogic) ResetTraffic(ctx context.Context, orderInfo *order.
 		ObjectID: userSub.Id,
 		Content:  string(content),
 	}); err != nil {
-		logger.WithContext(ctx).Error("[Order Queue]Insert reset subscribe log failed", logger.Field("error", err.Error()))
+		zap.S().Error("[Order Queue]Insert reset subscribe log failed", zap.Any("error", err.Error()))
 	}
 
 	// Send notifications
@@ -781,13 +754,13 @@ func (l *ActivateOrderLogic) Recharge(ctx context.Context, orderInfo *order.Orde
 	})
 
 	if err != nil {
-		logger.WithContext(ctx).Error("[Recharge] Database transaction failed", logger.Field("error", err.Error()))
+		zap.S().Error("[Recharge] Database transaction failed", zap.Any("error", err.Error()))
 		return err
 	}
 
 	// clear user cache
-	if err = l.svc.Store.User().UpdateUserCache(ctx, userInfo); err != nil {
-		logger.WithContext(ctx).Error("[Recharge] Update user cache failed", logger.Field("error", err.Error()))
+	if err = l.svc.Store.User().Update(ctx, userInfo); err != nil {
+		zap.S().Error("[Recharge] Update user cache failed", zap.Any("error", err.Error()))
 		return err
 	}
 
@@ -883,7 +856,7 @@ func (l *ActivateOrderLogic) sendUserNotifyWithTelegram(chatId int64, text strin
 	msg := tgbotapi.NewMessage(chatId, text)
 	msg.ParseMode = "markdown"
 	if _, err := l.svc.TelegramBot.Send(msg); err != nil {
-		logger.Error("Send telegram user message failed", logger.Field("error", err.Error()))
+		zap.S().Error("Send telegram user message failed", zap.Any("error", err.Error()))
 	}
 }
 
@@ -891,7 +864,7 @@ func (l *ActivateOrderLogic) sendUserNotifyWithTelegram(chatId int64, text strin
 func (l *ActivateOrderLogic) sendAdminNotifyWithTelegram(ctx context.Context, text string) {
 	admins, err := l.svc.Store.User().QueryAdminUsers(ctx)
 	if err != nil {
-		logger.WithContext(ctx).Error("Query admin users failed", logger.Field("error", err.Error()))
+		zap.S().Error("Query admin users failed", zap.Any("error", err.Error()))
 		return
 	}
 
@@ -900,7 +873,7 @@ func (l *ActivateOrderLogic) sendAdminNotifyWithTelegram(ctx context.Context, te
 			msg := tgbotapi.NewMessage(telegramId, text)
 			msg.ParseMode = "markdown"
 			if _, err := l.svc.TelegramBot.Send(msg); err != nil {
-				logger.WithContext(ctx).Error("Send telegram admin message failed", logger.Field("error", err.Error()))
+				zap.S().Error("Send telegram admin message failed", zap.Any("error", err.Error()))
 			}
 		}
 	}
@@ -938,9 +911,9 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 	cacheKey := fmt.Sprintf("redemption_order:%s", orderInfo.OrderNo)
 	data, err := l.svc.Redis.Get(ctx, cacheKey).Result()
 	if err != nil {
-		logger.WithContext(ctx).Error("Get redemption cache failed",
-			logger.Field("error", err.Error()),
-			logger.Field("cache_key", cacheKey),
+		zap.S().Error("Get redemption cache failed",
+			zap.Any("error", err.Error()),
+			zap.Any("cache_key", cacheKey),
 		)
 		return err
 	}
@@ -951,7 +924,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 		Quantity         int64  `json:"quantity"`
 	}
 	if err = json.Unmarshal([]byte(data), &redemptionData); err != nil {
-		logger.WithContext(ctx).Error("Unmarshal redemption cache failed", logger.Field("error", err.Error()))
+		zap.S().Error("Unmarshal redemption cache failed", zap.Any("error", err.Error()))
 		return err
 	}
 
@@ -960,10 +933,10 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 	if err == nil {
 		for _, record := range existingRecords {
 			if record.RedemptionCodeId == redemptionData.RedemptionCodeId {
-				logger.WithContext(ctx).Info("Redemption already processed, skip",
-					logger.Field("order_no", orderInfo.OrderNo),
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("redemption_code_id", redemptionData.RedemptionCodeId),
+				zap.S().Info("Redemption already processed, skip",
+					zap.Any("order_no", orderInfo.OrderNo),
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("redemption_code_id", redemptionData.RedemptionCodeId),
 				)
 				// 已处理过，直接返回成功（幂等性保护）
 				return nil
@@ -1027,30 +1000,28 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 
 			err = store.User().UpdateSubscribe(ctx, existingSubscribe)
 			if err != nil {
-				logger.WithContext(ctx).Error("Update subscribe failed", logger.Field("error", err.Error()))
+				zap.S().Error("Update subscribe failed", zap.Any("error", err.Error()))
 				return err
 			}
 
-			logger.WithContext(ctx).Info("Extended existing subscription",
-				logger.Field("subscribe_id", existingSubscribe.Id),
-				logger.Field("new_expire_time", newExpireTime),
+			zap.S().Info("Extended existing subscription",
+				zap.Any("subscribe_id", existingSubscribe.Id),
+				zap.Any("new_expire_time", newExpireTime),
 			)
 		} else {
 			// 检查配额限制
 			if sub.Quota > 0 {
-				count, err := store.Ent().UserSubscribe.Query().
-					Where(entusersubscribe.UserID(userInfo.Id), entusersubscribe.SubscribeID(orderInfo.SubscribeId)).
-					Count(ctx)
+				count, err := store.User().CountUserSubscribesByUserAndSubscribe(ctx, userInfo.Id, orderInfo.SubscribeId)
 				if err != nil {
-					logger.WithContext(ctx).Error("Count user subscribe failed", logger.Field("error", err.Error()))
+					zap.S().Error("Count user subscribe failed", zap.Any("error", err.Error()))
 					return err
 				}
 				if int64(count) >= sub.Quota {
-					logger.WithContext(ctx).Infow("Subscribe quota limit exceeded",
-						logger.Field("user_id", userInfo.Id),
-						logger.Field("subscribe_id", orderInfo.SubscribeId),
-						logger.Field("quota", sub.Quota),
-						logger.Field("current_count", count),
+					zap.S().Infow("Subscribe quota limit exceeded",
+						zap.Any("user_id", userInfo.Id),
+						zap.Any("subscribe_id", orderInfo.SubscribeId),
+						zap.Any("quota", sub.Quota),
+						zap.Any("current_count", count),
 					)
 					return fmt.Errorf("subscribe quota limit exceeded")
 				}
@@ -1082,20 +1053,20 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 
 			err = store.User().InsertSubscribe(ctx, newSubscribe)
 			if err != nil {
-				logger.WithContext(ctx).Error("Insert subscribe failed", logger.Field("error", err.Error()))
+				zap.S().Error("Insert subscribe failed", zap.Any("error", err.Error()))
 				return err
 			}
 
-			logger.WithContext(ctx).Info("Created new subscription",
-				logger.Field("subscribe_id", newSubscribe.Id),
-				logger.Field("expire_time", expireTime),
+			zap.S().Info("Created new subscription",
+				zap.Any("subscribe_id", newSubscribe.Id),
+				zap.Any("expire_time", expireTime),
 			)
 		}
 
 		// 6.2 更新兑换码使用次数
 		err = store.RedemptionCode().IncrementUsedCount(ctx, redemptionData.RedemptionCodeId)
 		if err != nil {
-			logger.WithContext(ctx).Error("Increment used count failed", logger.Field("error", err.Error()))
+			zap.S().Error("Increment used count failed", zap.Any("error", err.Error()))
 			return err
 		}
 
@@ -1112,7 +1083,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 
 		err = store.RedemptionRecord().Insert(ctx, redemptionRecord)
 		if err != nil {
-			logger.WithContext(ctx).Error("Insert redemption record failed", logger.Field("error", err.Error()))
+			zap.S().Error("Insert redemption record failed", zap.Any("error", err.Error()))
 			return err
 		}
 
@@ -1120,7 +1091,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 	})
 
 	if err != nil {
-		logger.WithContext(ctx).Error("Redemption transaction failed", logger.Field("error", err.Error()))
+		zap.S().Error("Redemption transaction failed", zap.Any("error", err.Error()))
 		return err
 	}
 
@@ -1132,12 +1103,12 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 
 	// 7.1 清理用户订阅缓存（确保用户端显示最新信息）
 	if existingSubscribe != nil {
-		err = l.svc.Store.User().ClearSubscribeCache(ctx, existingSubscribe)
+		err = l.svc.Store.Subscribe().ClearCache(ctx, existingSubscribe.SubscribeId)
 		if err != nil {
-			logger.WithContext(ctx).Error("Clear user subscribe cache failed",
-				logger.Field("error", err.Error()),
-				logger.Field("subscribe_id", existingSubscribe.Id),
-				logger.Field("user_id", userInfo.Id),
+			zap.S().Error("Clear user subscribe cache failed",
+				zap.Any("error", err.Error()),
+				zap.Any("subscribe_id", existingSubscribe.Id),
+				zap.Any("user_id", userInfo.Id),
 			)
 		}
 	}
@@ -1149,10 +1120,10 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 	// 可以复用现有的通知模板或创建新的兑换通知模板
 	// l.sendNotifications(ctx, orderInfo, userInfo, sub, existingSubscribe, telegram.RedemptionNotify)
 
-	logger.WithContext(ctx).Info("Redemption activation success",
-		logger.Field("order_no", orderInfo.OrderNo),
-		logger.Field("user_id", userInfo.Id),
-		logger.Field("subscribe_id", orderInfo.SubscribeId),
+	zap.S().Info("Redemption activation success",
+		zap.Any("order_no", orderInfo.OrderNo),
+		zap.Any("user_id", userInfo.Id),
+		zap.Any("subscribe_id", orderInfo.SubscribeId),
 	)
 
 	return nil

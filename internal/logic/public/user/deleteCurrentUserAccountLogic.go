@@ -9,13 +9,13 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type DeleteCurrentUserAccountLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type DeleteCurrentUserAccountLogic struct {
 // Delete Current User Account
 func NewDeleteCurrentUserAccountLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DeleteCurrentUserAccountLogic {
 	return &DeleteCurrentUserAccountLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,7 +37,7 @@ func (l *DeleteCurrentUserAccountLogic) DeleteCurrentUserAccount() (err error) {
 
 	userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
 	if err != nil {
-		l.Errorw("FindOne Error", logger.Field("error", err))
+		l.Logger.Errorw("FindOne Error", zap.Any("error", err))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth methods failed: %v", err.Error())
 	}
 

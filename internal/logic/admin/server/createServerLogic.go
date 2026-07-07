@@ -8,14 +8,14 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/ip"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type CreateServerLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type CreateServerLogic struct {
 // NewCreateServerLogic Create Server
 func NewCreateServerLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateServerLogic {
 	return &CreateServerLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -52,7 +52,7 @@ func (l *CreateServerLogic) CreateServer(req *types.CreateServerRequest) error {
 				if protocol.RealityPublicKey == "" {
 					public, private, err := tool.Curve25519Genkey(false, "")
 					if err != nil {
-						l.Errorf("[CreateServer] Generate Reality Key Error: %v", err.Error())
+						l.Logger.Errorf("[CreateServer] Generate Reality Key Error: %v", err.Error())
 						return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "generate reality key error: %v", err)
 					}
 					protocol.RealityPublicKey = public
@@ -88,14 +88,14 @@ func (l *CreateServerLogic) CreateServer(req *types.CreateServerRequest) error {
 
 	err := data.MarshalProtocols(protocols)
 	if err != nil {
-		l.Errorf("[CreateServer] Marshal Protocols Error: %v", err.Error())
+		l.Logger.Errorf("[CreateServer] Marshal Protocols Error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCodeMsg(xerr.InvalidParams, "protocols marshal error"), "protocols marshal error: %v", err)
 	}
 	if data.City == "" && data.Country == "" {
 		// query server ip location
 		result, err := ip.GetRegionByIp(req.Address)
 		if err != nil {
-			l.Errorf("[CreateServer] GetRegionByIp Error: %v", err.Error())
+			l.Logger.Errorf("[CreateServer] GetRegionByIp Error: %v", err.Error())
 		} else {
 			data.City = result.City
 			data.Country = result.Country
@@ -107,7 +107,7 @@ func (l *CreateServerLogic) CreateServer(req *types.CreateServerRequest) error {
 	}
 	err = l.svcCtx.Store.Node().InsertServer(l.ctx, &data)
 	if err != nil {
-		l.Errorf("[CreateServer] Insert Server error: %v", err.Error())
+		l.Logger.Errorf("[CreateServer] Insert Server error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert server error: %v", err)
 	}
 	return nil

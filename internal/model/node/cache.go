@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type (
@@ -160,4 +162,98 @@ func (m *customServerModel) UpdateOnlineUserSubscribeGlobal(ctx context.Context,
 // DeleteOnlineUserSubscribeGlobal Delete global online user subscribe count
 func (m *customServerModel) DeleteOnlineUserSubscribeGlobal(ctx context.Context) error {
 	return m.Cache.Del(ctx, OnlineUserSubscribeCacheKeyWithGlobal).Err()
+}
+
+// ClearNodeCache Clear Node Cache
+func (m *customServerModel) ClearNodeCache(ctx context.Context, params *FilterNodeParams) error {
+	_, nodes, err := m.FilterNodeList(ctx, params)
+	if err != nil {
+		return err
+	}
+	var cacheKeys []string
+	for _, node := range nodes {
+		patterns := []string{
+			fmt.Sprintf("%s%d:*", ServerUserListCacheKey, node.ServerId),
+			fmt.Sprintf("%s%d:*", ServerConfigCacheKey, node.ServerId),
+		}
+		cacheKeys = append(cacheKeys, fmt.Sprintf("%s%d", ServerUserListCacheKey, node.ServerId))
+		for _, pattern := range patterns {
+			var cursor uint64
+			for {
+				keys, newCursor, err := m.Cache.Scan(ctx, cursor, pattern, 100).Result()
+				if err != nil {
+					return err
+				}
+				if len(keys) > 0 {
+					cacheKeys = append(cacheKeys, keys...)
+				}
+				cursor = newCursor
+				if cursor == 0 {
+					break
+				}
+			}
+		}
+	}
+
+	if len(cacheKeys) > 0 {
+		cacheKeys = tool.RemoveDuplicateElements(cacheKeys...)
+		return m.Cache.Del(ctx, cacheKeys...).Err()
+	}
+	return nil
+}
+
+// ClearServerCache Clear Server Cache
+func (m *customServerModel) ClearServerCache(ctx context.Context, serverId int64) error {
+	var cacheKeys []string
+	patterns := []string{
+		fmt.Sprintf("%s%d:*", ServerUserListCacheKey, serverId),
+		fmt.Sprintf("%s%d:*", ServerConfigCacheKey, serverId),
+	}
+	cacheKeys = append(cacheKeys, fmt.Sprintf("%s%d", ServerUserListCacheKey, serverId))
+	for _, pattern := range patterns {
+		var cursor uint64
+		for {
+			keys, newCursor, err := m.Cache.Scan(ctx, cursor, pattern, 100).Result()
+			if err != nil {
+				return err
+			}
+			if len(keys) > 0 {
+				cacheKeys = append(cacheKeys, keys...)
+			}
+			cursor = newCursor
+			if cursor == 0 {
+				break
+			}
+		}
+	}
+
+	if len(cacheKeys) > 0 {
+		cacheKeys = tool.RemoveDuplicateElements(cacheKeys...)
+		return m.Cache.Del(ctx, cacheKeys...).Err()
+	}
+	return nil
+}
+
+func (m *customServerModel) ClearServerAllCache(ctx context.Context) error {
+	var cursor uint64
+	var keys []string
+	prefix := ServerUserListCacheKey + "*"
+	for {
+		scanKeys, newCursor, err := m.Cache.Scan(ctx, cursor, prefix, 999).Result()
+		if err != nil {
+			zap.S().Error(ctx, fmt.Sprintf("ClearServerAllCache err:%v", err))
+			break
+		}
+		zap.S().Info(ctx, fmt.Sprintf("ClearServerAllCache query keys:%v", scanKeys))
+		keys = append(keys, scanKeys...)
+		cursor = newCursor
+		if cursor == 0 {
+			break
+		}
+	}
+	if len(keys) > 0 {
+		zap.S().Info(ctx, fmt.Sprintf("ClearServerAllCache keys:%v", keys))
+		return m.Cache.Del(ctx, keys...).Err()
+	}
+	return nil
 }

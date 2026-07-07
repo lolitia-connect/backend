@@ -1,9 +1,9 @@
 package order
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
@@ -15,15 +15,15 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type RenewalLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -31,7 +31,7 @@ type RenewalLogic struct {
 // NewRenewalLogic creates a new renewal logic instance for subscription renewal operations
 func NewRenewalLogic(ctx context.Context, svcCtx *svc.ServiceContext) *RenewalLogic {
 	return &RenewalLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -43,17 +43,17 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	store := l.svcCtx.Store
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	if req.Quantity <= 0 {
-		l.Debugf("[Renewal] Quantity is less than or equal to 0, setting to 1")
+		l.Logger.Debugf("[Renewal] Quantity is less than or equal to 0, setting to 1")
 		req.Quantity = 1
 	}
 
 	// Validate quantity limit
 	if req.Quantity > MaxQuantity {
-		l.Errorw("[Renewal] Quantity exceeds maximum limit", logger.Field("quantity", req.Quantity), logger.Field("max", MaxQuantity))
+		l.Logger.Errorw("[Renewal] Quantity exceeds maximum limit", zap.Any("quantity", req.Quantity), zap.Any("max", MaxQuantity))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "quantity exceeds maximum limit of %d", MaxQuantity)
 	}
 
@@ -66,7 +66,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	// find subscription
 	sub, err := store.Subscribe().FindOne(l.ctx, userSubscribe.SubscribeId)
 	if err != nil {
-		l.Errorw("[Renewal] Database query error", logger.Field("error", err.Error()), logger.Field("subscribe_id", userSubscribe.SubscribeId))
+		l.Logger.Errorw("[Renewal] Database query error", zap.Any("error", err.Error()), zap.Any("subscribe_id", userSubscribe.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 	// check subscribe plan status
@@ -85,11 +85,11 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 
 	// Validate amount to prevent overflow
 	if amount > MaxOrderAmount {
-		l.Errorw("[Renewal] Order amount exceeds maximum limit",
-			logger.Field("amount", amount),
-			logger.Field("max", MaxOrderAmount),
-			logger.Field("user_id", u.Id),
-			logger.Field("subscribe_id", sub.Id))
+		l.Logger.Errorw("[Renewal] Order amount exceeds maximum limit",
+			zap.Any("amount", amount),
+			zap.Any("max", MaxOrderAmount),
+			zap.Any("user_id", u.Id),
+			zap.Any("subscribe_id", sub.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
 	}
 
@@ -115,7 +115,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		}
 		count, err := store.Order().CountUserCouponUsage(l.ctx, u.Id, req.Coupon)
 		if err != nil {
-			l.Errorw("[Renewal] Database query error", logger.Field("error", err.Error()), logger.Field("user_id", u.Id), logger.Field("coupon", req.Coupon))
+			l.Logger.Errorw("[Renewal] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id), zap.Any("coupon", req.Coupon))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())
 		}
 		if count >= couponInfo.UserLimit {
@@ -125,7 +125,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	}
 	payment, err := store.Payment().FindOne(l.ctx, req.Payment)
 	if err != nil {
-		l.Errorw("[Renewal] Database query error", logger.Field("error", err.Error()), logger.Field("payment", req.Payment))
+		l.Logger.Errorw("[Renewal] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment error: %v", err.Error())
 	}
 	amount -= coupon
@@ -154,10 +154,10 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 
 	// Final validation after adding fee
 	if amount > MaxOrderAmount {
-		l.Errorw("[Renewal] Final order amount exceeds maximum limit after fee",
-			logger.Field("amount", amount),
-			logger.Field("max", MaxOrderAmount),
-			logger.Field("user_id", u.Id))
+		l.Logger.Errorw("[Renewal] Final order amount exceeds maximum limit after fee",
+			zap.Any("amount", amount),
+			zap.Any("max", MaxOrderAmount),
+			zap.Any("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
 	}
 
@@ -187,7 +187,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		if orderInfo.GiftAmount > 0 {
 			// update user deduction && Pre deduction ,Return after canceling the order
 			if err := txStore.User().Update(l.ctx, u); err != nil {
-				l.Errorw("[Renewal] Database update error", logger.Field("error", err.Error()), logger.Field("user", u))
+				l.Logger.Errorw("[Renewal] Database update error", zap.Any("error", err.Error()), zap.Any("user", u))
 				return err
 			}
 			// create deduction record
@@ -208,7 +208,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 				ObjectID: u.Id,
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("[Renewal] Database insert error", logger.Field("error", err.Error()), logger.Field("deductionLog", giftLog))
+				l.Logger.Errorw("[Renewal] Database insert error", zap.Any("error", err.Error()), zap.Any("deductionLog", giftLog))
 				return err
 			}
 		}
@@ -216,7 +216,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		return txStore.Order().Insert(l.ctx, &orderInfo)
 	})
 	if err != nil {
-		l.Errorw("[Renewal] Database insert error", logger.Field("error", err.Error()), logger.Field("order", orderInfo))
+		l.Logger.Errorw("[Renewal] Database insert error", zap.Any("error", err.Error()), zap.Any("order", orderInfo))
 		return nil, errors.Wrapf(err, "insert order error: %v", err.Error())
 	}
 	// Deferred task
@@ -225,14 +225,14 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	}
 	val, err := json.Marshal(payload)
 	if err != nil {
-		l.Errorw("[Renewal] Marshal payload error", logger.Field("error", err.Error()), logger.Field("payload", payload))
+		l.Logger.Errorw("[Renewal] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
 	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
-		l.Errorw("[Renewal] Enqueue task error", logger.Field("error", err.Error()), logger.Field("task", task))
+		l.Logger.Errorw("[Renewal] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", task))
 	} else {
-		l.Infow("[Renewal] Enqueue task success", logger.Field("TaskID", taskInfo.ID))
+		l.Logger.Infow("[Renewal] Enqueue task success", zap.Any("TaskID", taskInfo.ID))
 	}
 	return &types.RenewalOrderResponse{
 		OrderNo: orderInfo.OrderNo,

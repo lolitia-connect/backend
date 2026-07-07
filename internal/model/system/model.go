@@ -2,8 +2,10 @@ package system
 
 import (
 	"context"
+	"time"
 
 	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/predicate"
 	entsystem "github.com/perfect-panel/server/ent/system"
 )
 
@@ -19,6 +21,12 @@ type customSystemLogicModel interface {
 	GetCurrencyConfig(ctx context.Context) ([]*System, error)
 	GetVerifyCodeConfig(ctx context.Context) ([]*System, error)
 	GetLogConfig(ctx context.Context) ([]*System, error)
+	FindByCategoryKey(ctx context.Context, category, key string) (*System, error)
+	FindFirstByCategoryKeys(ctx context.Context, category string, keys ...string) (*System, error)
+	UpsertByCategoryKey(ctx context.Context, category, key, value, typ, desc string) error
+	DeleteByCategory(ctx context.Context, category string) error
+	FindGroupConfigMap(ctx context.Context, keys ...string) (map[string]*System, error)
+	IsGroupEnabled(ctx context.Context) (bool, error)
 	UpdateValueByCategoryKey(ctx context.Context, category, key, value string) error
 	UpdateNodeMultiplierConfig(ctx context.Context, config string) error
 	FindNodeMultiplierConfig(ctx context.Context) (*System, error)
@@ -101,6 +109,69 @@ func (m *customSystemModel) GetCurrencyConfig(ctx context.Context) ([]*System, e
 func (m *customSystemModel) UpdateValueByCategoryKey(ctx context.Context, category, key, value string) error {
 	_, err := m.db.System.Update().Where(entsystem.Category(category), entsystem.Key(key)).SetValue(value).Save(ctx)
 	return err
+}
+
+func (m *customSystemModel) FindByCategoryKey(ctx context.Context, category, key string) (*System, error) {
+	data, err := m.db.System.Query().Where(entsystem.Category(category), entsystem.Key(key)).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return systemFromEnt(data), nil
+}
+
+func (m *customSystemModel) FindFirstByCategoryKeys(ctx context.Context, category string, keys ...string) (*System, error) {
+	predicates := make([]predicate.System, 0, len(keys))
+	for _, key := range keys {
+		predicates = append(predicates, entsystem.Key(key))
+	}
+	data, err := m.db.System.Query().Where(entsystem.Category(category), entsystem.Or(predicates...)).First(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return systemFromEnt(data), nil
+}
+
+func (m *customSystemModel) UpsertByCategoryKey(ctx context.Context, category, key, value, typ, desc string) error {
+	affected, err := m.db.System.Update().Where(entsystem.Category(category), entsystem.Key(key)).SetValue(value).SetUpdatedAt(time.Now()).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		return nil
+	}
+	return m.db.System.Create().SetCategory(category).SetKey(key).SetValue(value).SetType(typ).SetDesc(desc).Exec(ctx)
+}
+
+func (m *customSystemModel) DeleteByCategory(ctx context.Context, category string) error {
+	_, err := m.db.System.Delete().Where(entsystem.Category(category)).Exec(ctx)
+	return err
+}
+
+func (m *customSystemModel) FindGroupConfigMap(ctx context.Context, keys ...string) (map[string]*System, error) {
+	query := m.db.System.Query().Where(entsystem.Category("group"))
+	if len(keys) > 0 {
+		query = query.Where(entsystem.KeyIn(keys...))
+	}
+	items, err := query.All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*System, len(items))
+	for _, item := range items {
+		result[item.Key] = systemFromEnt(item)
+	}
+	return result, nil
+}
+
+func (m *customSystemModel) IsGroupEnabled(ctx context.Context) (bool, error) {
+	config, err := m.FindByCategoryKey(ctx, "group", "enabled")
+	if ent.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return config.Value == "true", nil
 }
 
 func (m *customSystemModel) UpdateNodeMultiplierConfig(ctx context.Context, config string) error {

@@ -7,13 +7,13 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/email"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type TestEmailSendLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type TestEmailSendLogic struct {
 // Test email send
 func NewTestEmailSendLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TestEmailSendLogic {
 	return &TestEmailSendLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -30,7 +30,7 @@ func NewTestEmailSendLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Tes
 func (l *TestEmailSendLogic) TestEmailSend(req *types.TestEmailSendRequest) error {
 	client, err := email.NewSender(l.svcCtx.Config.Email.Platform, l.svcCtx.Config.Email.PlatformConfig, l.svcCtx.Config.Site.SiteName)
 	if err != nil {
-		l.Errorw("new email sender err", logger.Field("error", err.Error()))
+		l.Logger.Errorw("new email sender err", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "new email sender err: %v", err.Error())
 	}
 	err = client.Send([]string{req.Email}, "Test Email Send", "this a test email send by ppanel")

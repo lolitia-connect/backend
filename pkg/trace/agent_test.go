@@ -4,12 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 func TestStartAgent(t *testing.T) {
-	logger.Disable()
+	zap.ReplaceGlobals(zap.NewNop())
 
 	const (
 		endpoint1 = "localhost:1234"

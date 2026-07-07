@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"net/http"
 	"time"
 
@@ -16,16 +16,16 @@ import (
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type TelephoneLoginLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -33,7 +33,7 @@ type TelephoneLoginLogic struct {
 // User Telephone login
 func NewTelephoneLoginLogic(ctx context.Context, svcCtx *svc.ServiceContext) *TelephoneLoginLogic {
 	return &TelephoneLoginLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -83,10 +83,10 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 				ObjectID: userInfo.Id,
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()),
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()),
 				)
 			}
 		}
@@ -110,7 +110,7 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 		cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.ParseVerifyType(uint8(constant.Security)), phoneNumber)
 		value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 		if err != nil {
-			l.Errorw("Redis Error", logger.Field("error", err.Error()), logger.Field("cacheKey", cacheKey))
+			l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
 		}
 
@@ -120,7 +120,7 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 
 		var payload common.CacheKeyPayload
 		if err := json.Unmarshal([]byte(value), &payload); err != nil {
-			l.Errorw("[SendSmsCode]: Unmarshal Error", logger.Field("error", err.Error()), logger.Field("value", value))
+			l.Logger.Errorw("[SendSmsCode]: Unmarshal Error", zap.Any("error", err.Error()), zap.Any("value", value))
 		}
 
 		if payload.Code != req.TelephoneCode {
@@ -133,10 +133,10 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 	if req.Identifier != "" {
 		bindLogic := NewBindDeviceLogic(l.ctx, l.svcCtx)
 		if err := bindLogic.BindDeviceToUser(req.Identifier, req.IP, req.UserAgent, userInfo.Id); err != nil {
-			l.Errorw("failed to bind device to user",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to bind device to user",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			// Don't fail login if device binding fails, just log the error
 		}
@@ -159,7 +159,7 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 		jwt.WithOption("CtxLoginType", req.LoginType),
 	)
 	if err != nil {
-		l.Logger.Error("[UserLogin] token generate error", logger.Field("error", err.Error()))
+		l.Logger.Error("[UserLogin] token generate error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "token generate error: %v", err.Error())
 	}
 	sessionIdCacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
@@ -175,7 +175,7 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 func (l *TelephoneLoginLogic) verifyCaptcha(req *types.TelephoneLoginRequest) error {
 	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
-		l.Logger.Error("[TelephoneLoginLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[TelephoneLoginLogic] GetVerifyConfig error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 

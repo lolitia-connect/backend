@@ -11,9 +11,9 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/hertzx"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment"
 	"github.com/perfect-panel/server/pkg/result"
+	"go.uber.org/zap"
 )
 
 // PaymentNotifyHandler Payment Notify
@@ -21,7 +21,7 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 	return func(c *hertzx.Context) {
 		platform, ok := c.Request.Context().Value(constant.CtxKeyPlatform).(string)
 		if !ok {
-			logger.WithContext(c.Request.Context()).Errorf("platform not found")
+			zap.S().Errorf("platform not found")
 			result.HttpResult(c, nil, fmt.Errorf("platform not found"))
 			return
 		}
@@ -34,14 +34,14 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 				return
 			}
 			if err := c.Request.ParseForm(); err != nil {
-				logger.WithContext(c.Request.Context()).Errorw("[PaymentNotifyHandler] ParseForm failed", logger.Field("error", err.Error()))
+				zap.L().Error("[PaymentNotifyHandler] ParseForm failed", zap.Any("error", err.Error()))
 			}
 			l := notify.NewEPayNotifyLogic(c.Request.Context(), svcCtx, notify.EPayNotifyMeta{
 				Method: c.Request.Method,
 				Params: formValues(c.Request.Form),
 			})
 			if err := l.EPayNotify(req); err != nil {
-				logger.WithContext(c.Request.Context()).Errorf("EPayNotify failed: %v", err.Error())
+				zap.S().Errorf("EPayNotify failed: %v", err.Error())
 				c.String(http.StatusBadRequest, "%s", err.Error())
 				return
 			}
@@ -82,7 +82,7 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 			})
 
 		default:
-			logger.WithContext(c.Request.Context()).Errorf("platform %s not support", platform)
+			zap.S().Errorf("platform %s not support", platform)
 		}
 	}
 }

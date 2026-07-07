@@ -1,32 +1,32 @@
 package user
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type CreateUserLogic struct {
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
-	logger.Logger
+	Logger *zap.SugaredLogger
 }
 
 func NewCreateUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateUserLogic {
 	return &CreateUserLogic{
 		ctx:    ctx,
 		svcCtx: svcCtx,
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 	}
 }
 func (l *CreateUserLogic) CreateUser(req *types.CreateUserRequest) error {

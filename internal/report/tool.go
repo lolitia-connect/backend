@@ -7,8 +7,8 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 // FreePort returns a free TCP port by opening a listener on port 0.
@@ -46,7 +46,7 @@ func GatewayPort() (int, error) {
 		var port int
 		_, err := fmt.Sscanf(value, "%d", &port)
 		if err != nil {
-			logger.Errorf("Failed to parse GATEWAY_PORT: %v Value %s", err.Error(), value)
+			zap.S().Errorf("Failed to parse GATEWAY_PORT: %v Value %s", err.Error(), value)
 			panic(err)
 		}
 		return port, nil
@@ -59,7 +59,7 @@ func RegisterModule(port int) error {
 	// 从环境变量中读取网关模块端口
 	gatewayPort, err := GatewayPort()
 	if err != nil {
-		logger.Errorf("Failed to determine GATEWAY_PORT: %v", err)
+		zap.S().Errorf("Failed to determine GATEWAY_PORT: %v", err)
 		return err
 	}
 
@@ -83,7 +83,7 @@ func RegisterModule(port int) error {
 	}).SetResult(&response).Post(RegisterAPI)
 
 	if err != nil {
-		logger.Errorf("Failed to register service: %v", err)
+		zap.S().Errorf("Failed to register service: %v", err)
 		return err
 	}
 
@@ -92,10 +92,10 @@ func RegisterModule(port int) error {
 	}
 
 	if !response.Data.Success {
-		logger.Infof("Result: %v", result.String())
+		zap.S().Infof("Result: %v", result.String())
 		return errors.New("failed to register module: " + response.Message)
 	}
-	logger.Infof("Module registered successfully: %s", response.Message)
+	zap.S().Infof("Module registered successfully: %s", response.Message)
 	return nil
 }
 

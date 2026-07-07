@@ -11,14 +11,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	types2 "github.com/perfect-panel/server/queue/types"
+	"go.uber.org/zap"
 )
 
 type CreateBatchSendEmailTaskLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -26,7 +26,7 @@ type CreateBatchSendEmailTaskLogic struct {
 // NewCreateBatchSendEmailTaskLogic Create a batch send email task
 func NewCreateBatchSendEmailTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateBatchSendEmailTaskLogic {
 	return &CreateBatchSendEmailTaskLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -39,13 +39,13 @@ func (l *CreateBatchSendEmailTaskLogic) CreateBatchSendEmailTask(req *types.Crea
 		RegisterEndTime:   req.RegisterEndTime,
 	})
 	if err != nil {
-		l.Errorf("[CreateBatchSendEmailTask] Failed to fetch email addresses: %v", err.Error())
+		l.Logger.Errorf("[CreateBatchSendEmailTask] Failed to fetch email addresses: %v", err.Error())
 		return xerr.NewErrCode(xerr.DatabaseQueryError)
 	}
 
 	// 邮箱列表为空，返回错误
 	if len(emails) == 0 && scope != task.ScopeSkip {
-		l.Errorf("[CreateBatchSendEmailTask] No email addresses found for the specified scope")
+		l.Logger.Errorf("[CreateBatchSendEmailTask] No email addresses found for the specified scope")
 		return xerr.NewErrMsg("No email addresses found for the specified scope")
 	}
 
@@ -58,7 +58,7 @@ func (l *CreateBatchSendEmailTaskLogic) CreateBatchSendEmailTask(req *types.Crea
 		additionalEmails = tool.RemoveDuplicateElements(strings.Split(req.Additional, "\n")...)
 	}
 	if len(additionalEmails) == 0 && scope == task.ScopeSkip {
-		l.Errorf("[CreateBatchSendEmailTask] No additional email addresses provided for skip scope")
+		l.Logger.Errorf("[CreateBatchSendEmailTask] No additional email addresses provided for skip scope")
 		return xerr.NewErrMsg("No additional email addresses provided for skip scope")
 	}
 
@@ -108,19 +108,19 @@ func (l *CreateBatchSendEmailTaskLogic) CreateBatchSendEmailTask(req *types.Crea
 	}
 
 	if err = l.svcCtx.Store.Task().Insert(l.ctx, taskInfo); err != nil {
-		l.Errorf("[CreateBatchSendEmailTask] Failed to create email task: %v", err.Error())
+		l.Logger.Errorf("[CreateBatchSendEmailTask] Failed to create email task: %v", err.Error())
 		return xerr.NewErrCode(xerr.DatabaseInsertError)
 	}
 	// create task
-	l.Infof("[CreateBatchSendEmailTask] Successfully created email task with ID: %d", taskInfo.Id)
+	l.Logger.Infof("[CreateBatchSendEmailTask] Successfully created email task with ID: %d", taskInfo.Id)
 
 	t := asynq.NewTask(types2.ScheduledBatchSendEmail, []byte(strconv.FormatInt(taskInfo.Id, 10)))
 	info, err := l.svcCtx.Queue.EnqueueContext(l.ctx, t, asynq.ProcessAt(scheduledAt))
 	if err != nil {
-		l.Errorf("[CreateBatchSendEmailTask] Failed to enqueue email task: %v", err.Error())
+		l.Logger.Errorf("[CreateBatchSendEmailTask] Failed to enqueue email task: %v", err.Error())
 		return xerr.NewErrCode(xerr.QueueEnqueueError)
 	}
-	l.Infof("[CreateBatchSendEmailTask] Successfully enqueued email task with ID: %s, scheduled at: %s", info.ID, scheduledAt.Format(time.DateTime))
+	l.Logger.Infof("[CreateBatchSendEmailTask] Successfully enqueued email task with ID: %s, scheduled at: %s", info.ID, scheduledAt.Format(time.DateTime))
 
 	return nil
 }

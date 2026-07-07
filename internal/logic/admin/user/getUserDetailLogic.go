@@ -5,23 +5,23 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetUserDetailLogic struct {
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
-	logger.Logger
+	Logger *zap.SugaredLogger
 }
 
 func NewGetUserDetailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserDetailLogic {
 	return &GetUserDetailLogic{
 		ctx:    ctx,
 		svcCtx: svcCtx,
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 	}
 }
 

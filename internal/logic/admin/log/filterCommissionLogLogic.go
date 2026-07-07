@@ -6,13 +6,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterCommissionLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type FilterCommissionLogLogic struct {
 // NewFilterCommissionLogLogic Filter commission log
 func NewFilterCommissionLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterCommissionLogLogic {
 	return &FilterCommissionLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -35,7 +35,7 @@ func (l *FilterCommissionLogLogic) FilterCommissionLog(req *types.FilterCommissi
 		ObjectID: req.UserId,
 	})
 	if err != nil {
-		l.Errorw("Query User Commission Log failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("Query User Commission Log failed", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query User Commission Log failed")
 	}
 	var list []types.CommissionLog
@@ -43,7 +43,7 @@ func (l *FilterCommissionLogLogic) FilterCommissionLog(req *types.FilterCommissi
 	for _, datum := range data {
 		var content log.Commission
 		if err = content.Unmarshal([]byte(datum.Content)); err != nil {
-			l.Errorf("unmarshal commission log content failed: %v", err.Error())
+			l.Logger.Errorf("unmarshal commission log content failed: %v", err.Error())
 			continue
 		}
 		list = append(list, types.CommissionLog{

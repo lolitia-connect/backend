@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/task"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 var (
@@ -59,14 +59,14 @@ func (m *WorkerManager) AddWorker(id int64) {
 		m.workers[id] = worker
 		m.cancels[id] = cancel
 		go worker.Start()
-		logger.Info("Batch Send Email",
-			logger.Field("message", "Added new worker"),
-			logger.Field("task_id", id),
+		zap.S().Info("Batch Send Email",
+			zap.Any("message", "Added new worker"),
+			zap.Any("task_id", id),
 		)
 	} else {
-		logger.Info("Batch Send Email",
-			logger.Field("message", "Worker already exists"),
-			logger.Field("task_id", id),
+		zap.S().Info("Batch Send Email",
+			zap.Any("message", "Worker already exists"),
+			zap.Any("task_id", id),
 		)
 	}
 
@@ -79,9 +79,9 @@ func (m *WorkerManager) GetWorker(id int64) *Worker {
 	if worker, exists := m.workers[id]; exists {
 		return worker
 	} else {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "Worker not found"),
-			logger.Field("task_id", id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "Worker not found"),
+			zap.Any("task_id", id),
 		)
 		return nil
 	}
@@ -97,14 +97,14 @@ func (m *WorkerManager) RemoveWorker(id int64) {
 			cancelFunc() // 调用取消函数
 			delete(m.cancels, id)
 		}
-		logger.Info("Batch Send Email",
-			logger.Field("message", "Removed worker"),
-			logger.Field("task_id", id),
+		zap.S().Info("Batch Send Email",
+			zap.Any("message", "Removed worker"),
+			zap.Any("task_id", id),
 		)
 	} else {
-		logger.Error("Batch Send Email",
-			logger.Field("message", "Worker not found for removal"),
-			logger.Field("task_id", id),
+		zap.S().Error("Batch Send Email",
+			zap.Any("message", "Worker not found for removal"),
+			zap.Any("task_id", id),
 		)
 	}
 }
@@ -124,9 +124,9 @@ func checkWorker() {
 				cancelFunc() // 调用取消函数
 				delete(Manager.cancels, id)
 			}
-			logger.Info("Batch Send Email",
-				logger.Field("message", "Removed completed worker"),
-				logger.Field("task_id", id),
+			zap.S().Info("Batch Send Email",
+				zap.Any("message", "Removed completed worker"),
+				zap.Any("task_id", id),
 			)
 		}
 	}

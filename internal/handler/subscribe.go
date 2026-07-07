@@ -10,10 +10,10 @@ import (
 	"github.com/perfect-panel/server/internal/logic/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 func SubscribeHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
@@ -39,12 +39,12 @@ func SubscribeHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 			}
 			short, err := tool.FixedUniqueString(req.Token, 8, "")
 			if err != nil {
-				logger.WithContext(c).Errorf("[SubscribeHandler] Generate short token failed: %v", err)
+				zap.S().Errorf("[SubscribeHandler] Generate short token failed: %v", err)
 				ctx.String(consts.StatusInternalServerError, "Internal Server")
 				return
 			}
 			if strings.ToLower(short) != strings.ToLower(domainArr[0]) {
-				logger.WithContext(c).Debugf("[SubscribeHandler] short token mismatch, short: %s, domain: %s", short, domainArr[0])
+				zap.S().Debugf("[SubscribeHandler] short token mismatch, short: %s, domain: %s", short, domainArr[0])
 				ctx.String(consts.StatusForbidden, "Access denied")
 				return
 			}

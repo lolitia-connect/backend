@@ -6,14 +6,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type CreateNodeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type CreateNodeLogic struct {
 // NewCreateNodeLogic Create Node
 func NewCreateNodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateNodeLogic {
 	return &CreateNodeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -43,7 +43,7 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 	}
 	err := l.svcCtx.Store.Node().InsertNode(l.ctx, &data)
 	if err != nil {
-		l.Errorw("[CreateNode] Insert Database Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[CreateNode] Insert Database Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "[CreateNode] Insert Database Error")
 	}
 

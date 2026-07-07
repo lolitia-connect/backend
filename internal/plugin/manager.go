@@ -12,11 +12,11 @@ import (
 
 	pluginv1 "github.com/perfect-panel/server/api/plugin/v1"
 	"github.com/perfect-panel/server/internal/config"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/robfig/cron/v3"
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -136,7 +136,7 @@ func (m *Manager) stopPlugin(ctx context.Context, p *PluginInstance) {
 		stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		if mod, err := p.Pool.Get(stopCtx); err == nil {
 			if err := CallGuestStop(stopCtx, mod); err != nil {
-				logger.Errorf("plugin %q stop error: %v", p.Name, err)
+				zap.S().Errorf("plugin %q stop error: %v", p.Name, err)
 			}
 			p.Pool.Put(mod)
 		}
@@ -145,7 +145,7 @@ func (m *Manager) stopPlugin(ctx context.Context, p *PluginInstance) {
 	}
 	if p.Runtime != nil {
 		if err := p.Runtime.Close(ctx); err != nil {
-			logger.Errorf("plugin %q runtime close error: %v", p.Name, err)
+			zap.S().Errorf("plugin %q runtime close error: %v", p.Name, err)
 		}
 		p.Runtime = nil
 	}
@@ -819,7 +819,7 @@ func (m *Manager) ScheduleTask(pluginName, taskName, cronExpr, handler string) e
 		if _, err := callGuestFromPool(ctx, p, exportName, req,
 			func() *pluginv1.HandleResponse { return &pluginv1.HandleResponse{} },
 		); err != nil {
-			logger.Errorf("plugin %q cron task %q error: %v", pluginName, taskName, err)
+			zap.S().Errorf("plugin %q cron task %q error: %v", pluginName, taskName, err)
 		}
 	})
 	if err != nil {
@@ -835,7 +835,7 @@ func (m *Manager) ScheduleTask(pluginName, taskName, cronExpr, handler string) e
 		handler:    handler,
 		entryID:    entryID,
 	})
-	logger.Infof("plugin %q scheduled task %q: %s → %s", pluginName, taskName, cronExpr, handler)
+	zap.S().Infof("plugin %q scheduled task %q: %s → %s", pluginName, taskName, cronExpr, handler)
 	return nil
 }
 
@@ -856,7 +856,7 @@ func (m *Manager) onPluginEvent(sub EventSubscription, event string, payload *st
 	if _, err := callGuestFromPool(ctx, p, handlerName, req,
 		func() *pluginv1.BoolResult { return &pluginv1.BoolResult{} },
 	); err != nil {
-		logger.Debugf("plugin %q event %q handler not found: %v", sub.PluginName, event, err)
+		zap.S().Debugf("plugin %q event %q handler not found: %v", sub.PluginName, event, err)
 	}
 }
 
@@ -1047,13 +1047,13 @@ func (m *Manager) loadPlugins(ctx context.Context) {
 	pluginDir := m.pluginDirectory()
 
 	if err := os.MkdirAll(pluginDir, 0755); err != nil {
-		logger.Errorf("create plugin directory %q: %v", pluginDir, err)
+		zap.S().Errorf("create plugin directory %q: %v", pluginDir, err)
 		return
 	}
 
 	entries, err := os.ReadDir(pluginDir)
 	if err != nil {
-		logger.Errorf("read plugin directory %q: %v", pluginDir, err)
+		zap.S().Errorf("read plugin directory %q: %v", pluginDir, err)
 		return
 	}
 

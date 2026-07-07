@@ -3,7 +3,7 @@ package initialize
 import (
 	"context"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/auth"
@@ -12,7 +12,7 @@ import (
 )
 
 func Device(ctx *svc.ServiceContext) {
-	logger.Debug("device config initialization")
+	zap.S().Debug("device config initialization")
 	method, err := ctx.Store.Auth().FindOneByMethod(context.Background(), "device")
 	if err != nil {
 		panic(err)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"ariga.io/entcache"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 )
@@ -19,7 +20,8 @@ func ConnectEnt(m Mysql) (*ent.Client, error) {
 
 func NewEntClient(db *sql.DB, driverName string) *ent.Client {
 	drv := entsql.OpenDB(driverName, db)
-	return ent.NewClient(ent.Driver(drv))
+	cacheDrv := entcache.NewDriver(drv, entcache.ContextLevel())
+	return ent.NewClient(ent.Driver(cacheDrv))
 }
 
 func OpenSQL(m Mysql) (*sql.DB, string, error) {

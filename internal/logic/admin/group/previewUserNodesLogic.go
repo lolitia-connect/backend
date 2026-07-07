@@ -5,46 +5,40 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/perfect-panel/server/ent"
-	entnode "github.com/perfect-panel/server/ent/node"
-	"github.com/perfect-panel/server/ent/nodegroup"
-	entsubscribe "github.com/perfect-panel/server/ent/subscribe"
-	"github.com/perfect-panel/server/ent/system"
-	"github.com/perfect-panel/server/ent/usersubscribe"
+	modelnode "github.com/perfect-panel/server/internal/model/node"
+	modelsubscribe "github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type PreviewUserNodesLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
 func NewPreviewUserNodesLogic(ctx context.Context, svcCtx *svc.ServiceContext) *PreviewUserNodesLogic {
 	return &PreviewUserNodesLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
 func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequest) (resp *types.PreviewUserNodesResponse, err error) {
-	logger.Infof("[PreviewUserNodes] userId: %v", req.UserId)
+	zap.S().Infof("[PreviewUserNodes] userId: %v", req.UserId)
 
 	// 1. 查询用户的所有有效订阅（只查询可用状态：0-Pending, 1-Active）
-	userSubscribes, err := l.svcCtx.Ent.UserSubscribe.Query().
-		Where(usersubscribe.UserID(req.UserId), usersubscribe.StatusIn(0, 1)).
-		All(l.ctx)
+	userSubscribes, err := l.svcCtx.Store.User().FindUserSubscribesByUserAndStatus(l.ctx, req.UserId, 0, 1)
 	if err != nil {
-		logger.Errorf("[PreviewUserNodes] failed to get user subscribes: %v", err)
+		zap.S().Errorf("[PreviewUserNodes] failed to get user subscribes: %v", err)
 		return nil, err
 	}
 
 	if len(userSubscribes) == 0 {
-		logger.Infof("[PreviewUserNodes] no user subscribes found")
+		zap.S().Infof("[PreviewUserNodes] no user subscribes found")
 		resp = &types.PreviewUserNodesResponse{
 			UserId:     req.UserId,
 			NodeGroups: []types.NodeGroupItem{},
@@ -52,26 +46,26 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		return resp, nil
 	}
 
-	logger.Infof("[PreviewUserNodes] found %v user subscribes", len(userSubscribes))
+	zap.S().Infof("[PreviewUserNodes] found %v user subscribes", len(userSubscribes))
 
 	// 2. 按优先级获取 node_group_id：user_subscribe.node_group_id > subscribe.node_group_id > subscribe.node_group_ids[0]
 	// 收集所有订阅ID以便批量查询
 	subscribeIds := make([]int64, len(userSubscribes))
 	for i, us := range userSubscribes {
-		subscribeIds[i] = us.SubscribeID
+		subscribeIds[i] = us.SubscribeId
 	}
 
 	// 批量查询订阅信息
-	subscribeInfos, err := l.svcCtx.Ent.Subscribe.Query().Where(entsubscribe.IDIn(subscribeIds...)).All(l.ctx)
+	subscribeInfos, err := l.svcCtx.Store.Subscribe().FindByIds(l.ctx, subscribeIds)
 	if err != nil {
-		logger.Errorf("[PreviewUserNodes] failed to get subscribe infos: %v", err)
+		zap.S().Errorf("[PreviewUserNodes] failed to get subscribe infos: %v", err)
 		return nil, err
 	}
 
 	// 创建 subscribe_id -> SubscribeInfo 的映射
-	subInfoMap := make(map[int64]*ent.Subscribe)
+	subInfoMap := make(map[int64]*modelsubscribe.Subscribe)
 	for _, si := range subscribeInfos {
-		subInfoMap[si.ID] = si
+		subInfoMap[si.Id] = si
 	}
 
 	// 按优先级获取每个用户订阅的 node_group_id
@@ -80,20 +74,20 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		nodeGroupId := int64(0)
 
 		// 优先级1: user_subscribe.node_group_id
-		if us.NodeGroupID != 0 {
-			nodeGroupId = us.NodeGroupID
-			logger.Debugf("[PreviewUserNodes] user_subscribe_id=%d using node_group_id=%d", us.ID, nodeGroupId)
+		if us.NodeGroupId != 0 {
+			nodeGroupId = us.NodeGroupId
+			zap.S().Debugf("[PreviewUserNodes] user_subscribe_id=%d using node_group_id=%d", us.Id, nodeGroupId)
 		} else {
 			// 优先级2: subscribe.node_group_id
-			subInfo, ok := subInfoMap[us.SubscribeID]
+			subInfo, ok := subInfoMap[us.SubscribeId]
 			if ok {
-				if subInfo.NodeGroupID != 0 {
-					nodeGroupId = subInfo.NodeGroupID
-					logger.Debugf("[PreviewUserNodes] user_subscribe_id=%d using subscribe.node_group_id=%d", us.ID, nodeGroupId)
+				if subInfo.NodeGroupId != 0 {
+					nodeGroupId = subInfo.NodeGroupId
+					zap.S().Debugf("[PreviewUserNodes] user_subscribe_id=%d using subscribe.node_group_id=%d", us.Id, nodeGroupId)
 				} else if len(subInfo.NodeGroupIds) > 0 {
 					// 优先级3: subscribe.node_group_ids[0]
 					nodeGroupId = subInfo.NodeGroupIds[0]
-					logger.Debugf("[PreviewUserNodes] user_subscribe_id=%d using subscribe.node_group_ids[0]=%d", us.ID, nodeGroupId)
+					zap.S().Debugf("[PreviewUserNodes] user_subscribe_id=%d using subscribe.node_group_ids[0]=%d", us.Id, nodeGroupId)
 				}
 			}
 		}
@@ -106,7 +100,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 	// 去重
 	allNodeGroupIds = removeDuplicateInt64(allNodeGroupIds)
 
-	logger.Infof("[PreviewUserNodes] collected node_group_ids with priority: %v", allNodeGroupIds)
+	zap.S().Infof("[PreviewUserNodes] collected node_group_ids with priority: %v", allNodeGroupIds)
 
 	// 3. 收集所有订阅中直接分配的节点ID
 	var allDirectNodeIds []int64
@@ -123,32 +117,32 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					}
 				}
 			}
-			logger.Debugf("[PreviewUserNodes] subscribe_id=%d has direct nodes: %s", subInfo.ID, subInfo.Nodes)
+			zap.S().Debugf("[PreviewUserNodes] subscribe_id=%d has direct nodes: %s", subInfo.Id, subInfo.Nodes)
 		}
 	}
 	// 去重
 	allDirectNodeIds = removeDuplicateInt64(allDirectNodeIds)
-	logger.Infof("[PreviewUserNodes] collected direct node_ids: %v", allDirectNodeIds)
+	zap.S().Infof("[PreviewUserNodes] collected direct node_ids: %v", allDirectNodeIds)
 
 	// 4. 判断分组功能是否启用
 	configValue := ""
-	config, err := l.svcCtx.Ent.System.Query().Where(system.Category("group"), system.Key("enabled")).Only(l.ctx)
-	if err == nil {
+	config, err := l.svcCtx.Store.System().FindByCategoryKey(l.ctx, "group", "enabled")
+	if err == nil && config != nil {
 		configValue = config.Value
 	}
 
-	logger.Infof("[PreviewUserNodes] groupEnabled: %v", configValue)
+	zap.S().Infof("[PreviewUserNodes] groupEnabled: %v", configValue)
 
 	isGroupEnabled := configValue == "true" || configValue == "1"
 
-	var filteredNodes []*ent.Node
+	var filteredNodes []*modelnode.Node
 
 	if isGroupEnabled {
 		// === 启用分组功能：通过用户订阅的 node_group_id 查询节点 ===
-		logger.Infof("[PreviewUserNodes] using group-based node filtering")
+		zap.S().Infof("[PreviewUserNodes] using group-based node filtering")
 
 		if len(allNodeGroupIds) == 0 && len(allDirectNodeIds) == 0 {
-			logger.Infof("[PreviewUserNodes] no node groups and no direct nodes found in user subscribes")
+			zap.S().Infof("[PreviewUserNodes] no node groups and no direct nodes found in user subscribes")
 			resp = &types.PreviewUserNodesResponse{
 				UserId:     req.UserId,
 				NodeGroups: []types.NodeGroupItem{},
@@ -158,9 +152,9 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 
 		// 5. 查询所有启用的节点（只有当有节点组时才查询）
 		if len(allNodeGroupIds) > 0 {
-			dbNodes, err := l.svcCtx.Ent.Node.Query().Where(entnode.Enabled(true), entnode.IsHidden(false)).All(l.ctx)
+			dbNodes, err := l.svcCtx.Store.Node().QueryEnabledVisibleNodes(l.ctx)
 			if err != nil {
-				logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
+				zap.S().Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
 				return nil, err
 			}
 
@@ -183,12 +177,12 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 				}
 			}
 
-			logger.Infof("[PreviewUserNodes] found %v nodes using group filter", len(filteredNodes))
+			zap.S().Infof("[PreviewUserNodes] found %v nodes using group filter", len(filteredNodes))
 		}
 
 	} else {
 		// === 未启用分组功能：通过订阅的 node_tags 查询节点 ===
-		logger.Infof("[PreviewUserNodes] using tag-based node filtering")
+		zap.S().Infof("[PreviewUserNodes] using tag-based node filtering")
 
 		// 从已查询的 subscribeInfos 中获取 node_tags
 		var allTags []string
@@ -203,10 +197,10 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		// 去除空字符串
 		allTags = tool.RemoveStringElement(allTags, "")
 
-		logger.Infof("[PreviewUserNodes] merged tags from subscribes: %v", allTags)
+		zap.S().Infof("[PreviewUserNodes] merged tags from subscribes: %v", allTags)
 
 		if len(allTags) == 0 && len(allDirectNodeIds) == 0 {
-			logger.Infof("[PreviewUserNodes] no tags and no direct nodes found in subscribes")
+			zap.S().Infof("[PreviewUserNodes] no tags and no direct nodes found in subscribes")
 			resp = &types.PreviewUserNodesResponse{
 				UserId:     req.UserId,
 				NodeGroups: []types.NodeGroupItem{},
@@ -216,9 +210,9 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 
 		// 8. 查询所有启用的节点（只有当有 tags 时才查询）
 		if len(allTags) > 0 {
-			dbNodes, err := l.svcCtx.Ent.Node.Query().Where(entnode.Enabled(true), entnode.IsHidden(false)).All(l.ctx)
+			dbNodes, err := l.svcCtx.Store.Node().QueryEnabledVisibleNodes(l.ctx)
 			if err != nil {
-				logger.Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
+				zap.S().Errorf("[PreviewUserNodes] failed to get nodes: %v", err)
 				return nil, err
 			}
 
@@ -237,7 +231,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 				}
 			}
 
-			logger.Infof("[PreviewUserNodes] found %v nodes using tag filter", len(filteredNodes))
+			zap.S().Infof("[PreviewUserNodes] found %v nodes using tag filter", len(filteredNodes))
 		}
 	}
 
@@ -248,7 +242,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		// === 启用分组：按节点组分组 ===
 		// 转换为 types.Node 并按节点组分组
 		type NodeWithGroup struct {
-			Node         *ent.Node
+			Node         *modelnode.Node
 			NodeGroupIds []int64
 		}
 
@@ -289,14 +283,14 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					tags = strings.Split(ng.Node.Tags, ",")
 				}
 				node := types.Node{
-					Id:           ng.Node.ID,
+					Id:           ng.Node.Id,
 					Name:         ng.Node.Name,
 					Tags:         tags,
 					Port:         ng.Node.Port,
 					Address:      ng.Node.Address,
-					ServerId:     ng.Node.ServerID,
+					ServerId:     ng.Node.ServerId,
 					Protocol:     ng.Node.Protocol,
-					Enabled:      &ng.Node.Enabled,
+					Enabled:      ng.Node.Enabled,
 					Sort:         ng.Node.Sort,
 					NodeGroupIds: tool.Int64SliceToStringSlice([]int64(ng.Node.NodeGroupIds)),
 					CreatedAt:    ng.Node.CreatedAt.Unix(),
@@ -318,14 +312,14 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					tags = strings.Split(ng.Node.Tags, ",")
 				}
 				node := types.Node{
-					Id:           ng.Node.ID,
+					Id:           ng.Node.Id,
 					Name:         ng.Node.Name,
 					Tags:         tags,
 					Port:         ng.Node.Port,
 					Address:      ng.Node.Address,
-					ServerId:     ng.Node.ServerID,
+					ServerId:     ng.Node.ServerId,
 					Protocol:     ng.Node.Protocol,
-					Enabled:      &ng.Node.Enabled,
+					Enabled:      ng.Node.Enabled,
 					Sort:         ng.Node.Sort,
 					NodeGroupIds: tool.Int64SliceToStringSlice([]int64(ng.Node.NodeGroupIds)),
 					CreatedAt:    ng.Node.CreatedAt.Unix(),
@@ -341,19 +335,19 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		validGroupIds := make([]int64, 0)
 
 		if len(allGroupIds) > 0 {
-			nodeGroupInfos, err := l.svcCtx.Ent.NodeGroup.Query().Where(nodegroup.IDIn(allGroupIds...)).All(l.ctx)
+			nodeGroupInfos, err := l.svcCtx.Store.Group().QueryNodeGroupsByIds(l.ctx, allGroupIds)
 			if err != nil {
-				logger.Errorf("[PreviewUserNodes] failed to get node group infos: %v", err)
+				zap.S().Errorf("[PreviewUserNodes] failed to get node group infos: %v", err)
 				return nil, err
 			}
 
-			logger.Infof("[PreviewUserNodes] found %v node group infos from %v requested", len(nodeGroupInfos), len(allGroupIds))
+			zap.S().Infof("[PreviewUserNodes] found %v node group infos from %v requested", len(nodeGroupInfos), len(allGroupIds))
 
 			// 创建节点组信息映射和有效节点组ID列表
 			for _, ngInfo := range nodeGroupInfos {
-				nodeGroupInfoMap[ngInfo.ID] = ngInfo.Name
-				validGroupIds = append(validGroupIds, ngInfo.ID)
-				logger.Debugf("[PreviewUserNodes] node_group[%d] = %s", ngInfo.ID, ngInfo.Name)
+				nodeGroupInfoMap[ngInfo.Id] = ngInfo.Name
+				validGroupIds = append(validGroupIds, ngInfo.Id)
+				zap.S().Debugf("[PreviewUserNodes] node_group[%d] = %s", ngInfo.Id, ngInfo.Name)
 			}
 
 			// 记录无效的节点组ID
@@ -366,7 +360,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					}
 				}
 				if !found {
-					logger.Infof("[PreviewUserNodes] node_group_id %d not found in database, treating as public nodes", requestedId)
+					zap.S().Infof("[PreviewUserNodes] node_group_id %d not found in database, treating as public nodes", requestedId)
 				}
 			}
 		}
@@ -402,10 +396,10 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					Name:  groupName,
 					Nodes: gm.Nodes,
 				})
-				logger.Infof("[PreviewUserNodes] adding node group: id=%d, name=%s, nodes=%d", groupId, groupName, len(gm.Nodes))
+				zap.S().Infof("[PreviewUserNodes] adding node group: id=%d, name=%s, nodes=%d", groupId, groupName, len(gm.Nodes))
 			} else {
 				// 节点组无效，节点归入公共节点组
-				logger.Infof("[PreviewUserNodes] node_group_id %d invalid, moving %d nodes to public group", groupId, len(gm.Nodes))
+				zap.S().Infof("[PreviewUserNodes] node_group_id %d invalid, moving %d nodes to public group", groupId, len(gm.Nodes))
 				publicNodes = append(publicNodes, gm.Nodes...)
 			}
 		}
@@ -417,7 +411,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 				Name:  "",
 				Nodes: publicNodes,
 			})
-			logger.Infof("[PreviewUserNodes] adding public group: nodes=%d", len(publicNodes))
+			zap.S().Infof("[PreviewUserNodes] adding public group: nodes=%d", len(publicNodes))
 		}
 
 	} else {
@@ -433,14 +427,14 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 
 			// 转换节点
 			node := types.Node{
-				Id:           n.ID,
+				Id:           n.Id,
 				Name:         n.Name,
 				Tags:         tags,
 				Port:         n.Port,
 				Address:      n.Address,
-				ServerId:     n.ServerID,
+				ServerId:     n.ServerId,
 				Protocol:     n.Protocol,
-				Enabled:      &n.Enabled,
+				Enabled:      n.Enabled,
 				Sort:         n.Sort,
 				NodeGroupIds: tool.Int64SliceToStringSlice([]int64(n.NodeGroupIds)),
 				CreatedAt:    n.CreatedAt.Unix(),
@@ -468,16 +462,16 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 				Name:  tag,
 				Nodes: nodes,
 			})
-			logger.Infof("[PreviewUserNodes] adding tag group: tag=%s, nodes=%d", tag, len(nodes))
+			zap.S().Infof("[PreviewUserNodes] adding tag group: tag=%s, nodes=%d", tag, len(nodes))
 		}
 	}
 
 	// 添加套餐节点组（直接分配的节点）
 	if len(allDirectNodeIds) > 0 {
 		// 查询直接分配的节点详情
-		directNodes, err := l.svcCtx.Ent.Node.Query().Where(entnode.IDIn(allDirectNodeIds...), entnode.Enabled(true), entnode.IsHidden(false)).All(l.ctx)
+		directNodes, err := l.svcCtx.Store.Node().QueryEnabledVisibleNodesByIds(l.ctx, allDirectNodeIds)
 		if err != nil {
-			logger.Errorf("[PreviewUserNodes] failed to get direct nodes: %v", err)
+			zap.S().Errorf("[PreviewUserNodes] failed to get direct nodes: %v", err)
 			return nil, err
 		}
 
@@ -490,14 +484,14 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 					tags = strings.Split(n.Tags, ",")
 				}
 				directNodeItems = append(directNodeItems, types.Node{
-					Id:           n.ID,
+					Id:           n.Id,
 					Name:         n.Name,
 					Tags:         tags,
 					Port:         n.Port,
 					Address:      n.Address,
-					ServerId:     n.ServerID,
+					ServerId:     n.ServerId,
 					Protocol:     n.Protocol,
-					Enabled:      &n.Enabled,
+					Enabled:      n.Enabled,
 					Sort:         n.Sort,
 					NodeGroupIds: tool.Int64SliceToStringSlice([]int64(n.NodeGroupIds)),
 					CreatedAt:    n.CreatedAt.Unix(),
@@ -511,7 +505,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 				Name:  "", // 空字符串，前端根据 ID -1 识别并国际化
 				Nodes: directNodeItems,
 			})
-			logger.Infof("[PreviewUserNodes] adding subscription nodes group: nodes=%d", len(directNodeItems))
+			zap.S().Infof("[PreviewUserNodes] adding subscription nodes group: nodes=%d", len(directNodeItems))
 		}
 	}
 
@@ -521,7 +515,7 @@ func (l *PreviewUserNodesLogic) PreviewUserNodes(req *types.PreviewUserNodesRequ
 		NodeGroups: nodeGroupItems,
 	}
 
-	logger.Infof("[PreviewUserNodes] returning %v node groups for user %v", len(resp.NodeGroups), req.UserId)
+	zap.S().Infof("[PreviewUserNodes] returning %v node groups for user %v", len(resp.NodeGroups), req.UserId)
 	return resp, nil
 }
 

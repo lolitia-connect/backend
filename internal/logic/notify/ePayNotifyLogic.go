@@ -9,16 +9,16 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment/epay"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 
 	queueType "github.com/perfect-panel/server/queue/types"
 )
 
 type EPayNotifyLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 	meta   EPayNotifyMeta
@@ -35,7 +35,7 @@ func NewEPayNotifyLogic(ctx context.Context, svcCtx *svc.ServiceContext, meta EP
 		meta.Params = make(map[string]string)
 	}
 	return &EPayNotifyLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 		meta:   meta,
@@ -53,28 +53,28 @@ func (l *EPayNotifyLogic) EPayNotify(req *types.EPayNotifyRequest) error {
 
 	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, req.OutTradeNo)
 	if err != nil {
-		l.Logger.Error("[EPayNotify] Find order failed", logger.Field("error", err.Error()), logger.Field("orderNo", req.OutTradeNo))
+		l.Logger.Error("[EPayNotify] Find order failed", zap.Any("error", err.Error()), zap.Any("orderNo", req.OutTradeNo))
 		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", req.OutTradeNo)
 	}
 
 	var config payment.EPayConfig
 	if err := json.Unmarshal([]byte(data.Config), &config); err != nil {
-		l.Logger.Errorw("[EPayNotify] Unmarshal config failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[EPayNotify] Unmarshal config failed", zap.Any("error", err.Error()))
 		return err
 	}
 
 	client := epay.NewClient(config.Pid, config.Url, config.Key, config.Type)
 	if !client.VerifySign(l.meta.Params) && !l.svcCtx.Config.Debug {
 		l.Logger.Error("[EPayNotify] Verify sign failed",
-			logger.Field("orderNo", req.OutTradeNo),
-			logger.Field("receivedParams", l.meta.Params),
-			logger.Field("method", l.meta.Method),
+			zap.Any("orderNo", req.OutTradeNo),
+			zap.Any("receivedParams", l.meta.Params),
+			zap.Any("method", l.meta.Method),
 		)
 		return errors.New("verify sign failed")
 	}
 
 	if req.TradeStatus != "TRADE_SUCCESS" {
-		l.Logger.Error("[EPayNotify] Trade status is not success", logger.Field("orderNo", req.OutTradeNo), logger.Field("tradeStatus", req.TradeStatus))
+		l.Logger.Error("[EPayNotify] Trade status is not success", zap.Any("orderNo", req.OutTradeNo), zap.Any("tradeStatus", req.TradeStatus))
 		return nil
 	}
 	if orderInfo.Status == 5 {
@@ -83,7 +83,7 @@ func (l *EPayNotifyLogic) EPayNotify(req *types.EPayNotifyRequest) error {
 	// Update order status
 	err = store.Order().UpdateOrderStatus(l.ctx, req.OutTradeNo, 2)
 	if err != nil {
-		l.Logger.Error("[EPayNotify] Update order status failed", logger.Field("error", err.Error()), logger.Field("orderNo", req.OutTradeNo))
+		l.Logger.Error("[EPayNotify] Update order status failed", zap.Any("error", err.Error()), zap.Any("orderNo", req.OutTradeNo))
 		return err
 	}
 	// Create activate order task
@@ -92,15 +92,15 @@ func (l *EPayNotifyLogic) EPayNotify(req *types.EPayNotifyRequest) error {
 	}
 	bytes, err := json.Marshal(&payload)
 	if err != nil {
-		l.Logger.Error("[EPayNotify] Marshal payload failed", logger.Field("error", err.Error()))
+		l.Logger.Error("[EPayNotify] Marshal payload failed", zap.Any("error", err.Error()))
 		return err
 	}
 	task := asynq.NewTask(queueType.ForthwithActivateOrder, bytes, asynq.MaxRetry(5))
 	taskInfo, err := l.svcCtx.Queue.EnqueueContext(l.ctx, task)
 	if err != nil {
-		l.Logger.Error("[EPayNotify] Enqueue task failed", logger.Field("error", err.Error()))
+		l.Logger.Error("[EPayNotify] Enqueue task failed", zap.Any("error", err.Error()))
 		return err
 	}
-	l.Logger.Info("[EPayNotify] Enqueue task success", logger.Field("taskInfo", taskInfo))
+	l.Logger.Info("[EPayNotify] Enqueue task success", zap.Any("taskInfo", taskInfo))
 	return nil
 }

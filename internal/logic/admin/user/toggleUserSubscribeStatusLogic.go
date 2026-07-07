@@ -5,13 +5,13 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type ToggleUserSubscribeStatusLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type ToggleUserSubscribeStatusLogic struct {
 // NewToggleUserSubscribeStatusLogic Stop user subscribe
 func NewToggleUserSubscribeStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ToggleUserSubscribeStatusLogic {
 	return &ToggleUserSubscribeStatusLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -28,7 +28,7 @@ func NewToggleUserSubscribeStatusLogic(ctx context.Context, svcCtx *svc.ServiceC
 func (l *ToggleUserSubscribeStatusLogic) ToggleUserSubscribeStatus(req *types.ToggleUserSubscribeStatusRequest) error {
 	userSub, err := l.svcCtx.Store.User().FindOneSubscribe(l.ctx, req.UserSubscribeId)
 	if err != nil {
-		l.Errorw("FindOneSubscribe error", logger.Field("error", err.Error()), logger.Field("userSubscribeId", req.UserSubscribeId))
+		l.Logger.Errorw("FindOneSubscribe error", zap.Any("error", err.Error()), zap.Any("userSubscribeId", req.UserSubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), " FindOneSubscribe error: %v", err.Error())
 	}
 
@@ -38,24 +38,19 @@ func (l *ToggleUserSubscribeStatusLogic) ToggleUserSubscribeStatus(req *types.To
 	case 5: // stopped
 		userSub.Status = 1 // set status to active
 	default:
-		l.Errorw("invalid user subscribe status", logger.Field("userSubscribeId", req.UserSubscribeId), logger.Field("status", userSub.Status))
+		l.Logger.Errorw("invalid user subscribe status", zap.Any("userSubscribeId", req.UserSubscribeId), zap.Any("status", userSub.Status))
 		return errors.Wrapf(xerr.NewErrCodeMsg(xerr.ERROR, "invalid subscribe status"), "invalid user subscribe status: %d", userSub.Status)
 	}
 
 	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, userSub)
 	if err != nil {
-		l.Errorw("UpdateSubscribe error", logger.Field("error", err.Error()), logger.Field("userSubscribeId", req.UserSubscribeId))
+		l.Logger.Errorw("UpdateSubscribe error", zap.Any("error", err.Error()), zap.Any("userSubscribeId", req.UserSubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), " UpdateSubscribe error: %v", err.Error())
 	}
 
-	// Clear user subscribe cache
-	if err = l.svcCtx.Store.User().ClearSubscribeCache(l.ctx, userSub); err != nil {
-		l.Errorw("ClearSubscribeCache failed:", logger.Field("error", err.Error()), logger.Field("userSubscribeId", userSub.Id))
-		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "ClearSubscribeCache failed: %v", err.Error())
-	}
 	// Clear subscribe cache
 	if err = l.svcCtx.Store.Subscribe().ClearCache(l.ctx, userSub.SubscribeId); err != nil {
-		l.Errorw("failed to clear subscribe cache", logger.Field("error", err.Error()), logger.Field("subscribeId", userSub.SubscribeId))
+		l.Logger.Errorw("failed to clear subscribe cache", zap.Any("error", err.Error()), zap.Any("subscribeId", userSub.SubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "failed to clear subscribe cache: %v", err.Error())
 	}
 

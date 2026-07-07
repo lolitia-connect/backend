@@ -1,21 +1,21 @@
 package redemption
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"crypto/rand"
+	"github.com/perfect-panel/server/ent"
 	"math/big"
 
 	"github.com/perfect-panel/server/internal/model/redemption"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type CreateRedemptionCodeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type CreateRedemptionCodeLogic struct {
 // Create redemption code
 func NewCreateRedemptionCodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateRedemptionCodeLogic {
 	return &CreateRedemptionCodeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -63,7 +63,7 @@ func (l *CreateRedemptionCodeLogic) generateUniqueCode() (string, error) {
 func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemptionCodeRequest) error {
 	// Check if subscribe plan is valid
 	if req.SubscribePlan == 0 {
-		l.Errorw("[CreateRedemptionCode] Subscribe plan cannot be empty")
+		l.Logger.Errorw("[CreateRedemptionCode] Subscribe plan cannot be empty")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "subscribe plan cannot be empty")
 	}
 
@@ -71,16 +71,16 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 	_, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, req.SubscribePlan)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			l.Errorw("[CreateRedemptionCode] Subscribe plan not found", logger.Field("subscribe_plan", req.SubscribePlan))
+			l.Logger.Errorw("[CreateRedemptionCode] Subscribe plan not found", zap.Any("subscribe_plan", req.SubscribePlan))
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "subscribe plan not found")
 		}
-		l.Errorw("[CreateRedemptionCode] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[CreateRedemptionCode] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe plan error: %v", err.Error())
 	}
 
 	// Validate batch count
 	if req.BatchCount < 1 {
-		l.Errorw("[CreateRedemptionCode] Batch count must be at least 1")
+		l.Logger.Errorw("[CreateRedemptionCode] Batch count must be at least 1")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "batch count must be at least 1")
 	}
 
@@ -89,7 +89,7 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 	for i := int64(0); i < req.BatchCount; i++ {
 		code, err := l.generateUniqueCode()
 		if err != nil {
-			l.Errorw("[CreateRedemptionCode] Failed to generate unique code", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[CreateRedemptionCode] Failed to generate unique code", zap.Any("error", err.Error()))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "generate unique code error: %v", err.Error())
 		}
 
@@ -105,16 +105,16 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 
 		err = l.svcCtx.Store.RedemptionCode().Insert(l.ctx, redemptionCode)
 		if err != nil {
-			l.Errorw("[CreateRedemptionCode] Database Error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[CreateRedemptionCode] Database Error", zap.Any("error", err.Error()))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create redemption code error: %v", err.Error())
 		}
 
 		createdCodes = append(createdCodes, code)
 	}
 
-	l.Infow("[CreateRedemptionCode] Successfully created redemption codes",
-		logger.Field("count", len(createdCodes)),
-		logger.Field("codes", createdCodes))
+	l.Logger.Infow("[CreateRedemptionCode] Successfully created redemption codes",
+		zap.Any("count", len(createdCodes)),
+		zap.Any("codes", createdCodes))
 
 	return nil
 }

@@ -6,13 +6,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterRegisterLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type FilterRegisterLogLogic struct {
 // Filter register log
 func NewFilterRegisterLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterRegisterLogLogic {
 	return &FilterRegisterLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,7 +37,7 @@ func (l *FilterRegisterLogLogic) FilterRegisterLog(req *types.FilterRegisterLogR
 	})
 
 	if err != nil {
-		l.Errorf("[FilterRegisterLog] failed to filter system log: %v", err.Error())
+		l.Logger.Errorf("[FilterRegisterLog] failed to filter system log: %v", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "failed to filter system log: %v", err.Error())
 	}
 
@@ -46,7 +46,7 @@ func (l *FilterRegisterLogLogic) FilterRegisterLog(req *types.FilterRegisterLogR
 		var item log.Register
 		err = item.Unmarshal([]byte(datum.Content))
 		if err != nil {
-			l.Errorf("[FilterLoginLog] failed to unmarshal content: %v", err.Error())
+			l.Logger.Errorf("[FilterLoginLog] failed to unmarshal content: %v", err.Error())
 			continue
 		}
 		list = append(list, types.RegisterLog{

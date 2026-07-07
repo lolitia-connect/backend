@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/config"
@@ -51,14 +51,14 @@ func (l *ServerDataLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error 
 	serverData.UpdatedAt = time.Now().UnixMilli()
 	data, err := json.Marshal(serverData)
 	if err != nil {
-		logger.Error("[ServerDataLogic] Marshal server data failed", logger.Field("error", err.Error()), logger.Field("data", serverData))
+		zap.S().Error("[ServerDataLogic] Marshal server data failed", zap.Any("error", err.Error()), zap.Any("data", serverData))
 		return err
 	}
 	if err := l.svc.Redis.Set(ctx, config.ServerCountCacheKey, data, -1).Err(); err != nil {
-		logger.Error("[ServerDataLogic] Set server data failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ServerDataLogic] Set server data failed", zap.Any("error", err.Error()))
 		return err
 	}
-	logger.Info("[ServerDataLogic] Update server data success")
+	zap.S().Info("[ServerDataLogic] Update server data success")
 	return nil
 }
 
@@ -67,7 +67,7 @@ func (l *ServerDataLogic) getRanking(ctx context.Context) (top10ServerToday, top
 	// 获取服务器流量排行榜
 	serverToday, err := l.svc.Store.TrafficLog().TopServersTrafficByDay(ctx, now, 10)
 	if err != nil {
-		logger.Error("[ServerDataLogic] Get top servers traffic by day failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ServerDataLogic] Get top servers traffic by day failed", zap.Any("error", err.Error()))
 	} else {
 		for _, s := range serverToday {
 			if s.ServerId == 0 {
@@ -75,7 +75,7 @@ func (l *ServerDataLogic) getRanking(ctx context.Context) (top10ServerToday, top
 			}
 			serverInfo, err := l.svc.Store.Node().FindOneServer(ctx, s.ServerId)
 			if err != nil {
-				logger.Error("[ServerDataLogic] Find server failed", logger.Field("error", err.Error()))
+				zap.S().Error("[ServerDataLogic] Find server failed", zap.Any("error", err.Error()))
 				continue
 			}
 			top10ServerToday = append(top10ServerToday, types.ServerTrafficData{
@@ -89,12 +89,12 @@ func (l *ServerDataLogic) getRanking(ctx context.Context) (top10ServerToday, top
 
 	serverYesterday, err := l.svc.Store.TrafficLog().TopServersTrafficByDay(ctx, now.AddDate(0, 0, -1), 10)
 	if err != nil {
-		logger.Error("[ServerDataLogic] Get top servers traffic by day failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ServerDataLogic] Get top servers traffic by day failed", zap.Any("error", err.Error()))
 	} else {
 		for _, s := range serverYesterday {
 			serverInfo, err := l.svc.Store.Node().FindOneServer(ctx, s.ServerId)
 			if err != nil {
-				logger.Error("[ServerDataLogic] Find server failed", logger.Field("error", err.Error()))
+				zap.S().Error("[ServerDataLogic] Find server failed", zap.Any("error", err.Error()))
 				continue
 			}
 			top10ServerYesterday = append(top10ServerYesterday, types.ServerTrafficData{
@@ -109,7 +109,7 @@ func (l *ServerDataLogic) getRanking(ctx context.Context) (top10ServerToday, top
 	// 获取用户流量排行榜
 	userToday, err := l.svc.Store.TrafficLog().TopUsersTrafficByDay(ctx, now, 10)
 	if err != nil {
-		logger.Error("[ServerDataLogic] Get top users traffic by day failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ServerDataLogic] Get top users traffic by day failed", zap.Any("error", err.Error()))
 	} else {
 		for _, u := range userToday {
 			//userInfo, err := l.svc.Store.User().FindOne(ctx, u.UserId)
@@ -127,7 +127,7 @@ func (l *ServerDataLogic) getRanking(ctx context.Context) (top10ServerToday, top
 
 	userYesterday, err := l.svc.Store.TrafficLog().TopUsersTrafficByDay(ctx, now.AddDate(0, 0, -1), 10)
 	if err != nil {
-		logger.Error("[ServerDataLogic] Get top users traffic by day failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ServerDataLogic] Get top users traffic by day failed", zap.Any("error", err.Error()))
 	} else {
 		for _, u := range userYesterday {
 			//userInfo, err := l.svc.Store.User().FindOne(ctx, u.UserId)
@@ -149,7 +149,7 @@ func (l *ServerDataLogic) trafficCount(ctx context.Context) (totalUploadToday, t
 	now := time.Now()
 	today, err := l.svc.Store.TrafficLog().QueryTrafficByDay(ctx, now)
 	if err != nil {
-		logger.Error("[ServerDataLogic] Query traffic by day failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ServerDataLogic] Query traffic by day failed", zap.Any("error", err.Error()))
 	} else {
 		totalUploadToday = today.Upload
 		totalDownloadToday = today.Download
@@ -157,7 +157,7 @@ func (l *ServerDataLogic) trafficCount(ctx context.Context) (totalUploadToday, t
 
 	monthly, err := l.svc.Store.TrafficLog().QueryTrafficByMonthly(ctx, now)
 	if err != nil {
-		logger.Error("[ServerDataLogic] Query traffic by monthly failed", logger.Field("error", err.Error()))
+		zap.S().Error("[ServerDataLogic] Query traffic by monthly failed", zap.Any("error", err.Error()))
 	} else {
 		totalUploadMonthly = monthly.Upload
 		totalDownloadMonthly = monthly.Download

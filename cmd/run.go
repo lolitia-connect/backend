@@ -21,13 +21,14 @@ import (
 	"github.com/perfect-panel/server/internal/plugin"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/conf"
-	"github.com/perfect-panel/server/pkg/logger"
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/pkg/orm"
 	"github.com/perfect-panel/server/pkg/service"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/queue"
 	"github.com/perfect-panel/server/scheduler"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -68,7 +69,7 @@ func getServers() *service.Group {
 		}
 		// create new config file
 		if _, err := os.Create(startConfigPath); err != nil {
-			logger.Errorf("Please create the configuration file %s.\n", startConfigPath)
+			zap.S().Errorf("Please create the configuration file %s.\n", startConfigPath)
 			panic(fmt.Sprintf("Please create the configuration file %s.\n", startConfigPath))
 		}
 	}
@@ -85,8 +86,8 @@ func getServers() *service.Group {
 		hertzx.SetMode(hertzx.ReleaseMode)
 	}
 	// init logger
-	if err := logger.SetUp(c.Logger); err != nil {
-		logger.Errorf("Logger setup failed: %v", err.Error())
+	if err := logging.SetUp(c.Logger); err != nil {
+		zap.S().Errorf("Logger setup failed: %v", err.Error())
 	}
 
 	// init service context

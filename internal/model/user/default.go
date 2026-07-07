@@ -2,21 +2,15 @@ package user
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
 	entuser "github.com/perfect-panel/server/ent/user"
 	entauth "github.com/perfect-panel/server/ent/userauthmethod"
 	entdevice "github.com/perfect-panel/server/ent/userdevice"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	cacheUserIdPrefix    = "cache:user:id:"
-	cacheUserEmailPrefix = "cache:user:email:"
-)
 var _ Model = (*customUserModel)(nil)
 
 type (
@@ -50,40 +44,12 @@ func newUserModel(db *ent.Client, c *redis.Client) *defaultUserModel {
 	}
 }
 
-func (m *defaultUserModel) batchGetCacheKeys(users ...*User) []string {
-	var keys []string
-	for _, user := range users {
-		keys = append(keys, user.GetCacheKeys()...)
-	}
-	return keys
-}
-
-func (m *defaultUserModel) getCacheKeys(data *User) []string {
-	if data == nil {
-		return []string{}
-	}
-	return data.GetCacheKeys()
-}
-
-func (m *defaultUserModel) clearUserCache(ctx context.Context, data ...*User) error {
-	return m.ClearUserCache(ctx, data...)
-}
-
 func (m *defaultUserModel) FindOneByEmail(ctx context.Context, email string) (*User, error) {
-	key := fmt.Sprintf("%s%v", cacheUserEmailPrefix, email)
-	var cached User
-	if err := getJSONCache(ctx, m.redis, key, &cached); err == nil {
-		return &cached, nil
-	}
 	auth, err := m.db.UserAuthMethod.Query().Where(entauth.AuthType("email"), entauth.AuthIdentifier(email)).First(ctx)
 	if err != nil {
 		return nil, err
 	}
-	data, err := m.findOne(ctx, auth.UserID, true)
-	if err == nil {
-		_ = setJSONCache(ctx, m.redis, key, data)
-	}
-	return data, err
+	return m.findOne(ctx, auth.UserID, true)
 }
 
 func (m *defaultUserModel) Insert(ctx context.Context, data *User) error {
@@ -92,24 +58,15 @@ func (m *defaultUserModel) Insert(ctx context.Context, data *User) error {
 		return err
 	}
 	*data = *entToUser(created)
-	return m.ClearUserCache(ctx, data)
+	return nil
 }
 
 func (m *defaultUserModel) FindOne(ctx context.Context, id int64) (*User, error) {
-	userIdKey := fmt.Sprintf("%s%v", cacheUserIdPrefix, id)
-	var cached User
-	if err := getJSONCache(ctx, m.redis, userIdKey, &cached); err == nil {
-		return &cached, nil
-	}
-	resp, err := m.findOne(ctx, id, true)
-	if err == nil {
-		_ = setJSONCache(ctx, m.redis, userIdKey, resp)
-	}
-	return resp, err
+	return m.findOne(ctx, id, true)
 }
 
 func (m *defaultUserModel) Update(ctx context.Context, data *User) error {
-	old, err := m.FindOne(ctx, data.Id)
+	_, err := m.FindOne(ctx, data.Id)
 	if err != nil && !ent.IsNotFound(err) {
 		return err
 	}
@@ -118,25 +75,17 @@ func (m *defaultUserModel) Update(ctx context.Context, data *User) error {
 		return err
 	}
 	*data = *entToUser(updated)
-	return m.GetCacheManager().ClearCache(ctx, append(m.getCacheKeys(old), m.getCacheKeys(data)...)...)
+	return nil
 }
 
 func (m *defaultUserModel) Delete(ctx context.Context, id int64) error {
-	data, err := m.FindOne(ctx, id)
+	_, err := m.FindOne(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-
-	// Use batch related cache cleaning, including a cache of all relevant data
-	defer func() {
-		if clearErr := m.BatchClearRelatedCache(ctx, data); clearErr != nil {
-			// Record cache cleaning errors, but do not block deletion operations
-			logger.Errorf("failed to clear related cache for user %d: %v", id, clearErr.Error())
-		}
-	}()
 
 	return m.db.User.UpdateOneID(id).SetDeletedAt(time.Now()).Exec(ctx)
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/perfect-panel/server/internal/config"
@@ -18,23 +18,23 @@ func Telegram(svc *svc.ServiceContext) {
 
 	method, err := svc.Store.Auth().FindOneByMethod(context.Background(), "telegram")
 	if err != nil {
-		logger.Errorf("[Init Telegram Config] Get Telegram Config Error: %s", err.Error())
+		zap.S().Errorf("[Init Telegram Config] Get Telegram Config Error: %s", err.Error())
 		return
 	}
 	tgConfig := new(auth.TelegramAuthConfig)
 	if err = tgConfig.Unmarshal(method.Config); err != nil {
-		logger.Errorf("[Init Telegram Config] Unmarshal Telegram Config Error: %s", err.Error())
+		zap.S().Errorf("[Init Telegram Config] Unmarshal Telegram Config Error: %s", err.Error())
 		return
 	}
 
 	if tgConfig.BotToken == "" {
-		logger.Debug("[Init Telegram Config] Telegram Token is empty")
+		zap.S().Debug("[Init Telegram Config] Telegram Token is empty")
 		return
 	}
 
 	bot, err := tgbotapi.NewBotAPI(tgConfig.BotToken)
 	if err != nil {
-		logger.Error("[Init Telegram Config] New Bot API Error: ", logger.Field("error", err.Error()))
+		zap.S().Error("[Init Telegram Config] New Bot API Error: ", zap.Any("error", err.Error()))
 		return
 	}
 
@@ -55,19 +55,19 @@ func Telegram(svc *svc.ServiceContext) {
 	} else {
 		wh, err := tgbotapi.NewWebhook(fmt.Sprintf("%s/v1/telegram/webhook?secret=%s", tgConfig.WebHookDomain, tool.Md5Encode(tgConfig.BotToken, false)))
 		if err != nil {
-			logger.Errorf("[Init Telegram Config] New Webhook Error: %s", err.Error())
+			zap.S().Errorf("[Init Telegram Config] New Webhook Error: %s", err.Error())
 			return
 		}
 		_, err = bot.Request(wh)
 		if err != nil {
-			logger.Errorf("[Init Telegram Config] Request Webhook Error: %s", err.Error())
+			zap.S().Errorf("[Init Telegram Config] Request Webhook Error: %s", err.Error())
 			return
 		}
 	}
 
 	user, err := bot.GetMe()
 	if err != nil {
-		logger.Error("[Init Telegram Config] Get Bot Info Error: ", logger.Field("error", err.Error()))
+		zap.S().Error("[Init Telegram Config] Get Bot Info Error: ", zap.Any("error", err.Error()))
 		return
 	}
 	svc.Config.Telegram = config.Telegram{
@@ -80,5 +80,5 @@ func Telegram(svc *svc.ServiceContext) {
 	}
 	svc.TelegramBot = bot
 
-	logger.Info("[Init Telegram Config] Webhook set success")
+	zap.S().Info("[Init Telegram Config] Webhook set success")
 }

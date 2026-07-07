@@ -3,10 +3,10 @@ package twilio
 import (
 	"fmt"
 
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/templatex"
 	"github.com/twilio/twilio-go"
 	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
+	"go.uber.org/zap"
 )
 
 type Config struct {
@@ -40,16 +40,16 @@ func (c *Client) SendCode(area, mobile, code string) error {
 		"code": code,
 	})
 	if err != nil {
-		logger.Error("twilio send code render template error", logger.Field("error", err.Error()), logger.Field("template", c.config.Template), logger.Field("code", code))
+		zap.S().Error("twilio send code render template error", zap.Any("error", err.Error()), zap.Any("template", c.config.Template), zap.Any("code", code))
 	}
 	params.SetBody(text)
 	resp, err := c.client.Api.CreateMessage(params)
 	if err != nil {
-		logger.Error("twilio send code error", logger.Field("error", err.Error()), logger.Field("params", params))
+		zap.S().Error("twilio send code error", zap.Any("error", err.Error()), zap.Any("params", params))
 		return fmt.Errorf("twilio send code error: %s", err.Error())
 	}
 	if resp.ErrorCode != nil {
-		logger.Error("twilio send code error", logger.Field("error_code", *resp.ErrorCode), logger.Field("error_message", *resp.ErrorMessage))
+		zap.S().Error("twilio send code error", zap.Any("error_code", *resp.ErrorCode), zap.Any("error_message", *resp.ErrorMessage))
 		return fmt.Errorf("twilio send code error: %s", *resp.ErrorMessage)
 	}
 	return nil

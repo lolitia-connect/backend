@@ -6,24 +6,21 @@ import (
 	"errors"
 
 	"github.com/perfect-panel/server/ent"
-	"github.com/perfect-panel/server/ent/grouphistory"
-	"github.com/perfect-panel/server/ent/grouphistorydetail"
-	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type GetGroupHistoryDetailLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
 func NewGetGroupHistoryDetailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetGroupHistoryDetailLogic {
 	return &GetGroupHistoryDetailLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,19 +28,19 @@ func NewGetGroupHistoryDetailLogic(ctx context.Context, svcCtx *svc.ServiceConte
 
 func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHistoryDetailRequest) (resp *types.GetGroupHistoryDetailResponse, err error) {
 	// 查询分组历史记录
-	history, err := l.svcCtx.Ent.GroupHistory.Query().Where(grouphistory.ID(req.Id)).Only(l.ctx)
+	history, err := l.svcCtx.Store.Group().FindGroupHistory(l.ctx, req.Id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, errors.New("group history not found")
 		}
-		logger.Errorf("failed to find group history: %v", err)
+		zap.S().Errorf("failed to find group history: %v", err)
 		return nil, err
 	}
 
 	// 查询分组历史详情
-	details, err := l.svcCtx.Ent.GroupHistoryDetail.Query().Where(grouphistorydetail.HistoryID(req.Id)).All(l.ctx)
+	details, err := l.svcCtx.Store.Group().QueryGroupHistoryDetails(l.ctx, req.Id)
 	if err != nil {
-		logger.Errorf("failed to find group history details: %v", err)
+		zap.S().Errorf("failed to find group history details: %v", err)
 		return nil, err
 	}
 
@@ -61,7 +58,7 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 	// 构建 GroupHistoryDetail
 	historyDetail := types.GroupHistoryDetail{
 		GroupHistory: types.GroupHistory{
-			Id:           history.ID,
+			Id:           history.Id,
 			GroupMode:    history.GroupMode,
 			TriggerType:  history.TriggerType,
 			TotalUsers:   history.TotalUsers,
@@ -88,12 +85,7 @@ func (l *GetGroupHistoryDetailLogic) GetGroupHistoryDetail(req *types.GetGroupHi
 			configKey = "traffic_config"
 		}
 		if configKey != "" {
-			config, err := l.svcCtx.Ent.System.Query().Where(
-				entsystem.Or(
-					entsystem.Key("group."+configKey),
-					entsystem.And(entsystem.Category("group"), entsystem.Key(configKey)),
-				),
-			).First(l.ctx)
+			config, err := l.svcCtx.Store.System().FindFirstByCategoryKeys(l.ctx, "group", "group."+configKey, configKey)
 			if err == nil {
 				configValue = config.Value
 			}

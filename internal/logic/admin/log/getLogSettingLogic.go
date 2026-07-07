@@ -5,12 +5,12 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type GetLogSettingLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -18,7 +18,7 @@ type GetLogSettingLogic struct {
 // Get log setting
 func NewGetLogSettingLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetLogSettingLogic {
 	return &GetLogSettingLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -27,7 +27,7 @@ func NewGetLogSettingLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Get
 func (l *GetLogSettingLogic) GetLogSetting() (resp *types.LogSetting, err error) {
 	configs, err := l.svcCtx.Store.System().GetLogConfig(l.ctx)
 	if err != nil {
-		l.Errorw("[GetLogSetting] Database query error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetLogSetting] Database query error", zap.Any("error", err.Error()))
 		return nil, err
 	}
 	resp = &types.LogSetting{}

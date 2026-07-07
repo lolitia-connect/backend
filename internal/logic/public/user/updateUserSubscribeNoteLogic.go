@@ -8,14 +8,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type UpdateUserSubscribeNoteLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type UpdateUserSubscribeNoteLogic struct {
 // NewUpdateUserSubscribeNoteLogic Update User Subscribe Note
 func NewUpdateUserSubscribeNoteLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateUserSubscribeNoteLogic {
 	return &UpdateUserSubscribeNoteLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -32,18 +32,18 @@ func NewUpdateUserSubscribeNoteLogic(ctx context.Context, svcCtx *svc.ServiceCon
 func (l *UpdateUserSubscribeNoteLogic) UpdateUserSubscribeNote(req *types.UpdateUserSubscribeNoteRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
 	userSub, err := l.svcCtx.Store.User().FindOneUserSubscribe(l.ctx, req.UserSubscribeId)
 	if err != nil {
-		l.Errorw("FindOneUserSubscribe failed:", logger.Field("error", err.Error()))
+		l.Logger.Errorw("FindOneUserSubscribe failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe failed: %v", err.Error())
 	}
 
 	if userSub.UserId != u.Id {
-		l.Errorw("UserSubscribeId does not belong to the current user")
+		l.Logger.Errorw("UserSubscribeId does not belong to the current user")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "UserSubscribeId does not belong to the current user")
 	}
 
@@ -53,19 +53,13 @@ func (l *UpdateUserSubscribeNoteLogic) UpdateUserSubscribeNote(req *types.Update
 
 	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, &newSub)
 	if err != nil {
-		l.Errorw("UpdateSubscribe failed:", logger.Field("error", err.Error()))
+		l.Logger.Errorw("UpdateSubscribe failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "UpdateSubscribe failed: %v", err.Error())
-	}
-
-	// Clear user subscription cache
-	if err = l.svcCtx.Store.User().ClearSubscribeCache(l.ctx, &newSub); err != nil {
-		l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", userSub.Id))
-		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "ClearSubscribeCache failed: %v", err.Error())
 	}
 
 	// Clear subscription cache
 	if err = l.svcCtx.Store.Subscribe().ClearCache(l.ctx, userSub.SubscribeId); err != nil {
-		l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", userSub.SubscribeId))
+		l.Logger.Errorw("ClearSubscribeCache failed", zap.Any("error", err.Error()), zap.Any("subscribeId", userSub.SubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "ClearSubscribeCache failed: %v", err.Error())
 	}
 

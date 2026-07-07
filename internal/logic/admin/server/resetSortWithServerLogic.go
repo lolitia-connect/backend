@@ -8,13 +8,13 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type ResetSortWithServerLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type ResetSortWithServerLogic struct {
 // NewResetSortWithServerLogic Reset server sort
 func NewResetSortWithServerLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ResetSortWithServerLogic {
 	return &ResetSortWithServerLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -95,7 +95,7 @@ func (l *ResetSortWithServerLogic) ResetSortWithServer(req *types.ResetSortReque
 			newSort := int64(i)
 			if item.Sort != newSort {
 				if err := nodeStore.UpdateServerSort(l.ctx, item.Id, newSort); err != nil {
-					l.Errorw("[ServerSort] Update Database Error: ", logger.Field("error", err.Error()), logger.Field("id", item.Id), logger.Field("sort", newSort))
+					l.Logger.Errorw("[ServerSort] Update Database Error: ", zap.Any("error", err.Error()), zap.Any("id", item.Id), zap.Any("sort", newSort))
 					return err
 				}
 			}
@@ -103,7 +103,7 @@ func (l *ResetSortWithServerLogic) ResetSortWithServer(req *types.ResetSortReque
 		return nil
 	})
 	if err != nil {
-		l.Errorw("[ServerSort] Update Database Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[ServerSort] Update Database Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "%v", err)
 	}
 	return nil

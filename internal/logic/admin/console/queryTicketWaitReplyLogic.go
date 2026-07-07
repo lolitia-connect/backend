@@ -5,11 +5,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type QueryTicketWaitReplyLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -17,7 +17,7 @@ type QueryTicketWaitReplyLogic struct {
 // NewQueryTicketWaitReplyLogic Query ticket wait reply
 func NewQueryTicketWaitReplyLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryTicketWaitReplyLogic {
 	return &QueryTicketWaitReplyLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -26,7 +26,7 @@ func NewQueryTicketWaitReplyLogic(ctx context.Context, svcCtx *svc.ServiceContex
 func (l *QueryTicketWaitReplyLogic) QueryTicketWaitReply() (resp *types.TicketWaitRelpyResponse, err error) {
 	count, err := l.svcCtx.Store.Ticket().QueryWaitReplyTotal(l.ctx)
 	if err != nil {
-		l.Errorw("[QueryTicketWaitReply] Query Database Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[QueryTicketWaitReply] Query Database Error: ", zap.Any("error", err.Error()))
 		return nil, err
 	}
 	return &types.TicketWaitRelpyResponse{

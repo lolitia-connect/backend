@@ -6,15 +6,15 @@ import (
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 func Currency(ctx *svc.ServiceContext) {
 	// Retrieve system currency configuration
 	currency, err := ctx.Store.System().GetCurrencyConfig(context.Background())
 	if err != nil {
-		logger.Errorf("[INIT] Failed to get currency configuration: %v", err.Error())
+		zap.S().Errorf("[INIT] Failed to get currency configuration: %v", err.Error())
 		panic(fmt.Sprintf("[INIT] Failed to get currency configuration: %v", err.Error()))
 	}
 	// Parse currency configuration
@@ -30,5 +30,5 @@ func Currency(ctx *svc.ServiceContext) {
 		Symbol:    configs.CurrencySymbol,
 		AccessKey: configs.AccessKey,
 	}
-	logger.Infof("[INIT] Currency configuration: %v", ctx.Config.Currency)
+	zap.S().Infof("[INIT] Currency configuration: %v", ctx.Config.Currency)
 }

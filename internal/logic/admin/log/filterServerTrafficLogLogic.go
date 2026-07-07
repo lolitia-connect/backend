@@ -7,13 +7,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterServerTrafficLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type FilterServerTrafficLogLogic struct {
 // NewFilterServerTrafficLogLogic Filter server traffic log
 func NewFilterServerTrafficLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterServerTrafficLogLogic {
 	return &FilterServerTrafficLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -38,7 +38,7 @@ func (l *FilterServerTrafficLogLogic) FilterServerTrafficLog(req *types.FilterSe
 
 		serverTraffic, err := l.svcCtx.Store.TrafficLog().QueryServerTrafficRanking(l.ctx, start, end)
 		if err != nil {
-			l.Errorw("[FilterServerTrafficLog] Query Database Error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[FilterServerTrafficLog] Query Database Error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "today traffic query error: %s", err.Error())
 		}
 
@@ -77,14 +77,14 @@ func (l *FilterServerTrafficLogLogic) FilterServerTrafficLog(req *types.FilterSe
 			Type: log.TypeServerTraffic.Uint8(),
 		})
 		if err != nil {
-			l.Errorw("[FilterServerTrafficLog] Query History Error", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[FilterServerTrafficLog] Query History Error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "history query error: %s", err.Error())
 		}
 
 		for _, item := range historyData {
 			var content log.ServerTraffic
 			if err = content.Unmarshal([]byte(item.Content)); err != nil {
-				l.Errorw("[FilterServerTrafficLog] Unmarshal Error", logger.Field("error", err.Error()), logger.Field("content", item.Content))
+				l.Logger.Errorw("[FilterServerTrafficLog] Unmarshal Error", zap.Any("error", err.Error()), zap.Any("content", item.Content))
 				continue
 			}
 
@@ -93,7 +93,7 @@ func (l *FilterServerTrafficLogLogic) FilterServerTrafficLog(req *types.FilterSe
 				last := now.AddDate(0, 0, int(-l.svcCtx.Config.Log.ClearDays))
 				dataTime, err := time.Parse(time.DateOnly, item.Date)
 				if err != nil {
-					l.Errorw("[FilterServerTrafficLog] Parse Date Error", logger.Field("error", err.Error()), logger.Field("date", item.Date))
+					l.Logger.Errorw("[FilterServerTrafficLog] Parse Date Error", zap.Any("error", err.Error()), zap.Any("date", item.Date))
 				} else {
 					if dataTime.Before(last) {
 						hasDetails = false
@@ -131,14 +131,14 @@ func (l *FilterServerTrafficLogLogic) FilterServerTrafficLog(req *types.FilterSe
 		Type: log.TypeServerTraffic.Uint8(),
 	})
 	if err != nil {
-		l.Errorw("[FilterServerTrafficLog] Query Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[FilterServerTrafficLog] Query Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "history query error: %s", err.Error())
 	}
 
 	for _, item := range data {
 		var content log.ServerTraffic
 		if err = content.Unmarshal([]byte(item.Content)); err != nil {
-			l.Errorw("[FilterServerTrafficLog] Unmarshal Error", logger.Field("error", err.Error()), logger.Field("content", item.Content))
+			l.Logger.Errorw("[FilterServerTrafficLog] Unmarshal Error", zap.Any("error", err.Error()), zap.Any("content", item.Content))
 			continue
 		}
 		list = append(list, types.ServerTrafficLog{

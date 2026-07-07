@@ -1,10 +1,10 @@
 package portal
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/order"
@@ -12,18 +12,18 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/pkg/errors"
-	)
+)
 
 type PurchaseLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -31,7 +31,7 @@ type PurchaseLogic struct {
 // NewPurchaseLogic Purchase subscription
 func NewPurchaseLogic(ctx context.Context, svcCtx *svc.ServiceContext) *PurchaseLogic {
 	return &PurchaseLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -53,7 +53,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	// find subscribe plan
 	sub, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, req.SubscribeId)
 	if err != nil {
-		l.Errorw("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("subscribe_id", req.SubscribeId))
+		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("subscribe_id", req.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 
@@ -111,7 +111,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	// find payment method
 	paymentConfig, err := l.svcCtx.Store.Payment().FindOne(l.ctx, req.Payment)
 	if err != nil {
-		l.Logger.Error("[Purchase] Database query error", logger.Field("error", err.Error()), logger.Field("payment", req.Payment))
+		l.Logger.Error("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.PaymentMethodNotFound), "find payment method error: %v", err.Error())
 	}
 
@@ -155,16 +155,16 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		content, _ := tempOrder.Marshal()
 
 		if _, err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf(constant.TempOrderCacheKey, orderInfo.OrderNo), string(content), 24*time.Hour).Result(); err != nil {
-			l.Errorw("[Purchase] Redis set error", logger.Field("error", err.Error()), logger.Field("order_no", orderInfo.OrderNo))
+			l.Logger.Errorw("[Purchase] Redis set error", zap.Any("error", err.Error()), zap.Any("order_no", orderInfo.OrderNo))
 			return err
 		}
-		l.Infow("[Purchase] Guest order", logger.Field("order_no", orderInfo.OrderNo), logger.Field("identifier", req.Identifier))
+		l.Logger.Infow("[Purchase] Guest order", zap.Any("order_no", orderInfo.OrderNo), zap.Any("identifier", req.Identifier))
 
 		// Decrease subscribe plan stock
 		if sub.Inventory != -1 {
 			sub.Inventory--
 			if e := store.Subscribe().Update(l.ctx, sub); e != nil {
-				l.Errorw("[Purchase] Database update error", logger.Field("error", e.Error()), logger.Field("subscribe_id", sub.Id))
+				l.Logger.Errorw("[Purchase] Database update error", zap.Any("error", e.Error()), zap.Any("subscribe_id", sub.Id))
 				return e
 			}
 		}
@@ -176,7 +176,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		return nil
 	})
 	if err != nil {
-		l.Errorw("[Purchase] Database transaction error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[Purchase] Database transaction error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "transaction error: %v", err.Error())
 	}
 	// Deferred task
@@ -185,14 +185,14 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	}
 	val, err := json.Marshal(payload)
 	if err != nil {
-		l.Errorw("[CloseOrder Task] Marshal payload error", logger.Field("error", err.Error()), logger.Field("payload", payload))
+		l.Logger.Errorw("[CloseOrder Task] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
 	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
-		l.Errorw("[CloseOrder Task] Enqueue task error", logger.Field("error", err.Error()), logger.Field("task", taskInfo))
+		l.Logger.Errorw("[CloseOrder Task] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", taskInfo))
 	} else {
-		l.Infow("[CloseOrder Task] Enqueue task success", logger.Field("TaskID", taskInfo.ID))
+		l.Logger.Infow("[CloseOrder Task] Enqueue task success", zap.Any("TaskID", taskInfo.ID))
 	}
 	resp = &types.PortalPurchaseResponse{OrderNo: orderInfo.OrderNo}
 	return resp, nil

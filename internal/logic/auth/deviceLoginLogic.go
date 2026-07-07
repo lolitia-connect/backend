@@ -1,9 +1,9 @@
 package auth
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/config"
@@ -13,15 +13,15 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type DeviceLoginLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -29,7 +29,7 @@ type DeviceLoginLogic struct {
 // Device Login
 func NewDeviceLoginLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DeviceLoginLogic {
 	return &DeviceLoginLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -59,10 +59,10 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 				ObjectID: userInfo.Id,
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()),
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()),
 				)
 			}
 		}
@@ -81,9 +81,9 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 				return nil, err
 			}
 		} else {
-			l.Errorw("query device failed",
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("query device failed",
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query device failed: %v", err.Error())
 		}
@@ -91,9 +91,9 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 		// Device found, get user info
 		userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, deviceInfo.UserId)
 		if err != nil {
-			l.Errorw("query user failed",
-				logger.Field("user_id", deviceInfo.UserId),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("query user failed",
+				zap.Any("user_id", deviceInfo.UserId),
+				zap.Any("error", err.Error()),
 			)
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user failed: %v", err.Error())
 		}
@@ -112,9 +112,9 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 		jwt.WithOption("LoginType", "device"),
 	)
 	if err != nil {
-		l.Errorw("token generate error",
-			logger.Field("user_id", userInfo.Id),
-			logger.Field("error", err.Error()),
+		l.Logger.Errorw("token generate error",
+			zap.Any("user_id", userInfo.Id),
+			zap.Any("error", err.Error()),
 		)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "token generate error: %v", err.Error())
 	}
@@ -122,9 +122,9 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 	// Store session id in redis
 	sessionIdCacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
 	if err = l.svcCtx.Redis.Set(l.ctx, sessionIdCacheKey, userInfo.Id, time.Duration(l.svcCtx.Config.JwtAuth.AccessExpire)*time.Second).Err(); err != nil {
-		l.Errorw("set session id error",
-			logger.Field("user_id", userInfo.Id),
-			logger.Field("error", err.Error()),
+		l.Logger.Errorw("set session id error",
+			zap.Any("user_id", userInfo.Id),
+			zap.Any("error", err.Error()),
 		)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "set session id error: %v", err.Error())
 	}
@@ -133,9 +133,9 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 
 	deviceCacheKey := fmt.Sprintf("%v:%v", config.DeviceCacheKeyKey, req.Identifier)
 	if err = l.svcCtx.Redis.Set(l.ctx, deviceCacheKey, sessionId, time.Duration(l.svcCtx.Config.JwtAuth.AccessExpire)*time.Second).Err(); err != nil {
-		l.Errorw("set device id error",
-			logger.Field("user_id", userInfo.Id),
-			logger.Field("error", err.Error()),
+		l.Logger.Errorw("set device id error",
+			zap.Any("user_id", userInfo.Id),
+			zap.Any("error", err.Error()),
 		)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "set device id error: %v", err.Error())
 	}
@@ -147,9 +147,9 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 }
 
 func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) (*user.User, error) {
-	l.Infow("device not found, creating new user and device",
-		logger.Field("identifier", req.Identifier),
-		logger.Field("ip", req.IP),
+	l.Logger.Infow("device not found, creating new user and device",
+		zap.Any("identifier", req.Identifier),
+		zap.Any("ip", req.IP),
 	)
 
 	var userInfo *user.User
@@ -161,8 +161,8 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 			OnlyFirstPurchase: &l.svcCtx.Config.Invite.OnlyFirstPurchase,
 		}
 		if err := store.User().Insert(l.ctx, userInfo); err != nil {
-			l.Errorw("failed to create user",
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to create user",
+				zap.Any("error", err.Error()),
 			)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create user failed: %v", err)
 		}
@@ -170,9 +170,9 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 		// Update refer code
 		userInfo.ReferCode = uuidx.UserInviteCode(userInfo.Id)
 		if err := store.User().Update(l.ctx, userInfo); err != nil {
-			l.Errorw("failed to update refer code",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to update refer code",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("error", err.Error()),
 			)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update refer code failed: %v", err)
 		}
@@ -185,10 +185,10 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 			Verified:       true,
 		}
 		if err := store.User().InsertUserAuthMethods(l.ctx, authMethod); err != nil {
-			l.Errorw("failed to create device auth method",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to create device auth method",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create device auth method failed: %v", err)
 		}
@@ -204,10 +204,10 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 			Online:     false,
 		}
 		if err := store.User().InsertDevice(l.ctx, deviceInfo); err != nil {
-			l.Errorw("failed to insert device",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to insert device",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert device failed: %v", err)
 		}
@@ -225,9 +225,9 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 	})
 
 	if err != nil {
-		l.Errorw("device registration failed",
-			logger.Field("identifier", req.Identifier),
-			logger.Field("error", err.Error()),
+		l.Logger.Errorw("device registration failed",
+			zap.Any("identifier", req.Identifier),
+			zap.Any("error", err.Error()),
 		)
 		return nil, err
 	}
@@ -235,27 +235,22 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 
 	// Clear cache after transaction success
 	if l.svcCtx.Config.Register.EnableTrial && trialSubscribe != nil {
-		// Clear user subscription cache
-		if err = l.svcCtx.Store.User().ClearSubscribeCache(l.ctx, trialSubscribe); err != nil {
-			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("userSubscribeId", trialSubscribe.Id))
-			// Don't return error, just log it
-		}
 		// Clear subscription cache
 		if err = l.svcCtx.Store.Subscribe().ClearCache(l.ctx, trialSubscribe.SubscribeId); err != nil {
-			l.Errorw("ClearSubscribeCache failed", logger.Field("error", err.Error()), logger.Field("subscribeId", trialSubscribe.SubscribeId))
+			l.Logger.Errorw("ClearSubscribeCache failed", zap.Any("error", err.Error()), zap.Any("subscribeId", trialSubscribe.SubscribeId))
 			// Don't return error, just log it
 		}
 		// Clear all server cache
 		if err = l.svcCtx.Store.Node().ClearServerAllCache(l.ctx); err != nil {
-			l.Errorf("ClearServerAllCache error: %v", err.Error())
+			l.Logger.Errorf("ClearServerAllCache error: %v", err.Error())
 			// Don't return error, just log it
 		}
 	}
 
-	l.Infow("device registration completed successfully",
-		logger.Field("user_id", userInfo.Id),
-		logger.Field("identifier", req.Identifier),
-		logger.Field("refer_code", userInfo.ReferCode),
+	l.Logger.Infow("device registration completed successfully",
+		zap.Any("user_id", userInfo.Id),
+		zap.Any("identifier", req.Identifier),
+		zap.Any("refer_code", userInfo.ReferCode),
 	)
 
 	// Register log
@@ -274,10 +269,10 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 		ObjectID: userInfo.Id,
 		Content:  string(content),
 	}); err != nil {
-		l.Errorw("failed to insert register log",
-			logger.Field("user_id", userInfo.Id),
-			logger.Field("ip", req.IP),
-			logger.Field("error", err.Error()),
+		l.Logger.Errorw("failed to insert register log",
+			zap.Any("user_id", userInfo.Id),
+			zap.Any("ip", req.IP),
+			zap.Any("error", err.Error()),
 		)
 	}
 
@@ -287,10 +282,10 @@ func (l *DeviceLoginLogic) registerUserAndDevice(req *types.DeviceLoginRequest) 
 func (l *DeviceLoginLogic) activeTrial(store repository.Store, userId int64) (*user.Subscribe, error) {
 	sub, err := store.Subscribe().FindOne(l.ctx, l.svcCtx.Config.Register.TrialSubscribe)
 	if err != nil {
-		l.Errorw("failed to find trial subscription template",
-			logger.Field("user_id", userId),
-			logger.Field("trial_subscribe_id", l.svcCtx.Config.Register.TrialSubscribe),
-			logger.Field("error", err.Error()),
+		l.Logger.Errorw("failed to find trial subscription template",
+			zap.Any("user_id", userId),
+			zap.Any("trial_subscribe_id", l.svcCtx.Config.Register.TrialSubscribe),
+			zap.Any("error", err.Error()),
 		)
 		return nil, err
 	}
@@ -315,18 +310,18 @@ func (l *DeviceLoginLogic) activeTrial(store repository.Store, userId int64) (*u
 	}
 
 	if err := store.User().InsertSubscribe(l.ctx, userSub); err != nil {
-		l.Errorw("failed to insert trial subscription",
-			logger.Field("user_id", userId),
-			logger.Field("error", err.Error()),
+		l.Logger.Errorw("failed to insert trial subscription",
+			zap.Any("user_id", userId),
+			zap.Any("error", err.Error()),
 		)
 		return nil, err
 	}
 
-	l.Infow("trial subscription activated successfully",
-		logger.Field("user_id", userId),
-		logger.Field("subscribe_id", sub.Id),
-		logger.Field("expire_time", expireTime),
-		logger.Field("traffic", sub.Traffic),
+	l.Logger.Infow("trial subscription activated successfully",
+		zap.Any("user_id", userId),
+		zap.Any("subscribe_id", sub.Id),
+		zap.Any("expire_time", expireTime),
+		zap.Any("traffic", sub.Traffic),
 	)
 
 	return userSub, nil

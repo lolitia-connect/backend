@@ -10,7 +10,6 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -19,14 +18,14 @@ import (
 type CurrentUserLogic struct {
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
-	logger.Logger
+	Logger *zap.SugaredLogger
 }
 
 func NewCurrentUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CurrentUserLogic {
 	return &CurrentUserLogic{
 		ctx:    ctx,
 		svcCtx: svcCtx,
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 	}
 }
 
@@ -34,7 +33,7 @@ func (l *CurrentUserLogic) CurrentUser() (*types.User, error) {
 	resp := &types.User{}
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 

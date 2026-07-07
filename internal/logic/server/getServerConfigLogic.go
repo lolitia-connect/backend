@@ -9,13 +9,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"go.uber.org/zap"
 )
 
 type GetServerConfigLogic struct {
-	logger.Logger
+	Logger   *zap.SugaredLogger
 	ctx      context.Context
 	svcCtx   *svc.ServiceContext
 	request  RequestMeta
@@ -25,7 +25,7 @@ type GetServerConfigLogic struct {
 // NewGetServerConfigLogic Get server config
 func NewGetServerConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext, request RequestMeta) *GetServerConfigLogic {
 	return &GetServerConfigLogic{
-		Logger:   logger.WithContext(ctx),
+		Logger:   zap.S(),
 		ctx:      ctx,
 		svcCtx:   svcCtx,
 		request:  request,
@@ -52,7 +52,7 @@ func (l *GetServerConfigLogic) GetServerConfig(req *types.GetServerConfigRequest
 			resp = &types.GetServerConfigResponse{}
 			err = json.Unmarshal([]byte(cache), resp)
 			if err != nil {
-				l.Errorw("[ServerConfigCacheKey] json unmarshal error", logger.Field("error", err.Error()))
+				l.Logger.Errorw("[ServerConfigCacheKey] json unmarshal error", zap.Any("error", err.Error()))
 				return nil, err
 			}
 			return resp, nil
@@ -60,7 +60,7 @@ func (l *GetServerConfigLogic) GetServerConfig(req *types.GetServerConfigRequest
 	}
 	data, err := l.svcCtx.Store.Node().FindOneServer(l.ctx, req.ServerId)
 	if err != nil {
-		l.Errorw("[GetServerConfig] FindOne error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetServerConfig] FindOne error", zap.Any("error", err.Error()))
 		return nil, err
 	}
 
@@ -96,13 +96,13 @@ func (l *GetServerConfigLogic) GetServerConfig(req *types.GetServerConfigRequest
 	}
 	c, err := json.Marshal(resp)
 	if err != nil {
-		l.Errorw("[GetServerConfig] json marshal error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetServerConfig] json marshal error", zap.Any("error", err.Error()))
 		return nil, err
 	}
 	etag := tool.GenerateETag(c)
 	l.response.SetHeader("ETag", etag)
 	if err = l.svcCtx.Redis.Set(l.ctx, cacheKey, c, node.ServerCacheTTL).Err(); err != nil {
-		l.Errorw("[GetServerConfig] redis set error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetServerConfig] redis set error", zap.Any("error", err.Error()))
 	}
 	//  Check If-None-Match header
 	match := l.request.IfNoneMatch

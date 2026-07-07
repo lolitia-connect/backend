@@ -25,6 +25,7 @@ type customTrafficLogicModel interface {
 	QueryUserTrafficRanking(ctx context.Context, start, end time.Time) ([]UserTrafficRanking, error)
 	QueryTrafficLogPageList(ctx context.Context, userId, subscribeId int64, page, size int) ([]*TrafficLog, int64, error)
 	QueryTrafficLogDetails(ctx context.Context, filter *TrafficLogDetailsFilter) ([]*TrafficLog, int64, error)
+	SumByUserSubscribeAndTimeRange(ctx context.Context, userId, subscribeId int64, start, end time.Time) (*TotalTraffic, error)
 	DeleteBefore(ctx context.Context, end time.Time) error
 }
 
@@ -62,6 +63,10 @@ func (m *customTrafficModel) QueryTrafficByMonthly(ctx context.Context, date tim
 
 func (m *customTrafficModel) QueryTrafficSummary(ctx context.Context, start, end time.Time) (*TotalTraffic, error) {
 	return m.queryTrafficSummary(ctx, timeRange(start, end))
+}
+
+func (m *customTrafficModel) SumByUserSubscribeAndTimeRange(ctx context.Context, userId, subscribeId int64, start, end time.Time) (*TotalTraffic, error) {
+	return m.queryTrafficSummary(ctx, enttrafficlog.UserID(userId), enttrafficlog.SubscribeID(subscribeId), timeRange(start, end))
 }
 
 func (m *customTrafficModel) queryTrafficSummary(ctx context.Context, predicates ...predicate.TrafficLog) (*TotalTraffic, error) {

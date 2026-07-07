@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/system"
@@ -14,7 +14,7 @@ import (
 )
 
 func Node(ctx *svc.ServiceContext) {
-	logger.Debug("Node config initialization")
+	zap.S().Debug("Node config initialization")
 	configs, err := ctx.Store.System().GetNodeConfig(context.Background())
 	if err != nil {
 		panic(err)
@@ -32,7 +32,7 @@ func Node(ctx *svc.ServiceContext) {
 		var dns []config.NodeDNS
 		err = json.Unmarshal([]byte(nodeConfig.DNS), &dns)
 		if err != nil {
-			logger.Errorf("[Node] Unmarshal DNS config error: %s", err.Error())
+			zap.S().Errorf("[Node] Unmarshal DNS config error: %s", err.Error())
 			panic(err)
 		}
 		c.DNS = dns
@@ -46,7 +46,7 @@ func Node(ctx *svc.ServiceContext) {
 		var outbound []config.NodeOutbound
 		err = json.Unmarshal([]byte(nodeConfig.Outbound), &outbound)
 		if err != nil {
-			logger.Errorf("[Node] Unmarshal Outbound config error: %s", err.Error())
+			zap.S().Errorf("[Node] Unmarshal Outbound config error: %s", err.Error())
 			panic(err)
 		}
 		c.Outbound = outbound
@@ -56,7 +56,7 @@ func Node(ctx *svc.ServiceContext) {
 
 	nodeMultiplierData, err := ctx.Store.System().FindNodeMultiplierConfig(context.Background())
 	if err != nil {
-		logger.Error("Get Node Multiplier Config Error: ", logger.Field("error", err.Error()))
+		zap.S().Error("Get Node Multiplier Config Error: ", zap.Any("error", err.Error()))
 		return
 	}
 
@@ -69,14 +69,14 @@ func Node(ctx *svc.ServiceContext) {
 			Desc:     "Node Multiplier Config",
 			Category: "server",
 		}); err != nil {
-			logger.Errorf("Create Node Multiplier Config Error: %s", err.Error())
+			zap.S().Errorf("Create Node Multiplier Config Error: %s", err.Error())
 		}
 		return
 	}
 
 	var periods []nodeMultiplier.TimePeriod
 	if err := json.Unmarshal([]byte(nodeMultiplierData.Value), &periods); err != nil {
-		logger.Error("Unmarshal Node Multiplier Config Error: ", logger.Field("error", err.Error()), logger.Field("value", nodeMultiplierData.Value))
+		zap.S().Error("Unmarshal Node Multiplier Config Error: ", zap.Any("error", err.Error()), zap.Any("value", nodeMultiplierData.Value))
 	}
 	ctx.NodeMultiplierManager = nodeMultiplier.NewNodeMultiplierManager(periods)
 }

@@ -10,11 +10,11 @@ import (
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/result"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 func AuthMiddleware(svc *svc.ServiceContext) func(c *hertzx.Context) {
@@ -33,13 +33,13 @@ func AuthMiddleware(svc *svc.ServiceContext) func(c *hertzx.Context) {
 func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token string, path string) (context.Context, error) {
 	jwtConfig := svc.Config.JwtAuth
 	if token == "" {
-		logger.WithContext(ctx).Debug("[AuthMiddleware] Token Empty")
+		zap.S().Debug("[AuthMiddleware] Token Empty")
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.ErrorTokenEmpty), "Token Empty")
 	}
 
 	claims, err := jwt.ParseJwtToken(token, jwtConfig.AccessSecret)
 	if err != nil {
-		logger.WithContext(ctx).Debug("[AuthMiddleware] ParseJwtToken", logger.Field("error", err.Error()), logger.Field("token", token))
+		zap.S().Debug("[AuthMiddleware] ParseJwtToken", zap.Any("error", err.Error()), zap.Any("token", token))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.ErrorTokenExpire), "Token Invalid")
 	}
 
@@ -53,18 +53,18 @@ func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token str
 	sessionIdCacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
 	value, err := svc.Redis.Get(ctx, sessionIdCacheKey).Result()
 	if err != nil {
-		logger.WithContext(ctx).Debug("[AuthMiddleware] Redis Get", logger.Field("error", err.Error()), logger.Field("sessionId", sessionId))
+		zap.S().Debug("[AuthMiddleware] Redis Get", zap.Any("error", err.Error()), zap.Any("sessionId", sessionId))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
 	if value != fmt.Sprintf("%v", userId) {
-		logger.WithContext(ctx).Debug("[AuthMiddleware] Invalid Access", logger.Field("userId", userId), logger.Field("sessionId", sessionId))
+		zap.S().Debug("[AuthMiddleware] Invalid Access", zap.Any("userId", userId), zap.Any("sessionId", sessionId))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
 	userInfo, err := svc.Store.User().FindOne(ctx, userId)
 	if err != nil {
-		logger.WithContext(ctx).Debug("[AuthMiddleware] UserModel FindOne", logger.Field("error", err.Error()), logger.Field("userId", userId))
+		zap.S().Debug("[AuthMiddleware] UserModel FindOne", zap.Any("error", err.Error()), zap.Any("userId", userId))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Database Query Error")
 	}
 
@@ -75,7 +75,7 @@ func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token str
 
 	paths := strings.Split(path, "/")
 	if tool.StringSliceContains(paths, "admin") && !*userInfo.IsAdmin {
-		logger.WithContext(ctx).Debug("[AuthMiddleware] Not Admin User", logger.Field("userId", userId), logger.Field("sessionId", sessionId))
+		zap.S().Debug("[AuthMiddleware] Not Admin User", zap.Any("userId", userId), zap.Any("sessionId", sessionId))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 

@@ -7,21 +7,21 @@ import (
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetNodeConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
 func NewGetNodeConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetNodeConfigLogic {
 	return &GetNodeConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,7 +31,7 @@ func (l *GetNodeConfigLogic) GetNodeConfig() (*types.NodeConfig, error) {
 	// get server config from db
 	configs, err := l.svcCtx.Store.System().GetNodeConfig(l.ctx)
 	if err != nil {
-		l.Errorw("[GetNodeConfigLogic] GetNodeConfig get server config error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetNodeConfigLogic] GetNodeConfig get server config error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetNodeConfig get server config error: %v", err.Error())
 	}
 	var dbConfig config.NodeDBConfig
@@ -48,7 +48,7 @@ func (l *GetNodeConfigLogic) GetNodeConfig() (*types.NodeConfig, error) {
 		var dns []types.NodeDNS
 		err = json.Unmarshal([]byte(dbConfig.DNS), &dns)
 		if err != nil {
-			logger.Errorf("[Node] Unmarshal DNS config error: %s", err.Error())
+			zap.S().Errorf("[Node] Unmarshal DNS config error: %s", err.Error())
 			panic(err)
 		}
 		c.DNS = dns
@@ -62,7 +62,7 @@ func (l *GetNodeConfigLogic) GetNodeConfig() (*types.NodeConfig, error) {
 		var outbound []types.NodeOutbound
 		err = json.Unmarshal([]byte(dbConfig.Outbound), &outbound)
 		if err != nil {
-			logger.Errorf("[Node] Unmarshal Outbound config error: %s", err.Error())
+			zap.S().Errorf("[Node] Unmarshal Outbound config error: %s", err.Error())
 			panic(err)
 		}
 		c.Outbound = outbound

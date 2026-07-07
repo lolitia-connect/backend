@@ -12,11 +12,11 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type DeviceWsConnectLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type DeviceWsConnectLogic struct {
 // Webosocket Device Connect
 func NewDeviceWsConnectLogic(ctx context.Context, svcCtx *svc.ServiceContext) *DeviceWsConnectLogic {
 	return &DeviceWsConnectLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -36,20 +36,20 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 	if value == nil || value.(string) == "" {
 		value, _ = c.GetQuery("identifier")
 		if value == nil || value.(string) == "" {
-			l.Errorf("DeviceWsConnectLogic DeviceWsConnect identifier is empty")
+			l.Logger.Errorf("DeviceWsConnectLogic DeviceWsConnect identifier is empty")
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "identifier is empty")
 		}
 	}
 	identifier := value.(string)
 	_, err := l.svcCtx.Store.User().FindOneDeviceByIdentifier(l.ctx, identifier)
 	if err != nil && !ent.IsNotFound(err) {
-		l.Errorf("DeviceWsConnectLogic DeviceWsConnect FindOneDeviceByIdentifier err: %v", err)
+		l.Logger.Errorf("DeviceWsConnectLogic DeviceWsConnect FindOneDeviceByIdentifier err: %v", err)
 		return errors.Wrap(xerr.NewErrCode(xerr.DatabaseQueryError), err.Error())
 	}
 
 	value = l.ctx.Value(constant.CtxKeyUser)
 	if value == nil {
-		l.Errorf("DeviceWsConnectLogic DeviceWsConnect value is nil")
+		l.Logger.Errorf("DeviceWsConnectLogic DeviceWsConnect value is nil")
 		return nil
 	}
 	userInfo := value.(*user.User)
@@ -64,7 +64,7 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 		}
 		err := l.svcCtx.Store.User().InsertDevice(l.ctx, &device)
 		if err != nil {
-			l.Errorf("DeviceWsConnectLogic DeviceWsConnect InsertDevice err: %v", err)
+			l.Logger.Errorf("DeviceWsConnectLogic DeviceWsConnect InsertDevice err: %v", err)
 			return errors.Wrap(xerr.NewErrCode(xerr.DatabaseInsertError), err.Error())
 		}
 	}

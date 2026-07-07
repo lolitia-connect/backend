@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/pkg/errorx"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	xrate "golang.org/x/time/rate"
 )
 
@@ -99,7 +99,7 @@ func (lim *TokenLimiter) reserveN(ctx context.Context, now time.Time, n int) boo
 		return false
 	}
 	if errorx.In(err, context.DeadlineExceeded, context.Canceled) {
-		logger.WithContext(ctx).Error("fail to use rate limiter", logger.Field("error", err.Error()))
+		zap.S().Error("fail to use rate limiter", zap.Any("error", err.Error()))
 		return false
 	}
 	if err != nil {
@@ -110,7 +110,7 @@ func (lim *TokenLimiter) reserveN(ctx context.Context, now time.Time, n int) boo
 
 	code, ok := resp.(int64)
 	if !ok {
-		logger.Error("fail to eval redis script, use in-process limiter for rescue", logger.Field("response", resp))
+		zap.S().Error("fail to eval redis script, use in-process limiter for rescue", zap.Any("response", resp))
 		lim.startMonitor()
 		return lim.rescueLimiter.AllowN(now, n)
 	}

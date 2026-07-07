@@ -11,12 +11,12 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	queue "github.com/perfect-panel/server/queue/types"
+	"go.uber.org/zap"
 )
 
 type UpdateOrderStatusLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type UpdateOrderStatusLogic struct {
 // Update order status
 func NewUpdateOrderStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateOrderStatusLogic {
 	return &UpdateOrderStatusLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -34,14 +34,14 @@ func (l *UpdateOrderStatusLogic) UpdateOrderStatus(req *types.UpdateOrderStatusR
 	store := l.svcCtx.Store
 	info, err := store.Order().FindOne(l.ctx, req.Id)
 	if err != nil {
-		l.Errorw("[UpdateOrderStatus] FindOne error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateOrderStatus] FindOne error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOne error: %v", err.Error())
 	}
 
 	if req.PaymentId != 0 {
 		paymentMethod, err := store.Payment().FindOne(l.ctx, req.PaymentId)
 		if err != nil {
-			l.Logger.Error("[CreateOrder] PaymentMethod Not Found", logger.Field("error", err.Error()))
+			l.Logger.Error("[CreateOrder] PaymentMethod Not Found", zap.Any("error", err.Error()))
 			return errors.Wrapf(xerr.NewErrCode(xerr.PaymentMethodNotFound), "PaymentMethod not found: %v", err.Error())
 		}
 		info.PaymentId = paymentMethod.Id
@@ -54,7 +54,7 @@ func (l *UpdateOrderStatusLogic) UpdateOrderStatus(req *types.UpdateOrderStatusR
 	err = store.InTx(l.ctx, func(txStore repository.Store) error {
 		orderStore := txStore.Order()
 		if err := orderStore.Update(l.ctx, info); err != nil {
-			l.Errorw("[UpdateOrderStatus] Update error", logger.Field("error", err.Error()), logger.Field("OrderID", info.Id))
+			l.Logger.Errorw("[UpdateOrderStatus] Update error", zap.Any("error", err.Error()), zap.Any("OrderID", info.Id))
 			return err
 		}
 		if err := orderStore.UpdateOrderStatus(l.ctx, info.OrderNo, req.Status); err != nil {
@@ -69,14 +69,14 @@ func (l *UpdateOrderStatusLogic) UpdateOrderStatus(req *types.UpdateOrderStatusR
 			task := asynq.NewTask(queue.ForthwithActivateOrder, p)
 			_, err = l.svcCtx.Queue.EnqueueContext(l.ctx, task)
 			if err != nil {
-				l.Errorw("[UpdateOrderStatus] Enqueue error", logger.Field("error", err.Error()))
+				l.Logger.Errorw("[UpdateOrderStatus] Enqueue error", zap.Any("error", err.Error()))
 				return errors.Wrapf(xerr.NewErrCode(xerr.QueueEnqueueError), "Enqueue error: %v", err.Error())
 			}
 		}
 		return nil
 	})
 	if err != nil {
-		l.Errorw("[UpdateOrderStatus] Transaction error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateOrderStatus] Transaction error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Transaction error: %v", err.Error())
 	}
 	return nil

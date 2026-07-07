@@ -10,11 +10,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type BatchDeleteSubscribeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type BatchDeleteSubscribeLogic struct {
 // Batch delete subscribe
 func NewBatchDeleteSubscribeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *BatchDeleteSubscribeLogic {
 	return &BatchDeleteSubscribeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -40,7 +40,7 @@ func (l *BatchDeleteSubscribeLogic) BatchDeleteSubscribe(req *types.BatchDeleteS
 			// Validate whether the subscription ID belongs to an active user subscription.
 			count, err := store.User().CountUserSubscribesBySubscribeIdAndStatus(l.ctx, id, 1)
 			if err != nil {
-				l.Logger.Error("[BatchDeleteSubscribe] Query Subscribe Error: ", logger.Field("error", err.Error()))
+				l.Logger.Error("[BatchDeleteSubscribe] Query Subscribe Error: ", zap.Any("error", err.Error()))
 				return err
 			}
 			if count > 0 {
@@ -56,7 +56,7 @@ func (l *BatchDeleteSubscribeLogic) BatchDeleteSubscribe(req *types.BatchDeleteS
 		if errors.Is(err, errorIsExistActiveUser) {
 			return errors.Wrapf(xerr.NewErrCode(xerr.SubscribeIsUsedError), "subscription ID belongs to an active user subscription")
 		}
-		l.Logger.Error("[BatchDeleteSubscribe] Transaction Error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[BatchDeleteSubscribe] Transaction Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "delete subscribe failed: %v", err.Error())
 	}
 	return nil

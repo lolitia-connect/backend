@@ -1,8 +1,6 @@
 package user
 
 import (
-	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
@@ -12,30 +10,7 @@ import (
 	entsub "github.com/perfect-panel/server/ent/usersubscribe"
 	entwithdrawal "github.com/perfect-panel/server/ent/userwithdrawal"
 	modelsubscribe "github.com/perfect-panel/server/internal/model/subscribe"
-	"github.com/redis/go-redis/v9"
 )
-
-func getJSONCache(ctx context.Context, rds *redis.Client, key string, dest any) error {
-	if rds == nil {
-		return redis.Nil
-	}
-	data, err := rds.Get(ctx, key).Bytes()
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, dest)
-}
-
-func setJSONCache(ctx context.Context, rds *redis.Client, key string, value any) error {
-	if rds == nil {
-		return nil
-	}
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	return rds.Set(ctx, key, data, 0).Err()
-}
 
 func entToUser(e *ent.User) *User {
 	if e == nil {
@@ -243,6 +218,14 @@ func entToDeviceOnlineRecord(e *ent.UserDeviceOnlineRecord) *DeviceOnlineRecord 
 		return nil
 	}
 	return &DeviceOnlineRecord{Id: e.ID, UserId: e.UserID, Identifier: e.Identifier, OnlineTime: e.OnlineTime, OfflineTime: e.OfflineTime, OnlineSeconds: e.OnlineSeconds, DurationDays: e.DurationDays, CreatedAt: e.CreatedAt}
+}
+
+func entDeviceOnlineRecordsToModels(items []*ent.UserDeviceOnlineRecord) []*DeviceOnlineRecord {
+	list := make([]*DeviceOnlineRecord, 0, len(items))
+	for _, item := range items {
+		list = append(list, entToDeviceOnlineRecord(item))
+	}
+	return list
 }
 
 func boolPtr(v bool) *bool { return &v }

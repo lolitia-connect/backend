@@ -10,11 +10,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type CreateUserAuthMethodLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type CreateUserAuthMethodLogic struct {
 // Create user auth method
 func NewCreateUserAuthMethodLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreateUserAuthMethodLogic {
 	return &CreateUserAuthMethodLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,7 +37,7 @@ func (l *CreateUserAuthMethodLogic) CreateUserAuthMethod(req *types.CreateUserAu
 		})
 	})
 	if err != nil {
-		l.Errorw("[CreateUserAuthMethodLogic] Create User Auth Method Error:", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[CreateUserAuthMethodLogic] Create User Auth Method Error:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Create User Auth Method Error")
 	}
 	return nil

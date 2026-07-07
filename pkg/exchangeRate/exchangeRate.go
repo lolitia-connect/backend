@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -50,7 +50,7 @@ func GetExchangeRete(form, to, access string, amount float64) (float64, error) {
 		return 0, err
 	}
 	if !result.Success {
-		logger.Info("Exchange Rate Response: ", resp.String())
+		zap.S().Info("Exchange Rate Response: ", resp.String())
 		return 0, errors.New("exchange rate failed")
 	}
 	return result.Result, nil

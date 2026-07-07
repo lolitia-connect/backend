@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/logic/public/order"
@@ -26,9 +26,9 @@ func NewDeferCloseOrderLogic(svc *svc.ServiceContext) *DeferCloseOrderLogic {
 func (l *DeferCloseOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	payload := types.DeferCloseOrderPayload{}
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-		logger.WithContext(ctx).Error("[DeferCloseOrderLogic] Unmarshal payload failed",
-			logger.Field("error", err.Error()),
-			logger.Field("payload", string(task.Payload())),
+		zap.S().Error("[DeferCloseOrderLogic] Unmarshal payload failed",
+			zap.Any("error", err.Error()),
+			zap.Any("payload", string(task.Payload())),
 		)
 		return nil
 	}

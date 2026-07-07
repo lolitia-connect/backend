@@ -12,11 +12,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type ResetAllSubscribeTokenLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type ResetAllSubscribeTokenLogic struct {
 // Reset all subscribe tokens
 func NewResetAllSubscribeTokenLogic(ctx context.Context, svcCtx *svc.ServiceContext) *ResetAllSubscribeTokenLogic {
 	return &ResetAllSubscribeTokenLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -35,14 +35,14 @@ func (l *ResetAllSubscribeTokenLogic) ResetAllSubscribeToken() (resp *types.Rese
 		// select all active and Finished subscriptions
 		list, err := store.User().FindUserSubscribesByStatus(l.ctx, 1, 2)
 		if err != nil {
-			logger.Errorf("[ResetAllSubscribeToken] Failed to fetch subscribe list: %v", err.Error())
+			zap.S().Errorf("[ResetAllSubscribeToken] Failed to fetch subscribe list: %v", err.Error())
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Failed to fetch subscribe list: %v", err.Error())
 		}
 		for _, sub := range list {
 			sub.Token = uuidx.SubscribeToken(strconv.FormatInt(time.Now().UnixMilli(), 10) + strconv.FormatInt(sub.Id, 10))
 			sub.UUID = uuidx.NewUUID().String()
 			if updateErr := store.User().UpdateSubscribe(l.ctx, sub); updateErr != nil {
-				logger.Errorf("[ResetAllSubscribeToken] Failed to update subscribe token for ID %d: %v", sub.Id, updateErr.Error())
+				zap.S().Errorf("[ResetAllSubscribeToken] Failed to update subscribe token for ID %d: %v", sub.Id, updateErr.Error())
 				return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Failed to update subscribe token for ID %d: %v", sub.Id, updateErr.Error())
 			}
 		}

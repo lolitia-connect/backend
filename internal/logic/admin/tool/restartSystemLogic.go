@@ -4,11 +4,11 @@ import (
 	"context"
 
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type RestartSystemLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -16,20 +16,20 @@ type RestartSystemLogic struct {
 // Restart System
 func NewRestartSystemLogic(ctx context.Context, svcCtx *svc.ServiceContext) *RestartSystemLogic {
 	return &RestartSystemLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
 func (l *RestartSystemLogic) RestartSystem() error {
-	l.Logger.Info("[RestartSystem]", logger.Field("info", "Restarting system"))
+	l.Logger.Info("[RestartSystem]", zap.Any("info", "Restarting system"))
 	go func() {
 		err := l.svcCtx.Restart()
 		if err != nil {
-			l.Errorw("[RestartSystem]", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[RestartSystem]", zap.Any("error", err.Error()))
 		}
-		l.Logger.Info("[RestartSystem]", logger.Field("info", "System restarted"))
+		l.Logger.Info("[RestartSystem]", zap.Any("info", "System restarted"))
 	}()
 	return nil
 }

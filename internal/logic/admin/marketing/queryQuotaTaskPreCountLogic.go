@@ -6,12 +6,12 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
+	"go.uber.org/zap"
 )
 
 type QueryQuotaTaskPreCountLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -19,7 +19,7 @@ type QueryQuotaTaskPreCountLogic struct {
 // NewQueryQuotaTaskPreCountLogic Query quota task pre-count
 func NewQueryQuotaTaskPreCountLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryQuotaTaskPreCountLogic {
 	return &QueryQuotaTaskPreCountLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func (l *QueryQuotaTaskPreCountLogic) QueryQuotaTaskPreCount(req *types.QueryQuo
 		EndTime:     req.EndTime,
 	})
 	if err != nil {
-		l.Errorf("[QueryQuotaTaskPreCount] count error: %v", err.Error())
+		l.Logger.Errorf("[QueryQuotaTaskPreCount] count error: %v", err.Error())
 		return nil, err
 	}
 

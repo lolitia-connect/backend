@@ -13,10 +13,10 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 func GetTelegramConfig(ctx context.Context, svcCtx *svc.ServiceContext) (*types.TelegramConfig, error) {
@@ -28,7 +28,7 @@ func GetTelegramConfig(ctx context.Context, svcCtx *svc.ServiceContext) (*types.
 	var telegramConfig auth.TelegramAuthConfig
 	err = json.Unmarshal([]byte(data.Config), &telegramConfig)
 	if err != nil {
-		logger.WithContext(ctx).Error("unmarshal telegram config failed", logger.Field("error", err.Error()))
+		zap.S().Error("unmarshal telegram config failed", zap.Any("error", err.Error()))
 		return nil, err
 	}
 
@@ -76,7 +76,7 @@ func SendAdminMessage(ctx context.Context, svcCtx *svc.ServiceContext, text stri
 	if !f {
 		admins, err := svcCtx.Store.User().QueryAdminUsers(ctx)
 		if err != nil {
-			logger.WithContext(ctx).Error("[SendAdminMessage] query admin users failed", logger.Field("error", err.Error()))
+			zap.S().Error("[SendAdminMessage] query admin users failed", zap.Any("error", err.Error()))
 			return
 		}
 		for _, admin := range admins {

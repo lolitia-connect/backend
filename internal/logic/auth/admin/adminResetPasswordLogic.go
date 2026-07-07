@@ -1,10 +1,10 @@
 package admin
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"time"
 
 	"github.com/perfect-panel/server/internal/config"
@@ -16,15 +16,15 @@ import (
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
-	)
+	"go.uber.org/zap"
+)
 
 type AdminResetPasswordLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -36,7 +36,7 @@ type CacheKeyPayload struct {
 // Admin reset password
 func NewAdminResetPasswordLogic(ctx context.Context, svcCtx *svc.ServiceContext) *AdminResetPasswordLogic {
 	return &AdminResetPasswordLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -63,10 +63,10 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 				ObjectID: userInfo.Id,
 				Content:  string(content),
 			}); err != nil {
-				l.Errorw("failed to insert login log",
-					logger.Field("user_id", userInfo.Id),
-					logger.Field("ip", req.IP),
-					logger.Field("error", err.Error()),
+				l.Logger.Errorw("failed to insert login log",
+					zap.Any("user_id", userInfo.Id),
+					zap.Any("ip", req.IP),
+					zap.Any("error", err.Error()),
 				)
 			}
 		}
@@ -75,16 +75,16 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeCacheKey, constant.Security, req.Email)
 	// Check the verification code
 	if value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result(); err != nil {
-		l.Errorw("Verification code error", logger.Field("cacheKey", cacheKey), logger.Field("error", err.Error()))
+		l.Logger.Errorw("Verification code error", zap.Any("cacheKey", cacheKey), zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "Verification code error")
 	} else {
 		var payload CacheKeyPayload
 		if err := json.Unmarshal([]byte(value), &payload); err != nil {
-			l.Errorw("Unmarshal errors", logger.Field("cacheKey", cacheKey), logger.Field("error", err.Error()), logger.Field("value", value))
+			l.Logger.Errorw("Unmarshal errors", zap.Any("cacheKey", cacheKey), zap.Any("error", err.Error()), zap.Any("value", value))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "Verification code error")
 		}
 		if payload.Code != req.Code {
-			l.Errorw("Verification code error", logger.Field("cacheKey", cacheKey), logger.Field("error", "Verification code error"), logger.Field("reqCode", req.Code), logger.Field("payloadCode", payload.Code))
+			l.Logger.Errorw("Verification code error", zap.Any("cacheKey", cacheKey), zap.Any("error", "Verification code error"), zap.Any("reqCode", req.Code), zap.Any("payloadCode", payload.Code))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "Verification code error")
 		}
 	}
@@ -127,10 +127,10 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 	if req.Identifier != "" {
 		bindLogic := auth.NewBindDeviceLogic(l.ctx, l.svcCtx)
 		if err := bindLogic.BindDeviceToUser(req.Identifier, req.IP, req.UserAgent, userInfo.Id); err != nil {
-			l.Errorw("failed to bind device to user",
-				logger.Field("user_id", userInfo.Id),
-				logger.Field("identifier", req.Identifier),
-				logger.Field("error", err.Error()),
+			l.Logger.Errorw("failed to bind device to user",
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("identifier", req.Identifier),
+				zap.Any("error", err.Error()),
 			)
 			// Don't fail register if device binding fails, just log the error
 		}
@@ -151,7 +151,7 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 		jwt.WithOption("CtxLoginType", req.LoginType),
 	)
 	if err != nil {
-		l.Logger.Error("[AdminResetPassword] token generate error", logger.Field("error", err.Error()))
+		l.Logger.Error("[AdminResetPassword] token generate error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "token generate error: %v", err.Error())
 	}
 	sessionIdCacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
@@ -167,7 +167,7 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 func (l *AdminResetPasswordLogic) verifyCaptcha(req *types.ResetPasswordRequest) error {
 	verifyCfg, err := l.svcCtx.Store.System().GetVerifyConfig(l.ctx)
 	if err != nil {
-		l.Logger.Error("[AdminResetPasswordLogic] GetVerifyConfig error: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[AdminResetPasswordLogic] GetVerifyConfig error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetVerifyConfig error: %v", err.Error())
 	}
 

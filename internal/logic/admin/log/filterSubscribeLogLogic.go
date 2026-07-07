@@ -7,13 +7,13 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type FilterSubscribeLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,7 +21,7 @@ type FilterSubscribeLogLogic struct {
 // NewFilterSubscribeLogLogic Filter subscribe log
 func NewFilterSubscribeLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FilterSubscribeLogLogic {
 	return &FilterSubscribeLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -42,7 +42,7 @@ func (l *FilterSubscribeLogLogic) FilterSubscribeLog(req *types.FilterSubscribeL
 
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, params)
 	if err != nil {
-		l.Errorf("[FilterSubscribeLog] failed to filter system log: %v", err.Error())
+		l.Logger.Errorf("[FilterSubscribeLog] failed to filter system log: %v", err.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "failed to filter system log")
 	}
 
@@ -51,7 +51,7 @@ func (l *FilterSubscribeLogLogic) FilterSubscribeLog(req *types.FilterSubscribeL
 		var content log.Subscribe
 		err = content.Unmarshal([]byte(datum.Content))
 		if err != nil {
-			l.Errorf("[FilterSubscribeLog] failed to unmarshal content: %v", err.Error())
+			l.Logger.Errorf("[FilterSubscribeLog] failed to unmarshal content: %v", err.Error())
 			continue
 		}
 		list = append(list, types.SubscribeLog{

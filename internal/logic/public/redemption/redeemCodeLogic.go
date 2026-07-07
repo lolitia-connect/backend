@@ -1,10 +1,10 @@
 package redemption
 
 import (
-	"github.com/perfect-panel/server/ent"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/ent"
 	"strings"
 	"time"
 
@@ -16,10 +16,10 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/pkg/errors"
-	
+
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 // unitTimeMapping maps lowercase API values to the format expected by tool.AddTime
@@ -40,7 +40,7 @@ func normalizeUnitTime(unit string) string {
 }
 
 type RedeemCodeLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -48,7 +48,7 @@ type RedeemCodeLogic struct {
 // Redeem code
 func NewRedeemCodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *RedeemCodeLogic {
 	return &RedeemCodeLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -58,7 +58,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	// Get user from context
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
@@ -66,13 +66,13 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	lockKey := fmt.Sprintf("redemption_lock:%d:%s", u.Id, req.Code)
 	lockSuccess, err := l.svcCtx.Redis.SetNX(l.ctx, lockKey, "1", 10*time.Second).Result()
 	if err != nil {
-		l.Errorw("[RedeemCode] Acquire lock failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Acquire lock failed", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "system busy, please try again later")
 	}
 	if !lockSuccess {
-		l.Errorw("[RedeemCode] Redemption in progress",
-			logger.Field("user_id", u.Id),
-			logger.Field("code", req.Code))
+		l.Logger.Errorw("[RedeemCode] Redemption in progress",
+			zap.Any("user_id", u.Id),
+			zap.Any("code", req.Code))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "redemption in progress, please wait")
 	}
 	defer l.svcCtx.Redis.Del(l.ctx, lockKey)
@@ -81,41 +81,41 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	redemptionCode, err := l.svcCtx.Store.RedemptionCode().FindOneByCode(l.ctx, req.Code)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			l.Errorw("[RedeemCode] Redemption code not found", logger.Field("code", req.Code))
+			l.Logger.Errorw("[RedeemCode] Redemption code not found", zap.Any("code", req.Code))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code not found")
 		}
-		l.Errorw("[RedeemCode] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find redemption code error: %v", err.Error())
 	}
 
 	// Check if redemption code is enabled
 	if redemptionCode.Status != 1 {
-		l.Errorw("[RedeemCode] Redemption code is disabled",
-			logger.Field("code", req.Code),
-			logger.Field("status", redemptionCode.Status))
+		l.Logger.Errorw("[RedeemCode] Redemption code is disabled",
+			zap.Any("code", req.Code),
+			zap.Any("status", redemptionCode.Status))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code is disabled")
 	}
 
 	// Check if redemption code has remaining count
 	if redemptionCode.TotalCount > 0 && redemptionCode.UsedCount >= redemptionCode.TotalCount {
-		l.Errorw("[RedeemCode] Redemption code has been fully used",
-			logger.Field("code", req.Code),
-			logger.Field("total_count", redemptionCode.TotalCount),
-			logger.Field("used_count", redemptionCode.UsedCount))
+		l.Logger.Errorw("[RedeemCode] Redemption code has been fully used",
+			zap.Any("code", req.Code),
+			zap.Any("total_count", redemptionCode.TotalCount),
+			zap.Any("used_count", redemptionCode.UsedCount))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code has been fully used")
 	}
 
 	// Check if user has already redeemed this code
 	userRecords, err := l.svcCtx.Store.RedemptionRecord().FindByUserId(l.ctx, u.Id)
 	if err != nil {
-		l.Errorw("[RedeemCode] Database Error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find redemption records error: %v", err.Error())
 	}
 	for _, record := range userRecords {
 		if record.RedemptionCodeId == redemptionCode.Id {
-			l.Errorw("[RedeemCode] User has already redeemed this code",
-				logger.Field("user_id", u.Id),
-				logger.Field("code", req.Code))
+			l.Logger.Errorw("[RedeemCode] User has already redeemed this code",
+				zap.Any("user_id", u.Id),
+				zap.Any("code", req.Code))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "you have already redeemed this code")
 		}
 	}
@@ -123,16 +123,16 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	// Find subscribe plan from redemption code
 	subscribePlan, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, redemptionCode.SubscribePlan)
 	if err != nil {
-		l.Errorw("[RedeemCode] Subscribe plan not found",
-			logger.Field("subscribe_plan", redemptionCode.SubscribePlan),
-			logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Subscribe plan not found",
+			zap.Any("subscribe_plan", redemptionCode.SubscribePlan),
+			zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "subscribe plan not found")
 	}
 
 	// Check if subscribe plan is available
 	if !*subscribePlan.Sell {
-		l.Errorw("[RedeemCode] Subscribe plan is not available",
-			logger.Field("subscribe_plan", redemptionCode.SubscribePlan))
+		l.Logger.Errorw("[RedeemCode] Subscribe plan is not available",
+			zap.Any("subscribe_plan", redemptionCode.SubscribePlan))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe plan is not available")
 	}
 
@@ -140,15 +140,15 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	if subscribePlan.Quota > 0 {
 		count, err := l.svcCtx.Store.User().CountUserSubscribesByUserAndSubscribe(l.ctx, u.Id, redemptionCode.SubscribePlan)
 		if err != nil {
-			l.Errorw("[RedeemCode] Check quota failed", logger.Field("error", err.Error()))
+			l.Logger.Errorw("[RedeemCode] Check quota failed", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "check quota failed")
 		}
 		if count >= subscribePlan.Quota {
-			l.Errorw("[RedeemCode] Subscribe quota limit exceeded",
-				logger.Field("user_id", u.Id),
-				logger.Field("subscribe_id", redemptionCode.SubscribePlan),
-				logger.Field("quota", subscribePlan.Quota),
-				logger.Field("current_count", count))
+			l.Logger.Errorw("[RedeemCode] Subscribe quota limit exceeded",
+				zap.Any("user_id", u.Id),
+				zap.Any("subscribe_id", redemptionCode.SubscribePlan),
+				zap.Any("quota", subscribePlan.Quota),
+				zap.Any("current_count", count))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeQuotaLimit), "subscribe quota limit exceeded")
 		}
 	}
@@ -156,7 +156,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	// 判断是否首次购买
 	isNew, err := l.svcCtx.Store.Order().IsUserEligibleForNewOrder(l.ctx, u.Id)
 	if err != nil {
-		l.Errorw("[RedeemCode] Check user order failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Check user order failed", zap.Any("error", err.Error()))
 		// 可以继续，默认为false
 		isNew = false
 	}
@@ -185,7 +185,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	// 保存Order到数据库
 	err = l.svcCtx.Store.Order().Insert(l.ctx, orderInfo)
 	if err != nil {
-		l.Errorw("[RedeemCode] Create order failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Create order failed", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create order failed")
 	}
 
@@ -199,12 +199,12 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	jsonData, _ := json.Marshal(cacheData)
 	err = l.svcCtx.Redis.Set(l.ctx, cacheKey, jsonData, 2*time.Hour).Err()
 	if err != nil {
-		l.Errorw("[RedeemCode] Cache redemption data failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Cache redemption data failed", zap.Any("error", err.Error()))
 		// 缓存失败，删除已创建的Order避免孤儿记录
 		if delErr := l.svcCtx.Store.Order().Delete(l.ctx, orderInfo.Id); delErr != nil {
-			l.Errorw("[RedeemCode] Delete order failed after cache error",
-				logger.Field("order_id", orderInfo.Id),
-				logger.Field("error", delErr.Error()))
+			l.Logger.Errorw("[RedeemCode] Delete order failed after cache error",
+				zap.Any("order_id", orderInfo.Id),
+				zap.Any("error", delErr.Error()))
 		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "cache redemption data failed")
 	}
@@ -217,20 +217,20 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	task := asynq.NewTask(queue.ForthwithActivateOrder, bytes, asynq.MaxRetry(5))
 	_, err = l.svcCtx.Queue.EnqueueContext(l.ctx, task)
 	if err != nil {
-		l.Errorw("[RedeemCode] Enqueue task failed", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[RedeemCode] Enqueue task failed", zap.Any("error", err.Error()))
 		// 入队失败，删除Order和Redis缓存
 		l.svcCtx.Redis.Del(l.ctx, cacheKey)
 		if delErr := l.svcCtx.Store.Order().Delete(l.ctx, orderInfo.Id); delErr != nil {
-			l.Errorw("[RedeemCode] Delete order failed after enqueue error",
-				logger.Field("order_id", orderInfo.Id),
-				logger.Field("error", delErr.Error()))
+			l.Logger.Errorw("[RedeemCode] Delete order failed after enqueue error",
+				zap.Any("order_id", orderInfo.Id),
+				zap.Any("error", delErr.Error()))
 		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "enqueue task failed")
 	}
 
-	l.Infow("[RedeemCode] Redemption order created successfully",
-		logger.Field("order_no", orderInfo.OrderNo),
-		logger.Field("user_id", u.Id),
+	l.Logger.Infow("[RedeemCode] Redemption order created successfully",
+		zap.Any("order_no", orderInfo.OrderNo),
+		zap.Any("user_id", u.Id),
 	)
 
 	return &types.RedeemCodeResponse{

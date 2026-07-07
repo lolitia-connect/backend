@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type GetSystemLogLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -21,23 +22,23 @@ type GetSystemLogLogic struct {
 // NewGetSystemLogLogic Get System Log
 func NewGetSystemLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetSystemLogLogic {
 	return &GetSystemLogLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
 }
 
 func (l *GetSystemLogLogic) GetSystemLog() (resp *types.LogResponse, err error) {
-	lines, err := logger.ReadLastNLines(l.svcCtx.Config.Logger.Path, 50)
+	lines, err := logging.ReadLastNLines(l.svcCtx.Config.Logger.Path, 50)
 	if err != nil {
-		l.Error(err)
+		l.Logger.Error(err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get system log error: %v", err.Error())
 	}
 	var list []map[string]interface{}
 	for _, line := range lines {
 		var log map[string]interface{}
 		if err = json.Unmarshal([]byte(line), &log); err != nil {
-			l.Error(err)
+			l.Logger.Error(err)
 			continue
 		}
 		list = append(list, log)

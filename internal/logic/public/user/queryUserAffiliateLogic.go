@@ -12,11 +12,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type QueryUserAffiliateLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type QueryUserAffiliateLogic struct {
 // Query User Balance Log
 func NewQueryUserAffiliateLogic(ctx context.Context, svcCtx *svc.ServiceContext) *QueryUserAffiliateLogic {
 	return &QueryUserAffiliateLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func NewQueryUserAffiliateLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 func (l *QueryUserAffiliateLogic) QueryUserAffiliate() (resp *types.QueryUserAffiliateCountResponse, err error) {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	var sum int64
@@ -51,7 +51,7 @@ func (l *QueryUserAffiliateLogic) QueryUserAffiliate() (resp *types.QueryUserAff
 	for _, datum := range data {
 		content := log.Commission{}
 		if err = content.Unmarshal([]byte(datum.Content)); err != nil {
-			l.Errorf("[QueryUserAffiliate] unmarshal comission log failed: %v", err.Error())
+			l.Logger.Errorf("[QueryUserAffiliate] unmarshal comission log failed: %v", err.Error())
 			continue
 		}
 		sum += content.Amount

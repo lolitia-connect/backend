@@ -8,14 +8,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetSubscribeListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -23,7 +23,7 @@ type GetSubscribeListLogic struct {
 // Get subscribe list
 func NewGetSubscribeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetSubscribeListLogic {
 	return &GetSubscribeListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -42,7 +42,7 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 		NodeGroupId: nodeGroupId,
 	})
 	if err != nil {
-		l.Logger.Error("[GetSubscribeListLogic] get subscribe list failed: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[GetSubscribeListLogic] get subscribe list failed: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get subscribe list failed: %v", err.Error())
 	}
 	var (
@@ -56,7 +56,7 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 		if item.Discount != "" {
 			err = json.Unmarshal([]byte(item.Discount), &sub.Discount)
 			if err != nil {
-				l.Logger.Error("[GetSubscribeListLogic] JSON unmarshal failed: ", logger.Field("error", err.Error()), logger.Field("discount", item.Discount))
+				l.Logger.Error("[GetSubscribeListLogic] JSON unmarshal failed: ", zap.Any("error", err.Error()), zap.Any("discount", item.Discount))
 			}
 		}
 		sub.Nodes = types.StringInt64Slice(tool.StringToInt64Slice(item.Nodes))
@@ -74,7 +74,7 @@ func (l *GetSubscribeListLogic) GetSubscribeList(req *types.GetSubscribeListRequ
 
 	subscribeMaps, err := l.svcCtx.Store.User().QueryActiveSubscriptions(l.ctx, subscribeIdList...)
 	if err != nil {
-		l.Logger.Error("[GetSubscribeListLogic] get user subscribe failed: ", logger.Field("error", err.Error()))
+		l.Logger.Error("[GetSubscribeListLogic] get user subscribe failed: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get user subscribe failed: %v", err.Error())
 	}
 

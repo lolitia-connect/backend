@@ -11,8 +11,6 @@ import (
 	entnode "github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/predicate"
 	entserver "github.com/perfect-panel/server/ent/server"
-	"github.com/perfect-panel/server/pkg/logger"
-	"github.com/perfect-panel/server/pkg/tool"
 )
 
 type customServerLogicModel interface {
@@ -23,6 +21,7 @@ type customServerLogicModel interface {
 	UpdateNodeSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error
+	DeleteServerWithOverrides(ctx context.Context, serverId int64) error
 	QueryNodeTags(ctx context.Context) ([]string, error)
 	CountEnabledNodes(ctx context.Context) (int64, error)
 	CountServersByReportStatus(ctx context.Context, cutoff time.Time) (int64, int64, error)
@@ -31,6 +30,10 @@ type customServerLogicModel interface {
 	ClearNodeCache(ctx context.Context, params *FilterNodeParams) error
 	ClearServerCache(ctx context.Context, serverId int64) error
 	ClearServerAllCache(ctx context.Context) error
+	CountByNodeGroupId(ctx context.Context, nodeGroupId int64) (int64, error)
+	QueryEnabledVisibleNodes(ctx context.Context) ([]*Node, error)
+	QueryEnabledVisibleNodesByIds(ctx context.Context, ids []int64) ([]*Node, error)
+	ClearAllNodeGroupIds(ctx context.Context) error
 	SortNodesByName(ctx context.Context) error
 	SortServersByName(ctx context.Context) error
 }
@@ -132,6 +135,13 @@ func (m *customServerModel) UpdateServerLastReportedAt(ctx context.Context, id i
 	return m.db.Server.UpdateOneID(id).SetLastReportedAt(t).Exec(ctx)
 }
 
+func (m *customServerModel) DeleteServerWithOverrides(ctx context.Context, serverId int64) error {
+	if err := m.DeleteServerConfigOverride(ctx, serverId); err != nil {
+		return err
+	}
+	return m.DeleteServer(ctx, serverId)
+}
+
 // FilterNodeList Filter Node List
 func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNodeParams) (int64, []*Node, error) {
 	if params == nil {
@@ -212,6 +222,28 @@ func (m *customServerModel) QueryNodeSorts(ctx context.Context) ([]SortItem, err
 	return items, nil
 }
 
+func (m *customServerModel) CountByNodeGroupId(ctx context.Context, nodeGroupId int64) (int64, error) {
+	count, err := m.db.Node.Query().Where(predicate.Node(func(s *sql.Selector) {
+		s.Where(sql.ExprP("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroupId)))
+	})).Count(ctx)
+	return int64(count), err
+}
+
+func (m *customServerModel) QueryEnabledVisibleNodes(ctx context.Context) ([]*Node, error) {
+	items, err := m.db.Node.Query().Where(entnode.Enabled(true), entnode.IsHidden(false)).All(ctx)
+	return entNodesToModel(items), err
+}
+
+func (m *customServerModel) QueryEnabledVisibleNodesByIds(ctx context.Context, ids []int64) ([]*Node, error) {
+	items, err := m.db.Node.Query().Where(entnode.IDIn(ids...), entnode.Enabled(true), entnode.IsHidden(false)).All(ctx)
+	return entNodesToModel(items), err
+}
+
+func (m *customServerModel) ClearAllNodeGroupIds(ctx context.Context) error {
+	_, err := m.db.Node.Update().SetNodeGroupIds([]int64{}).Save(ctx)
+	return err
+}
+
 func (m *customServerModel) UpdateNodeSort(ctx context.Context, id int64, sort int64) error {
 	node, err := m.FindOneNode(ctx, id)
 	if err != nil {
@@ -280,102 +312,4 @@ func (m *customServerModel) QueryServerAddresses(ctx context.Context) ([]string,
 
 func (m *customServerModel) QueryEnabledNodeProtocols(ctx context.Context) ([]string, error) {
 	return m.db.Node.Query().Where(entnode.Enabled(true)).Select(entnode.FieldProtocol).Strings(ctx)
-}
-
-// ClearNodeCache Clear Node Cache
-func (m *customServerModel) ClearNodeCache(ctx context.Context, params *FilterNodeParams) error {
-	_, nodes, err := m.FilterNodeList(ctx, params)
-	if err != nil {
-		return err
-	}
-	var cacheKeys []string
-	for _, node := range nodes {
-		// Scan all protocol variants of user list and config cache
-		patterns := []string{
-			fmt.Sprintf("%s%d:*", ServerUserListCacheKey, node.ServerId),
-			fmt.Sprintf("%s%d:*", ServerConfigCacheKey, node.ServerId),
-		}
-		// Also delete legacy user-list key written before protocol was added to the key.
-		cacheKeys = append(cacheKeys, fmt.Sprintf("%s%d", ServerUserListCacheKey, node.ServerId))
-		for _, pattern := range patterns {
-			var cursor uint64
-			for {
-				keys, newCursor, err := m.Cache.Scan(ctx, cursor, pattern, 100).Result()
-				if err != nil {
-					return err
-				}
-				if len(keys) > 0 {
-					cacheKeys = append(cacheKeys, keys...)
-				}
-				cursor = newCursor
-				if cursor == 0 {
-					break
-				}
-			}
-		}
-	}
-
-	if len(cacheKeys) > 0 {
-		cacheKeys = tool.RemoveDuplicateElements(cacheKeys...)
-		return m.Cache.Del(ctx, cacheKeys...).Err()
-	}
-	return nil
-}
-
-// ClearServerCache Clear Server Cache
-func (m *customServerModel) ClearServerCache(ctx context.Context, serverId int64) error {
-	var cacheKeys []string
-	// Scan all protocol variants of both user list and config cache
-	patterns := []string{
-		fmt.Sprintf("%s%d:*", ServerUserListCacheKey, serverId),
-		fmt.Sprintf("%s%d:*", ServerConfigCacheKey, serverId),
-	}
-	// Also delete legacy user-list key written before protocol was added to the key.
-	cacheKeys = append(cacheKeys, fmt.Sprintf("%s%d", ServerUserListCacheKey, serverId))
-	for _, pattern := range patterns {
-		var cursor uint64
-		for {
-			keys, newCursor, err := m.Cache.Scan(ctx, cursor, pattern, 100).Result()
-			if err != nil {
-				return err
-			}
-			if len(keys) > 0 {
-				cacheKeys = append(cacheKeys, keys...)
-			}
-			cursor = newCursor
-			if cursor == 0 {
-				break
-			}
-		}
-	}
-
-	if len(cacheKeys) > 0 {
-		cacheKeys = tool.RemoveDuplicateElements(cacheKeys...)
-		return m.Cache.Del(ctx, cacheKeys...).Err()
-	}
-	return nil
-}
-
-func (m *customServerModel) ClearServerAllCache(ctx context.Context) error {
-	var cursor uint64
-	var keys []string
-	prefix := ServerUserListCacheKey + "*"
-	for {
-		scanKeys, newCursor, err := m.Cache.Scan(ctx, cursor, prefix, 999).Result()
-		if err != nil {
-			logger.Error(ctx, fmt.Sprintf("ClearServerAllCache err:%v", err))
-			break
-		}
-		logger.Info(ctx, fmt.Sprintf("ClearServerAllCache query keys:%v", scanKeys))
-		keys = append(keys, scanKeys...)
-		cursor = newCursor
-		if cursor == 0 {
-			break
-		}
-	}
-	if len(keys) > 0 {
-		logger.Info(ctx, fmt.Sprintf("ClearServerAllCache keys:%v", keys))
-		return m.Cache.Del(ctx, keys...).Err()
-	}
-	return nil
 }

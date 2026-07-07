@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 func Int64SliceToStringSlice(slice []int64) []string {
@@ -38,9 +38,9 @@ func StringToInt64Slice(s string) []int64 {
 	for _, str := range stringSlice {
 		num, err := strconv.ParseInt(strings.TrimSpace(str), 10, 64)
 		if err != nil {
-			logger.Error("[Tools] StringToInt64Slice",
-				logger.Field("error", err.Error()),
-				logger.Field("str", str),
+			zap.S().Error("[Tools] StringToInt64Slice",
+				zap.Any("error", err.Error()),
+				zap.Any("str", str),
 			)
 			continue
 		}

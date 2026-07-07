@@ -12,11 +12,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type UpdateBindEmailLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -24,7 +24,7 @@ type UpdateBindEmailLogic struct {
 // NewUpdateBindEmailLogic Update Bind Email
 func NewUpdateBindEmailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateBindEmailLogic {
 	return &UpdateBindEmailLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -33,7 +33,7 @@ func NewUpdateBindEmailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *U
 func (l *UpdateBindEmailLogic) UpdateBindEmail(req *types.UpdateBindEmailRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
-		logger.Error("current user is not found in context")
+		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	method, err := l.svcCtx.Store.User().FindUserAuthMethodByUserId(l.ctx, "email", u.Id)

@@ -10,11 +10,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type UpdateCurrencyConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type UpdateCurrencyConfigLogic struct {
 // Update Currency Config
 func NewUpdateCurrencyConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateCurrencyConfigLogic {
 	return &UpdateCurrencyConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -32,7 +32,7 @@ func (l *UpdateCurrencyConfigLogic) UpdateCurrencyConfig(req *types.CurrencyConf
 	err := updateConfigFields(l.ctx, l.svcCtx, "currency", convertedConfigFields(*req), config.CurrencyConfigKey, config.GlobalConfigKey)
 	initialize.Currency(l.svcCtx)
 	if err != nil {
-		l.Errorw("[UpdateCurrencyConfig] update currency config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateCurrencyConfig] update currency config error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update invite config error: %v", err)
 	}
 	return nil

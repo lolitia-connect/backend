@@ -7,14 +7,14 @@ import (
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type GetServerNodeListLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -22,7 +22,7 @@ type GetServerNodeListLogic struct {
 // NewGetServerNodeListLogic Get all enabled server node list
 func NewGetServerNodeListLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetServerNodeListLogic {
 	return &GetServerNodeListLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -35,7 +35,7 @@ func (l *GetServerNodeListLogic) GetServerNodeList() (resp *types.GetServerNodeL
 		Size: 1000,
 	})
 	if err != nil {
-		l.Errorw("[GetServerNodeList] Query Server List Error: ", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[GetServerNodeList] Query Server List Error: ", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query Server List Error")
 	}
 
@@ -45,7 +45,7 @@ func (l *GetServerNodeListLogic) GetServerNodeList() (resp *types.GetServerNodeL
 		// Unmarshal protocols
 		protocols, err := server.UnmarshalProtocols()
 		if err != nil {
-			l.Errorf("[GetServerNodeList] UnmarshalProtocols Error: %s", err.Error())
+			l.Logger.Errorf("[GetServerNodeList] UnmarshalProtocols Error: %s", err.Error())
 			continue
 		}
 
@@ -69,7 +69,7 @@ func (l *GetServerNodeListLogic) GetServerNodeList() (resp *types.GetServerNodeL
 		var cpu, mem float64
 		nodeStatus, err := l.svcCtx.Store.Node().StatusCache(l.ctx, server.Id)
 		if err != nil && !errors.Is(err, redis.Nil) {
-			l.Errorw("[GetServerNodeList] Get StatusCache Error: ", logger.Field("error", err.Error()), logger.Field("server_id", server.Id))
+			l.Logger.Errorw("[GetServerNodeList] Get StatusCache Error: ", zap.Any("error", err.Error()), zap.Any("server_id", server.Id))
 		} else {
 			cpu = nodeStatus.Cpu
 			mem = nodeStatus.Mem
@@ -125,7 +125,7 @@ func (l *GetServerNodeListLogic) countOnlineUsers(serverId int64, protocols []no
 		data, err := l.svcCtx.Store.Node().OnlineUserSubscribe(l.ctx, serverId, p.Type+":"+p.Id)
 		if err != nil {
 			if !errors.Is(err, redis.Nil) {
-				l.Errorw("[GetServerNodeList] OnlineUserSubscribe Error: ", logger.Field("error", err.Error()), logger.Field("server_id", serverId), logger.Field("protocol", p.Id))
+				l.Logger.Errorw("[GetServerNodeList] OnlineUserSubscribe Error: ", zap.Any("error", err.Error()), zap.Any("server_id", serverId), zap.Any("protocol", p.Id))
 			}
 			continue
 		}

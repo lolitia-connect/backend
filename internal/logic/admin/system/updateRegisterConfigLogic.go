@@ -5,8 +5,8 @@ import (
 
 	"github.com/perfect-panel/server/initialize"
 	"github.com/perfect-panel/server/internal/config"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"go.uber.org/zap"
 
 	"github.com/pkg/errors"
 
@@ -15,14 +15,14 @@ import (
 )
 
 type UpdateRegisterConfigLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
 
 func NewUpdateRegisterConfigLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UpdateRegisterConfigLogic {
 	return &UpdateRegisterConfigLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -31,7 +31,7 @@ func NewUpdateRegisterConfigLogic(ctx context.Context, svcCtx *svc.ServiceContex
 func (l *UpdateRegisterConfigLogic) UpdateRegisterConfig(req *types.RegisterConfig) error {
 	err := updateConfigFields(l.ctx, l.svcCtx, "register", convertedConfigFields(*req), config.RegisterConfigKey, config.GlobalConfigKey)
 	if err != nil {
-		l.Errorw("[UpdateRegisterConfig] update register config error", logger.Field("error", err.Error()))
+		l.Logger.Errorw("[UpdateRegisterConfig] update register config error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update register config error: %v", err.Error())
 	}
 	// init system config

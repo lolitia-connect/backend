@@ -11,17 +11,17 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	exchangeRateAPI "github.com/perfect-panel/server/pkg/exchangeRate"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/payment"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"github.com/perfect-panel/server/pkg/random"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type CreatePaymentMethodLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -29,7 +29,7 @@ type CreatePaymentMethodLogic struct {
 // NewCreatePaymentMethodLogic Create Payment Method
 func NewCreatePaymentMethodLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CreatePaymentMethodLogic {
 	return &CreatePaymentMethodLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -37,7 +37,7 @@ func NewCreatePaymentMethodLogic(ctx context.Context, svcCtx *svc.ServiceContext
 
 func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentMethodRequest) (resp *types.PaymentConfig, err error) {
 	if payment.ParsePlatform(req.Platform) == payment.UNSUPPORTED {
-		l.Errorw("unsupported payment platform", logger.Field("mark", req.Platform))
+		l.Logger.Errorw("unsupported payment platform", zap.Any("mark", req.Platform))
 		return nil, errors.Wrapf(xerr.NewErrCodeMsg(400, "UNSUPPORTED_PAYMENT_PLATFORM"), "unsupported payment platform: %s", req.Platform)
 	}
 	config := parsePaymentPlatformConfig(l.ctx, payment.ParsePlatform(req.Platform), req.Config)
@@ -48,7 +48,7 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 		if exchangeRate == 0 && l.svcCtx.Config.Currency.AccessKey != "" {
 			rate, err := exchangeRateAPI.GetExchangeRete(l.svcCtx.Config.Currency.Unit, strings.ToUpper(req.CurrencyUnit), l.svcCtx.Config.Currency.AccessKey, 1)
 			if err != nil {
-				l.Errorw("[CreatePaymentMethod] auto-calculate exchange rate error", logger.Field("error", err.Error()))
+				l.Logger.Errorw("[CreatePaymentMethod] auto-calculate exchange rate error", zap.Any("error", err.Error()))
 				// Fall back to provided rate or 1:1
 				if req.ExchangeRate == 0 {
 					exchangeRate = 1
@@ -80,11 +80,11 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 		if req.Platform == "Stripe" {
 			var cfg paymentModel.StripeConfig
 			if err = cfg.Unmarshal([]byte(paymentMethod.Config)); err != nil {
-				l.Errorf("[CreatePaymentMethod] unmarshal stripe config error: %s", err.Error())
+				l.Logger.Errorf("[CreatePaymentMethod] unmarshal stripe config error: %s", err.Error())
 				return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "unmarshal stripe config error: %s", err.Error())
 			}
 			if cfg.SecretKey == "" {
-				l.Error("[CreatePaymentMethod] stripe secret key is empty")
+				l.Logger.Error("[CreatePaymentMethod] stripe secret key is empty")
 				return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "stripe secret key is empty")
 			}
 
@@ -96,7 +96,7 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 			url := fmt.Sprintf("%s/v1/notify/Stripe/%s", strings.TrimSuffix(req.Domain, "/"), paymentMethod.Token)
 			endpoint, err := client.CreateWebhookEndpoint(url)
 			if err != nil {
-				l.Errorw("[CreatePaymentMethod] create stripe webhook endpoint error", logger.Field("error", err.Error()))
+				l.Logger.Errorw("[CreatePaymentMethod] create stripe webhook endpoint error", zap.Any("error", err.Error()))
 				return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "create stripe webhook endpoint error: %s", err.Error())
 			}
 			cfg.WebhookSecret = endpoint.Secret
@@ -123,7 +123,7 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 func parsePaymentPlatformConfig(ctx context.Context, platform payment.Platform, config interface{}) string {
 	data, err := json.Marshal(config)
 	if err != nil {
-		logger.WithContext(ctx).Errorw("marshal config error", logger.Field("platform", platform), logger.Field("config", config), logger.Field("error", err.Error()))
+		zap.S().Errorw("marshal config error", zap.Any("platform", platform), zap.Any("config", config), zap.Any("error", err.Error()))
 		return ""
 	}
 
@@ -133,12 +133,12 @@ func parsePaymentPlatformConfig(ctx context.Context, platform payment.Platform, 
 		Marshal() ([]byte, error)
 	}) string {
 		if err = target.Unmarshal(data); err != nil {
-			logger.WithContext(ctx).Errorw("parse "+name+" config error", logger.Field("config", string(data)), logger.Field("error", err.Error()))
+			zap.S().Errorw("parse "+name+" config error", zap.Any("config", string(data)), zap.Any("error", err.Error()))
 			return ""
 		}
 		content, err := target.Marshal()
 		if err != nil {
-			logger.WithContext(ctx).Errorw("marshal "+name+" config error", logger.Field("error", err.Error()))
+			zap.S().Errorw("marshal "+name+" config error", zap.Any("error", err.Error()))
 			return ""
 		}
 		return string(content)

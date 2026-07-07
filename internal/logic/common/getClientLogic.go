@@ -6,13 +6,13 @@ import (
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/logger"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 type GetClientLogic struct {
-	logger.Logger
+	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
 }
@@ -20,7 +20,7 @@ type GetClientLogic struct {
 // Get Client
 func NewGetClientLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetClientLogic {
 	return &GetClientLogic{
-		Logger: logger.WithContext(ctx),
+		Logger: zap.S(),
 		ctx:    ctx,
 		svcCtx: svcCtx,
 	}
@@ -29,7 +29,7 @@ func NewGetClientLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetClie
 func (l *GetClientLogic) GetClient() (resp *types.GetSubscribeClientResponse, err error) {
 	data, err := l.svcCtx.Store.Client().List(l.ctx)
 	if err != nil {
-		l.Errorf("Failed to get subscribe application list: %v", err)
+		l.Logger.Errorf("Failed to get subscribe application list: %v", err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Failed to get subscribe application list")
 	}
 	var list []types.SubscribeClient

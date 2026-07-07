@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/perfect-panel/server/pkg/email/smtp"
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 )
 
 type Sender interface {
@@ -17,7 +17,7 @@ func NewSender(platform, config, siteName string) (Sender, error) {
 	case SMTP:
 		cfg := smtp.Config{}
 		if err := json.Unmarshal([]byte(config), &cfg); err != nil {
-			logger.Error("unmarshal email config failed", logger.Field("error", err.Error()), logger.Field("config", config))
+			zap.S().Error("unmarshal email config failed", zap.Any("error", err.Error()), zap.Any("config", config))
 			return nil, err
 		}
 		cfg.SiteName = siteName

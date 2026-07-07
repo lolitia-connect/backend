@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/perfect-panel/server/pkg/logger"
+	"go.uber.org/zap"
 
 	openapi "github.com/alibabacloud-go/darabonba-openapi/client"
 	dysmsapi "github.com/alibabacloud-go/dysmsapi-20170525/v2/client"
@@ -27,7 +27,7 @@ type Client struct {
 func NewClient(config Config) *Client {
 	client, err := initApiClient(config)
 	if err != nil {
-		logger.Error("NewClient: init Alibaba Cloud Api Client failed", logger.Field("error", err.Error()))
+		zap.S().Error("NewClient: init Alibaba Cloud Api Client failed", zap.Any("error", err.Error()))
 	}
 	return &Client{
 		config: &config,

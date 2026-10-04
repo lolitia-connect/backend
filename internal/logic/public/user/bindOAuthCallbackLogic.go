@@ -119,7 +119,7 @@ func (l *BindOAuthCallbackLogic) google(req *types.BindOAuthCallbackRequest) err
 	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user auth method failed")
 	}
-	if userAuthMethod.Id > 0 {
+	if userAuthMethod != nil && userAuthMethod.Id > 0 {
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "google user already exists")
 	}
 	// bind google
@@ -189,7 +189,7 @@ func (l *BindOAuthCallbackLogic) apple(req *types.BindOAuthCallbackRequest) erro
 		l.Logger.Errorw("[BindOAuthCallbackLogic] FindUserAuthMethodByOpenID error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth method by openid failed: %v", err.Error())
 	}
-	if userAuthMethod.Id > 0 {
+	if userAuthMethod != nil && userAuthMethod.Id > 0 {
 		l.Logger.Errorw("[BindOAuthCallbackLogic] User already exists")
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "apple user already exists")
 	}
@@ -273,7 +273,7 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 		l.Logger.Errorw("find telegram user auth method by openid failed", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find telegram user auth method failed")
 	}
-	if existingByOpenID.Id > 0 {
+	if existingByOpenID != nil && existingByOpenID.Id > 0 {
 		if existingByOpenID.UserId == u.Id {
 			return nil
 		}

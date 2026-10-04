@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+
 	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/pkg/phone"
@@ -39,6 +40,6 @@ func (l *CheckUserTelephoneLogic) CheckUserTelephone(req *types.TelephoneCheckUs
 	}
 
 	return &types.TelephoneCheckUserResponse{
-		Exist: authMethods.UserId != 0,
+		Exist: authMethods != nil && authMethods.UserId != 0,
 	}, nil
 }

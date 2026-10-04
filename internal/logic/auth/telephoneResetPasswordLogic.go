@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/perfect-panel/server/ent"
 	"time"
+
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/log"
@@ -78,7 +79,7 @@ func (l *TelephoneResetPasswordLogic) TelephoneResetPassword(req *types.Telephon
 		l.Logger.Errorw("FindOneByTelephone Error", zap.Any("error", err))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query user info failed: %v", err.Error())
 	}
-	if authMethods.UserId == 0 {
+	if authMethods == nil || authMethods.UserId == 0 {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserNotExist), "user telephone exist: %v", phoneNumber)
 	}
 

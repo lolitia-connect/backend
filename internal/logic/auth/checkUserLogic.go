@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+
 	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/svc"
@@ -32,6 +33,6 @@ func (l *CheckUserLogic) CheckUser(req *types.CheckUserRequest) (resp *types.Che
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user by email error: %v", err.Error())
 	}
 	return &types.CheckUserResponse{
-		Exist: authMethod.UserId != 0,
+		Exist: authMethod != nil && authMethod.UserId != 0,
 	}, nil
 }

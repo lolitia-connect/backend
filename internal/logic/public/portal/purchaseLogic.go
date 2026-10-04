@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/perfect-panel/server/ent"
 	"time"
+
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/repository"
@@ -47,7 +48,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	if err != nil && !ent.IsNotFound(err) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth error: %v", err.Error())
 	}
-	if userAuth.UserId != 0 {
+	if userAuth != nil && userAuth.UserId != 0 {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "user already exists")
 	}
 	// find subscribe plan

@@ -45,7 +45,7 @@ func (l *UpdateBindEmailLogic) UpdateBindEmail(req *types.UpdateBindEmailRequest
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
 	// email already bind
-	if m.Id > 0 {
+	if m != nil && m.Id > 0 {
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "email already bind")
 	}
 	if method.Id == 0 {

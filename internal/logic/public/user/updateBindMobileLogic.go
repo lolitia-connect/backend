@@ -65,7 +65,7 @@ func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequ
 	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
-	if m.Id > 0 {
+	if m != nil && m.Id > 0 {
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "mobile already bind")
 	}
 

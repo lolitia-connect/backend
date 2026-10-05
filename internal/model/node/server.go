@@ -75,61 +75,69 @@ func (m *Server) UnmarshalProtocols() ([]Protocol, error) {
 }
 
 type Protocol struct {
-	Id                      string `json:"id"`   // Stable protocol instance id. Not tied to display name.
-	Name                    string `json:"name"` // Optional display name.
-	Type                    string `json:"type"`
-	Port                    uint16 `json:"port"`
-	Enable                  bool   `json:"enable"`
-	Security                string `json:"security,omitempty"`
-	SNI                     string `json:"sni,omitempty"`
-	AllowInsecure           bool   `json:"allow_insecure,omitempty"`
-	Fingerprint             string `json:"fingerprint,omitempty"`
-	RealityServerAddr       string `json:"reality_server_addr,omitempty"`
-	RealityServerPort       int    `json:"reality_server_port,omitempty"`
-	RealityPrivateKey       string `json:"reality_private_key,omitempty"`
-	RealityPublicKey        string `json:"reality_public_key,omitempty"`
-	RealityShortId          string `json:"reality_short_id,omitempty"`
-	Transport               string `json:"transport,omitempty"`
-	Host                    string `json:"host,omitempty"`
-	Path                    string `json:"path,omitempty"`
-	ServiceName             string `json:"service_name,omitempty"`
-	Cipher                  string `json:"cipher,omitempty"`
-	ServerKey               string `json:"server_key,omitempty"`
-	Flow                    string `json:"flow,omitempty"`
-	UoT                     bool   `json:"uot,omitempty"`                   // UDP over TCP
-	UoTVersion              int    `json:"uot_version,omitempty"`           // UoT version (1 or 2)
-	AcceptProxyProtocol     bool   `json:"accept_proxy_protocol,omitempty"` // accept proxy protocol
-	HopPorts                string `json:"hop_ports,omitempty"`
-	HopInterval             int    `json:"hop_interval,omitempty"`
-	ObfsPassword            string `json:"obfs_password,omitempty"`
-	DisableSNI              bool   `json:"disable_sni,omitempty"`
-	ReduceRtt               bool   `json:"reduce_rtt,omitempty"`
-	UDPRelayMode            string `json:"udp_relay_mode,omitempty"`
-	CongestionController    string `json:"congestion_controller,omitempty"`
-	Multiplex               string `json:"multiplex,omitempty"`                 // mux, eg: off/low/medium/high
-	PaddingScheme           string `json:"padding_scheme,omitempty"`            // padding scheme
-	UpMbps                  int    `json:"up_mbps,omitempty"`                   // upload speed limit
-	DownMbps                int    `json:"down_mbps,omitempty"`                 // download speed limit
-	Obfs                    string `json:"obfs,omitempty"`                      // obfs, 'none', 'http', 'tls'
-	ObfsHost                string `json:"obfs_host,omitempty"`                 // obfs host
-	ObfsPath                string `json:"obfs_path,omitempty"`                 // obfs path
-	XhttpMode               string `json:"xhttp_mode,omitempty"`                // xhttp mode
-	XhttpExtra              string `json:"xhttp_extra,omitempty"`               // xhttp extra path
-	Encryption              string `json:"encryption,omitempty"`                // encryption，'none', 'mlkem768x25519plus'
-	EncryptionMode          string `json:"encryption_mode,omitempty"`           // encryption mode，'native', 'xorpub', 'random'
-	EncryptionRtt           string `json:"encryption_rtt,omitempty"`            // encryption rtt，'0rtt', '1rtt'
-	EncryptionTicket        string `json:"encryption_ticket,omitempty"`         // encryption ticket
-	EncryptionServerPadding string `json:"encryption_server_padding,omitempty"` // encryption server padding
-	EncryptionPrivateKey    string `json:"encryption_private_key,omitempty"`    // encryption private key
-	EncryptionClientPadding string `json:"encryption_client_padding,omitempty"` // encryption client padding
-	EncryptionPassword      string `json:"encryption_password,omitempty"`       // encryption password
-	EchEnable               bool   `json:"ech_enable,omitempty"`                // ECH enable
-	EchServerName           string `json:"ech_server_name,omitempty"`           // ECH SNI
+	Id                      string   `json:"id"`   // Stable protocol instance id. Not tied to display name.
+	Name                    string   `json:"name"` // Optional display name.
+	Type                    string   `json:"type"`
+	Port                    uint16   `json:"port"`
+	Enable                  bool     `json:"enable"`
+	Version                 int      `json:"version,omitempty"`        // Snell accepts 5/6, TUIC 5, Nowhere 1; 0 means the protocol default
+	Mode                    string   `json:"mode,omitempty"`           // Snell v6 work mode; no other protocol sets it
+	Network                 string   `json:"network,omitempty"`        // Listener network: tcp/udp/both; Nowhere normalizes to mix/tcp/udp
+	ALPN                    []string `json:"alpn,omitempty"`           // TLS ALPN list; Nowhere takes exactly one value, defaulting to now/1
+	SSRProtocol             string   `json:"ssr_protocol,omitempty"`   // ShadowsocksR obfs/auth protocol
+	ProtocolParam           string   `json:"protocol_param,omitempty"` // ShadowsocksR protocol parameter (user:pass)
+	ObfsParam               string   `json:"obfs_param,omitempty"`     // ShadowsocksR obfs parameter
+	Security                string   `json:"security,omitempty"`
+	SNI                     string   `json:"sni,omitempty"`
+	AllowInsecure           bool     `json:"allow_insecure,omitempty"`
+	Fingerprint             string   `json:"fingerprint,omitempty"`
+	RealityServerAddr       string   `json:"reality_server_addr,omitempty"`
+	RealityServerPort       int      `json:"reality_server_port,omitempty"`
+	RealityPrivateKey       string   `json:"reality_private_key,omitempty"`
+	RealityPublicKey        string   `json:"reality_public_key,omitempty"`
+	RealityShortId          string   `json:"reality_short_id,omitempty"`
+	Transport               string   `json:"transport,omitempty"`
+	Host                    string   `json:"host,omitempty"`
+	Path                    string   `json:"path,omitempty"`
+	ServiceName             string   `json:"service_name,omitempty"`
+	Cipher                  string   `json:"cipher,omitempty"`
+	ServerKey               string   `json:"server_key,omitempty"`
+	Flow                    string   `json:"flow,omitempty"`
+	UoT                     bool     `json:"uot,omitempty"`                   // UDP over TCP
+	UoTVersion              int      `json:"uot_version,omitempty"`           // UoT version (1 or 2)
+	AcceptProxyProtocol     bool     `json:"accept_proxy_protocol,omitempty"` // accept proxy protocol
+	HopPorts                string   `json:"hop_ports,omitempty"`
+	HopInterval             int      `json:"hop_interval,omitempty"`
+	ObfsPassword            string   `json:"obfs_password,omitempty"`
+	DisableSNI              bool     `json:"disable_sni,omitempty"`
+	ReduceRtt               bool     `json:"reduce_rtt,omitempty"`
+	UDPRelayMode            string   `json:"udp_relay_mode,omitempty"`
+	CongestionController    string   `json:"congestion_controller,omitempty"`
+	Multiplex               string   `json:"multiplex,omitempty"`                 // mux, eg: off/low/medium/high
+	PaddingScheme           string   `json:"padding_scheme,omitempty"`            // padding scheme
+	UpMbps                  int      `json:"up_mbps,omitempty"`                   // upload speed limit
+	DownMbps                int      `json:"down_mbps,omitempty"`                 // download speed limit
+	Obfs                    string   `json:"obfs,omitempty"`                      // obfs, 'none', 'http', 'tls'
+	ObfsHost                string   `json:"obfs_host,omitempty"`                 // obfs host
+	ObfsPath                string   `json:"obfs_path,omitempty"`                 // obfs path
+	XhttpMode               string   `json:"xhttp_mode,omitempty"`                // xhttp mode
+	XhttpExtra              string   `json:"xhttp_extra,omitempty"`               // xhttp extra path
+	Encryption              string   `json:"encryption,omitempty"`                // encryption，'none', 'mlkem768x25519plus'
+	EncryptionMode          string   `json:"encryption_mode,omitempty"`           // encryption mode，'native', 'xorpub', 'random'
+	EncryptionRtt           string   `json:"encryption_rtt,omitempty"`            // encryption rtt，'0rtt', '1rtt'
+	EncryptionTicket        string   `json:"encryption_ticket,omitempty"`         // encryption ticket
+	EncryptionServerPadding string   `json:"encryption_server_padding,omitempty"` // encryption server padding
+	EncryptionPrivateKey    string   `json:"encryption_private_key,omitempty"`    // encryption private key
+	EncryptionClientPadding string   `json:"encryption_client_padding,omitempty"` // encryption client padding
+	EncryptionPassword      string   `json:"encryption_password,omitempty"`       // encryption password
+	EchEnable               bool     `json:"ech_enable,omitempty"`                // ECH enable
+	EchServerName           string   `json:"ech_server_name,omitempty"`           // ECH SNI
 
 	Ratio           float64 `json:"ratio,omitempty"`             // Traffic ratio, default is 1
 	CertMode        string  `json:"cert_mode,omitempty"`         // Certificate mode, `none`｜`http`｜`dns`｜`self`
 	CertDNSProvider string  `json:"cert_dns_provider,omitempty"` // DNS provider for certificate
 	CertDNSEnv      string  `json:"cert_dns_env"`                // Environment for DNS provider
+	CertPinSHA256   string  `json:"cert_pin_sha256,omitempty"`   // Node-reported leaf cert fingerprint, lowercase hex, kept only for cert_mode=self
 }
 
 // Marshal protocol to json

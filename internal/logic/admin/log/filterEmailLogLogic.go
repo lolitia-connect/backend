@@ -28,11 +28,13 @@ func NewFilterEmailLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Fi
 
 func (l *FilterEmailLogLogic) FilterEmailLog(req *types.FilterLogParams) (resp *types.FilterEmailLogResponse, err error) {
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page:   req.Page,
-		Size:   req.Size,
-		Type:   log.TypeEmailMessage.Uint8(),
-		Data:   req.Date,
-		Search: req.Search,
+		Page:      req.Page,
+		Size:      req.Size,
+		Type:      log.TypeEmailMessage.Uint8(),
+		Data:      req.Date,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
+		Search:    req.Search,
 	})
 
 	if err != nil {

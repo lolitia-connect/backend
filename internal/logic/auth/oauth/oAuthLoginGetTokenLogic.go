@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
@@ -17,8 +18,11 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/oauth/apple"
+	"github.com/perfect-panel/server/pkg/oauth/facebook"
+	"github.com/perfect-panel/server/pkg/oauth/github"
 	"github.com/perfect-panel/server/pkg/oauth/google"
 	"github.com/perfect-panel/server/pkg/oauth/telegram"
+	"github.com/perfect-panel/server/pkg/oauthstate"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -27,12 +31,21 @@ import (
 )
 
 const (
-	OAuthGoogle    = "google"
-	OAuthApple     = "apple"
-	OAuthTelegram  = "telegram"
-	AuthEmail      = "email"
-	AuthExpire     = 86400
-	TelegramDomain = "ppanel.com"
+	OAuthGoogle   = "google"
+	OAuthApple    = "apple"
+	OAuthTelegram = "telegram"
+	OAuthGithub   = "github"
+	OAuthFacebook = "facebook"
+	AuthEmail     = "email"
+	// AuthExpire bounds how stale a Telegram widget result may be. The
+	// result is a bearer credential that reaches us through a URL fragment,
+	// so the window is kept to the round trip a user actually needs rather
+	// than the day-long window it used to allow.
+	AuthExpire = 300
+	// telegramCallbackRetryGrace lets a client re-submit the same widget
+	// result after a timed-out exchange; beyond it, a repeat is a replay.
+	telegramCallbackRetryGrace = 60 * time.Second
+	TelegramDomain             = "ppanel.com"
 )
 
 type oauthRequest struct {
@@ -160,6 +173,103 @@ func (l *OAuthLoginGetTokenLogic) google(req *types.OAuthLoginGetTokenRequest, r
 	)
 
 	return l.findOrRegisterUser(OAuthGoogle, googleUserInfo.OpenID, googleUserInfo.Email, googleUserInfo.Picture, requestID, ip, userAgent)
+}
+
+func (l *OAuthLoginGetTokenLogic) github(req *types.OAuthLoginGetTokenRequest, requestID, ip, userAgent string) (*user.User, error) {
+	startTime := time.Now()
+	l.Logger.Infow("github oauth processing started", zap.Any("request_id", requestID), zap.Any("provider", OAuthGithub))
+
+	var request oauthRequest
+	if err := tool.CloneMapToStruct(req.Callback.(map[string]interface{}), &request); err != nil {
+		l.Logger.Errorw("failed to parse github callback data", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "parse callback data failed: %v", err)
+	}
+
+	redirect, err := l.validateStateCode(OAuthGithub, request.State, requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := l.getGithubConfig(requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	client := github.New(&github.Config{
+		ClientID:     cfg.ClientId,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  redirect,
+	})
+
+	token, err := client.Exchange(l.ctx, request.Code)
+	if err != nil {
+		l.Logger.Errorw("failed to exchange github authorization code", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "exchange token failed: %v", err)
+	}
+
+	githubUserInfo, err := client.GetUserInfo(token.AccessToken)
+	if err != nil {
+		l.Logger.Errorw("failed to get github user info", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get user info failed: %v", err)
+	}
+
+	openID := strconv.FormatInt(githubUserInfo.OpenID, 10)
+	l.Logger.Infow("github oauth processing completed",
+		zap.Any("request_id", requestID),
+		zap.Any("provider", OAuthGithub),
+		zap.Any("openid", openID),
+		zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
+	)
+
+	return l.findOrRegisterUser(OAuthGithub, openID, githubUserInfo.Email, githubUserInfo.Avatar, requestID, ip, userAgent)
+}
+
+func (l *OAuthLoginGetTokenLogic) facebook(req *types.OAuthLoginGetTokenRequest, requestID, ip, userAgent string) (*user.User, error) {
+	startTime := time.Now()
+	l.Logger.Infow("facebook oauth processing started", zap.Any("request_id", requestID), zap.Any("provider", OAuthFacebook))
+
+	var request oauthRequest
+	if err := tool.CloneMapToStruct(req.Callback.(map[string]interface{}), &request); err != nil {
+		l.Logger.Errorw("failed to parse facebook callback data", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "parse callback data failed: %v", err)
+	}
+
+	redirect, err := l.validateStateCode(OAuthFacebook, request.State, requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := l.getFacebookConfig(requestID)
+	if err != nil {
+		return nil, err
+	}
+
+	client := facebook.New(&facebook.Config{
+		ClientID:     cfg.ClientId,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  redirect,
+	})
+
+	token, err := client.Exchange(l.ctx, request.Code)
+	if err != nil {
+		l.Logger.Errorw("failed to exchange facebook authorization code", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "exchange token failed: %v", err)
+	}
+
+	facebookUserInfo, err := client.GetUserInfo(token.AccessToken)
+	if err != nil {
+		l.Logger.Errorw("failed to get facebook user info", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get user info failed: %v", err)
+	}
+
+	l.Logger.Infow("facebook oauth processing completed",
+		zap.Any("request_id", requestID),
+		zap.Any("provider", OAuthFacebook),
+		zap.Any("openid", facebookUserInfo.OpenID),
+		zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
+	)
+
+	return l.findOrRegisterUser(OAuthFacebook, facebookUserInfo.OpenID, facebookUserInfo.Email, facebookUserInfo.Picture, requestID, ip, userAgent)
 }
 
 func (l *OAuthLoginGetTokenLogic) apple(req *types.OAuthLoginGetTokenRequest, requestID, ip, userAgent string) (*user.User, error) {
@@ -307,6 +417,12 @@ func (l *OAuthLoginGetTokenLogic) telegram(req *types.OAuthLoginGetTokenRequest,
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "auth date expired")
 	}
 
+	// The signature alone does not bind the result to one exchange, so the
+	// payload is redeemable once (plus a short retry grace).
+	if err := l.claimTelegramCallback(encodeText, requestID); err != nil {
+		return nil, err
+	}
+
 	userID := fmt.Sprintf("%v", *callbackData.Id)
 	email := fmt.Sprintf("%v@%s", *callbackData.Id, TelegramDomain)
 	avatar := ""
@@ -323,6 +439,31 @@ func (l *OAuthLoginGetTokenLogic) telegram(req *types.OAuthLoginGetTokenRequest,
 	)
 
 	return l.findOrRegisterUser(OAuthTelegram, userID, email, avatar, requestID, ip, userAgent)
+}
+
+// claimTelegramCallback enforces single use of a Telegram widget result. A
+// Redis outage must not lock users out, so an unavailable store degrades to
+// the signature and freshness checks alone.
+func (l *OAuthLoginGetTokenLogic) claimTelegramCallback(payload, requestID string) error {
+	key := fmt.Sprintf("%s:%s", config.TelegramCallbackKey, oauthstate.PayloadFingerprint(payload))
+	allowed, err := oauthstate.ClaimSingleUse(l.ctx, l.svcCtx.Redis, key,
+		time.Now(), telegramCallbackRetryGrace, time.Duration(AuthExpire)*time.Second)
+	if err != nil {
+		l.Logger.Errorw("telegram callback replay check unavailable",
+			zap.Any("request_id", requestID),
+			zap.Any("provider", OAuthTelegram),
+			zap.Any("error", err.Error()),
+		)
+		return nil
+	}
+	if !allowed {
+		l.Logger.Errorw("telegram callback replayed",
+			zap.Any("request_id", requestID),
+			zap.Any("provider", OAuthTelegram),
+		)
+		return errors.Wrap(xerr.NewErrCode(xerr.ERROR), "telegram callback has already been used")
+	}
+	return nil
 }
 
 func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, requestID, ip, userAgent string) (*user.User, error) {
@@ -571,6 +712,10 @@ func (l *OAuthLoginGetTokenLogic) handleOAuthProvider(req *types.OAuthLoginGetTo
 		return l.apple(req, requestID, ip, userAgent)
 	case OAuthTelegram:
 		return l.telegram(req, requestID, ip, userAgent)
+	case OAuthGithub:
+		return l.github(req, requestID, ip, userAgent)
+	case OAuthFacebook:
+		return l.facebook(req, requestID, ip, userAgent)
 	default:
 		l.Logger.Errorw("unsupported oauth login method",
 			zap.Any("request_id", requestID),
@@ -686,6 +831,48 @@ func (l *OAuthLoginGetTokenLogic) getGoogleConfig(requestID string) (*auth.Googl
 		zap.Any("provider", OAuthGoogle),
 		zap.Any("client_id", cfg.ClientId),
 	)
+	return &cfg, nil
+}
+
+func (l *OAuthLoginGetTokenLogic) getGithubConfig(requestID string) (*auth.GithubAuthConfig, error) {
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, OAuthGithub)
+	if err != nil {
+		l.Logger.Errorw("failed to find github auth method",
+			zap.Any("request_id", requestID),
+			zap.Any("error", err.Error()),
+		)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find github auth method failed: %v", err)
+	}
+
+	var cfg auth.GithubAuthConfig
+	if err = cfg.Unmarshal(authMethod.Config); err != nil {
+		l.Logger.Errorw("failed to unmarshal github config",
+			zap.Any("request_id", requestID),
+			zap.Any("error", err.Error()),
+		)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "unmarshal github config failed: %v", err)
+	}
+	return &cfg, nil
+}
+
+func (l *OAuthLoginGetTokenLogic) getFacebookConfig(requestID string) (*auth.FacebookAuthConfig, error) {
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, OAuthFacebook)
+	if err != nil {
+		l.Logger.Errorw("failed to find facebook auth method",
+			zap.Any("request_id", requestID),
+			zap.Any("error", err.Error()),
+		)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find facebook auth method failed: %v", err)
+	}
+
+	var cfg auth.FacebookAuthConfig
+	if err = cfg.Unmarshal(authMethod.Config); err != nil {
+		l.Logger.Errorw("failed to unmarshal facebook config",
+			zap.Any("request_id", requestID),
+			zap.Any("error", err.Error()),
+		)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "unmarshal facebook config failed: %v", err)
+	}
 	return &cfg, nil
 }
 

@@ -28,11 +28,13 @@ func NewFilterMobileLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *F
 
 func (l *FilterMobileLogLogic) FilterMobileLog(req *types.FilterLogParams) (resp *types.FilterMobileLogResponse, err error) {
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page:   req.Page,
-		Size:   req.Size,
-		Type:   log.TypeMobileMessage.Uint8(),
-		Data:   req.Date,
-		Search: req.Search,
+		Page:      req.Page,
+		Size:      req.Size,
+		Type:      log.TypeMobileMessage.Uint8(),
+		Data:      req.Date,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
+		Search:    req.Search,
 	})
 
 	if err != nil {

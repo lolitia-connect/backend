@@ -45,6 +45,7 @@ func (l *SendSmsLogic) ProcessTask(ctx context.Context, task *asynq.Task) error 
 		return err
 	}
 	createSms := &log.Message{
+		Metadata: payload.Metadata,
 		Platform: l.svcCtx.Config.Mobile.Platform,
 		To:       fmt.Sprintf("+%s%s", payload.TelephoneArea, payload.Telephone),
 		Subject:  constant.ParseVerifyType(payload.Type).String(),

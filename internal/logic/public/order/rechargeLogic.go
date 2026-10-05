@@ -11,6 +11,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/orderaudit"
+	"github.com/perfect-panel/server/internal/orderflow"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/tool"
@@ -93,7 +96,14 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 		Status:    1,
 		IsNew:     isNew,
 	}
-	err = store.Order().Insert(l.ctx, &orderInfo)
+	orderflow.ApplyIdempotency(l.ctx, &orderInfo)
+	// The order and its audit trail are one atomic billing operation.
+	err = store.InTx(l.ctx, func(txStore repository.Store) error {
+		if e := txStore.Order().Insert(l.ctx, &orderInfo); e != nil {
+			return e
+		}
+		return orderaudit.InsertCreated(l.ctx, txStore.Log(), &orderInfo, orderaudit.SourceUser)
+	})
 	if err != nil {
 		l.Logger.Errorw("[Recharge] Database insert error", zap.Any("error", err.Error()), zap.Any("order", orderInfo))
 		return nil, errors.Wrapf(err, "insert order error: %v", err.Error())

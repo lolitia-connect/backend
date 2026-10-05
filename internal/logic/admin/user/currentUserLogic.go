@@ -39,5 +39,10 @@ func (l *CurrentUserLogic) CurrentUser() (*types.User, error) {
 
 	l.Logger.Info("current user", zap.Field{Key: "userId", Type: zapcore.Int64Type, Integer: u.Id})
 	tool.DeepCopy(resp, u)
+	if walletInfo, err := l.svcCtx.Store.Wallet().FindOne(l.ctx, u.Id); err == nil {
+		resp.Balance = walletInfo.Balance
+		resp.GiftAmount = walletInfo.GiftAmount
+		resp.Commission = walletInfo.Commission
+	}
 	return resp, nil
 }

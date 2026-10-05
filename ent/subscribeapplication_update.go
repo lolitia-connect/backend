@@ -158,6 +158,20 @@ func (_u *SubscribeApplicationUpdate) SetNillableOutputFormat(v *string) *Subscr
 	return _u
 }
 
+// SetDefaultParams sets the "default_params" field.
+func (_u *SubscribeApplicationUpdate) SetDefaultParams(v string) *SubscribeApplicationUpdate {
+	_u.mutation.SetDefaultParams(v)
+	return _u
+}
+
+// SetNillableDefaultParams sets the "default_params" field if the given value is not nil.
+func (_u *SubscribeApplicationUpdate) SetNillableDefaultParams(v *string) *SubscribeApplicationUpdate {
+	if v != nil {
+		_u.SetDefaultParams(*v)
+	}
+	return _u
+}
+
 // SetDownloadLink sets the "download_link" field.
 func (_u *SubscribeApplicationUpdate) SetDownloadLink(v string) *SubscribeApplicationUpdate {
 	_u.mutation.SetDownloadLink(v)
@@ -260,6 +274,9 @@ func (_u *SubscribeApplicationUpdate) sqlSave(ctx context.Context) (_node int, e
 	}
 	if value, ok := _u.mutation.OutputFormat(); ok {
 		_spec.SetField(subscribeapplication.FieldOutputFormat, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefaultParams(); ok {
+		_spec.SetField(subscribeapplication.FieldDefaultParams, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DownloadLink(); ok {
 		_spec.SetField(subscribeapplication.FieldDownloadLink, field.TypeString, value)
@@ -417,6 +434,20 @@ func (_u *SubscribeApplicationUpdateOne) SetNillableOutputFormat(v *string) *Sub
 	return _u
 }
 
+// SetDefaultParams sets the "default_params" field.
+func (_u *SubscribeApplicationUpdateOne) SetDefaultParams(v string) *SubscribeApplicationUpdateOne {
+	_u.mutation.SetDefaultParams(v)
+	return _u
+}
+
+// SetNillableDefaultParams sets the "default_params" field if the given value is not nil.
+func (_u *SubscribeApplicationUpdateOne) SetNillableDefaultParams(v *string) *SubscribeApplicationUpdateOne {
+	if v != nil {
+		_u.SetDefaultParams(*v)
+	}
+	return _u
+}
+
 // SetDownloadLink sets the "download_link" field.
 func (_u *SubscribeApplicationUpdateOne) SetDownloadLink(v string) *SubscribeApplicationUpdateOne {
 	_u.mutation.SetDownloadLink(v)
@@ -549,6 +580,9 @@ func (_u *SubscribeApplicationUpdateOne) sqlSave(ctx context.Context) (_node *Su
 	}
 	if value, ok := _u.mutation.OutputFormat(); ok {
 		_spec.SetField(subscribeapplication.FieldOutputFormat, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DefaultParams(); ok {
+		_spec.SetField(subscribeapplication.FieldDefaultParams, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.DownloadLink(); ok {
 		_spec.SetField(subscribeapplication.FieldDownloadLink, field.TypeString, value)

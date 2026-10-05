@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/perfect-panel/server/internal/logic/nodeconfig"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/tool"
@@ -40,6 +41,7 @@ func (l *QueryServerProtocolConfigLogic) QueryServerProtocolConfig(req *types.Qu
 		l.Logger.Errorf("[FilterServerList] UnmarshalProtocols Error: %s", err.Error())
 		return nil, err
 	}
+	dst = node.SanitizeProtocolsForNodeDistribution(dst)
 	tool.DeepCopy(&protocols, dst)
 
 	// only return enabled protocols for node distribution

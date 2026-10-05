@@ -10,6 +10,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/limit"
 	"github.com/perfect-panel/server/pkg/random"
@@ -87,6 +88,7 @@ func (l *SendEmailCodeLogic) SendEmailCode(req *types.SendCodeRequest) (resp *ty
 	var taskPayload queue.SendEmailPayload
 	// Generate verification code
 	code := random.Key(6, 0)
+	taskPayload.Metadata = log.MetadataFromContext(l.ctx)
 	taskPayload.Type = queue.EmailTypeVerify
 	taskPayload.Email = req.Email
 	taskPayload.Subject = "Verification code"

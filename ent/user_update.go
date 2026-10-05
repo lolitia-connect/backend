@@ -96,27 +96,6 @@ func (_u *UserUpdate) ClearAvatar() *UserUpdate {
 	return _u
 }
 
-// SetBalance sets the "balance" field.
-func (_u *UserUpdate) SetBalance(v int64) *UserUpdate {
-	_u.mutation.ResetBalance()
-	_u.mutation.SetBalance(v)
-	return _u
-}
-
-// SetNillableBalance sets the "balance" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableBalance(v *int64) *UserUpdate {
-	if v != nil {
-		_u.SetBalance(*v)
-	}
-	return _u
-}
-
-// AddBalance adds value to the "balance" field.
-func (_u *UserUpdate) AddBalance(v int64) *UserUpdate {
-	_u.mutation.AddBalance(v)
-	return _u
-}
-
 // SetReferCode sets the "refer_code" field.
 func (_u *UserUpdate) SetReferCode(v string) *UserUpdate {
 	_u.mutation.SetReferCode(v)
@@ -152,27 +131,6 @@ func (_u *UserUpdate) AddRefererID(v int64) *UserUpdate {
 	return _u
 }
 
-// SetCommission sets the "commission" field.
-func (_u *UserUpdate) SetCommission(v int64) *UserUpdate {
-	_u.mutation.ResetCommission()
-	_u.mutation.SetCommission(v)
-	return _u
-}
-
-// SetNillableCommission sets the "commission" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableCommission(v *int64) *UserUpdate {
-	if v != nil {
-		_u.SetCommission(*v)
-	}
-	return _u
-}
-
-// AddCommission adds value to the "commission" field.
-func (_u *UserUpdate) AddCommission(v int64) *UserUpdate {
-	_u.mutation.AddCommission(v)
-	return _u
-}
-
 // SetReferralPercentage sets the "referral_percentage" field.
 func (_u *UserUpdate) SetReferralPercentage(v uint8) *UserUpdate {
 	_u.mutation.ResetReferralPercentage()
@@ -205,27 +163,6 @@ func (_u *UserUpdate) SetNillableOnlyFirstPurchase(v *bool) *UserUpdate {
 	if v != nil {
 		_u.SetOnlyFirstPurchase(*v)
 	}
-	return _u
-}
-
-// SetGiftAmount sets the "gift_amount" field.
-func (_u *UserUpdate) SetGiftAmount(v int64) *UserUpdate {
-	_u.mutation.ResetGiftAmount()
-	_u.mutation.SetGiftAmount(v)
-	return _u
-}
-
-// SetNillableGiftAmount sets the "gift_amount" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableGiftAmount(v *int64) *UserUpdate {
-	if v != nil {
-		_u.SetGiftAmount(*v)
-	}
-	return _u
-}
-
-// AddGiftAmount adds value to the "gift_amount" field.
-func (_u *UserUpdate) AddGiftAmount(v int64) *UserUpdate {
-	_u.mutation.AddGiftAmount(v)
 	return _u
 }
 
@@ -455,12 +392,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.AvatarCleared() {
 		_spec.ClearField(user.FieldAvatar, field.TypeString)
 	}
-	if value, ok := _u.mutation.Balance(); ok {
-		_spec.SetField(user.FieldBalance, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedBalance(); ok {
-		_spec.AddField(user.FieldBalance, field.TypeInt64, value)
-	}
 	if value, ok := _u.mutation.ReferCode(); ok {
 		_spec.SetField(user.FieldReferCode, field.TypeString, value)
 	}
@@ -470,12 +401,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRefererID(); ok {
 		_spec.AddField(user.FieldRefererID, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.Commission(); ok {
-		_spec.SetField(user.FieldCommission, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedCommission(); ok {
-		_spec.AddField(user.FieldCommission, field.TypeInt64, value)
-	}
 	if value, ok := _u.mutation.ReferralPercentage(); ok {
 		_spec.SetField(user.FieldReferralPercentage, field.TypeUint8, value)
 	}
@@ -484,12 +409,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.OnlyFirstPurchase(); ok {
 		_spec.SetField(user.FieldOnlyFirstPurchase, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.GiftAmount(); ok {
-		_spec.SetField(user.FieldGiftAmount, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedGiftAmount(); ok {
-		_spec.AddField(user.FieldGiftAmount, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Enable(); ok {
 		_spec.SetField(user.FieldEnable, field.TypeBool, value)
@@ -612,27 +531,6 @@ func (_u *UserUpdateOne) ClearAvatar() *UserUpdateOne {
 	return _u
 }
 
-// SetBalance sets the "balance" field.
-func (_u *UserUpdateOne) SetBalance(v int64) *UserUpdateOne {
-	_u.mutation.ResetBalance()
-	_u.mutation.SetBalance(v)
-	return _u
-}
-
-// SetNillableBalance sets the "balance" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableBalance(v *int64) *UserUpdateOne {
-	if v != nil {
-		_u.SetBalance(*v)
-	}
-	return _u
-}
-
-// AddBalance adds value to the "balance" field.
-func (_u *UserUpdateOne) AddBalance(v int64) *UserUpdateOne {
-	_u.mutation.AddBalance(v)
-	return _u
-}
-
 // SetReferCode sets the "refer_code" field.
 func (_u *UserUpdateOne) SetReferCode(v string) *UserUpdateOne {
 	_u.mutation.SetReferCode(v)
@@ -668,27 +566,6 @@ func (_u *UserUpdateOne) AddRefererID(v int64) *UserUpdateOne {
 	return _u
 }
 
-// SetCommission sets the "commission" field.
-func (_u *UserUpdateOne) SetCommission(v int64) *UserUpdateOne {
-	_u.mutation.ResetCommission()
-	_u.mutation.SetCommission(v)
-	return _u
-}
-
-// SetNillableCommission sets the "commission" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableCommission(v *int64) *UserUpdateOne {
-	if v != nil {
-		_u.SetCommission(*v)
-	}
-	return _u
-}
-
-// AddCommission adds value to the "commission" field.
-func (_u *UserUpdateOne) AddCommission(v int64) *UserUpdateOne {
-	_u.mutation.AddCommission(v)
-	return _u
-}
-
 // SetReferralPercentage sets the "referral_percentage" field.
 func (_u *UserUpdateOne) SetReferralPercentage(v uint8) *UserUpdateOne {
 	_u.mutation.ResetReferralPercentage()
@@ -721,27 +598,6 @@ func (_u *UserUpdateOne) SetNillableOnlyFirstPurchase(v *bool) *UserUpdateOne {
 	if v != nil {
 		_u.SetOnlyFirstPurchase(*v)
 	}
-	return _u
-}
-
-// SetGiftAmount sets the "gift_amount" field.
-func (_u *UserUpdateOne) SetGiftAmount(v int64) *UserUpdateOne {
-	_u.mutation.ResetGiftAmount()
-	_u.mutation.SetGiftAmount(v)
-	return _u
-}
-
-// SetNillableGiftAmount sets the "gift_amount" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableGiftAmount(v *int64) *UserUpdateOne {
-	if v != nil {
-		_u.SetGiftAmount(*v)
-	}
-	return _u
-}
-
-// AddGiftAmount adds value to the "gift_amount" field.
-func (_u *UserUpdateOne) AddGiftAmount(v int64) *UserUpdateOne {
-	_u.mutation.AddGiftAmount(v)
 	return _u
 }
 
@@ -1001,12 +857,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if _u.mutation.AvatarCleared() {
 		_spec.ClearField(user.FieldAvatar, field.TypeString)
 	}
-	if value, ok := _u.mutation.Balance(); ok {
-		_spec.SetField(user.FieldBalance, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedBalance(); ok {
-		_spec.AddField(user.FieldBalance, field.TypeInt64, value)
-	}
 	if value, ok := _u.mutation.ReferCode(); ok {
 		_spec.SetField(user.FieldReferCode, field.TypeString, value)
 	}
@@ -1016,12 +866,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	if value, ok := _u.mutation.AddedRefererID(); ok {
 		_spec.AddField(user.FieldRefererID, field.TypeInt64, value)
 	}
-	if value, ok := _u.mutation.Commission(); ok {
-		_spec.SetField(user.FieldCommission, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedCommission(); ok {
-		_spec.AddField(user.FieldCommission, field.TypeInt64, value)
-	}
 	if value, ok := _u.mutation.ReferralPercentage(); ok {
 		_spec.SetField(user.FieldReferralPercentage, field.TypeUint8, value)
 	}
@@ -1030,12 +874,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.OnlyFirstPurchase(); ok {
 		_spec.SetField(user.FieldOnlyFirstPurchase, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.GiftAmount(); ok {
-		_spec.SetField(user.FieldGiftAmount, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedGiftAmount(); ok {
-		_spec.AddField(user.FieldGiftAmount, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.Enable(); ok {
 		_spec.SetField(user.FieldEnable, field.TypeBool, value)

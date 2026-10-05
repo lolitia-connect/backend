@@ -61,6 +61,7 @@ type customUserLogicModel interface {
 	FindUserAuthMethodByOpenID(ctx context.Context, method, openID string) (*AuthMethods, error)
 	FindUserAuthMethodByUserId(ctx context.Context, method string, userId int64) (*AuthMethods, error)
 	FindUserAuthMethodByPlatform(ctx context.Context, userId int64, platform string) (*AuthMethods, error)
+	ValidateEmailIdentityUniqueness(ctx context.Context) error
 	QueryEmailRecipients(ctx context.Context, filter *EmailRecipientFilter) ([]string, error)
 	CountEmailRecipients(ctx context.Context, filter *EmailRecipientFilter) (int64, error)
 	FindOneByEmail(ctx context.Context, email string) (*User, error)
@@ -81,6 +82,7 @@ type customUserLogicModel interface {
 	CountSubscribesByFilter(ctx context.Context, filter *SubscribeFilter) (int64, error)
 	QueryDailyUserStatisticsList(ctx context.Context, date time.Time) ([]UserStatisticsWithDate, error)
 	QueryMonthlyUserStatisticsList(ctx context.Context, date time.Time) ([]UserStatisticsWithDate, error)
+	UpgradePasswordHash(ctx context.Context, id int64, currentHash, nextHash, algo, salt string) (bool, error)
 }
 
 // NewModel returns a model for the database table.

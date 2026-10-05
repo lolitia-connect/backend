@@ -38,6 +38,7 @@ func newServer(svc *svc.ServiceContext, opts []config.Option) *Server {
 
 	handler.RegisterNativeHandlers(engine.Hertz(), svc)
 	handler.RegisterHandlers(engine, svc)
+	handler.RegisterV2OrderHandlers(engine.Hertz(), svc)
 	handler.RegisterTelegramHandlers(engine, svc)
 	handler.RegisterNotifyHandlers(engine, svc)
 

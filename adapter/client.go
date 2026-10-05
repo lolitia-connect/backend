@@ -18,6 +18,12 @@ type Proxy struct {
 	Type   string
 	Tags   []string
 
+	// Version/Network/ALPN are shared by the protocols that expose them; the
+	// subscription templates read only the ones their protocol defines.
+	Version int      // Snell 5/6, TUIC 5, Nowhere 1
+	Network string   // Nowhere: mix/tcp/udp
+	ALPN    []string // Nowhere: exactly one value, now/1 by default
+
 	// Security Options
 	Security          string
 	SNI               string // Server Name Indication for TLS
@@ -38,6 +44,11 @@ type Proxy struct {
 	ServerKey  string // For Shadowsocks 2022
 	UoT        bool   // UDP over TCP
 	UoTVersion int    // UoT version (1 or 2)
+
+	// ShadowsocksR Options
+	SSRProtocol   string // SSR protocol (auth_chain_*)
+	ProtocolParam string // SSR protocol parameter (user:pass)
+	ObfsParam     string // SSR obfs parameter
 
 	// Vmess/Vless/Trojan Options
 	Flow string // Flow for Vmess/Vless/Trojan
@@ -61,9 +72,9 @@ type Proxy struct {
 	Multiplex string
 
 	// Obfs
-	//Obfs     string // obfs, 'none', 'http', 'tls'
-	//ObfsHost string // obfs host
-	//ObfsPath string // obfs path
+	Obfs     string // obfs, 'none', 'http', 'tls' for shadowsocks, SSR obfs name for shadowsocksr
+	ObfsHost string // obfs host
+	ObfsPath string // obfs path
 
 	// Vless
 	XhttpMode  string // xhttp mode
@@ -87,6 +98,7 @@ type Proxy struct {
 	CertMode        string  // Certificate mode, `none`｜`http`｜`dns`｜`self`
 	CertDNSProvider string  // DNS provider for certificate
 	CertDNSEnv      string  // Environment for DNS provider
+	CertPinSHA256   string  // SHA256 fingerprint of the self-signed certificate (lowercase hex)
 }
 
 type User struct {

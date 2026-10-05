@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"strings"
 
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
@@ -36,6 +35,11 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 		l.Logger.Errorf("[UpdateServer] FindOneServer Error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find server error: %v", err.Error())
 	}
+	storedProtocols, err := data.UnmarshalProtocols()
+	if err != nil {
+		l.Logger.Errorf("[UpdateServer] UnmarshalProtocols Error: %v", err.Error())
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "unmarshal protocols error: %v", err.Error())
+	}
 	data.Name = req.Name
 	data.Country = req.Country
 	data.City = req.City
@@ -64,44 +68,19 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 		var protocol node.Protocol
 		tool.DeepCopy(&protocol, item)
 
-		// VLESS Reality Key Generation
-		if protocol.Type == "vless" {
-			if protocol.Security == "reality" {
-				if protocol.RealityPublicKey == "" {
-					public, private, err := tool.Curve25519Genkey(false, "")
-					if err != nil {
-						l.Logger.Errorf("[CreateServer] Generate Reality Key Error: %v", err.Error())
-						return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "generate reality key error: %v", err)
-					}
-					protocol.RealityPublicKey = public
-					protocol.RealityPrivateKey = private
-					protocol.RealityShortId = tool.GenerateShortID(private)
-				}
-				if protocol.RealityServerAddr == "" {
-					protocol.RealityServerAddr = protocol.SNI
-				}
-				if protocol.RealityServerPort == 0 {
-					protocol.RealityServerPort = 443
-				}
-			}
-
+		if err := applyGeneratedProtocolKeys(&protocol); err != nil {
+			l.Logger.Errorf("[UpdateServer] Generate Protocol Key Error: %v", err.Error())
+			return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "generate protocol key error: %v", err)
 		}
-		// ShadowSocks 2022 Key Generation
-		if protocol.Type == "shadowsocks" {
-			if strings.Contains(protocol.Cipher, "2022") {
-				var length int
-				switch protocol.Cipher {
-				case "2022-blake3-aes-128-gcm":
-					length = 16
-				default:
-					length = 32
-				}
-				if len(protocol.ServerKey) != length {
-					protocol.ServerKey = tool.GenerateCipher(protocol.ServerKey, length)
-				}
-			}
+		normalized, err := node.NormalizeProtocolForStorage(protocol)
+		if err != nil {
+			l.Logger.Errorf("[UpdateServer] Normalize Protocol Error: %v", err.Error())
+			return errors.Wrapf(xerr.NewErrCodeMsg(xerr.InvalidParams, "protocol config is invalid"), "normalize protocol error: %v", err)
 		}
-		protocols = append(protocols, protocol)
+		// The admin form cannot submit cert_pin_sha256, so the stored value has
+		// to survive the edit.
+		node.CarryForwardCertPin(storedProtocols, &normalized)
+		protocols = append(protocols, normalized)
 	}
 	err = data.MarshalProtocols(protocols)
 	if err != nil {

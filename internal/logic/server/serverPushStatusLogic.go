@@ -46,5 +46,16 @@ func (l *ServerPushStatusLogic) ServerPushStatus(req *types.ServerPushStatusRequ
 		l.Logger.Errorw("[ServerPushStatus] UpdateServerLastReportedAt error", zap.Any("error", err))
 	}
 
+	if req.CertPinSHA256 != "" {
+		certPinChanged, err := l.svcCtx.Store.Node().ApplyReportedCertPin(l.ctx, req.ServerId, req.Protocol, req.CertPinSHA256)
+		if err != nil {
+			l.Logger.Errorw("[ServerPushStatus] ApplyReportedCertPin error", zap.Any("error", err))
+		} else if certPinChanged {
+			if err := l.svcCtx.Store.Node().ClearServerCache(l.ctx, req.ServerId); err != nil {
+				l.Logger.Errorw("[ServerPushStatus] ClearServerCache error", zap.Any("error", err))
+			}
+		}
+	}
+
 	return nil
 }

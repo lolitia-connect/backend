@@ -155,6 +155,8 @@ func parsePaymentPlatformConfig(ctx context.Context, platform payment.Platform, 
 		return handleConfig("Epay", &paymentModel.EPayConfig{})
 	case payment.CryptoSaaS:
 		return handleConfig("CryptoSaaS", &paymentModel.CryptoSaaSConfig{})
+	case payment.Cryptomus:
+		return handleConfig("Cryptomus", &paymentModel.CryptomusConfig{})
 	default:
 		return ""
 	}

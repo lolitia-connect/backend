@@ -10,6 +10,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
@@ -77,6 +78,7 @@ func (l *SendSmsCodeLogic) SendSmsCode(req *types.SendSmsCodeRequest) (resp *typ
 	}
 
 	taskPayload := queue.SendSmsPayload{
+		Metadata:      log.MetadataFromContext(l.ctx),
 		Type:          req.Type,
 		Telephone:     req.Telephone,
 		TelephoneArea: req.TelephoneAreaCode,

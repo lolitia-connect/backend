@@ -23,8 +23,7 @@ func (m *defaultUserModel) FindFirstUserAuthMethodByTypes(ctx context.Context, u
 }
 
 func (m *defaultUserModel) FindUserAuthMethodByOpenID(ctx context.Context, method, openID string) (*AuthMethods, error) {
-	item, err := m.db.UserAuthMethod.Query().Where(entauth.AuthType(method), entauth.AuthIdentifier(openID)).First(ctx)
-	return entToAuthMethod(item), err
+	return resolveUserAuthMethodByIdentifier(ctx, m.db, method, openID)
 }
 
 func (m *defaultUserModel) FindUserAuthMethodByPlatform(ctx context.Context, userId int64, platform string) (*AuthMethods, error) {
@@ -33,6 +32,14 @@ func (m *defaultUserModel) FindUserAuthMethodByPlatform(ctx context.Context, use
 }
 
 func (m *defaultUserModel) InsertUserAuthMethods(ctx context.Context, data *AuthMethods) error {
+	identifier, err := canonicalAuthIdentifier(data.AuthType, data.AuthIdentifier)
+	if err != nil {
+		return err
+	}
+	data.AuthIdentifier = identifier
+	if err := guardEmailIdentityWrite(ctx, m.db, data); err != nil {
+		return err
+	}
 	created, err := authMethodCreate(m.db.UserAuthMethod.Create(), data).Save(ctx)
 	if err != nil {
 		return err
@@ -42,6 +49,14 @@ func (m *defaultUserModel) InsertUserAuthMethods(ctx context.Context, data *Auth
 }
 
 func (m *defaultUserModel) UpdateUserAuthMethods(ctx context.Context, data *AuthMethods) error {
+	identifier, err := canonicalAuthIdentifier(data.AuthType, data.AuthIdentifier)
+	if err != nil {
+		return err
+	}
+	data.AuthIdentifier = identifier
+	if err := guardEmailIdentityWrite(ctx, m.db, data); err != nil {
+		return err
+	}
 	if data.Id > 0 {
 		return authMethodUpdate(m.db.UserAuthMethod.UpdateOneID(data.Id), data).Exec(ctx)
 	} else {
@@ -56,24 +71,23 @@ func (m *defaultUserModel) DeleteUserAuthMethods(ctx context.Context, userId int
 }
 
 func (m *defaultUserModel) UpdateUserAuthMethodOwner(ctx context.Context, authType, identifier string, userId int64) error {
-	_, err := m.FindUserAuthMethodByOpenID(ctx, authType, identifier)
+	authMethod, err := resolveUserAuthMethodByIdentifier(ctx, m.db, authType, identifier)
 	if err != nil {
 		return err
 	}
-	_, err = m.db.UserAuthMethod.Update().Where(entauth.AuthType(authType), entauth.AuthIdentifier(identifier)).SetUserID(userId).Save(ctx)
+	_, err = m.db.UserAuthMethod.UpdateOneID(authMethod.Id).SetUserID(userId).Save(ctx)
 	return err
 }
 
 func (m *defaultUserModel) DeleteUserAuthMethodByIdentifier(ctx context.Context, authType, identifier string) error {
-	_, err := m.FindUserAuthMethodByOpenID(ctx, authType, identifier)
+	authMethod, err := resolveUserAuthMethodByIdentifier(ctx, m.db, authType, identifier)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil
 		}
 		return err
 	}
-	_, err = m.db.UserAuthMethod.Delete().Where(entauth.AuthType(authType), entauth.AuthIdentifier(identifier)).Exec(ctx)
-	return err
+	return m.db.UserAuthMethod.DeleteOneID(authMethod.Id).Exec(ctx)
 }
 
 func (m *defaultUserModel) UpsertUserAuthMethod(ctx context.Context, data *AuthMethods) error {

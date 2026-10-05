@@ -138,6 +138,26 @@ func (l *CryptoSaaSConfig) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, &aux)
 }
 
+type CryptomusConfig struct {
+	MerchantID string `json:"merchant_id"`
+	APIKey     string `json:"api_key"`
+}
+
+func (l *CryptomusConfig) Marshal() ([]byte, error) {
+	type Alias CryptomusConfig
+	return json.Marshal(&struct {
+		*Alias
+	}{
+		Alias: (*Alias)(l),
+	})
+}
+
+func (l *CryptomusConfig) Unmarshal(data []byte) error {
+	type Alias CryptomusConfig
+	aux := (*Alias)(l)
+	return json.Unmarshal(data, &aux)
+}
+
 type AlipayPlusConfig struct {
 	ClientId        string `json:"client_id"`
 	MerchantId      string `json:"merchant_id"`

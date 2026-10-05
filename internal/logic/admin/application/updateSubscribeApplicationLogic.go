@@ -49,6 +49,7 @@ func (l *UpdateSubscribeApplicationLogic) UpdateSubscribeApplication(req *types.
 	data.IsDefault = req.IsDefault
 	data.SubscribeTemplate = req.SubscribeTemplate
 	data.OutputFormat = req.OutputFormat
+	data.DefaultParams = req.DefaultParams
 	data.DownloadLink = string(linkData)
 	err = l.svcCtx.Store.Client().Update(l.ctx, data)
 	if err != nil {

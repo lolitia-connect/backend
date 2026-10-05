@@ -10,13 +10,10 @@ func userCreate(c *ent.UserCreate, data *User) *ent.UserCreate {
 		SetAlgo(data.Algo).
 		SetNillableSalt(stringPtr(data.Salt)).
 		SetAvatar(data.Avatar).
-		SetBalance(data.Balance).
 		SetReferCode(data.ReferCode).
 		SetRefererID(data.RefererId).
-		SetCommission(data.Commission).
 		SetReferralPercentage(data.ReferralPercentage).
 		SetNillableOnlyFirstPurchase(data.OnlyFirstPurchase).
-		SetGiftAmount(data.GiftAmount).
 		SetNillableEnable(data.Enable).
 		SetNillableIsAdmin(data.IsAdmin).
 		SetNillableEnableBalanceNotify(data.EnableBalanceNotify).
@@ -32,13 +29,10 @@ func userUpdate(u *ent.UserUpdateOne, data *User) *ent.UserUpdateOne {
 		SetAlgo(data.Algo).
 		SetNillableSalt(stringPtr(data.Salt)).
 		SetAvatar(data.Avatar).
-		SetBalance(data.Balance).
 		SetReferCode(data.ReferCode).
 		SetRefererID(data.RefererId).
-		SetCommission(data.Commission).
 		SetReferralPercentage(data.ReferralPercentage).
 		SetNillableOnlyFirstPurchase(data.OnlyFirstPurchase).
-		SetGiftAmount(data.GiftAmount).
 		SetNillableEnable(data.Enable).
 		SetNillableIsAdmin(data.IsAdmin).
 		SetNillableEnableBalanceNotify(data.EnableBalanceNotify).

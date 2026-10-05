@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"net/url"
 	"time"
 )
 
@@ -15,9 +16,28 @@ type SubscribeApplication struct {
 	IsDefault         bool
 	SubscribeTemplate string
 	OutputFormat      string
+	DefaultParams     string
 	DownloadLink      string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+// DefaultParamValues parses DefaultParams, stored in query-string form such as
+// "mode=rule&emoji=1", into the map templates read. A repeated key keeps its
+// first value, matching how the subscription URL's own query string collapses.
+func (a *SubscribeApplication) DefaultParamValues() (map[string]string, error) {
+	if a == nil || a.DefaultParams == "" {
+		return nil, nil
+	}
+	values, err := url.ParseQuery(a.DefaultParams)
+	if err != nil {
+		return nil, err
+	}
+	params := make(map[string]string, len(values))
+	for key := range values {
+		params[key] = values.Get(key)
+	}
+	return params, nil
 }
 
 type DownloadLink struct {

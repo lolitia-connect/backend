@@ -14,12 +14,51 @@ func NewModel(db *ent.Client) Model {
 }
 
 type FilterParams struct {
-	Page     int
-	Size     int
-	Type     uint8
-	Data     string
-	Search   string
-	ObjectID int64
+	Page      int
+	Size      int
+	Type      uint8
+	Data      string
+	StartDate string
+	EndDate   string
+	Search    string
+	ObjectID  int64
+}
+
+// DateRangeMode describes which date filter is in effect for a log query.
+type DateRangeMode uint8
+
+const (
+	// DateRangeNone disables date filtering.
+	DateRangeNone DateRangeMode = iota
+	// DateRangeExact matches a single day.
+	DateRangeExact
+	// DateRangeBetween matches an inclusive [start, end] window.
+	DateRangeBetween
+	// DateRangeFrom matches every day on or after start.
+	DateRangeFrom
+	// DateRangeTo matches every day on or before end.
+	DateRangeTo
+)
+
+// ResolveDateRange reports which date filter should be applied. An explicit
+// start_date/end_date window takes precedence over the single `date` value so
+// that sending both is deterministic.
+func (f *FilterParams) ResolveDateRange() (DateRangeMode, string, string) {
+	if f == nil {
+		return DateRangeNone, "", ""
+	}
+	switch {
+	case f.StartDate != "" && f.EndDate != "":
+		return DateRangeBetween, f.StartDate, f.EndDate
+	case f.StartDate != "":
+		return DateRangeFrom, f.StartDate, ""
+	case f.EndDate != "":
+		return DateRangeTo, "", f.EndDate
+	case f.Data != "":
+		return DateRangeExact, f.Data, ""
+	default:
+		return DateRangeNone, "", ""
+	}
 }
 
 type customSystemLogLogicModel interface {
@@ -48,10 +87,16 @@ func (m *customSystemLogModel) FilterSystemLog(ctx context.Context, filter *Filt
 		query = query.Where(entsystemlog.TypeEQ(filter.Type))
 	}
 
-	if filter.Data != "" {
-		query = query.Where(entsystemlog.DateEQ(filter.Data))
+	switch mode, start, end := filter.ResolveDateRange(); mode {
+	case DateRangeBetween:
+		query = query.Where(entsystemlog.DateGTE(start), entsystemlog.DateLTE(end))
+	case DateRangeFrom:
+		query = query.Where(entsystemlog.DateGTE(start))
+	case DateRangeTo:
+		query = query.Where(entsystemlog.DateLTE(end))
+	case DateRangeExact:
+		query = query.Where(entsystemlog.DateEQ(start))
 	}
-
 	if filter.ObjectID != 0 {
 		query = query.Where(entsystemlog.ObjectIDEQ(filter.ObjectID))
 	}

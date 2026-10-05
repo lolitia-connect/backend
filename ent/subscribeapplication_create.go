@@ -132,6 +132,20 @@ func (_c *SubscribeApplicationCreate) SetNillableOutputFormat(v *string) *Subscr
 	return _c
 }
 
+// SetDefaultParams sets the "default_params" field.
+func (_c *SubscribeApplicationCreate) SetDefaultParams(v string) *SubscribeApplicationCreate {
+	_c.mutation.SetDefaultParams(v)
+	return _c
+}
+
+// SetNillableDefaultParams sets the "default_params" field if the given value is not nil.
+func (_c *SubscribeApplicationCreate) SetNillableDefaultParams(v *string) *SubscribeApplicationCreate {
+	if v != nil {
+		_c.SetDefaultParams(*v)
+	}
+	return _c
+}
+
 // SetDownloadLink sets the "download_link" field.
 func (_c *SubscribeApplicationCreate) SetDownloadLink(v string) *SubscribeApplicationCreate {
 	_c.mutation.SetDownloadLink(v)
@@ -227,6 +241,10 @@ func (_c *SubscribeApplicationCreate) defaults() {
 		v := subscribeapplication.DefaultOutputFormat
 		_c.mutation.SetOutputFormat(v)
 	}
+	if _, ok := _c.mutation.DefaultParams(); !ok {
+		v := subscribeapplication.DefaultDefaultParams
+		_c.mutation.SetDefaultParams(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := subscribeapplication.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -253,6 +271,9 @@ func (_c *SubscribeApplicationCreate) check() error {
 	}
 	if _, ok := _c.mutation.OutputFormat(); !ok {
 		return &ValidationError{Name: "output_format", err: errors.New(`ent: missing required field "SubscribeApplication.output_format"`)}
+	}
+	if _, ok := _c.mutation.DefaultParams(); !ok {
+		return &ValidationError{Name: "default_params", err: errors.New(`ent: missing required field "SubscribeApplication.default_params"`)}
 	}
 	if _, ok := _c.mutation.DownloadLink(); !ok {
 		return &ValidationError{Name: "download_link", err: errors.New(`ent: missing required field "SubscribeApplication.download_link"`)}
@@ -326,6 +347,10 @@ func (_c *SubscribeApplicationCreate) createSpec() (*SubscribeApplication, *sqlg
 	if value, ok := _c.mutation.OutputFormat(); ok {
 		_spec.SetField(subscribeapplication.FieldOutputFormat, field.TypeString, value)
 		_node.OutputFormat = value
+	}
+	if value, ok := _c.mutation.DefaultParams(); ok {
+		_spec.SetField(subscribeapplication.FieldDefaultParams, field.TypeString, value)
+		_node.DefaultParams = value
 	}
 	if value, ok := _c.mutation.DownloadLink(); ok {
 		_spec.SetField(subscribeapplication.FieldDownloadLink, field.TypeString, value)

@@ -9,6 +9,8 @@ import (
 	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/oauth/facebook"
+	"github.com/perfect-panel/server/pkg/oauth/github"
 	"github.com/perfect-panel/server/pkg/oauth/google"
 	"github.com/perfect-panel/server/pkg/oauth/telegram"
 	"github.com/perfect-panel/server/pkg/random"
@@ -85,7 +87,25 @@ func (l *OAuthLoginLogic) google(req *types.OAthLoginRequest) (string, error) {
 }
 
 func (l *OAuthLoginLogic) facebook() (string, error) {
-	return "", nil
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "facebook")
+	if err != nil {
+		return "", err
+	}
+	var cfg auth.FacebookAuthConfig
+	if err = json.Unmarshal([]byte(authMethod.Config), &cfg); err != nil {
+		l.Logger.Errorw("error unmarshal facebook config", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
+		return "", err
+	}
+	client := facebook.New(&facebook.Config{
+		ClientID:     cfg.ClientId,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  cfg.RedirectURL,
+	})
+	code := random.KeyNew(8, 1)
+	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("facebook:%s", code), cfg.RedirectURL, 5*60*time.Second).Err(); err != nil {
+		return "", err
+	}
+	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
 }
 func (l *OAuthLoginLogic) apple(req *types.OAthLoginRequest) (string, error) {
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "apple")
@@ -102,14 +122,32 @@ func (l *OAuthLoginLogic) apple(req *types.OAthLoginRequest) (string, error) {
 	// generate the state code
 	code := random.KeyNew(8, 1)
 	// save the state code
-	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("telegram:%s", code), req.Redirect, 5*60*time.Second).Err()
+	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("apple:%s", code), req.Redirect, 5*60*time.Second).Err()
 	if err != nil {
 		l.Logger.Errorw("error save state code to redis: %v", zap.Any("code", code), zap.Any("error", err.Error()))
 	}
 	return fmt.Sprintf(uri, cfg.ClientId, fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL), code), nil
 }
 func (l *OAuthLoginLogic) github() (string, error) {
-	return "", nil
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "github")
+	if err != nil {
+		return "", err
+	}
+	var cfg auth.GithubAuthConfig
+	if err = json.Unmarshal([]byte(authMethod.Config), &cfg); err != nil {
+		l.Logger.Errorw("error unmarshal github config", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
+		return "", err
+	}
+	client := github.New(&github.Config{
+		ClientID:     cfg.ClientId,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  cfg.RedirectURL,
+	})
+	code := random.KeyNew(8, 1)
+	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("github:%s", code), cfg.RedirectURL, 5*60*time.Second).Err(); err != nil {
+		return "", err
+	}
+	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
 }
 func (l *OAuthLoginLogic) telegram(req *types.OAthLoginRequest) (string, error) {
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "telegram")

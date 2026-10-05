@@ -28,12 +28,14 @@ func NewFilterLoginLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Fi
 
 func (l *FilterLoginLogLogic) FilterLoginLog(req *types.FilterLoginLogRequest) (resp *types.FilterLoginLogResponse, err error) {
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page:     req.Page,
-		Size:     req.Size,
-		Type:     log.TypeLogin.Uint8(),
-		ObjectID: req.UserId,
-		Data:     req.Date,
-		Search:   req.Search,
+		Page:      req.Page,
+		Size:      req.Size,
+		Type:      log.TypeLogin.Uint8(),
+		ObjectID:  req.UserId,
+		Data:      req.Date,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
+		Search:    req.Search,
 	})
 
 	if err != nil {

@@ -799,6 +799,65 @@ type (
 		CheckoutUrl string         `json:"checkout_url,omitempty"`
 		Stripe      *StripePayment `json:"stripe,omitempty"`
 	}
+	V2GuestOrderRequest {
+		AuthType   string `json:"auth_type"`
+		Identifier string `json:"identifier"`
+		Password   string `json:"password"`
+		InviteCode string `json:"invite_code,omitempty"`
+	}
+	V2CreateOrderRequest {
+		Type            string               `json:"type"`
+		PaymentID       int64                `json:"payment_id"`
+		SubscribeID     int64                `json:"subscribe_id,omitempty"`
+		UserSubscribeID int64                `json:"user_subscribe_id,omitempty"`
+		Quantity        int64                `json:"quantity,omitempty"`
+		Coupon          string               `json:"coupon,omitempty"`
+		Amount          int64                `json:"amount,omitempty"`
+		ReturnURL       string               `json:"return_url,omitempty"`
+		Guest           *V2GuestOrderRequest `json:"guest,omitempty"`
+	}
+	V2CheckoutOrderRequest {
+		CheckoutToken string `json:"checkout_token,omitempty"`
+		ReturnURL     string `json:"return_url,omitempty"`
+	}
+	V2EventTicketRequest {
+		CheckoutToken string `json:"checkout_token,omitempty"`
+	}
+	V2OrderSessionRequest {
+		CheckoutToken string `json:"checkout_token,omitempty"`
+	}
+	V2OrderResponse {
+		Order         V2OrderSnapshot `json:"order"`
+		Payment       *V2OrderPayment `json:"payment,omitempty"`
+		Events        V2OrderEvents   `json:"events"`
+		CheckoutToken string          `json:"checkout_token,omitempty"`
+	}
+	V2OrderSnapshot {
+		OrderNo           string `json:"order_no"`
+		Status            string `json:"status"`
+		PaymentStatus     string `json:"payment_status"`
+		FulfillmentStatus string `json:"fulfillment_status"`
+		StateVersion      int64  `json:"state_version"`
+		Amount            int64  `json:"amount"`
+		Currency          string `json:"currency"`
+		ExpiresAt         int64  `json:"expires_at"`
+	}
+	V2OrderPayment {
+		Type          string `json:"type"`
+		CheckoutURL   string `json:"checkout_url,omitempty"`
+		PaymentStatus string `json:"payment_status"`
+	}
+	V2OrderEvents {
+		URL             string `json:"url"`
+		TicketExpiresAt int64  `json:"ticket_expires_at"`
+	}
+	V2EventTicketResponse {
+		URL             string `json:"url"`
+		TicketExpiresAt int64  `json:"ticket_expires_at"`
+	}
+	V2OrderSessionResponse {
+		AccessToken string `json:"access_token"`
+	}
 	SiteCustomDataContacts {
 		Email     string `json:"email"`
 		Telephone string `json:"telephone"`
@@ -876,6 +935,13 @@ type (
 		Type                    string  `json:"type"`
 		Port                    uint16  `json:"port"`
 		Enable                  bool    `json:"enable"`
+		Version                 int     `json:"version,omitempty"` // Snell accepts 5/6, TUIC 5, Nowhere 1; 0 means the protocol default
+		Mode                    string  `json:"mode,omitempty"` // Snell v6 work mode; no other protocol sets it
+		Network                 string  `json:"network,omitempty"` // Listener network: tcp/udp/both; Nowhere normalizes to mix/tcp/udp
+		ALPN                    []string `json:"alpn,omitempty"` // TLS ALPN list; Nowhere takes exactly one value, defaulting to now/1
+		SSRProtocol             string  `json:"ssr_protocol,omitempty"` // ShadowsocksR obfs/auth protocol
+		ProtocolParam           string  `json:"protocol_param,omitempty"` // ShadowsocksR protocol parameter (user:pass)
+		ObfsParam               string  `json:"obfs_param,omitempty"` // ShadowsocksR obfs parameter
 		Security                string  `json:"security,omitempty"`
 		SNI                     string  `json:"sni,omitempty"`
 		AllowInsecure           bool    `json:"allow_insecure,omitempty"`

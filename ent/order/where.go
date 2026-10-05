@@ -139,6 +139,26 @@ func Status(v uint8) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldStatus, v))
 }
 
+// StateVersion applies equality check predicate on the "state_version" field. It's identical to StateVersionEQ.
+func StateVersion(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldStateVersion, v))
+}
+
+// IdempotencyKey applies equality check predicate on the "idempotency_key" field. It's identical to IdempotencyKeyEQ.
+func IdempotencyKey(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldIdempotencyKey, v))
+}
+
+// IdempotencyHash applies equality check predicate on the "idempotency_hash" field. It's identical to IdempotencyHashEQ.
+func IdempotencyHash(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldIdempotencyHash, v))
+}
+
+// GuestCheckoutTokenHash applies equality check predicate on the "guest_checkout_token_hash" field. It's identical to GuestCheckoutTokenHashEQ.
+func GuestCheckoutTokenHash(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestCheckoutTokenHash, v))
+}
+
 // SubscribeID applies equality check predicate on the "subscribe_id" field. It's identical to SubscribeIDEQ.
 func SubscribeID(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldSubscribeID, v))
@@ -962,6 +982,271 @@ func StatusLT(v uint8) predicate.Order {
 // StatusLTE applies the LTE predicate on the "status" field.
 func StatusLTE(v uint8) predicate.Order {
 	return predicate.Order(sql.FieldLTE(FieldStatus, v))
+}
+
+// StateVersionEQ applies the EQ predicate on the "state_version" field.
+func StateVersionEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldStateVersion, v))
+}
+
+// StateVersionNEQ applies the NEQ predicate on the "state_version" field.
+func StateVersionNEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldStateVersion, v))
+}
+
+// StateVersionIn applies the In predicate on the "state_version" field.
+func StateVersionIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldStateVersion, vs...))
+}
+
+// StateVersionNotIn applies the NotIn predicate on the "state_version" field.
+func StateVersionNotIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldStateVersion, vs...))
+}
+
+// StateVersionGT applies the GT predicate on the "state_version" field.
+func StateVersionGT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldStateVersion, v))
+}
+
+// StateVersionGTE applies the GTE predicate on the "state_version" field.
+func StateVersionGTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldStateVersion, v))
+}
+
+// StateVersionLT applies the LT predicate on the "state_version" field.
+func StateVersionLT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldStateVersion, v))
+}
+
+// StateVersionLTE applies the LTE predicate on the "state_version" field.
+func StateVersionLTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldStateVersion, v))
+}
+
+// IdempotencyKeyEQ applies the EQ predicate on the "idempotency_key" field.
+func IdempotencyKeyEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyNEQ applies the NEQ predicate on the "idempotency_key" field.
+func IdempotencyKeyNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyIn applies the In predicate on the "idempotency_key" field.
+func IdempotencyKeyIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldIdempotencyKey, vs...))
+}
+
+// IdempotencyKeyNotIn applies the NotIn predicate on the "idempotency_key" field.
+func IdempotencyKeyNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldIdempotencyKey, vs...))
+}
+
+// IdempotencyKeyGT applies the GT predicate on the "idempotency_key" field.
+func IdempotencyKeyGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyGTE applies the GTE predicate on the "idempotency_key" field.
+func IdempotencyKeyGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyLT applies the LT predicate on the "idempotency_key" field.
+func IdempotencyKeyLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyLTE applies the LTE predicate on the "idempotency_key" field.
+func IdempotencyKeyLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyContains applies the Contains predicate on the "idempotency_key" field.
+func IdempotencyKeyContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyHasPrefix applies the HasPrefix predicate on the "idempotency_key" field.
+func IdempotencyKeyHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyHasSuffix applies the HasSuffix predicate on the "idempotency_key" field.
+func IdempotencyKeyHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyIsNil applies the IsNil predicate on the "idempotency_key" field.
+func IdempotencyKeyIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldIdempotencyKey))
+}
+
+// IdempotencyKeyNotNil applies the NotNil predicate on the "idempotency_key" field.
+func IdempotencyKeyNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldIdempotencyKey))
+}
+
+// IdempotencyKeyEqualFold applies the EqualFold predicate on the "idempotency_key" field.
+func IdempotencyKeyEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldIdempotencyKey, v))
+}
+
+// IdempotencyKeyContainsFold applies the ContainsFold predicate on the "idempotency_key" field.
+func IdempotencyKeyContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldIdempotencyKey, v))
+}
+
+// IdempotencyHashEQ applies the EQ predicate on the "idempotency_hash" field.
+func IdempotencyHashEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashNEQ applies the NEQ predicate on the "idempotency_hash" field.
+func IdempotencyHashNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashIn applies the In predicate on the "idempotency_hash" field.
+func IdempotencyHashIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldIdempotencyHash, vs...))
+}
+
+// IdempotencyHashNotIn applies the NotIn predicate on the "idempotency_hash" field.
+func IdempotencyHashNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldIdempotencyHash, vs...))
+}
+
+// IdempotencyHashGT applies the GT predicate on the "idempotency_hash" field.
+func IdempotencyHashGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashGTE applies the GTE predicate on the "idempotency_hash" field.
+func IdempotencyHashGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashLT applies the LT predicate on the "idempotency_hash" field.
+func IdempotencyHashLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashLTE applies the LTE predicate on the "idempotency_hash" field.
+func IdempotencyHashLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashContains applies the Contains predicate on the "idempotency_hash" field.
+func IdempotencyHashContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashHasPrefix applies the HasPrefix predicate on the "idempotency_hash" field.
+func IdempotencyHashHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashHasSuffix applies the HasSuffix predicate on the "idempotency_hash" field.
+func IdempotencyHashHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashIsNil applies the IsNil predicate on the "idempotency_hash" field.
+func IdempotencyHashIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldIdempotencyHash))
+}
+
+// IdempotencyHashNotNil applies the NotNil predicate on the "idempotency_hash" field.
+func IdempotencyHashNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldIdempotencyHash))
+}
+
+// IdempotencyHashEqualFold applies the EqualFold predicate on the "idempotency_hash" field.
+func IdempotencyHashEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldIdempotencyHash, v))
+}
+
+// IdempotencyHashContainsFold applies the ContainsFold predicate on the "idempotency_hash" field.
+func IdempotencyHashContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldIdempotencyHash, v))
+}
+
+// GuestCheckoutTokenHashEQ applies the EQ predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashNEQ applies the NEQ predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashIn applies the In predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldGuestCheckoutTokenHash, vs...))
+}
+
+// GuestCheckoutTokenHashNotIn applies the NotIn predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldGuestCheckoutTokenHash, vs...))
+}
+
+// GuestCheckoutTokenHashGT applies the GT predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashGTE applies the GTE predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashLT applies the LT predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashLTE applies the LTE predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashContains applies the Contains predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashHasPrefix applies the HasPrefix predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashHasSuffix applies the HasSuffix predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashIsNil applies the IsNil predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldGuestCheckoutTokenHash))
+}
+
+// GuestCheckoutTokenHashNotNil applies the NotNil predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldGuestCheckoutTokenHash))
+}
+
+// GuestCheckoutTokenHashEqualFold applies the EqualFold predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldGuestCheckoutTokenHash, v))
+}
+
+// GuestCheckoutTokenHashContainsFold applies the ContainsFold predicate on the "guest_checkout_token_hash" field.
+func GuestCheckoutTokenHashContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldGuestCheckoutTokenHash, v))
 }
 
 // SubscribeIDEQ applies the EQ predicate on the "subscribe_id" field.

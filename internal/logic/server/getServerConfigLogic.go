@@ -75,14 +75,21 @@ func (l *GetServerConfigLogic) GetServerConfig(req *types.GetServerConfigRequest
 		return nil, err
 	}
 	var cfg map[string]interface{}
+	matched := false
 	for _, protocol := range protocols {
 		if protocol.Enable && protocol.Id == req.ProtocolId && protocol.Type == req.Protocol {
+			matched = true
 			cfg = l.compatible(protocol)
 			break
 		}
 	}
 
 	if cfg == nil {
+		// The legacy endpoint has no structure for some protocols (Nowhere), so
+		// tell the node to use the flat v2 endpoint instead of retrying.
+		if matched {
+			return nil, fmt.Errorf("protocol %s:%s is not supported by the legacy server config endpoint; use /v2/server/{server_id}", req.Protocol, req.ProtocolId)
+		}
 		return nil, fmt.Errorf("protocol %s:%s not found or disabled", req.Protocol, req.ProtocolId)
 	}
 

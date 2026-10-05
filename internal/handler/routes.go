@@ -261,6 +261,9 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 		// Filter mobile log
 		adminLogGroupRouter.GET("/mobile/list", adminLog.FilterMobileLogHandler(serverCtx))
 
+		// Filter order creation audit log
+		adminLogGroupRouter.GET("/order/list", adminLog.FilterOrderLogHandler(serverCtx))
+
 		// Filter register log
 		adminLogGroupRouter.GET("/register/list", adminLog.FilterRegisterLogHandler(serverCtx))
 

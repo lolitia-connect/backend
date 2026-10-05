@@ -3,10 +3,13 @@ package order
 import (
 	"context"
 	"encoding/json"
-	"github.com/perfect-panel/server/ent"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+
 	"github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/orderaudit"
+	"github.com/perfect-panel/server/internal/orderflow"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/hibiken/asynq"
@@ -170,17 +173,8 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		}
 	}
 
-	var deductionAmount int64
-	// Gift amount is deducted after payment fee, because the fee is based on the payable cash amount.
-	if u.GiftAmount > 0 && amount > 0 {
-		if u.GiftAmount >= amount {
-			deductionAmount = amount
-			amount = 0
-		} else {
-			deductionAmount = u.GiftAmount
-			amount -= u.GiftAmount
-		}
-	}
+	// Gift credit is reserved inside the transaction, against a wallet row
+	// read there, so two concurrent orders cannot spend the same balance.
 
 	// query user is new purchase or renewal
 	isNew, err := store.Order().IsUserEligibleForNewOrder(l.ctx, u.Id)
@@ -197,7 +191,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		Price:          price,
 		Amount:         amount,
 		Discount:       discountAmount,
-		GiftAmount:     deductionAmount,
+		GiftAmount:     0,
 		Coupon:         req.Coupon,
 		CouponDiscount: coupon,
 		PaymentId:      payment.Id,
@@ -207,6 +201,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		IsNew:          isNew,
 		SubscribeId:    req.SubscribeId,
 	}
+	orderflow.ApplyIdempotency(l.ctx, orderInfo)
 	// Database transaction
 	err = store.InTx(l.ctx, func(txStore repository.Store) error {
 		if sub.Quota > 0 {
@@ -220,12 +215,21 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 			}
 		}
 
-		// update user deduction && Pre deduction ,Return after canceling the order
+		// Reserve gift credit under the fresh wallet read: the fee was already
+		// calculated on the full external payable amount by design.
+		walletInfo, e := txStore.Wallet().FindOne(l.ctx, u.Id)
+		if e != nil {
+			l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", e.Error()), zap.Any("user_id", u.Id))
+			return e
+		}
+		if walletInfo.GiftAmount > 0 && orderInfo.Amount > 0 {
+			orderInfo.GiftAmount, orderInfo.Amount = walletInfo.Reserve(orderInfo.Amount)
+		}
+		// update wallet deduction && Pre deduction ,Return after canceling the order
 		if orderInfo.GiftAmount > 0 {
-			// update user deduction && Pre deduction ,Return after canceling the order
-			u.GiftAmount -= orderInfo.GiftAmount
-			if e := txStore.User().Update(l.ctx, u); e != nil {
-				l.Logger.Errorw("[Purchase] Database update error", zap.Any("error", e.Error()), zap.Any("user", u))
+			walletInfo.GiftAmount -= orderInfo.GiftAmount
+			if e := txStore.Wallet().UpdateBalanceFields(l.ctx, walletInfo); e != nil {
+				l.Logger.Errorw("[Purchase] Database update error", zap.Any("error", e.Error()), zap.Any("wallet", walletInfo))
 				return e
 			}
 			// create deduction record
@@ -234,7 +238,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 				OrderNo:     orderInfo.OrderNo,
 				SubscribeId: 0,
 				Amount:      orderInfo.GiftAmount,
-				Balance:     u.GiftAmount,
+				Balance:     walletInfo.GiftAmount,
 				Remark:      "Purchase order deduction",
 				Timestamp:   time.Now().UnixMilli(),
 			}
@@ -265,7 +269,11 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		}
 
 		// insert order
-		return txStore.Order().Insert(l.ctx, orderInfo)
+		if err = txStore.Order().Insert(l.ctx, orderInfo); err != nil {
+			return err
+		}
+		// write the order creation audit log in the same transaction
+		return orderaudit.InsertCreated(l.ctx, txStore.Log(), orderInfo, orderaudit.SourceUser)
 	})
 	if err != nil {
 		l.Logger.Errorw("[Purchase] Database insert error", zap.Any("error", err.Error()), zap.Any("orderInfo", orderInfo))

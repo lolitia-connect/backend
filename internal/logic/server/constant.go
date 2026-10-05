@@ -3,12 +3,14 @@ package server
 const (
 	Unchanged   = "Unchanged"
 	ShadowSocks = "shadowsocks"
+	SSR         = "shadowsocksr"
 	Vmess       = "vmess"
 	Vless       = "vless"
 	Trojan      = "trojan"
 	AnyTLS      = "anytls"
 	Tuic        = "tuic"
 	Hysteria    = "hysteria"
+	Nowhere     = "nowhere"
 	// Deprecated: Hysteria2 is deprecated, use Hysteria instead
 	// TODO: remove in future versions
 	Hysteria2 = "hysteria2"

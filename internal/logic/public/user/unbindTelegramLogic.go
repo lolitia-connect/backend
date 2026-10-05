@@ -7,11 +7,11 @@ import (
 
 	"github.com/perfect-panel/server/pkg/constant"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbot "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/perfect-panel/server/internal/logic/telegram"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -63,20 +63,23 @@ func (l *UnbindTelegramLogic) UnbindTelegram() error {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "Delete User Auth Methods Failed")
 	}
 	// Unbind Telegram Success send message with chatId
-	text, err := tool.RenderTemplateToString(telegram.UnbindNotify, map[string]string{
+	text, err := telegram.RenderMarkdownV2(telegram.UnbindNotify, map[string]string{
 		"Id":   strconv.FormatInt(u.Id, 10),
 		"Time": time.Now().Format("2006-01-02 15:04:05"),
 	})
 	if err != nil {
-		l.Logger.Errorw("UnbindTelegramLogic RenderTemplateToString Error", zap.Any("id", u.Id), zap.Any("error", err.Error()))
+		l.Logger.Errorw("UnbindTelegramLogic RenderMarkdownV2 Error", zap.Any("id", u.Id), zap.Any("error", err.Error()))
 		return nil
 	}
 	if l.svcCtx.TelegramBot == nil {
 		l.Logger.Errorw("UnbindTelegramLogic TelegramBot is nil", zap.Any("id", u.Id))
 		return nil
 	}
-	msg := tgbotapi.NewMessage(userTelegramChatId, text)
-	_, err = l.svcCtx.TelegramBot.Send(msg)
+	_, err = l.svcCtx.TelegramBot.SendMessage(l.ctx, &tgbot.SendMessageParams{
+		ChatID:    userTelegramChatId,
+		Text:      text,
+		ParseMode: models.ParseModeMarkdown,
+	})
 	if err != nil {
 		l.Logger.Errorw("UnbindTelegramLogic Send Error", zap.Any("id", u.Id), zap.Any("error", err.Error()))
 		return nil

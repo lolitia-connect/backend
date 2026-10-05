@@ -39,6 +39,7 @@ func (m *DefaultSubscribeApplicationModel) Insert(ctx context.Context, data *Sub
 		SetIsDefault(data.IsDefault).
 		SetSubscribeTemplate(data.SubscribeTemplate).
 		SetOutputFormat(data.OutputFormat).
+		SetDefaultParams(data.DefaultParams).
 		SetDownloadLink(data.DownloadLink).
 		Save(ctx)
 	if err != nil {
@@ -69,6 +70,7 @@ func (m *DefaultSubscribeApplicationModel) Update(ctx context.Context, data *Sub
 		SetIsDefault(data.IsDefault).
 		SetSubscribeTemplate(data.SubscribeTemplate).
 		SetOutputFormat(data.OutputFormat).
+		SetDefaultParams(data.DefaultParams).
 		SetDownloadLink(data.DownloadLink).
 		SetUpdatedAt(time.Now()).
 		Save(ctx)
@@ -109,6 +111,7 @@ func subscribeApplicationFromEnt(data *ent.SubscribeApplication) *SubscribeAppli
 		IsDefault:         data.IsDefault,
 		SubscribeTemplate: data.SubscribeTemplate,
 		OutputFormat:      data.OutputFormat,
+		DefaultParams:     data.DefaultParams,
 		DownloadLink:      data.DownloadLink,
 		CreatedAt:         data.CreatedAt,
 		UpdatedAt:         data.UpdatedAt,

@@ -13,8 +13,19 @@ import (
 )
 
 // GetServerConfigHandler Get server config
+//
+// @Summary Get server config
+// @Tags node
+// @Accept json
+// @Produce json,application/protobuf
+// @Security NodeSecret
+// @Param request query types.GetServerConfigRequest false "Request parameters"
+// @Success 200 {object} types.GetServerConfigResponse
+// @Router /v1/server/config [get]
 func GetServerConfigHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
+		acceptsProtobuf := acceptsProtobuf(ctx)
+		ctx.Header("Vary", "Accept")
 		commonReq, err := serverCommonRequest(ctx)
 		if err != nil {
 			writeParamError(ctx, err)
@@ -26,8 +37,9 @@ func GetServerConfigHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 			return
 		}
 
+		ifNoneMatch := string(ctx.GetHeader("If-None-Match"))
 		l := server.NewGetServerConfigLogic(c, svcCtx, server.RequestMeta{
-			IfNoneMatch: string(ctx.GetHeader("If-None-Match")),
+			IfNoneMatch: ifNoneMatchForRepresentation(ifNoneMatch, acceptsProtobuf),
 		})
 		resp, err := l.GetServerConfig(&req)
 		writeHeaders(ctx, l.ResponseMeta().Headers)
@@ -36,7 +48,18 @@ func GetServerConfigHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 				ctx.String(consts.StatusNotModified, "Not Modified")
 				return
 			}
-			ctx.String(consts.StatusNotFound, "Not Found")
+			writeServerText(ctx, consts.StatusNotFound, "Not Found")
+			return
+		}
+		if acceptsProtobuf {
+			message, err := serverConfigResponseToProtobuf(resp)
+			if err != nil {
+				writeServerReportResult(ctx, err)
+				return
+			}
+			if err := writeServerProtobufWithETag(ctx, message, ifNoneMatch); err != nil {
+				writeServerReportResult(ctx, err)
+			}
 			return
 		}
 		ctx.JSON(consts.StatusOK, resp)

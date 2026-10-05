@@ -2,11 +2,12 @@ package portal
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/subtle"
 	"fmt"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/model/user"
 
 	"github.com/perfect-panel/server/pkg/tool"
 
@@ -46,10 +47,13 @@ func (l *QueryPurchaseOrderLogic) QueryPurchaseOrder(req *types.QueryPurchaseOrd
 	if err != nil {
 		return nil, wrapDatabaseError(err)
 	}
+	if err := l.authorizePurchaseOrder(orderInfo, req); err != nil {
+		return nil, err
+	}
 	// Handle temporary orders if applicable
 	var token string
 	if orderInfo.Status == 2 || orderInfo.Status == 5 {
-		if token, err = l.handleTemporaryOrder(orderInfo, req); err != nil {
+		if token, err = l.handleTemporaryOrder(orderInfo); err != nil {
 			return nil, err
 		}
 	}
@@ -76,68 +80,77 @@ func (l *QueryPurchaseOrderLogic) QueryPurchaseOrder(req *types.QueryPurchaseOrd
 	}, nil
 }
 
-// handleTemporaryOrder processes temporary order-related operations
-func (l *QueryPurchaseOrderLogic) handleTemporaryOrder(orderInfo *order.Order, req *types.QueryPurchaseOrderRequest) (string, error) {
+// authorizePurchaseOrder accepts either the authenticated owner of a completed
+// guest order or the unguessable checkout capability issued when that order was
+// created. An email/identifier is not authentication and must never be used to
+// mint a session token.
+func (l *QueryPurchaseOrderLogic) authorizePurchaseOrder(orderInfo *order.Order, req *types.QueryPurchaseOrderRequest) error {
+	if orderInfo.UserId != 0 {
+		if currentUser, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User); ok && currentUser.Id == orderInfo.UserId {
+			return nil
+		}
+	}
+	if req.CheckoutToken == "" {
+		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is required")
+	}
+	if orderInfo.GuestCheckoutTokenHash != "" {
+		if subtle.ConstantTimeCompare([]byte(orderInfo.GuestCheckoutTokenHash), []byte(constant.CheckoutTokenHash(req.CheckoutToken))) != 1 {
+			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is invalid")
+		}
+		return nil
+	}
+	// Compatibility for orders created before the capability was persisted on
+	// the order itself.
 	cacheKey := fmt.Sprintf(constant.TempOrderCacheKey, orderInfo.OrderNo)
 	cacheValue, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
 	if err != nil {
-		l.Logger.Errorw("Get TempOrderCacheKey Error", zap.Any("cacheKey", cacheKey), zap.Any("error", err.Error()))
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Get TempOrderCacheKey Error: %v", err.Error())
+		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is invalid")
 	}
-
 	var tempOrder constant.TemporaryOrderInfo
-	if err := json.Unmarshal([]byte(cacheValue), &tempOrder); err != nil {
-		l.Logger.Errorw("JSON Unmarshal Error", zap.Any("error", err.Error()), zap.Any("cacheValue", cacheValue))
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "JSON Unmarshal Error: %v", err.Error())
+	if err := tempOrder.Unmarshal([]byte(cacheValue)); err != nil {
+		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is invalid")
 	}
-	if tempOrder.OrderNo != orderInfo.OrderNo {
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Order number mismatch")
+	if tempOrder.OrderNo != orderInfo.OrderNo || tempOrder.CheckoutToken == "" ||
+		subtle.ConstantTimeCompare([]byte(tempOrder.CheckoutToken), []byte(req.CheckoutToken)) != 1 {
+		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is invalid")
 	}
+	return nil
+}
 
-	// Validate user and email
-	if err = l.validateUserAndEmail(orderInfo, req.AuthType, req.Identifier); err != nil {
-		return "", err
+// handleTemporaryOrder processes temporary order-related operations
+func (l *QueryPurchaseOrderLogic) handleTemporaryOrder(orderInfo *order.Order) (string, error) {
+	if orderInfo.UserId == 0 {
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.OrderStatusError), "guest account is not ready")
 	}
 
 	// Generate session token
 	return l.generateSessionToken(orderInfo.UserId)
 }
 
-// validateUserAndEmail ensures the user and email are correct
-func (l *QueryPurchaseOrderLogic) validateUserAndEmail(orderInfo *order.Order, platform, openid string) error {
-	userInfo, err := l.svcCtx.Store.User().FindOne(l.ctx, orderInfo.UserId)
-	if err != nil {
-		return wrapDatabaseError(err)
-	}
-
-	authMethod, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, platform, openid)
-	if err != nil {
-		return wrapDatabaseError(err)
-	}
-	if authMethod.UserId != userInfo.Id {
-		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Email verification failed")
-	}
-
-	return nil
-}
-
 // generateSessionToken creates a session token and stores it in Redis
 func (l *QueryPurchaseOrderLogic) generateSessionToken(userId int64) (string, error) {
+	return IssuePurchaseSession(l.ctx, l.svcCtx, userId)
+}
+
+// IssuePurchaseSession creates the normal authenticated session issued after a
+// guest purchase completes. Both this package's status endpoint and the V2
+// capability-exchange endpoint use this helper so their token and Redis session
+// semantics cannot drift.
+func IssuePurchaseSession(ctx context.Context, svcCtx *svc.ServiceContext, userId int64) (string, error) {
 	sessionId := uuidx.NewUUID().String()
 	token, err := jwt.NewJwtToken(
-		l.svcCtx.Config.JwtAuth.AccessSecret,
+		svcCtx.Config.JwtAuth.AccessSecret,
 		time.Now().Unix(),
-		l.svcCtx.Config.JwtAuth.AccessExpire,
+		svcCtx.Config.JwtAuth.AccessExpire,
 		jwt.WithOption("UserId", userId),
 		jwt.WithOption("SessionId", sessionId),
 	)
 	if err != nil {
-		l.Logger.Errorw("Token Generation Error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Token generation error")
 	}
 
 	cacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
-	if err := l.svcCtx.Redis.Set(l.ctx, cacheKey, userId, time.Duration(l.svcCtx.Config.JwtAuth.AccessExpire)*time.Second).Err(); err != nil {
+	if err := svcCtx.Redis.Set(ctx, cacheKey, userId, time.Duration(svcCtx.Config.JwtAuth.AccessExpire)*time.Second).Err(); err != nil {
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Session storage error")
 	}
 

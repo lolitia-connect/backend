@@ -17,10 +17,12 @@ import (
 // QueryServerProtocolConfigHandler Get Server Protocol Config
 func QueryServerProtocolConfigHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
+		ctx.Header("Vary", "Accept")
+		acceptsProtobuf := acceptsProtobuf(ctx)
 		serverID, err := strconv.ParseInt(ctx.Param("server_id"), 10, 64)
 		if err != nil {
 			zap.S().Debugf("[QueryServerProtocolConfigHandler] Parse server_id error: %v, Param: %s", err, ctx.Param("server_id"))
-			ctx.String(consts.StatusBadRequest, "Invalid Params")
+			writeServerText(ctx, consts.StatusBadRequest, "Invalid Params")
 			ctx.Abort()
 			return
 		}
@@ -29,8 +31,8 @@ func QueryServerProtocolConfigHandler(svcCtx *svc.ServiceContext) app.HandlerFun
 			SecretKey: ctx.Query("secret_key"),
 			Protocols: queryValues(ctx, "protocols", "protocols[]"),
 		}
-		if svcCtx.Config.Node.NodeSecret != req.SecretKey {
-			ctx.String(consts.StatusUnauthorized, "Unauthorized")
+		if !tool.SecretMatches(req.SecretKey, svcCtx.Config.Node.NodeSecret) {
+			writeServerText(ctx, consts.StatusUnauthorized, "Unauthorized")
 			ctx.Abort()
 			return
 		}
@@ -38,7 +40,18 @@ func QueryServerProtocolConfigHandler(svcCtx *svc.ServiceContext) app.HandlerFun
 		l := server.NewQueryServerProtocolConfigLogic(c, svcCtx)
 		resp, err := l.QueryServerProtocolConfig(&req)
 		if err != nil {
-			writeHTTPResult(ctx, nil, err)
+			writeServerReportResult(ctx, err)
+			return
+		}
+		if acceptsProtobuf {
+			message, err := queryServerProtocolConfigResponseToProtobuf(resp)
+			if err != nil {
+				writeServerReportResult(ctx, err)
+				return
+			}
+			if err := writeServerProtobufWithETag(ctx, message, string(ctx.GetHeader("If-None-Match"))); err != nil {
+				writeServerReportResult(ctx, err)
+			}
 			return
 		}
 		body, err := json.Marshal(resp)

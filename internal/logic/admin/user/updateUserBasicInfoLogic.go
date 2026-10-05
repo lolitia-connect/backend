@@ -36,6 +36,13 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Find User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find User Error")
 	}
+	// Money lives in the billing-owned wallet; an account without a row reads
+	// as zero values.
+	walletInfo, err := l.svcCtx.Store.Wallet().FindOne(l.ctx, req.UserId)
+	if err != nil {
+		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Find Wallet Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find Wallet Error")
+	}
 
 	isDemo := strings.ToLower(os.Getenv("PPANEL_MODE")) == "demo"
 
@@ -43,8 +50,8 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Invalid Image Size")
 	}
 
-	if userInfo.Balance != req.Balance {
-		change := req.Balance - userInfo.Balance
+	if walletInfo.Balance != req.Balance {
+		change := req.Balance - walletInfo.Balance
 		balanceLog := log.Balance{
 			Type:      log.BalanceTypeAdjust,
 			Amount:    change,
@@ -66,11 +73,11 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		}
 	}
 
-	if userInfo.GiftAmount != req.GiftAmount {
-		change := req.GiftAmount - userInfo.GiftAmount
+	if walletInfo.GiftAmount != req.GiftAmount {
+		change := req.GiftAmount - walletInfo.GiftAmount
 		if change != 0 {
 			var changeType uint16
-			if userInfo.GiftAmount < req.GiftAmount {
+			if walletInfo.GiftAmount < req.GiftAmount {
 				changeType = log.GiftTypeIncrease
 			} else {
 				changeType = log.GiftTypeReduce
@@ -97,11 +104,11 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		}
 	}
 
-	if req.Commission != userInfo.Commission {
+	if req.Commission != walletInfo.Commission {
 
 		commentLog := log.Commission{
 			Type:      log.CommissionTypeAdjust,
-			Amount:    req.Commission - userInfo.Commission,
+			Amount:    req.Commission - walletInfo.Commission,
 			Timestamp: time.Now().UnixMilli(),
 		}
 
@@ -118,10 +125,8 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		}
 	}
 
-	// Apply basic field updates from request, but preserve already-set balance/gift/commission
-	userInfo.Balance = req.Balance
-	userInfo.GiftAmount = req.GiftAmount
-	userInfo.Commission = req.Commission
+	// Apply basic field updates from the request; money is not part of the
+	// identity row any more and is written to the wallet below.
 	userInfo.Avatar = req.Avatar
 	userInfo.ReferCode = req.ReferCode
 	userInfo.RefererId = req.RefererId
@@ -136,13 +141,42 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 			return errors.Wrapf(xerr.NewErrCodeMsg(503, "Demo mode does not allow modification of the admin user password"), "UpdateUserBasicInfo failed: cannot update admin user password in demo mode")
 		}
 		userInfo.Password = tool.EncodePassWord(req.Password)
-		userInfo.Algo = "default"
+		userInfo.Algo = tool.PasswordAlgoArgon2id
+		userInfo.Salt = ""
 	}
 
 	err = l.svcCtx.Store.User().Update(l.ctx, userInfo)
 	if err != nil {
 		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update User Error")
+	}
+
+	balanceChanged := walletInfo.Balance != req.Balance || walletInfo.GiftAmount != req.GiftAmount
+	commissionChanged := walletInfo.Commission != req.Commission
+	if !balanceChanged && !commissionChanged {
+		return nil
+	}
+	walletInfo.Balance = req.Balance
+	walletInfo.GiftAmount = req.GiftAmount
+	walletInfo.Commission = req.Commission
+	if walletInfo.Id == 0 {
+		if err = l.svcCtx.Store.Wallet().Insert(l.ctx, walletInfo); err != nil {
+			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Insert Wallet Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
+			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Insert Wallet Error")
+		}
+		return nil
+	}
+	if balanceChanged {
+		if err = l.svcCtx.Store.Wallet().UpdateBalanceFields(l.ctx, walletInfo); err != nil {
+			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update Wallet Balance Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
+			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update Wallet Balance Error")
+		}
+	}
+	if commissionChanged {
+		if err = l.svcCtx.Store.Wallet().UpdateCommission(l.ctx, walletInfo); err != nil {
+			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update Wallet Commission Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
+			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update Wallet Commission Error")
+		}
 	}
 
 	return nil

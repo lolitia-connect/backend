@@ -13,19 +13,23 @@ import (
 func ServerPushStatusHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
 		req := types.ServerPushStatusRequest{}
-		_ = ctx.BindJSON(&req)
+		if err := bindServerStatusRequest(ctx, &req); err != nil {
+			writeParamError(ctx, err)
+			return
+		}
 		commonReq, err := serverCommonRequest(ctx)
 		if err != nil {
 			writeParamError(ctx, err)
 			return
 		}
 		req.ServerCommon = commonReq
+		req.CertPinSHA256 = string(ctx.GetHeader(certificateSHA256Header))
 		if validateErr := svcCtx.Validate(&req); validateErr != nil {
 			writeParamError(ctx, validateErr)
 			return
 		}
 
 		l := server.NewServerPushStatusLogic(c, svcCtx)
-		writeHTTPResult(ctx, nil, l.ServerPushStatus(&req))
+		writeServerReportResult(ctx, l.ServerPushStatus(&req))
 	}
 }

@@ -21,6 +21,7 @@ type customServerLogicModel interface {
 	UpdateNodeSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error
+	ApplyReportedCertPin(ctx context.Context, serverId int64, protocolType, fingerprint string) (bool, error)
 	DeleteServerWithOverrides(ctx context.Context, serverId int64) error
 	QueryNodeTags(ctx context.Context) ([]string, error)
 	CountEnabledNodes(ctx context.Context) (int64, error)
@@ -133,6 +134,23 @@ func (m *customServerModel) UpdateServerSort(ctx context.Context, id int64, sort
 // when multiple nodes report status simultaneously.
 func (m *customServerModel) UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error {
 	return m.db.Server.UpdateOneID(id).SetLastReportedAt(t).Exec(ctx)
+}
+
+// ApplyReportedCertPin folds a node-reported certificate fingerprint into the
+// server's protocols JSON. Like UpdateServerLastReportedAt it touches a single
+// column, so a heartbeat cannot collide with a concurrent admin edit, and it
+// reports whether anything changed so the caller can skip cache invalidation on
+// the steady-state heartbeats that make up almost all traffic.
+func (m *customServerModel) ApplyReportedCertPin(ctx context.Context, serverId int64, protocolType, fingerprint string) (bool, error) {
+	server, err := m.FindOneServer(ctx, serverId)
+	if err != nil {
+		return false, err
+	}
+	changed, err := server.ApplyReportedCertPin(protocolType, fingerprint)
+	if err != nil || !changed {
+		return false, err
+	}
+	return true, m.db.Server.UpdateOneID(serverId).SetNillableProtocols(nilIfEmpty(server.Protocols)).Exec(ctx)
 }
 
 func (m *customServerModel) DeleteServerWithOverrides(ctx context.Context, serverId int64) error {

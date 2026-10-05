@@ -22,10 +22,12 @@ type (
 		List  []MessageLog `json:"list"`
 	}
 	FilterLogParams {
-		Page   int    `form:"page"`
-		Size   int    `form:"size"`
-		Date   string `form:"date,optional"`
-		Search string `form:"search,optional"`
+		Page      int    `form:"page"`
+		Size      int    `form:"size"`
+		Date      string `form:"date,optional"`
+		StartDate string `form:"start_date,optional" validate:"omitempty,datetime=2006-01-02"`
+		EndDate   string `form:"end_date,optional" validate:"omitempty,datetime=2006-01-02"`
+		Search    string `form:"search,optional"`
 	}
 	FilterEmailLogResponse {
 		Total int64        `json:"total"`
@@ -167,6 +169,41 @@ type (
 		Total int64     `json:"total"`
 		List  []GiftLog `json:"list"`
 	}
+	OrderLog {
+		Id               int64  `json:"id,string"`
+		userId           int64  `json:"user_id,string"`
+		OrderNo          string `json:"order_no"`
+		OrderType        uint8  `json:"order_type"`
+		Quantity         int64  `json:"quantity"`
+		Price            int64  `json:"price"`
+		Amount           int64  `json:"amount"`
+		GiftAmount       int64  `json:"gift_amount"`
+		Discount         int64  `json:"discount"`
+		CouponDiscount   int64  `json:"coupon_discount"`
+		PaymentId        int64  `json:"payment_id,string"`
+		Method           string `json:"method"`
+		FeeAmount        int64  `json:"fee_amount"`
+		SubscribeId      int64  `json:"subscribe_id,string,omitempty"`
+		Source           string `json:"source"`
+		Timestamp        int64  `json:"timestamp"`
+		ClientIP         string `json:"client_ip,omitempty"`
+		UserAgent        string `json:"user_agent,omitempty"`
+		ActorID          int64  `json:"actor_id,string,omitempty"`
+		IPCountryCode    string `json:"ip_country_code,omitempty"`
+		IPCountry        string `json:"ip_country,omitempty"`
+		IPRegion         string `json:"ip_region,omitempty"`
+		IPCity           string `json:"ip_city,omitempty"`
+		IPASN            uint   `json:"ip_asn,omitempty"`
+		IPASOrganization string `json:"ip_as_organization,omitempty"`
+	}
+	FilterOrderLogRequest {
+		FilterLogParams
+		UserId int64 `form:"user_id,optional"`
+	}
+	FilterOrderLogResponse {
+		Total int64      `json:"total"`
+		List  []OrderLog `json:"list"`
+	}
 	TrafficLogDetails {
 		Id          int64 `json:"id,string"`
 		ServerId    int64 `json:"server_id,string"`
@@ -245,6 +282,10 @@ service ppanel {
 	@doc "Filter gift log"
 	@handler FilterGiftLog
 	get /gift/list (FilterGiftLogRequest) returns (FilterGiftLogResponse)
+
+	@doc "Filter order creation audit log"
+	@handler FilterOrderLog
+	get /order/list (FilterOrderLogRequest) returns (FilterOrderLogResponse)
 
 	@doc "Filter traffic log details"
 	@handler FilterTrafficLogDetails

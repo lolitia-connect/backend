@@ -76,3 +76,39 @@ func handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprintf(w, "Hello, %s", userInfo.Name)
 }
+
+func TestParseVerifiedEmail(t *testing.T) {
+	cases := []struct {
+		name  string
+		input interface{}
+		want  bool
+	}{
+		{"bool true", true, true},
+		{"bool false", false, false},
+		{"string true", "true", true},
+		{"string false", "false", false},
+		{"string garbage", "yes", false},
+		{"nil", nil, false},
+		{"number", float64(1), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := parseVerifiedEmail(c.input); got != c.want {
+				t.Fatalf("parseVerifiedEmail(%v) = %v, want %v", c.input, got, c.want)
+			}
+		})
+	}
+}
+
+func TestNewOmitsPhoneScope(t *testing.T) {
+	client := New(&Config{ClientID: "id", ClientSecret: "secret"})
+	want := []string{"openid", "profile", "email"}
+	if len(client.Scopes) != len(want) {
+		t.Fatalf("Scopes = %v, want %v", client.Scopes, want)
+	}
+	for i, s := range want {
+		if client.Scopes[i] != s {
+			t.Fatalf("Scopes[%d] = %q, want %q", i, client.Scopes[i], s)
+		}
+	}
+}

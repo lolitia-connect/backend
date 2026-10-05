@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/perfect-panel/server/ent"
 	"net/http"
 	"time"
+
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/logic/common"
@@ -106,6 +107,7 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 		if !tool.MultiPasswordVerify(userInfo.Algo, userInfo.Salt, req.Password, userInfo.Password) {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserPasswordError), "user password")
 		}
+		upgradePasswordAfterLogin(l.ctx, l.svcCtx, l.Logger, userInfo, req.Password)
 	} else {
 		cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.ParseVerifyType(uint8(constant.Security)), phoneNumber)
 		value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()

@@ -44,6 +44,7 @@ func (l *CreateSubscribeApplicationLogic) CreateSubscribeApplication(req *types.
 		IsDefault:         req.IsDefault,
 		SubscribeTemplate: req.SubscribeTemplate,
 		OutputFormat:      req.OutputFormat,
+		DefaultParams:     req.DefaultParams,
 		DownloadLink:      string(linkData),
 	}
 

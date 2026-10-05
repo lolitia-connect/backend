@@ -13,7 +13,10 @@ import (
 func PushOnlineUsersHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
 		req := types.OnlineUsersRequest{}
-		_ = ctx.BindJSON(&req)
+		if err := bindOnlineUsersRequest(ctx, &req); err != nil {
+			writeParamError(ctx, err)
+			return
+		}
 		commonReq, err := serverCommonRequest(ctx)
 		if err != nil {
 			writeParamError(ctx, err)
@@ -26,6 +29,6 @@ func PushOnlineUsersHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 		}
 
 		l := server.NewPushOnlineUsersLogic(c, svcCtx)
-		writeHTTPResult(ctx, nil, l.PushOnlineUsers(&req))
+		writeServerReportResult(ctx, l.PushOnlineUsers(&req))
 	}
 }

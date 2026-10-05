@@ -80,7 +80,7 @@ var modelFieldWhitelist = map[string]map[string]bool{
 	),
 	"subscribe_application": allowFields(
 		"id", "name", "icon", "description", "scheme", "user_agent", "is_default",
-		"subscribe_template", "output_format", "download_link", "created_at", "updated_at",
+		"subscribe_template", "output_format", "default_params", "download_link", "created_at", "updated_at",
 	),
 	"subscribe_group": allowFields(
 		"id", "name", "description", "created_at", "updated_at",

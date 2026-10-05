@@ -3,6 +3,7 @@ package order
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/pkg/tool"
@@ -124,15 +125,14 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 		}
 	}
 	// Calculate gift amount deduction after fee calculation
+	walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)
+	if err != nil {
+		l.Logger.Errorw("[PreCreateOrder] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find wallet error: %v", err.Error())
+	}
 	var deductionAmount int64
-	if u.GiftAmount > 0 && amount > 0 {
-		if u.GiftAmount >= amount {
-			deductionAmount = amount
-			amount = 0
-		} else {
-			deductionAmount = u.GiftAmount
-			amount -= u.GiftAmount
-		}
+	if walletInfo.GiftAmount > 0 && amount > 0 {
+		deductionAmount, amount = walletInfo.Reserve(amount)
 	}
 
 	resp = &types.PreOrderResponse{

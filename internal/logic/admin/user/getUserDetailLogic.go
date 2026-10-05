@@ -32,5 +32,10 @@ func (l *GetUserDetailLogic) GetUserDetail(req *types.GetDetailRequest) (*types.
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get user detail error: %v", err.Error())
 	}
 	tool.DeepCopy(&resp, userInfo)
+	if walletInfo, err := l.svcCtx.Store.Wallet().FindOne(l.ctx, userInfo.Id); err == nil {
+		resp.Balance = walletInfo.Balance
+		resp.GiftAmount = walletInfo.GiftAmount
+		resp.Commission = walletInfo.Commission
+	}
 	return &resp, nil
 }

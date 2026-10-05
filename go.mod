@@ -8,7 +8,6 @@ require (
 	github.com/alibabacloud-go/dysmsapi-20170525/v2 v2.0.18
 	github.com/alibabacloud-go/tea v1.2.2
 	github.com/alicebob/miniredis/v2 v2.34.0
-	github.com/anaskhan96/go-password-encoder v0.0.0-20201010210601-c765b799fd72
 	github.com/andybalholm/brotli v1.1.1
 	github.com/forgoer/openssl v1.6.0
 	github.com/go-playground/locales v0.14.1
@@ -16,7 +15,6 @@ require (
 	github.com/go-playground/validator/v10 v10.30.1
 	github.com/go-resty/resty/v2 v2.15.3
 	github.com/go-sql-driver/mysql v1.8.1
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/gofrs/uuid/v5 v5.3.0
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
@@ -57,6 +55,7 @@ require (
 	github.com/alipay/global-open-sdk-go v1.2.43
 	github.com/cloudwego/hertz v0.10.4
 	github.com/fatih/color v1.18.0
+	github.com/go-telegram/bot v1.22.0
 	github.com/goccy/go-json v0.10.5
 	github.com/golang-migrate/migrate/v4 v4.18.2
 	github.com/lib/pq v1.10.9
@@ -136,7 +135,6 @@ require (
 	github.com/smartwalle/ngx v1.0.9 // indirect
 	github.com/smartwalle/nsign v1.0.9 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect

@@ -107,7 +107,7 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 	pwd := tool.EncodePassWord(req.Password)
 	userInfo := &user.User{
 		Password:          pwd,
-		Algo:              "default",
+		Algo:              tool.PasswordAlgoArgon2id,
 		OnlyFirstPurchase: &l.svcCtx.Config.Invite.OnlyFirstPurchase,
 	}
 	if referer != nil {
@@ -188,6 +188,7 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 	defer func() {
 		if token != "" && userInfo != nil && userInfo.Id != 0 {
 			loginLog := log.Login{
+				Metadata:  log.MetadataFromContext(l.ctx),
 				Method:    "email",
 				LoginIP:   req.IP,
 				UserAgent: req.UserAgent,
@@ -211,6 +212,7 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 
 			// Register log
 			registerLog := log.Register{
+				Metadata:   log.MetadataFromContext(l.ctx),
 				AuthMethod: "email",
 				Identifier: req.Email,
 				RegisterIP: req.IP,

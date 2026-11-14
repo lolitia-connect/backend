@@ -40,6 +40,12 @@ func (Order) Fields() []ent.Field {
 		field.Int64("gift_amount").StorageKey("gift_amount").Default(0),
 		field.Int64("commission").StorageKey("commission").Default(0),
 		field.Uint8("status").StorageKey("status").Default(1),
+		field.Int64("state_version").StorageKey("state_version").Default(0),
+		field.String("idempotency_key").StorageKey("idempotency_key").MaxLen(128).Optional().Nillable(),
+		field.String("idempotency_hash").StorageKey("idempotency_hash").MaxLen(64).Optional().Nillable(),
+		// guest_checkout_token_hash is the durable half of the guest checkout
+		// capability: the caller keeps the token, the panel keeps only its hash.
+		field.String("guest_checkout_token_hash").StorageKey("guest_checkout_token_hash").MaxLen(64).Optional().Nillable(),
 		field.Int64("subscribe_id").StorageKey("subscribe_id").Default(0),
 		field.String("subscribe_token").StorageKey("subscribe_token").MaxLen(255).Optional().Nillable(),
 		field.Bool("is_new").StorageKey("is_new").Default(false),

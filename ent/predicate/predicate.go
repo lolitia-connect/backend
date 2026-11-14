@@ -36,6 +36,9 @@ type NodeGroup func(*sql.Selector)
 // Order is the predicate function for order builders.
 type Order func(*sql.Selector)
 
+// OrderEvent is the predicate function for orderevent builders.
+type OrderEvent func(*sql.Selector)
+
 // Payment is the predicate function for payment builders.
 type Payment func(*sql.Selector)
 
@@ -92,6 +95,9 @@ type UserDeviceOnlineRecord func(*sql.Selector)
 
 // UserSubscribe is the predicate function for usersubscribe builders.
 type UserSubscribe func(*sql.Selector)
+
+// UserWallet is the predicate function for userwallet builders.
+type UserWallet func(*sql.Selector)
 
 // UserWithdrawal is the predicate function for userwithdrawal builders.
 type UserWithdrawal func(*sql.Selector)

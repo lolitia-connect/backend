@@ -9,11 +9,14 @@ import (
 	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/orderaudit"
+	"github.com/perfect-panel/server/internal/orderflow"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/payment"
+	"github.com/perfect-panel/server/pkg/random"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
@@ -126,6 +129,10 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		feeAmount = calculateFee(amount, paymentConfig)
 	}
 	// create order
+	checkoutToken := orderflow.GuestCheckoutToken(l.ctx)
+	if checkoutToken == "" {
+		checkoutToken = random.KeyNew(32, 1)
+	}
 	orderInfo := &order.Order{
 		OrderNo:        tool.GenerateTradeNo(),
 		Type:           1,
@@ -143,15 +150,21 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		IsNew:          true,
 		SubscribeId:    req.SubscribeId,
 	}
+	// The durable half of the guest checkout capability. Only the caller ever
+	// holds the token itself, so the order row can prove a later status query
+	// or session exchange came from the creator.
+	orderInfo.GuestCheckoutTokenHash = constant.CheckoutTokenHash(checkoutToken)
+	orderflow.ApplyIdempotency(l.ctx, orderInfo)
 	// save order
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
 		// save guest order and user information
 		tempOrder := constant.TemporaryOrderInfo{
-			OrderNo:    orderInfo.OrderNo,
-			Identifier: req.Identifier,
-			AuthType:   req.AuthType,
-			Password:   req.Password,
-			InviteCode: req.InviteCode,
+			OrderNo:       orderInfo.OrderNo,
+			CheckoutToken: checkoutToken,
+			Identifier:    req.Identifier,
+			AuthType:      req.AuthType,
+			Password:      req.Password,
+			InviteCode:    req.InviteCode,
 		}
 		content, _ := tempOrder.Marshal()
 
@@ -174,7 +187,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		if err = store.Order().Insert(l.ctx, orderInfo); err != nil {
 			return err
 		}
-		return nil
+		return orderaudit.InsertCreated(l.ctx, store.Log(), orderInfo, orderaudit.SourceGuest)
 	})
 	if err != nil {
 		l.Logger.Errorw("[Purchase] Database transaction error", zap.Any("error", err.Error()))
@@ -195,6 +208,6 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	} else {
 		l.Logger.Infow("[CloseOrder Task] Enqueue task success", zap.Any("TaskID", taskInfo.ID))
 	}
-	resp = &types.PortalPurchaseResponse{OrderNo: orderInfo.OrderNo}
+	resp = &types.PortalPurchaseResponse{OrderNo: orderInfo.OrderNo, CheckoutToken: checkoutToken}
 	return resp, nil
 }

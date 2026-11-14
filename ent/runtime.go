@@ -15,6 +15,7 @@ import (
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/order"
+	"github.com/perfect-panel/server/ent/orderevent"
 	"github.com/perfect-panel/server/ent/payment"
 	"github.com/perfect-panel/server/ent/redemptioncode"
 	"github.com/perfect-panel/server/ent/redemptionrecord"
@@ -35,6 +36,7 @@ import (
 	"github.com/perfect-panel/server/ent/userdevice"
 	"github.com/perfect-panel/server/ent/userdeviceonlinerecord"
 	"github.com/perfect-panel/server/ent/usersubscribe"
+	"github.com/perfect-panel/server/ent/userwallet"
 	"github.com/perfect-panel/server/ent/userwithdrawal"
 )
 
@@ -434,28 +436,66 @@ func init() {
 	orderDescStatus := orderFields[17].Descriptor()
 	// order.DefaultStatus holds the default value on creation for the status field.
 	order.DefaultStatus = orderDescStatus.Default.(uint8)
+	// orderDescStateVersion is the schema descriptor for state_version field.
+	orderDescStateVersion := orderFields[18].Descriptor()
+	// order.DefaultStateVersion holds the default value on creation for the state_version field.
+	order.DefaultStateVersion = orderDescStateVersion.Default.(int64)
+	// orderDescIdempotencyKey is the schema descriptor for idempotency_key field.
+	orderDescIdempotencyKey := orderFields[19].Descriptor()
+	// order.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	order.IdempotencyKeyValidator = orderDescIdempotencyKey.Validators[0].(func(string) error)
+	// orderDescIdempotencyHash is the schema descriptor for idempotency_hash field.
+	orderDescIdempotencyHash := orderFields[20].Descriptor()
+	// order.IdempotencyHashValidator is a validator for the "idempotency_hash" field. It is called by the builders before save.
+	order.IdempotencyHashValidator = orderDescIdempotencyHash.Validators[0].(func(string) error)
+	// orderDescGuestCheckoutTokenHash is the schema descriptor for guest_checkout_token_hash field.
+	orderDescGuestCheckoutTokenHash := orderFields[21].Descriptor()
+	// order.GuestCheckoutTokenHashValidator is a validator for the "guest_checkout_token_hash" field. It is called by the builders before save.
+	order.GuestCheckoutTokenHashValidator = orderDescGuestCheckoutTokenHash.Validators[0].(func(string) error)
 	// orderDescSubscribeID is the schema descriptor for subscribe_id field.
-	orderDescSubscribeID := orderFields[18].Descriptor()
+	orderDescSubscribeID := orderFields[22].Descriptor()
 	// order.DefaultSubscribeID holds the default value on creation for the subscribe_id field.
 	order.DefaultSubscribeID = orderDescSubscribeID.Default.(int64)
 	// orderDescSubscribeToken is the schema descriptor for subscribe_token field.
-	orderDescSubscribeToken := orderFields[19].Descriptor()
+	orderDescSubscribeToken := orderFields[23].Descriptor()
 	// order.SubscribeTokenValidator is a validator for the "subscribe_token" field. It is called by the builders before save.
 	order.SubscribeTokenValidator = orderDescSubscribeToken.Validators[0].(func(string) error)
 	// orderDescIsNew is the schema descriptor for is_new field.
-	orderDescIsNew := orderFields[20].Descriptor()
+	orderDescIsNew := orderFields[24].Descriptor()
 	// order.DefaultIsNew holds the default value on creation for the is_new field.
 	order.DefaultIsNew = orderDescIsNew.Default.(bool)
 	// orderDescCreatedAt is the schema descriptor for created_at field.
-	orderDescCreatedAt := orderFields[21].Descriptor()
+	orderDescCreatedAt := orderFields[25].Descriptor()
 	// order.DefaultCreatedAt holds the default value on creation for the created_at field.
 	order.DefaultCreatedAt = orderDescCreatedAt.Default.(func() time.Time)
 	// orderDescUpdatedAt is the schema descriptor for updated_at field.
-	orderDescUpdatedAt := orderFields[22].Descriptor()
+	orderDescUpdatedAt := orderFields[26].Descriptor()
 	// order.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	order.DefaultUpdatedAt = orderDescUpdatedAt.Default.(func() time.Time)
 	// order.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	order.UpdateDefaultUpdatedAt = orderDescUpdatedAt.UpdateDefault.(func() time.Time)
+	ordereventFields := schema.OrderEvent{}.Fields()
+	_ = ordereventFields
+	// ordereventDescOrderID is the schema descriptor for order_id field.
+	ordereventDescOrderID := ordereventFields[1].Descriptor()
+	// orderevent.DefaultOrderID holds the default value on creation for the order_id field.
+	orderevent.DefaultOrderID = ordereventDescOrderID.Default.(int64)
+	// ordereventDescOrderNo is the schema descriptor for order_no field.
+	ordereventDescOrderNo := ordereventFields[2].Descriptor()
+	// orderevent.DefaultOrderNo holds the default value on creation for the order_no field.
+	orderevent.DefaultOrderNo = ordereventDescOrderNo.Default.(string)
+	// orderevent.OrderNoValidator is a validator for the "order_no" field. It is called by the builders before save.
+	orderevent.OrderNoValidator = ordereventDescOrderNo.Validators[0].(func(string) error)
+	// ordereventDescEventType is the schema descriptor for event_type field.
+	ordereventDescEventType := ordereventFields[3].Descriptor()
+	// orderevent.DefaultEventType holds the default value on creation for the event_type field.
+	orderevent.DefaultEventType = ordereventDescEventType.Default.(string)
+	// orderevent.EventTypeValidator is a validator for the "event_type" field. It is called by the builders before save.
+	orderevent.EventTypeValidator = ordereventDescEventType.Validators[0].(func(string) error)
+	// ordereventDescCreatedAt is the schema descriptor for created_at field.
+	ordereventDescCreatedAt := ordereventFields[5].Descriptor()
+	// orderevent.DefaultCreatedAt holds the default value on creation for the created_at field.
+	orderevent.DefaultCreatedAt = ordereventDescCreatedAt.Default.(func() time.Time)
 	paymentFields := schema.Payment{}.Fields()
 	_ = paymentFields
 	// paymentDescName is the schema descriptor for name field.
@@ -784,12 +824,16 @@ func init() {
 	subscribeapplicationDescOutputFormat := subscribeapplicationFields[8].Descriptor()
 	// subscribeapplication.DefaultOutputFormat holds the default value on creation for the output_format field.
 	subscribeapplication.DefaultOutputFormat = subscribeapplicationDescOutputFormat.Default.(string)
+	// subscribeapplicationDescDefaultParams is the schema descriptor for default_params field.
+	subscribeapplicationDescDefaultParams := subscribeapplicationFields[9].Descriptor()
+	// subscribeapplication.DefaultDefaultParams holds the default value on creation for the default_params field.
+	subscribeapplication.DefaultDefaultParams = subscribeapplicationDescDefaultParams.Default.(string)
 	// subscribeapplicationDescCreatedAt is the schema descriptor for created_at field.
-	subscribeapplicationDescCreatedAt := subscribeapplicationFields[10].Descriptor()
+	subscribeapplicationDescCreatedAt := subscribeapplicationFields[11].Descriptor()
 	// subscribeapplication.DefaultCreatedAt holds the default value on creation for the created_at field.
 	subscribeapplication.DefaultCreatedAt = subscribeapplicationDescCreatedAt.Default.(func() time.Time)
 	// subscribeapplicationDescUpdatedAt is the schema descriptor for updated_at field.
-	subscribeapplicationDescUpdatedAt := subscribeapplicationFields[11].Descriptor()
+	subscribeapplicationDescUpdatedAt := subscribeapplicationFields[12].Descriptor()
 	// subscribeapplication.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	subscribeapplication.DefaultUpdatedAt = subscribeapplicationDescUpdatedAt.Default.(func() time.Time)
 	// subscribeapplication.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -946,66 +990,54 @@ func init() {
 	userDescSalt := userFields[3].Descriptor()
 	// user.SaltValidator is a validator for the "salt" field. It is called by the builders before save.
 	user.SaltValidator = userDescSalt.Validators[0].(func(string) error)
-	// userDescBalance is the schema descriptor for balance field.
-	userDescBalance := userFields[5].Descriptor()
-	// user.DefaultBalance holds the default value on creation for the balance field.
-	user.DefaultBalance = userDescBalance.Default.(int64)
 	// userDescReferCode is the schema descriptor for refer_code field.
-	userDescReferCode := userFields[6].Descriptor()
+	userDescReferCode := userFields[5].Descriptor()
 	// user.DefaultReferCode holds the default value on creation for the refer_code field.
 	user.DefaultReferCode = userDescReferCode.Default.(string)
 	// user.ReferCodeValidator is a validator for the "refer_code" field. It is called by the builders before save.
 	user.ReferCodeValidator = userDescReferCode.Validators[0].(func(string) error)
 	// userDescRefererID is the schema descriptor for referer_id field.
-	userDescRefererID := userFields[7].Descriptor()
+	userDescRefererID := userFields[6].Descriptor()
 	// user.DefaultRefererID holds the default value on creation for the referer_id field.
 	user.DefaultRefererID = userDescRefererID.Default.(int64)
-	// userDescCommission is the schema descriptor for commission field.
-	userDescCommission := userFields[8].Descriptor()
-	// user.DefaultCommission holds the default value on creation for the commission field.
-	user.DefaultCommission = userDescCommission.Default.(int64)
 	// userDescReferralPercentage is the schema descriptor for referral_percentage field.
-	userDescReferralPercentage := userFields[9].Descriptor()
+	userDescReferralPercentage := userFields[7].Descriptor()
 	// user.DefaultReferralPercentage holds the default value on creation for the referral_percentage field.
 	user.DefaultReferralPercentage = userDescReferralPercentage.Default.(uint8)
 	// userDescOnlyFirstPurchase is the schema descriptor for only_first_purchase field.
-	userDescOnlyFirstPurchase := userFields[10].Descriptor()
+	userDescOnlyFirstPurchase := userFields[8].Descriptor()
 	// user.DefaultOnlyFirstPurchase holds the default value on creation for the only_first_purchase field.
 	user.DefaultOnlyFirstPurchase = userDescOnlyFirstPurchase.Default.(bool)
-	// userDescGiftAmount is the schema descriptor for gift_amount field.
-	userDescGiftAmount := userFields[11].Descriptor()
-	// user.DefaultGiftAmount holds the default value on creation for the gift_amount field.
-	user.DefaultGiftAmount = userDescGiftAmount.Default.(int64)
 	// userDescEnable is the schema descriptor for enable field.
-	userDescEnable := userFields[12].Descriptor()
+	userDescEnable := userFields[9].Descriptor()
 	// user.DefaultEnable holds the default value on creation for the enable field.
 	user.DefaultEnable = userDescEnable.Default.(bool)
 	// userDescIsAdmin is the schema descriptor for is_admin field.
-	userDescIsAdmin := userFields[13].Descriptor()
+	userDescIsAdmin := userFields[10].Descriptor()
 	// user.DefaultIsAdmin holds the default value on creation for the is_admin field.
 	user.DefaultIsAdmin = userDescIsAdmin.Default.(bool)
 	// userDescEnableBalanceNotify is the schema descriptor for enable_balance_notify field.
-	userDescEnableBalanceNotify := userFields[14].Descriptor()
+	userDescEnableBalanceNotify := userFields[11].Descriptor()
 	// user.DefaultEnableBalanceNotify holds the default value on creation for the enable_balance_notify field.
 	user.DefaultEnableBalanceNotify = userDescEnableBalanceNotify.Default.(bool)
 	// userDescEnableLoginNotify is the schema descriptor for enable_login_notify field.
-	userDescEnableLoginNotify := userFields[15].Descriptor()
+	userDescEnableLoginNotify := userFields[12].Descriptor()
 	// user.DefaultEnableLoginNotify holds the default value on creation for the enable_login_notify field.
 	user.DefaultEnableLoginNotify = userDescEnableLoginNotify.Default.(bool)
 	// userDescEnableSubscribeNotify is the schema descriptor for enable_subscribe_notify field.
-	userDescEnableSubscribeNotify := userFields[16].Descriptor()
+	userDescEnableSubscribeNotify := userFields[13].Descriptor()
 	// user.DefaultEnableSubscribeNotify holds the default value on creation for the enable_subscribe_notify field.
 	user.DefaultEnableSubscribeNotify = userDescEnableSubscribeNotify.Default.(bool)
 	// userDescEnableTradeNotify is the schema descriptor for enable_trade_notify field.
-	userDescEnableTradeNotify := userFields[17].Descriptor()
+	userDescEnableTradeNotify := userFields[14].Descriptor()
 	// user.DefaultEnableTradeNotify holds the default value on creation for the enable_trade_notify field.
 	user.DefaultEnableTradeNotify = userDescEnableTradeNotify.Default.(bool)
 	// userDescCreatedAt is the schema descriptor for created_at field.
-	userDescCreatedAt := userFields[19].Descriptor()
+	userDescCreatedAt := userFields[16].Descriptor()
 	// user.DefaultCreatedAt holds the default value on creation for the created_at field.
 	user.DefaultCreatedAt = userDescCreatedAt.Default.(func() time.Time)
 	// userDescUpdatedAt is the schema descriptor for updated_at field.
-	userDescUpdatedAt := userFields[20].Descriptor()
+	userDescUpdatedAt := userFields[17].Descriptor()
 	// user.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	user.DefaultUpdatedAt = userDescUpdatedAt.Default.(func() time.Time)
 	// user.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -1158,6 +1190,30 @@ func init() {
 	usersubscribe.DefaultUpdatedAt = usersubscribeDescUpdatedAt.Default.(func() time.Time)
 	// usersubscribe.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	usersubscribe.UpdateDefaultUpdatedAt = usersubscribeDescUpdatedAt.UpdateDefault.(func() time.Time)
+	userwalletFields := schema.UserWallet{}.Fields()
+	_ = userwalletFields
+	// userwalletDescBalance is the schema descriptor for balance field.
+	userwalletDescBalance := userwalletFields[2].Descriptor()
+	// userwallet.DefaultBalance holds the default value on creation for the balance field.
+	userwallet.DefaultBalance = userwalletDescBalance.Default.(int64)
+	// userwalletDescGiftAmount is the schema descriptor for gift_amount field.
+	userwalletDescGiftAmount := userwalletFields[3].Descriptor()
+	// userwallet.DefaultGiftAmount holds the default value on creation for the gift_amount field.
+	userwallet.DefaultGiftAmount = userwalletDescGiftAmount.Default.(int64)
+	// userwalletDescCommission is the schema descriptor for commission field.
+	userwalletDescCommission := userwalletFields[4].Descriptor()
+	// userwallet.DefaultCommission holds the default value on creation for the commission field.
+	userwallet.DefaultCommission = userwalletDescCommission.Default.(int64)
+	// userwalletDescCreatedAt is the schema descriptor for created_at field.
+	userwalletDescCreatedAt := userwalletFields[5].Descriptor()
+	// userwallet.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userwallet.DefaultCreatedAt = userwalletDescCreatedAt.Default.(func() time.Time)
+	// userwalletDescUpdatedAt is the schema descriptor for updated_at field.
+	userwalletDescUpdatedAt := userwalletFields[6].Descriptor()
+	// userwallet.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userwallet.DefaultUpdatedAt = userwalletDescUpdatedAt.Default.(func() time.Time)
+	// userwallet.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userwallet.UpdateDefaultUpdatedAt = userwalletDescUpdatedAt.UpdateDefault.(func() time.Time)
 	userwithdrawalFields := schema.UserWithdrawal{}.Fields()
 	_ = userwithdrawalFields
 	// userwithdrawalDescStatus is the schema descriptor for status field.

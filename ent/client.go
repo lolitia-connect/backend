@@ -24,6 +24,7 @@ import (
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/order"
+	"github.com/perfect-panel/server/ent/orderevent"
 	"github.com/perfect-panel/server/ent/payment"
 	"github.com/perfect-panel/server/ent/redemptioncode"
 	"github.com/perfect-panel/server/ent/redemptionrecord"
@@ -43,6 +44,7 @@ import (
 	"github.com/perfect-panel/server/ent/userdevice"
 	"github.com/perfect-panel/server/ent/userdeviceonlinerecord"
 	"github.com/perfect-panel/server/ent/usersubscribe"
+	"github.com/perfect-panel/server/ent/userwallet"
 	"github.com/perfect-panel/server/ent/userwithdrawal"
 )
 
@@ -71,6 +73,8 @@ type Client struct {
 	NodeGroup *NodeGroupClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
+	// OrderEvent is the client for interacting with the OrderEvent builders.
+	OrderEvent *OrderEventClient
 	// Payment is the client for interacting with the Payment builders.
 	Payment *PaymentClient
 	// RedemptionCode is the client for interacting with the RedemptionCode builders.
@@ -109,6 +113,8 @@ type Client struct {
 	UserDeviceOnlineRecord *UserDeviceOnlineRecordClient
 	// UserSubscribe is the client for interacting with the UserSubscribe builders.
 	UserSubscribe *UserSubscribeClient
+	// UserWallet is the client for interacting with the UserWallet builders.
+	UserWallet *UserWalletClient
 	// UserWithdrawal is the client for interacting with the UserWithdrawal builders.
 	UserWithdrawal *UserWithdrawalClient
 }
@@ -132,6 +138,7 @@ func (c *Client) init() {
 	c.Node = NewNodeClient(c.config)
 	c.NodeGroup = NewNodeGroupClient(c.config)
 	c.Order = NewOrderClient(c.config)
+	c.OrderEvent = NewOrderEventClient(c.config)
 	c.Payment = NewPaymentClient(c.config)
 	c.RedemptionCode = NewRedemptionCodeClient(c.config)
 	c.RedemptionRecord = NewRedemptionRecordClient(c.config)
@@ -151,6 +158,7 @@ func (c *Client) init() {
 	c.UserDevice = NewUserDeviceClient(c.config)
 	c.UserDeviceOnlineRecord = NewUserDeviceOnlineRecordClient(c.config)
 	c.UserSubscribe = NewUserSubscribeClient(c.config)
+	c.UserWallet = NewUserWalletClient(c.config)
 	c.UserWithdrawal = NewUserWithdrawalClient(c.config)
 }
 
@@ -254,6 +262,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Node:                   NewNodeClient(cfg),
 		NodeGroup:              NewNodeGroupClient(cfg),
 		Order:                  NewOrderClient(cfg),
+		OrderEvent:             NewOrderEventClient(cfg),
 		Payment:                NewPaymentClient(cfg),
 		RedemptionCode:         NewRedemptionCodeClient(cfg),
 		RedemptionRecord:       NewRedemptionRecordClient(cfg),
@@ -273,6 +282,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserDevice:             NewUserDeviceClient(cfg),
 		UserDeviceOnlineRecord: NewUserDeviceOnlineRecordClient(cfg),
 		UserSubscribe:          NewUserSubscribeClient(cfg),
+		UserWallet:             NewUserWalletClient(cfg),
 		UserWithdrawal:         NewUserWithdrawalClient(cfg),
 	}, nil
 }
@@ -303,6 +313,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Node:                   NewNodeClient(cfg),
 		NodeGroup:              NewNodeGroupClient(cfg),
 		Order:                  NewOrderClient(cfg),
+		OrderEvent:             NewOrderEventClient(cfg),
 		Payment:                NewPaymentClient(cfg),
 		RedemptionCode:         NewRedemptionCodeClient(cfg),
 		RedemptionRecord:       NewRedemptionRecordClient(cfg),
@@ -322,6 +333,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserDevice:             NewUserDeviceClient(cfg),
 		UserDeviceOnlineRecord: NewUserDeviceOnlineRecordClient(cfg),
 		UserSubscribe:          NewUserSubscribeClient(cfg),
+		UserWallet:             NewUserWalletClient(cfg),
 		UserWithdrawal:         NewUserWithdrawalClient(cfg),
 	}, nil
 }
@@ -353,11 +365,12 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Ads, c.Announcement, c.AuthMethod, c.Coupon, c.Document, c.GroupHistory,
-		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.Payment,
+		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.OrderEvent, c.Payment,
 		c.RedemptionCode, c.RedemptionRecord, c.Server, c.ServerConfigOverride,
 		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup, c.System, c.SystemLog,
 		c.Task, c.Ticket, c.TicketFollow, c.TrafficLog, c.User, c.UserAuthMethod,
-		c.UserDevice, c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWithdrawal,
+		c.UserDevice, c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWallet,
+		c.UserWithdrawal,
 	} {
 		n.Use(hooks...)
 	}
@@ -368,11 +381,12 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Ads, c.Announcement, c.AuthMethod, c.Coupon, c.Document, c.GroupHistory,
-		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.Payment,
+		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.OrderEvent, c.Payment,
 		c.RedemptionCode, c.RedemptionRecord, c.Server, c.ServerConfigOverride,
 		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup, c.System, c.SystemLog,
 		c.Task, c.Ticket, c.TicketFollow, c.TrafficLog, c.User, c.UserAuthMethod,
-		c.UserDevice, c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWithdrawal,
+		c.UserDevice, c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWallet,
+		c.UserWithdrawal,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -401,6 +415,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.NodeGroup.mutate(ctx, m)
 	case *OrderMutation:
 		return c.Order.mutate(ctx, m)
+	case *OrderEventMutation:
+		return c.OrderEvent.mutate(ctx, m)
 	case *PaymentMutation:
 		return c.Payment.mutate(ctx, m)
 	case *RedemptionCodeMutation:
@@ -439,6 +455,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserDeviceOnlineRecord.mutate(ctx, m)
 	case *UserSubscribeMutation:
 		return c.UserSubscribe.mutate(ctx, m)
+	case *UserWalletMutation:
+		return c.UserWallet.mutate(ctx, m)
 	case *UserWithdrawalMutation:
 		return c.UserWithdrawal.mutate(ctx, m)
 	default:
@@ -1773,6 +1791,139 @@ func (c *OrderClient) mutate(ctx context.Context, m *OrderMutation) (Value, erro
 		return (&OrderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Order mutation op: %q", m.Op())
+	}
+}
+
+// OrderEventClient is a client for the OrderEvent schema.
+type OrderEventClient struct {
+	config
+}
+
+// NewOrderEventClient returns a client for the OrderEvent from the given config.
+func NewOrderEventClient(c config) *OrderEventClient {
+	return &OrderEventClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `orderevent.Hooks(f(g(h())))`.
+func (c *OrderEventClient) Use(hooks ...Hook) {
+	c.hooks.OrderEvent = append(c.hooks.OrderEvent, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `orderevent.Intercept(f(g(h())))`.
+func (c *OrderEventClient) Intercept(interceptors ...Interceptor) {
+	c.inters.OrderEvent = append(c.inters.OrderEvent, interceptors...)
+}
+
+// Create returns a builder for creating a OrderEvent entity.
+func (c *OrderEventClient) Create() *OrderEventCreate {
+	mutation := newOrderEventMutation(c.config, OpCreate)
+	return &OrderEventCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of OrderEvent entities.
+func (c *OrderEventClient) CreateBulk(builders ...*OrderEventCreate) *OrderEventCreateBulk {
+	return &OrderEventCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *OrderEventClient) MapCreateBulk(slice any, setFunc func(*OrderEventCreate, int)) *OrderEventCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &OrderEventCreateBulk{err: fmt.Errorf("calling to OrderEventClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*OrderEventCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &OrderEventCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for OrderEvent.
+func (c *OrderEventClient) Update() *OrderEventUpdate {
+	mutation := newOrderEventMutation(c.config, OpUpdate)
+	return &OrderEventUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *OrderEventClient) UpdateOne(_m *OrderEvent) *OrderEventUpdateOne {
+	mutation := newOrderEventMutation(c.config, OpUpdateOne, withOrderEvent(_m))
+	return &OrderEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *OrderEventClient) UpdateOneID(id int64) *OrderEventUpdateOne {
+	mutation := newOrderEventMutation(c.config, OpUpdateOne, withOrderEventID(id))
+	return &OrderEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for OrderEvent.
+func (c *OrderEventClient) Delete() *OrderEventDelete {
+	mutation := newOrderEventMutation(c.config, OpDelete)
+	return &OrderEventDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *OrderEventClient) DeleteOne(_m *OrderEvent) *OrderEventDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *OrderEventClient) DeleteOneID(id int64) *OrderEventDeleteOne {
+	builder := c.Delete().Where(orderevent.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &OrderEventDeleteOne{builder}
+}
+
+// Query returns a query builder for OrderEvent.
+func (c *OrderEventClient) Query() *OrderEventQuery {
+	return &OrderEventQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeOrderEvent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a OrderEvent entity by its id.
+func (c *OrderEventClient) Get(ctx context.Context, id int64) (*OrderEvent, error) {
+	return c.Query().Where(orderevent.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *OrderEventClient) GetX(ctx context.Context, id int64) *OrderEvent {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *OrderEventClient) Hooks() []Hook {
+	return c.hooks.OrderEvent
+}
+
+// Interceptors returns the client interceptors.
+func (c *OrderEventClient) Interceptors() []Interceptor {
+	return c.inters.OrderEvent
+}
+
+func (c *OrderEventClient) mutate(ctx context.Context, m *OrderEventMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&OrderEventCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&OrderEventUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&OrderEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&OrderEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown OrderEvent mutation op: %q", m.Op())
 	}
 }
 
@@ -4303,6 +4454,139 @@ func (c *UserSubscribeClient) mutate(ctx context.Context, m *UserSubscribeMutati
 	}
 }
 
+// UserWalletClient is a client for the UserWallet schema.
+type UserWalletClient struct {
+	config
+}
+
+// NewUserWalletClient returns a client for the UserWallet from the given config.
+func NewUserWalletClient(c config) *UserWalletClient {
+	return &UserWalletClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `userwallet.Hooks(f(g(h())))`.
+func (c *UserWalletClient) Use(hooks ...Hook) {
+	c.hooks.UserWallet = append(c.hooks.UserWallet, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `userwallet.Intercept(f(g(h())))`.
+func (c *UserWalletClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserWallet = append(c.inters.UserWallet, interceptors...)
+}
+
+// Create returns a builder for creating a UserWallet entity.
+func (c *UserWalletClient) Create() *UserWalletCreate {
+	mutation := newUserWalletMutation(c.config, OpCreate)
+	return &UserWalletCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserWallet entities.
+func (c *UserWalletClient) CreateBulk(builders ...*UserWalletCreate) *UserWalletCreateBulk {
+	return &UserWalletCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserWalletClient) MapCreateBulk(slice any, setFunc func(*UserWalletCreate, int)) *UserWalletCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserWalletCreateBulk{err: fmt.Errorf("calling to UserWalletClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserWalletCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserWalletCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserWallet.
+func (c *UserWalletClient) Update() *UserWalletUpdate {
+	mutation := newUserWalletMutation(c.config, OpUpdate)
+	return &UserWalletUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserWalletClient) UpdateOne(_m *UserWallet) *UserWalletUpdateOne {
+	mutation := newUserWalletMutation(c.config, OpUpdateOne, withUserWallet(_m))
+	return &UserWalletUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserWalletClient) UpdateOneID(id int64) *UserWalletUpdateOne {
+	mutation := newUserWalletMutation(c.config, OpUpdateOne, withUserWalletID(id))
+	return &UserWalletUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserWallet.
+func (c *UserWalletClient) Delete() *UserWalletDelete {
+	mutation := newUserWalletMutation(c.config, OpDelete)
+	return &UserWalletDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserWalletClient) DeleteOne(_m *UserWallet) *UserWalletDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserWalletClient) DeleteOneID(id int64) *UserWalletDeleteOne {
+	builder := c.Delete().Where(userwallet.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserWalletDeleteOne{builder}
+}
+
+// Query returns a query builder for UserWallet.
+func (c *UserWalletClient) Query() *UserWalletQuery {
+	return &UserWalletQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserWallet},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserWallet entity by its id.
+func (c *UserWalletClient) Get(ctx context.Context, id int64) (*UserWallet, error) {
+	return c.Query().Where(userwallet.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserWalletClient) GetX(ctx context.Context, id int64) *UserWallet {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *UserWalletClient) Hooks() []Hook {
+	return c.hooks.UserWallet
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserWalletClient) Interceptors() []Interceptor {
+	return c.inters.UserWallet
+}
+
+func (c *UserWalletClient) mutate(ctx context.Context, m *UserWalletMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserWalletCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserWalletUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserWalletUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserWalletDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserWallet mutation op: %q", m.Op())
+	}
+}
+
 // UserWithdrawalClient is a client for the UserWithdrawal schema.
 type UserWithdrawalClient struct {
 	config
@@ -4440,18 +4724,19 @@ func (c *UserWithdrawalClient) mutate(ctx context.Context, m *UserWithdrawalMuta
 type (
 	hooks struct {
 		Ads, Announcement, AuthMethod, Coupon, Document, GroupHistory,
-		GroupHistoryDetail, Node, NodeGroup, Order, Payment, RedemptionCode,
-		RedemptionRecord, Server, ServerConfigOverride, Subscribe,
+		GroupHistoryDetail, Node, NodeGroup, Order, OrderEvent, Payment,
+		RedemptionCode, RedemptionRecord, Server, ServerConfigOverride, Subscribe,
 		SubscribeApplication, SubscribeGroup, System, SystemLog, Task, Ticket,
 		TicketFollow, TrafficLog, User, UserAuthMethod, UserDevice,
-		UserDeviceOnlineRecord, UserSubscribe, UserWithdrawal []ent.Hook
+		UserDeviceOnlineRecord, UserSubscribe, UserWallet, UserWithdrawal []ent.Hook
 	}
 	inters struct {
 		Ads, Announcement, AuthMethod, Coupon, Document, GroupHistory,
-		GroupHistoryDetail, Node, NodeGroup, Order, Payment, RedemptionCode,
-		RedemptionRecord, Server, ServerConfigOverride, Subscribe,
+		GroupHistoryDetail, Node, NodeGroup, Order, OrderEvent, Payment,
+		RedemptionCode, RedemptionRecord, Server, ServerConfigOverride, Subscribe,
 		SubscribeApplication, SubscribeGroup, System, SystemLog, Task, Ticket,
 		TicketFollow, TrafficLog, User, UserAuthMethod, UserDevice,
-		UserDeviceOnlineRecord, UserSubscribe, UserWithdrawal []ent.Interceptor
+		UserDeviceOnlineRecord, UserSubscribe, UserWallet,
+		UserWithdrawal []ent.Interceptor
 	}
 )

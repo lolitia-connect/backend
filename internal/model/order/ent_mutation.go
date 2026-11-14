@@ -21,6 +21,10 @@ func (m *defaultOrderModel) orderCreate(data *Order) *ent.OrderCreate {
 		SetFeeAmount(data.FeeAmount).
 		SetNillableTradeNo(nilIfEmpty(data.TradeNo)).
 		SetStatus(data.Status).
+		SetStateVersion(data.StateVersion).
+		SetNillableIdempotencyKey(nilIfEmpty(data.IdempotencyKey)).
+		SetNillableIdempotencyHash(nilIfEmpty(data.IdempotencyHash)).
+		SetNillableGuestCheckoutTokenHash(nilIfEmpty(data.GuestCheckoutTokenHash)).
 		SetSubscribeID(data.SubscribeId).
 		SetNillableSubscribeToken(nilIfEmpty(data.SubscribeToken)).
 		SetIsNew(data.IsNew)
@@ -37,6 +41,10 @@ func (m *defaultOrderModel) orderCreate(data *Order) *ent.OrderCreate {
 }
 
 func (m *defaultOrderModel) orderUpdate(data *Order) *ent.OrderUpdateOne {
+	// `state_version` is deliberately absent here: it may only move through the
+	// transitions in transition.go, which also announce the change. Writing it
+	// from a plain update would let an ordinary edit move the counter without an
+	// event, or move it backwards from a stale read.
 	update := m.db.Order.UpdateOneID(data.Id).
 		SetParentID(data.ParentId).
 		SetUserID(data.UserId).
@@ -55,6 +63,9 @@ func (m *defaultOrderModel) orderUpdate(data *Order) *ent.OrderUpdateOne {
 		SetFeeAmount(data.FeeAmount).
 		SetNillableTradeNo(nilIfEmpty(data.TradeNo)).
 		SetStatus(data.Status).
+		SetNillableIdempotencyKey(nilIfEmpty(data.IdempotencyKey)).
+		SetNillableIdempotencyHash(nilIfEmpty(data.IdempotencyHash)).
+		SetNillableGuestCheckoutTokenHash(nilIfEmpty(data.GuestCheckoutTokenHash)).
 		SetSubscribeID(data.SubscribeId).
 		SetNillableSubscribeToken(nilIfEmpty(data.SubscribeToken)).
 		SetIsNew(data.IsNew)

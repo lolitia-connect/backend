@@ -21,20 +21,14 @@ const (
 	FieldSalt = "salt"
 	// FieldAvatar holds the string denoting the avatar field in the database.
 	FieldAvatar = "avatar"
-	// FieldBalance holds the string denoting the balance field in the database.
-	FieldBalance = "balance"
 	// FieldReferCode holds the string denoting the refer_code field in the database.
 	FieldReferCode = "refer_code"
 	// FieldRefererID holds the string denoting the referer_id field in the database.
 	FieldRefererID = "referer_id"
-	// FieldCommission holds the string denoting the commission field in the database.
-	FieldCommission = "commission"
 	// FieldReferralPercentage holds the string denoting the referral_percentage field in the database.
 	FieldReferralPercentage = "referral_percentage"
 	// FieldOnlyFirstPurchase holds the string denoting the only_first_purchase field in the database.
 	FieldOnlyFirstPurchase = "only_first_purchase"
-	// FieldGiftAmount holds the string denoting the gift_amount field in the database.
-	FieldGiftAmount = "gift_amount"
 	// FieldEnable holds the string denoting the enable field in the database.
 	FieldEnable = "enable"
 	// FieldIsAdmin holds the string denoting the is_admin field in the database.
@@ -66,13 +60,10 @@ var Columns = []string{
 	FieldAlgo,
 	FieldSalt,
 	FieldAvatar,
-	FieldBalance,
 	FieldReferCode,
 	FieldRefererID,
-	FieldCommission,
 	FieldReferralPercentage,
 	FieldOnlyFirstPurchase,
-	FieldGiftAmount,
 	FieldEnable,
 	FieldIsAdmin,
 	FieldEnableBalanceNotify,
@@ -104,22 +95,16 @@ var (
 	AlgoValidator func(string) error
 	// SaltValidator is a validator for the "salt" field. It is called by the builders before save.
 	SaltValidator func(string) error
-	// DefaultBalance holds the default value on creation for the "balance" field.
-	DefaultBalance int64
 	// DefaultReferCode holds the default value on creation for the "refer_code" field.
 	DefaultReferCode string
 	// ReferCodeValidator is a validator for the "refer_code" field. It is called by the builders before save.
 	ReferCodeValidator func(string) error
 	// DefaultRefererID holds the default value on creation for the "referer_id" field.
 	DefaultRefererID int64
-	// DefaultCommission holds the default value on creation for the "commission" field.
-	DefaultCommission int64
 	// DefaultReferralPercentage holds the default value on creation for the "referral_percentage" field.
 	DefaultReferralPercentage uint8
 	// DefaultOnlyFirstPurchase holds the default value on creation for the "only_first_purchase" field.
 	DefaultOnlyFirstPurchase bool
-	// DefaultGiftAmount holds the default value on creation for the "gift_amount" field.
-	DefaultGiftAmount int64
 	// DefaultEnable holds the default value on creation for the "enable" field.
 	DefaultEnable bool
 	// DefaultIsAdmin holds the default value on creation for the "is_admin" field.
@@ -168,11 +153,6 @@ func ByAvatar(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAvatar, opts...).ToFunc()
 }
 
-// ByBalance orders the results by the balance field.
-func ByBalance(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldBalance, opts...).ToFunc()
-}
-
 // ByReferCode orders the results by the refer_code field.
 func ByReferCode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldReferCode, opts...).ToFunc()
@@ -183,11 +163,6 @@ func ByRefererID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRefererID, opts...).ToFunc()
 }
 
-// ByCommission orders the results by the commission field.
-func ByCommission(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCommission, opts...).ToFunc()
-}
-
 // ByReferralPercentage orders the results by the referral_percentage field.
 func ByReferralPercentage(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldReferralPercentage, opts...).ToFunc()
@@ -196,11 +171,6 @@ func ByReferralPercentage(opts ...sql.OrderTermOption) OrderOption {
 // ByOnlyFirstPurchase orders the results by the only_first_purchase field.
 func ByOnlyFirstPurchase(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOnlyFirstPurchase, opts...).ToFunc()
-}
-
-// ByGiftAmount orders the results by the gift_amount field.
-func ByGiftAmount(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGiftAmount, opts...).ToFunc()
 }
 
 // ByEnable orders the results by the enable field.

@@ -24,6 +24,10 @@ type (
 	}
 	PortalPurchaseResponse {
 		OrderNo string `json:"order_no"`
+		// CheckoutToken is the guest checkout capability. It is returned exactly
+		// once, to the caller that created the order, and is the only value that
+		// can later authorize a status query or a session exchange.
+		CheckoutToken string `json:"checkout_token,omitempty"`
 	}
 	GetSubscriptionRequest {
 		Language string `form:"language"`
@@ -46,9 +50,10 @@ type (
 		FeeAmount      int64  `json:"fee_amount"`
 	}
 	QueryPurchaseOrderRequest {
-		AuthType   string `form:"auth_type"`
-		Identifier string `form:"identifier"`
-		OrderNo    string `form:"order_no"`
+		AuthType      string `form:"auth_type"`
+		Identifier    string `form:"identifier"`
+		OrderNo       string `form:"order_no"`
+		CheckoutToken string `form:"checkout_token"`
 	}
 	QueryPurchaseOrderResponse {
 		OrderNo        string        `json:"order_no"`

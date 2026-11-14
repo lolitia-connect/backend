@@ -3,6 +3,8 @@ package types
 const (
 	DeferCloseOrder        = "defer:order:close"
 	ForthwithActivateOrder = "forthwith:order:activate"
+	PublishOrderEvents     = "order:events:publish"
+	CleanupOrderEvents     = "order:events:cleanup"
 )
 
 type (

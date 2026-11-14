@@ -34,6 +34,13 @@ func NewCloseOrderLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CloseO
 	}
 }
 
+// reservesPlanInventory reports whether the order took stock from a plan.
+// Only a new subscription purchase does; renewals and traffic resets reference
+// a plan without consuming its inventory, so closing them must not restore it.
+func reservesPlanInventory(orderInfo *order.Order) bool {
+	return orderInfo.Type == order.TypeSubscribe && orderInfo.SubscribeId > 0
+}
+
 func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 	store := l.svcCtx.Store
 	// Find order information by order number
@@ -54,9 +61,11 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 		return nil
 	}
 
-	// Only query subscribe info if SubscribeId is valid
+	// Only a new subscription purchase reserves plan inventory. Renewals and
+	// traffic resets also reference a plan, but they never consume its stock, so
+	// closing one must not hand stock back that was never taken.
 	var sub *subscribe.Subscribe
-	if orderInfo.SubscribeId > 0 {
+	if reservesPlanInventory(orderInfo) {
 		sub, err = store.Subscribe().FindOne(l.ctx, orderInfo.SubscribeId)
 		if err != nil {
 			l.Logger.Errorw("[CloseOrder] Find subscribe info failed",
@@ -89,19 +98,19 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 			}
 			return nil
 		}
-		// refund deduction amount to user deduction balance
+		// refund deduction amount to the wallet gift balance
 		if orderInfo.GiftAmount > 0 {
-			userInfo, err := txStore.User().FindOne(l.ctx, orderInfo.UserId)
+			walletInfo, err := txStore.Wallet().FindOne(l.ctx, orderInfo.UserId)
 			if err != nil {
-				l.Logger.Errorw("[CloseOrder] Find user info failed",
+				l.Logger.Errorw("[CloseOrder] Find wallet info failed",
 					zap.Any("error", err.Error()),
 					zap.Any("user_id", orderInfo.UserId),
 				)
 				return err
 			}
-			deduction := userInfo.GiftAmount + orderInfo.GiftAmount
-			userInfo.GiftAmount = deduction
-			err = txStore.User().Update(l.ctx, userInfo)
+			deduction := walletInfo.GiftAmount + orderInfo.GiftAmount
+			walletInfo.GiftAmount = deduction
+			err = txStore.Wallet().UpdateBalanceFields(l.ctx, walletInfo)
 			if err != nil {
 				l.Logger.Errorw("[CloseOrder] Refund deduction amount failed",
 					zap.Any("error", err.Error()),
@@ -127,7 +136,7 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 				Id:       0,
 				Type:     log.TypeGift.Uint8(),
 				Date:     time.Now().Format(time.DateOnly),
-				ObjectID: userInfo.Id,
+				ObjectID: walletInfo.UserId,
 				Content:  string(content),
 			})
 			if err != nil {

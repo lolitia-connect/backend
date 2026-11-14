@@ -31,6 +31,7 @@ func (SubscribeApplication) Fields() []ent.Field {
 		field.Bool("is_default").StorageKey("is_default").Default(false),
 		field.String("subscribe_template").StorageKey("subscribe_template").Optional(),
 		field.String("output_format").StorageKey("output_format").Default("yaml"),
+		field.String("default_params").StorageKey("default_params").Default(""),
 		field.String("download_link").StorageKey("download_link"),
 		field.Time("created_at").StorageKey("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").StorageKey("updated_at").Default(time.Now).UpdateDefault(time.Now),

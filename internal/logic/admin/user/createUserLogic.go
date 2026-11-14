@@ -3,10 +3,12 @@ package user
 import (
 	"context"
 	"fmt"
-	"github.com/perfect-panel/server/ent"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/model/wallet"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/tool"
@@ -40,11 +42,10 @@ func (l *CreateUserLogic) CreateUser(req *types.CreateUserRequest) error {
 	pwd := tool.EncodePassWord(req.Password)
 	newUser := &user.User{
 		Password:           pwd,
-		Algo:               "default",
+		Algo:               tool.PasswordAlgoArgon2id,
 		ReferralPercentage: req.ReferralPercentage,
 		OnlyFirstPurchase:  &req.OnlyFirstPurchase,
 		ReferCode:          req.ReferCode,
-		Balance:            req.Balance,
 		IsAdmin:            &req.IsAdmin,
 	}
 	var ams []user.AuthMethods
@@ -89,6 +90,18 @@ func (l *CreateUserLogic) CreateUser(req *types.CreateUserRequest) error {
 	err := l.svcCtx.Store.User().Insert(l.ctx, newUser)
 	if err != nil {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert user failed: %v", err.Error())
+	}
+	// The admin console can seed an opening balance; the money lives in the
+	// billing-owned wallet now, so it is created alongside the identity row.
+	if req.Balance != 0 || req.GiftAmount != 0 || req.Commission != 0 {
+		if err := l.svcCtx.Store.Wallet().Insert(l.ctx, &wallet.Wallet{
+			UserId:     newUser.Id,
+			Balance:    req.Balance,
+			GiftAmount: req.GiftAmount,
+			Commission: req.Commission,
+		}); err != nil {
+			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert user wallet failed: %v", err.Error())
+		}
 	}
 	return nil
 }

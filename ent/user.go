@@ -25,20 +25,14 @@ type User struct {
 	Salt *string `json:"salt,omitempty"`
 	// Avatar holds the value of the "avatar" field.
 	Avatar string `json:"avatar,omitempty"`
-	// Balance holds the value of the "balance" field.
-	Balance int64 `json:"balance,omitempty"`
 	// ReferCode holds the value of the "refer_code" field.
 	ReferCode string `json:"refer_code,omitempty"`
 	// RefererID holds the value of the "referer_id" field.
 	RefererID int64 `json:"referer_id,omitempty"`
-	// Commission holds the value of the "commission" field.
-	Commission int64 `json:"commission,omitempty"`
 	// ReferralPercentage holds the value of the "referral_percentage" field.
 	ReferralPercentage uint8 `json:"referral_percentage,omitempty"`
 	// OnlyFirstPurchase holds the value of the "only_first_purchase" field.
 	OnlyFirstPurchase bool `json:"only_first_purchase,omitempty"`
-	// GiftAmount holds the value of the "gift_amount" field.
-	GiftAmount int64 `json:"gift_amount,omitempty"`
 	// Enable holds the value of the "enable" field.
 	Enable bool `json:"enable,omitempty"`
 	// IsAdmin holds the value of the "is_admin" field.
@@ -69,7 +63,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case user.FieldOnlyFirstPurchase, user.FieldEnable, user.FieldIsAdmin, user.FieldEnableBalanceNotify, user.FieldEnableLoginNotify, user.FieldEnableSubscribeNotify, user.FieldEnableTradeNotify:
 			values[i] = new(sql.NullBool)
-		case user.FieldID, user.FieldBalance, user.FieldRefererID, user.FieldCommission, user.FieldReferralPercentage, user.FieldGiftAmount:
+		case user.FieldID, user.FieldRefererID, user.FieldReferralPercentage:
 			values[i] = new(sql.NullInt64)
 		case user.FieldPassword, user.FieldAlgo, user.FieldSalt, user.FieldAvatar, user.FieldReferCode, user.FieldRules:
 			values[i] = new(sql.NullString)
@@ -121,12 +115,6 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Avatar = value.String
 			}
-		case user.FieldBalance:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field balance", values[i])
-			} else if value.Valid {
-				_m.Balance = value.Int64
-			}
 		case user.FieldReferCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field refer_code", values[i])
@@ -139,12 +127,6 @@ func (_m *User) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RefererID = value.Int64
 			}
-		case user.FieldCommission:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field commission", values[i])
-			} else if value.Valid {
-				_m.Commission = value.Int64
-			}
 		case user.FieldReferralPercentage:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field referral_percentage", values[i])
@@ -156,12 +138,6 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field only_first_purchase", values[i])
 			} else if value.Valid {
 				_m.OnlyFirstPurchase = value.Bool
-			}
-		case user.FieldGiftAmount:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field gift_amount", values[i])
-			} else if value.Valid {
-				_m.GiftAmount = value.Int64
 			}
 		case user.FieldEnable:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -274,26 +250,17 @@ func (_m *User) String() string {
 	builder.WriteString("avatar=")
 	builder.WriteString(_m.Avatar)
 	builder.WriteString(", ")
-	builder.WriteString("balance=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Balance))
-	builder.WriteString(", ")
 	builder.WriteString("refer_code=")
 	builder.WriteString(_m.ReferCode)
 	builder.WriteString(", ")
 	builder.WriteString("referer_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RefererID))
 	builder.WriteString(", ")
-	builder.WriteString("commission=")
-	builder.WriteString(fmt.Sprintf("%v", _m.Commission))
-	builder.WriteString(", ")
 	builder.WriteString("referral_percentage=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ReferralPercentage))
 	builder.WriteString(", ")
 	builder.WriteString("only_first_purchase=")
 	builder.WriteString(fmt.Sprintf("%v", _m.OnlyFirstPurchase))
-	builder.WriteString(", ")
-	builder.WriteString("gift_amount=")
-	builder.WriteString(fmt.Sprintf("%v", _m.GiftAmount))
 	builder.WriteString(", ")
 	builder.WriteString("enable=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Enable))

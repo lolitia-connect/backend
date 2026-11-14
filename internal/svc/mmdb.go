@@ -2,11 +2,13 @@ package svc
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/oschwald/geoip2-golang"
+	"github.com/perfect-panel/server/pkg/requestmeta"
 	"go.uber.org/zap"
 )
 
@@ -43,6 +45,51 @@ func NewIPLocation(path string) (*IPLocation, error) {
 
 func (ipLoc *IPLocation) Close() error {
 	return ipLoc.DB.Close()
+}
+
+// EnrichMetadata enriches request metadata with IP geolocation data.
+// This is a best-effort operation: lookup failures do not affect the request.
+func (ipLoc *IPLocation) EnrichMetadata(metadata requestmeta.Metadata) requestmeta.Metadata {
+	if ipLoc.DB == nil || metadata.ClientIP == "" {
+		return metadata
+	}
+
+	ip := net.ParseIP(metadata.ClientIP)
+	if ip == nil {
+		return metadata
+	}
+
+	record, err := ipLoc.DB.City(ip)
+	if err != nil {
+		return metadata
+	}
+
+	if record.Country.IsoCode != "" {
+		metadata.IPCountryCode = record.Country.IsoCode
+	}
+	if len(record.Country.Names) > 0 {
+		if name, ok := record.Country.Names["en"]; ok {
+			metadata.IPCountry = name
+		} else if name, ok := record.Country.Names["zh-CN"]; ok {
+			metadata.IPCountry = name
+		}
+	}
+	if len(record.Subdivisions) > 0 {
+		if name, ok := record.Subdivisions[0].Names["en"]; ok {
+			metadata.IPRegion = name
+		} else if name, ok := record.Subdivisions[0].Names["zh-CN"]; ok {
+			metadata.IPRegion = name
+		}
+	}
+	if len(record.City.Names) > 0 {
+		if name, ok := record.City.Names["en"]; ok {
+			metadata.IPCity = name
+		} else if name, ok := record.City.Names["zh-CN"]; ok {
+			metadata.IPCity = name
+		}
+	}
+
+	return metadata
 }
 
 func DownloadGeoIPDatabase(url, path string) error {

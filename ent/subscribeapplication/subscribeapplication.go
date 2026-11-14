@@ -29,6 +29,8 @@ const (
 	FieldSubscribeTemplate = "subscribe_template"
 	// FieldOutputFormat holds the string denoting the output_format field in the database.
 	FieldOutputFormat = "output_format"
+	// FieldDefaultParams holds the string denoting the default_params field in the database.
+	FieldDefaultParams = "default_params"
 	// FieldDownloadLink holds the string denoting the download_link field in the database.
 	FieldDownloadLink = "download_link"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -50,6 +52,7 @@ var Columns = []string{
 	FieldIsDefault,
 	FieldSubscribeTemplate,
 	FieldOutputFormat,
+	FieldDefaultParams,
 	FieldDownloadLink,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -76,6 +79,8 @@ var (
 	DefaultIsDefault bool
 	// DefaultOutputFormat holds the default value on creation for the "output_format" field.
 	DefaultOutputFormat string
+	// DefaultDefaultParams holds the default value on creation for the "default_params" field.
+	DefaultDefaultParams string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -130,6 +135,11 @@ func BySubscribeTemplate(opts ...sql.OrderTermOption) OrderOption {
 // ByOutputFormat orders the results by the output_format field.
 func ByOutputFormat(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldOutputFormat, opts...).ToFunc()
+}
+
+// ByDefaultParams orders the results by the default_params field.
+func ByDefaultParams(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDefaultParams, opts...).ToFunc()
 }
 
 // ByDownloadLink orders the results by the download_link field.

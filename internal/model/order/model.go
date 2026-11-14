@@ -22,6 +22,7 @@ const userAuthMethodsTable = "user_auth_methods"
 
 type customOrderLogicModel interface {
 	UpdateOrderStatus(ctx context.Context, orderNo string, status uint8) error
+	FinishOrder(ctx context.Context, orderNo string) (bool, error)
 	CountUserCouponUsage(ctx context.Context, userID int64, coupon string) (int64, error)
 	QueryOrderListByPage(ctx context.Context, page, size int, status uint8, user, subscribe int64, search string) (int64, []*Details, error)
 	FindOneDetails(ctx context.Context, id int64) (*Details, error)
@@ -41,6 +42,12 @@ func NewModel(conn *ent.Client, c *redis.Client) Model {
 	return &customOrderModel{
 		defaultOrderModel: newOrderModel(conn, c),
 	}
+}
+
+// NewEventModel exposes the order event outbox on its own, mirroring the
+// separation between order mutations and event delivery.
+func NewEventModel(conn *ent.Client) EventModel {
+	return newEventModel(conn)
 }
 
 func (m *customOrderModel) CountUserCouponUsage(ctx context.Context, userID int64, coupon string) (int64, error) {
@@ -101,10 +108,6 @@ func applyOrderListFilters(query *ent.OrderQuery, status uint8, user, subscribe 
 		}
 	}
 	return query
-}
-
-func (m *customOrderModel) UpdateOrderStatus(ctx context.Context, orderNo string, status uint8) error {
-	return m.db.Order.Update().Where(entorder.OrderNo(orderNo)).SetStatus(status).Exec(ctx)
 }
 
 func (m *customOrderModel) FindOneDetailsByOrderNo(ctx context.Context, orderNo string) (*Details, error) {

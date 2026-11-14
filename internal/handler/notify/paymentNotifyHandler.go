@@ -54,6 +54,17 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 			}
 			result.HttpResult(c, nil, nil)
 
+		case payment.Cryptomus:
+			// Cryptomus posts a JSON webhook whose signature covers the raw
+			// body, so the untouched bytes must reach the verifier.
+			l := notify.NewCryptomusNotifyLogic(c.Request.Context(), svcCtx)
+			if err := l.CryptomusNotify(hertzx.RequestContext(c).Request.Body()); err != nil {
+				zap.S().Errorf("CryptomusNotify failed: %v", err.Error())
+				c.String(http.StatusBadRequest, "%s", err.Error())
+				return
+			}
+			c.String(http.StatusOK, "%s", "OK")
+
 		case payment.AlipayF2F:
 			l := notify.NewAlipayNotifyLogic(c.Request.Context(), svcCtx)
 			if err := l.AlipayNotify(c.Request); err != nil {

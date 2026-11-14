@@ -11,11 +11,13 @@ const (
 	EPay
 	Balance
 	CryptoSaaS
+	Cryptomus
 	UNSUPPORTED Platform = -1
 )
 
 var platformNames = map[string]Platform{
 	"CryptoSaaS":  CryptoSaaS,
+	"Cryptomus":   Cryptomus,
 	"Stripe":      Stripe,
 	"AlipayF2F":   AlipayF2F,
 	"AlipayPlus":  AlipayPlus,
@@ -92,6 +94,14 @@ func GetSupportedPlatforms() []types.PlatformInfo {
 				"endpoint":   "API Endpoint",
 				"account_id": "Account ID",
 				"secret_key": "Secret Key",
+			},
+		},
+		{
+			Platform:    Cryptomus.String(),
+			PlatformUrl: "https://cryptomus.com",
+			PlatformFieldDescription: map[string]string{
+				"merchant_id": "Merchant UUID",
+				"api_key":     "Payment API Key",
 			},
 		},
 	}

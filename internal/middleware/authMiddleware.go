@@ -30,6 +30,25 @@ func AuthMiddleware(svc *svc.ServiceContext) func(c *hertzx.Context) {
 	}
 }
 
+// OptionalAuthMiddleware attaches the authenticated user when the request
+// carries a valid session and otherwise lets the request through anonymously.
+// The V2 order routes serve both signed-in owners and guests who hold a
+// checkout capability, so they cannot require a session the way AuthMiddleware
+// does. An invalid or expired token is treated as anonymous rather than as an
+// error: the capability check that follows is what actually authorizes the
+// request.
+func OptionalAuthMiddleware(svc *svc.ServiceContext) func(c *hertzx.Context) {
+	return func(c *hertzx.Context) {
+		token := c.GetHeader("Authorization")
+		if token != "" {
+			if ctx, err := AuthenticateRequest(c.Request.Context(), svc, token, c.Request.URL.Path); err == nil {
+				c.Request = c.Request.WithContext(ctx)
+			}
+		}
+		c.Next()
+	}
+}
+
 func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token string, path string) (context.Context, error) {
 	jwtConfig := svc.Config.JwtAuth
 	if token == "" {

@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/perfect-panel/server/ent"
 	"time"
+
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/logic/auth"
@@ -118,7 +119,8 @@ func (l *AdminResetPasswordLogic) AdminResetPassword(req *types.ResetPasswordReq
 
 	// Update password
 	userInfo.Password = tool.EncodePassWord(req.Password)
-	userInfo.Algo = "default"
+	userInfo.Algo = tool.PasswordAlgoArgon2id
+	userInfo.Salt = ""
 	if err = l.svcCtx.Store.User().Update(l.ctx, userInfo); err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update user info failed: %v", err.Error())
 	}

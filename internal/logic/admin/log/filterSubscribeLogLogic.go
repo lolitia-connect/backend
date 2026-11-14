@@ -29,11 +29,13 @@ func NewFilterSubscribeLogLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 
 func (l *FilterSubscribeLogLogic) FilterSubscribeLog(req *types.FilterSubscribeLogRequest) (resp *types.FilterSubscribeLogResponse, err error) {
 	params := &log.FilterParams{
-		Page:     req.Page,
-		Size:     req.Size,
-		Type:     log.TypeSubscribe.Uint8(),
-		Data:     req.Date,
-		ObjectID: req.UserId,
+		Page:      req.Page,
+		Size:      req.Size,
+		Type:      log.TypeSubscribe.Uint8(),
+		Data:      req.Date,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
+		ObjectID:  req.UserId,
 	}
 
 	if req.UserSubscribeId != 0 {

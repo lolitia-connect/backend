@@ -16,7 +16,8 @@ import (
 	"github.com/perfect-panel/server/pkg/constant"
 	"go.uber.org/zap"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbot "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/logic/telegram"
@@ -27,6 +28,7 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/authmethod"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	queueTypes "github.com/perfect-panel/server/queue/types"
@@ -169,14 +171,17 @@ func (l *ActivateOrderLogic) finalizeCouponAndOrder(ctx context.Context, orderIn
 		}
 	}
 
-	// Update order status
-	orderInfo.Status = OrderStatusFinished
-	if err := l.svc.Store.Order().Update(ctx, orderInfo); err != nil {
+	// Update order status. This goes through the versioned transition rather
+	// than a plain write so the change is announced on the order event stream
+	// and a retried activation cannot fulfil the same order twice.
+	if _, err := l.svc.Store.Order().FinishOrder(ctx, orderInfo.OrderNo); err != nil {
 		zap.S().Error("Update order status failed",
 			zap.Any("error", err.Error()),
 			zap.Any("order_no", orderInfo.OrderNo),
 		)
+		return
 	}
+	orderInfo.Status = OrderStatusFinished
 }
 
 // NewPurchase handles new subscription purchase including user creation,
@@ -244,7 +249,7 @@ func (l *ActivateOrderLogic) createGuestUser(ctx context.Context, orderInfo *ord
 
 	userInfo := &user.User{
 		Password: tool.EncodePassWord(tempOrder.Password),
-		Algo:     "default",
+		Algo:     tool.PasswordAlgoArgon2id,
 	}
 
 	err = l.svc.Store.InTx(ctx, func(store repository.Store) error {
@@ -439,11 +444,20 @@ func (l *ActivateOrderLogic) handleCommission(ctx context.Context, userInfo *use
 
 	// Order commission calculation： (Order Amount - Order Fee) * Referral Percentage
 	amount := l.calculateCommission(orderInfo.Amount-orderInfo.FeeAmount, referralPercentage)
+	// Skip commission processing for zero-amount orders (e.g. an order paid
+	// entirely with wallet balance) to avoid noisy zero-amount log entries.
+	if amount <= 0 {
+		return
+	}
 
 	// Use transaction for commission updates
 	err = l.svc.Store.InTx(ctx, func(store repository.Store) error {
-		referer.Commission += amount
-		if err = store.User().Update(ctx, referer); err != nil {
+		refererWallet, err := store.Wallet().FindOne(ctx, referer.Id)
+		if err != nil {
+			return err
+		}
+		refererWallet.Commission += amount
+		if err = store.Wallet().UpdateCommission(ctx, refererWallet); err != nil {
 			return err
 		}
 
@@ -731,8 +745,12 @@ func (l *ActivateOrderLogic) Recharge(ctx context.Context, orderInfo *order.Orde
 
 	// Update balance in transaction
 	err = l.svc.Store.InTx(ctx, func(store repository.Store) error {
-		userInfo.Balance += orderInfo.Price
-		if err = store.User().Update(ctx, userInfo); err != nil {
+		walletInfo, err := store.Wallet().FindOne(ctx, userInfo.Id)
+		if err != nil {
+			return err
+		}
+		walletInfo.Balance += orderInfo.Price
+		if err = store.Wallet().UpdateBalanceFields(ctx, walletInfo); err != nil {
 			return err
 		}
 
@@ -740,7 +758,7 @@ func (l *ActivateOrderLogic) Recharge(ctx context.Context, orderInfo *order.Orde
 			Amount:    orderInfo.Price,
 			Type:      log.BalanceTypeRecharge,
 			OrderNo:   orderInfo.OrderNo,
-			Balance:   userInfo.Balance,
+			Balance:   walletInfo.Balance,
 			Timestamp: time.Now().UnixMilli(),
 		}
 		content, _ := balanceLog.Marshal()
@@ -775,14 +793,14 @@ func (l *ActivateOrderLogic) sendNotifications(ctx context.Context, orderInfo *o
 	// Send user notification
 	if telegramId, ok := findTelegram(userInfo); ok {
 		templateData := l.buildUserNotificationData(orderInfo, sub, userSub)
-		if text, err := tool.RenderTemplateToString(notifyType, templateData); err == nil {
-			l.sendUserNotifyWithTelegram(telegramId, text)
+		if text, err := telegram.RenderMarkdownV2(notifyType, templateData); err == nil {
+			l.sendUserNotifyWithTelegram(ctx, telegramId, text)
 		}
 	}
 
 	// Send admin notification
-	adminData := l.buildAdminNotificationData(orderInfo, sub)
-	if text, err := tool.RenderTemplateToString(telegram.AdminOrderNotify, adminData); err == nil {
+	adminData := l.buildAdminNotificationData(orderInfo, sub, userInfo)
+	if text, err := telegram.RenderMarkdownV2(telegram.AdminOrderNotify, adminData); err == nil {
 		l.sendAdminNotifyWithTelegram(ctx, text)
 	}
 }
@@ -791,14 +809,18 @@ func (l *ActivateOrderLogic) sendNotifications(ctx context.Context, orderInfo *o
 func (l *ActivateOrderLogic) sendRechargeNotifications(ctx context.Context, orderInfo *order.Order, userInfo *user.User) {
 	// Send user notification
 	if telegramId, ok := findTelegram(userInfo); ok {
+		balance := int64(0)
+		if walletInfo, err := l.svc.Store.Wallet().FindOne(ctx, userInfo.Id); err == nil {
+			balance = walletInfo.Balance
+		}
 		templateData := map[string]string{
 			"OrderAmount":   fmt.Sprintf("%.2f", float64(orderInfo.Price)/100),
 			"PaymentMethod": orderInfo.Method,
 			"Time":          orderInfo.CreatedAt.Format("2006-01-02 15:04:05"),
-			"Balance":       fmt.Sprintf("%.2f", float64(userInfo.Balance)/100),
+			"Balance":       fmt.Sprintf("%.2f", float64(balance)/100),
 		}
-		if text, err := tool.RenderTemplateToString(telegram.RechargeNotify, templateData); err == nil {
-			l.sendUserNotifyWithTelegram(telegramId, text)
+		if text, err := telegram.RenderMarkdownV2(telegram.RechargeNotify, templateData); err == nil {
+			l.sendUserNotifyWithTelegram(ctx, telegramId, text)
 		}
 	}
 
@@ -806,13 +828,14 @@ func (l *ActivateOrderLogic) sendRechargeNotifications(ctx context.Context, orde
 	adminData := map[string]string{
 		"OrderNo":       orderInfo.OrderNo,
 		"TradeNo":       orderInfo.TradeNo,
+		"UserEmail":     findEmail(userInfo),
 		"OrderAmount":   fmt.Sprintf("%.2f", float64(orderInfo.Price)/100),
 		"SubscribeName": "余额充值",
 		"OrderStatus":   "已支付",
 		"OrderTime":     orderInfo.CreatedAt.Format("2006-01-02 15:04:05"),
 		"PaymentMethod": orderInfo.Method,
 	}
-	if text, err := tool.RenderTemplateToString(telegram.AdminOrderNotify, adminData); err == nil {
+	if text, err := telegram.RenderMarkdownV2(telegram.AdminOrderNotify, adminData); err == nil {
 		l.sendAdminNotifyWithTelegram(ctx, text)
 	}
 }
@@ -834,7 +857,7 @@ func (l *ActivateOrderLogic) buildUserNotificationData(orderInfo *order.Order, s
 }
 
 // buildAdminNotificationData creates template data for admin notifications
-func (l *ActivateOrderLogic) buildAdminNotificationData(orderInfo *order.Order, sub *subscribe.Subscribe) map[string]string {
+func (l *ActivateOrderLogic) buildAdminNotificationData(orderInfo *order.Order, sub *subscribe.Subscribe, userInfo *user.User) map[string]string {
 	subscribeName := sub.Name
 	if orderInfo.Type == OrderTypeResetTraffic {
 		subscribeName = "流量重置"
@@ -843,6 +866,7 @@ func (l *ActivateOrderLogic) buildAdminNotificationData(orderInfo *order.Order, 
 	return map[string]string{
 		"OrderNo":       orderInfo.OrderNo,
 		"TradeNo":       orderInfo.TradeNo,
+		"UserEmail":     findEmail(userInfo),
 		"SubscribeName": subscribeName,
 		"OrderAmount":   fmt.Sprintf("%.2f", float64(orderInfo.Price)/100),
 		"OrderStatus":   "已支付",
@@ -852,16 +876,24 @@ func (l *ActivateOrderLogic) buildAdminNotificationData(orderInfo *order.Order, 
 }
 
 // sendUserNotifyWithTelegram sends a notification message to a user via Telegram
-func (l *ActivateOrderLogic) sendUserNotifyWithTelegram(chatId int64, text string) {
-	msg := tgbotapi.NewMessage(chatId, text)
-	msg.ParseMode = "markdown"
-	if _, err := l.svc.TelegramBot.Send(msg); err != nil {
+func (l *ActivateOrderLogic) sendUserNotifyWithTelegram(ctx context.Context, chatId int64, text string) {
+	if l.svc.TelegramBot == nil {
+		return
+	}
+	if _, err := l.svc.TelegramBot.SendMessage(ctx, &tgbot.SendMessageParams{
+		ChatID:    chatId,
+		Text:      text,
+		ParseMode: models.ParseModeMarkdown,
+	}); err != nil {
 		zap.S().Error("Send telegram user message failed", zap.Any("error", err.Error()))
 	}
 }
 
 // sendAdminNotifyWithTelegram sends a notification message to all admin users via Telegram
 func (l *ActivateOrderLogic) sendAdminNotifyWithTelegram(ctx context.Context, text string) {
+	if l.svc.TelegramBot == nil {
+		return
+	}
 	admins, err := l.svc.Store.User().QueryAdminUsers(ctx)
 	if err != nil {
 		zap.S().Error("Query admin users failed", zap.Any("error", err.Error()))
@@ -870,9 +902,11 @@ func (l *ActivateOrderLogic) sendAdminNotifyWithTelegram(ctx context.Context, te
 
 	for _, admin := range admins {
 		if telegramId, ok := findTelegram(admin); ok {
-			msg := tgbotapi.NewMessage(telegramId, text)
-			msg.ParseMode = "markdown"
-			if _, err := l.svc.TelegramBot.Send(msg); err != nil {
+			if _, err := l.svc.TelegramBot.SendMessage(ctx, &tgbot.SendMessageParams{
+				ChatID:    telegramId,
+				Text:      text,
+				ParseMode: models.ParseModeMarkdown,
+			}); err != nil {
 				zap.S().Error("Send telegram admin message failed", zap.Any("error", err.Error()))
 			}
 		}
@@ -890,6 +924,18 @@ func findTelegram(u *user.User) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+// findEmail extracts the account email from the user's authentication methods.
+// Identities live in auth methods rather than on the user row, so without this
+// the administrator notification would render an empty account line.
+func findEmail(u *user.User) string {
+	for _, item := range u.AuthMethods {
+		if item.AuthType == authmethod.Email {
+			return item.AuthIdentifier
+		}
+	}
+	return ""
 }
 
 // RedemptionActivate handles redemption code activation including subscription creation,

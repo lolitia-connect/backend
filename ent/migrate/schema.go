@@ -218,6 +218,9 @@ var (
 		{Name: "gift_amount", Type: field.TypeInt64, Default: 0},
 		{Name: "commission", Type: field.TypeInt64, Default: 0},
 		{Name: "status", Type: field.TypeUint8, Default: 1},
+		{Name: "state_version", Type: field.TypeInt64, Default: 0},
+		{Name: "idempotency_key", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "idempotency_hash", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "subscribe_id", Type: field.TypeInt64, Default: 0},
 		{Name: "subscribe_token", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "is_new", Type: field.TypeBool, Default: false},
@@ -229,6 +232,39 @@ var (
 		Name:       "order",
 		Columns:    OrderColumns,
 		PrimaryKey: []*schema.Column{OrderColumns[0]},
+	}
+	// OrderEventColumns holds the columns for the "order_event" table.
+	OrderEventColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "order_id", Type: field.TypeInt64, Default: 0},
+		{Name: "order_no", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "event_type", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "payload", Type: field.TypeString},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "published_at", Type: field.TypeTime, Nullable: true},
+	}
+	// OrderEventTable holds the schema information for the "order_event" table.
+	OrderEventTable = &schema.Table{
+		Name:       "order_event",
+		Columns:    OrderEventColumns,
+		PrimaryKey: []*schema.Column{OrderEventColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "orderevent_order_id_id",
+				Unique:  false,
+				Columns: []*schema.Column{OrderEventColumns[1], OrderEventColumns[0]},
+			},
+			{
+				Name:    "orderevent_order_no_id",
+				Unique:  false,
+				Columns: []*schema.Column{OrderEventColumns[2], OrderEventColumns[0]},
+			},
+			{
+				Name:    "orderevent_published_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{OrderEventColumns[6], OrderEventColumns[0]},
+			},
+		},
 	}
 	// PaymentColumns holds the columns for the "payment" table.
 	PaymentColumns = []*schema.Column{
@@ -388,6 +424,7 @@ var (
 		{Name: "is_default", Type: field.TypeBool, Default: false},
 		{Name: "subscribe_template", Type: field.TypeString, Nullable: true},
 		{Name: "output_format", Type: field.TypeString, Default: "yaml"},
+		{Name: "default_params", Type: field.TypeString, Default: ""},
 		{Name: "download_link", Type: field.TypeString},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -537,17 +574,14 @@ var (
 	// UserColumns holds the columns for the "user" table.
 	UserColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
-		{Name: "password", Type: field.TypeString, Size: 100},
+		{Name: "password", Type: field.TypeString, Size: 255},
 		{Name: "algo", Type: field.TypeString, Size: 20, Default: "default"},
 		{Name: "salt", Type: field.TypeString, Nullable: true, Size: 20},
 		{Name: "avatar", Type: field.TypeString, Nullable: true},
-		{Name: "balance", Type: field.TypeInt64, Default: 0},
 		{Name: "refer_code", Type: field.TypeString, Size: 20, Default: ""},
 		{Name: "referer_id", Type: field.TypeInt64, Default: 0},
-		{Name: "commission", Type: field.TypeInt64, Default: 0},
 		{Name: "referral_percentage", Type: field.TypeUint8, Default: 0},
 		{Name: "only_first_purchase", Type: field.TypeBool, Default: true},
-		{Name: "gift_amount", Type: field.TypeInt64, Default: 0},
 		{Name: "enable", Type: field.TypeBool, Default: true},
 		{Name: "is_admin", Type: field.TypeBool, Default: false},
 		{Name: "enable_balance_notify", Type: field.TypeBool, Default: false},
@@ -647,6 +681,22 @@ var (
 		Columns:    UserSubscribeColumns,
 		PrimaryKey: []*schema.Column{UserSubscribeColumns[0]},
 	}
+	// UserWalletColumns holds the columns for the "user_wallet" table.
+	UserWalletColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "balance", Type: field.TypeInt64, Default: 0},
+		{Name: "gift_amount", Type: field.TypeInt64, Default: 0},
+		{Name: "commission", Type: field.TypeInt64, Default: 0},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// UserWalletTable holds the schema information for the "user_wallet" table.
+	UserWalletTable = &schema.Table{
+		Name:       "user_wallet",
+		Columns:    UserWalletColumns,
+		PrimaryKey: []*schema.Column{UserWalletColumns[0]},
+	}
 	// UserWithdrawalColumns holds the columns for the "user_withdrawal" table.
 	UserWithdrawalColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -676,6 +726,7 @@ var (
 		NodesTable,
 		NodeGroupTable,
 		OrderTable,
+		OrderEventTable,
 		PaymentTable,
 		RedemptionCodeTable,
 		RedemptionRecordTable,
@@ -695,6 +746,7 @@ var (
 		UserDeviceTable,
 		UserDeviceOnlineRecordTable,
 		UserSubscribeTable,
+		UserWalletTable,
 		UserWithdrawalTable,
 	}
 )
@@ -729,6 +781,9 @@ func init() {
 	}
 	OrderTable.Annotation = &entsql.Annotation{
 		Table: "order",
+	}
+	OrderEventTable.Annotation = &entsql.Annotation{
+		Table: "order_event",
 	}
 	PaymentTable.Annotation = &entsql.Annotation{
 		Table: "payment",
@@ -786,6 +841,9 @@ func init() {
 	}
 	UserSubscribeTable.Annotation = &entsql.Annotation{
 		Table: "user_subscribe",
+	}
+	UserWalletTable.Annotation = &entsql.Annotation{
+		Table: "user_wallet",
 	}
 	UserWithdrawalTable.Annotation = &entsql.Annotation{
 		Table: "user_withdrawal",

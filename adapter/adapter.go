@@ -112,6 +112,9 @@ func (adapter *Adapter) Proxies(servers []*node.Node) ([]Proxy, error) {
 			if item.ProtocolId == "" || protocol.Id != item.ProtocolId || protocol.Type != item.Protocol {
 				continue
 			}
+			// Pinning and skipping verification are mutually exclusive: a client
+			// that skips verification never checks the pin.
+			allowInsecure := protocol.AllowInsecure && protocol.CertPinSHA256 == ""
 			proxies = append(
 				proxies,
 				Proxy{
@@ -121,9 +124,12 @@ func (adapter *Adapter) Proxies(servers []*node.Node) ([]Proxy, error) {
 					Port:                    item.Port,
 					Type:                    item.Protocol,
 					Tags:                    strings.Split(item.Tags, ","),
+					Version:                 protocol.Version,
+					Network:                 protocol.Network,
+					ALPN:                    protocol.ALPN,
 					Security:                protocol.Security,
 					SNI:                     protocol.SNI,
-					AllowInsecure:           protocol.AllowInsecure,
+					AllowInsecure:           allowInsecure,
 					Fingerprint:             protocol.Fingerprint,
 					RealityServerAddr:       protocol.RealityServerAddr,
 					RealityServerPort:       protocol.RealityServerPort,
@@ -136,6 +142,12 @@ func (adapter *Adapter) Proxies(servers []*node.Node) ([]Proxy, error) {
 					ServiceName:             protocol.ServiceName,
 					Method:                  protocol.Cipher,
 					ServerKey:               protocol.ServerKey,
+					SSRProtocol:             protocol.SSRProtocol,
+					ProtocolParam:           protocol.ProtocolParam,
+					ObfsParam:               protocol.ObfsParam,
+					Obfs:                    protocol.Obfs,
+					ObfsHost:                protocol.ObfsHost,
+					ObfsPath:                protocol.ObfsPath,
 					UoT:                     protocol.UoT,
 					UoTVersion:              protocol.UoTVersion,
 					Flow:                    protocol.Flow,
@@ -166,6 +178,7 @@ func (adapter *Adapter) Proxies(servers []*node.Node) ([]Proxy, error) {
 					CertMode:                protocol.CertMode,
 					CertDNSProvider:         protocol.CertDNSProvider,
 					CertDNSEnv:              protocol.CertDNSEnv,
+					CertPinSHA256:           protocol.CertPinSHA256,
 				},
 			)
 		}

@@ -418,6 +418,7 @@ type CreateSubscribeApplicationRequest struct {
 	IsDefault         bool         `json:"is_default"`
 	SubscribeTemplate string       `json:"template"`
 	OutputFormat      string       `json:"output_format"`
+	DefaultParams     string       `json:"default_params,omitempty"`
 	DownloadLink      DownloadLink `json:"download_link"`
 }
 
@@ -678,10 +679,12 @@ type FilterGiftLogResponse struct {
 }
 
 type FilterLogParams struct {
-	Page   int    `form:"page"`
-	Size   int    `form:"size"`
-	Date   string `form:"date,optional"`
-	Search string `form:"search,optional"`
+	Page      int    `form:"page"`
+	Size      int    `form:"size"`
+	Date      string `form:"date,optional"`
+	StartDate string `form:"start_date,optional" validate:"omitempty,datetime=2006-01-02"`
+	EndDate   string `form:"end_date,optional" validate:"omitempty,datetime=2006-01-02"`
+	Search    string `form:"search,optional"`
 }
 
 type FilterLoginLogRequest struct {
@@ -697,6 +700,16 @@ type FilterLoginLogResponse struct {
 type FilterMobileLogResponse struct {
 	Total int64        `json:"total"`
 	List  []MessageLog `json:"list"`
+}
+
+type FilterOrderLogRequest struct {
+	FilterLogParams
+	UserId int64 `form:"user_id,optional"`
+}
+
+type FilterOrderLogResponse struct {
+	Total int64      `json:"total"`
+	List  []OrderLog `json:"list"`
 }
 
 type FilterNodeListRequest struct {
@@ -1327,6 +1340,34 @@ type GoogleLoginCallbackRequest struct {
 	State string `form:"state"`
 }
 
+type OrderLog struct {
+	Id               int64  `json:"id,string"`
+	UserId           int64  `json:"user_id,string"`
+	OrderNo          string `json:"order_no"`
+	OrderType        uint8  `json:"order_type"`
+	Quantity         int64  `json:"quantity"`
+	Price            int64  `json:"price"`
+	Amount           int64  `json:"amount"`
+	GiftAmount       int64  `json:"gift_amount"`
+	Discount         int64  `json:"discount"`
+	CouponDiscount   int64  `json:"coupon_discount"`
+	PaymentId        int64  `json:"payment_id,string"`
+	Method           string `json:"method"`
+	FeeAmount        int64  `json:"fee_amount"`
+	SubscribeId      int64  `json:"subscribe_id,string,omitempty"`
+	Source           string `json:"source"`
+	Timestamp        int64  `json:"timestamp"`
+	ClientIP         string `json:"client_ip,omitempty"`
+	UserAgent        string `json:"user_agent,omitempty"`
+	ActorID          int64  `json:"actor_id,string,omitempty"`
+	IPCountryCode    string `json:"ip_country_code,omitempty"`
+	IPCountry        string `json:"ip_country,omitempty"`
+	IPRegion         string `json:"ip_region,omitempty"`
+	IPCity           string `json:"ip_city,omitempty"`
+	IPASN            uint   `json:"ip_asn,omitempty"`
+	IPASOrganization string `json:"ip_as_organization,omitempty"`
+}
+
 type GroupHistory struct {
 	Id           int64  `json:"id,string"`
 	GroupMode    string `json:"group_mode"`
@@ -1698,6 +1739,10 @@ type PortalPurchaseRequest struct {
 
 type PortalPurchaseResponse struct {
 	OrderNo string `json:"order_no"`
+	// CheckoutToken is the guest checkout capability. It is returned exactly
+	// once, to the caller that created the order, and is the only value that
+	// can later authorize a status query or a session exchange.
+	CheckoutToken string `json:"checkout_token,omitempty"`
 }
 
 type PreOrderResponse struct {
@@ -1765,60 +1810,67 @@ type PrivacyPolicyConfig struct {
 }
 
 type Protocol struct {
-	Id                      string  `json:"id"`   // Stable protocol instance id. Not tied to display name.
-	Name                    string  `json:"name"` // Optional display name.
-	Type                    string  `json:"type"`
-	Port                    uint16  `json:"port"`
-	Enable                  bool    `json:"enable"`
-	Security                string  `json:"security,omitempty"`
-	SNI                     string  `json:"sni,omitempty"`
-	AllowInsecure           bool    `json:"allow_insecure,omitempty"`
-	Fingerprint             string  `json:"fingerprint,omitempty"`
-	RealityServerAddr       string  `json:"reality_server_addr,omitempty"`
-	RealityServerPort       int     `json:"reality_server_port,omitempty"`
-	RealityPrivateKey       string  `json:"reality_private_key,omitempty"`
-	RealityPublicKey        string  `json:"reality_public_key,omitempty"`
-	RealityShortId          string  `json:"reality_short_id,omitempty"`
-	Transport               string  `json:"transport,omitempty"`
-	Host                    string  `json:"host,omitempty"`
-	Path                    string  `json:"path,omitempty"`
-	ServiceName             string  `json:"service_name,omitempty"`
-	Cipher                  string  `json:"cipher,omitempty"`
-	ServerKey               string  `json:"server_key,omitempty"`
-	Flow                    string  `json:"flow,omitempty"`
-	UoT                     bool    `json:"uot,omitempty"`                   // UDP over TCP
-	UoTVersion              int     `json:"uot_version,omitempty"`           // UoT version (1 or 2)
-	AcceptProxyProtocol     bool    `json:"accept_proxy_protocol,omitempty"` // accept proxy protocol
-	HopPorts                string  `json:"hop_ports,omitempty"`
-	HopInterval             int     `json:"hop_interval,omitempty"`
-	ObfsPassword            string  `json:"obfs_password,omitempty"`
-	DisableSNI              bool    `json:"disable_sni,omitempty"`
-	ReduceRtt               bool    `json:"reduce_rtt,omitempty"`
-	UDPRelayMode            string  `json:"udp_relay_mode,omitempty"`
-	CongestionController    string  `json:"congestion_controller,omitempty"`
-	Multiplex               string  `json:"multiplex,omitempty"`                 // mux, eg: off/low/medium/high
-	PaddingScheme           string  `json:"padding_scheme,omitempty"`            // padding scheme
-	UpMbps                  int     `json:"up_mbps,omitempty"`                   // upload speed limit
-	DownMbps                int     `json:"down_mbps,omitempty"`                 // download speed limit
-	Obfs                    string  `json:"obfs,omitempty"`                      // obfs, 'none', 'http', 'tls'
-	ObfsHost                string  `json:"obfs_host,omitempty"`                 // obfs host
-	ObfsPath                string  `json:"obfs_path,omitempty"`                 // obfs path
-	XhttpMode               string  `json:"xhttp_mode,omitempty"`                // xhttp mode
-	XhttpExtra              string  `json:"xhttp_extra,omitempty"`               // xhttp extra path
-	Encryption              string  `json:"encryption,omitempty"`                // encryption，'none', 'mlkem768x25519plus'
-	EncryptionMode          string  `json:"encryption_mode,omitempty"`           // encryption mode，'native', 'xorpub', 'random'
-	EncryptionRtt           string  `json:"encryption_rtt,omitempty"`            // encryption rtt，'0rtt', '1rtt'
-	EncryptionTicket        string  `json:"encryption_ticket,omitempty"`         // encryption ticket
-	EncryptionServerPadding string  `json:"encryption_server_padding,omitempty"` // encryption server padding
-	EncryptionPrivateKey    string  `json:"encryption_private_key,omitempty"`    // encryption private key
-	EncryptionClientPadding string  `json:"encryption_client_padding,omitempty"` // encryption client padding
-	EncryptionPassword      string  `json:"encryption_password,omitempty"`       // encryption password
-	EchEnable               bool    `json:"ech_enable,omitempty"`                // ECH enable
-	EchServerName           string  `json:"ech_server_name,omitempty"`           // ECH server name
-	Ratio                   float64 `json:"ratio,omitempty"`                     // Traffic ratio, default is 1
-	CertMode                string  `json:"cert_mode,omitempty"`                 // Certificate mode, `none`｜`http`｜`dns`｜`self`
-	CertDNSProvider         string  `json:"cert_dns_provider,omitempty"`         // DNS provider for certificate
-	CertDNSEnv              string  `json:"cert_dns_env,omitempty"`              // Environment for DNS provider
+	Id                      string   `json:"id"`   // Stable protocol instance id. Not tied to display name.
+	Name                    string   `json:"name"` // Optional display name.
+	Type                    string   `json:"type"`
+	Port                    uint16   `json:"port"`
+	Enable                  bool     `json:"enable"`
+	Version                 int      `json:"version,omitempty"`        // Snell accepts 5/6, TUIC 5, Nowhere 1; 0 means the protocol default
+	Mode                    string   `json:"mode,omitempty"`           // Snell v6 work mode; no other protocol sets it
+	Network                 string   `json:"network,omitempty"`        // Listener network: tcp/udp/both; Nowhere normalizes to mix/tcp/udp
+	ALPN                    []string `json:"alpn,omitempty"`           // TLS ALPN list; Nowhere takes exactly one value, defaulting to now/1
+	SSRProtocol             string   `json:"ssr_protocol,omitempty"`   // ShadowsocksR obfs/auth protocol
+	ProtocolParam           string   `json:"protocol_param,omitempty"` // ShadowsocksR protocol parameter (user:pass)
+	ObfsParam               string   `json:"obfs_param,omitempty"`     // ShadowsocksR obfs parameter
+	Security                string   `json:"security,omitempty"`
+	SNI                     string   `json:"sni,omitempty"`
+	AllowInsecure           bool     `json:"allow_insecure,omitempty"`
+	Fingerprint             string   `json:"fingerprint,omitempty"`
+	RealityServerAddr       string   `json:"reality_server_addr,omitempty"`
+	RealityServerPort       int      `json:"reality_server_port,omitempty"`
+	RealityPrivateKey       string   `json:"reality_private_key,omitempty"`
+	RealityPublicKey        string   `json:"reality_public_key,omitempty"`
+	RealityShortId          string   `json:"reality_short_id,omitempty"`
+	Transport               string   `json:"transport,omitempty"`
+	Host                    string   `json:"host,omitempty"`
+	Path                    string   `json:"path,omitempty"`
+	ServiceName             string   `json:"service_name,omitempty"`
+	Cipher                  string   `json:"cipher,omitempty"`
+	ServerKey               string   `json:"server_key,omitempty"`
+	Flow                    string   `json:"flow,omitempty"`
+	UoT                     bool     `json:"uot,omitempty"`                   // UDP over TCP
+	UoTVersion              int      `json:"uot_version,omitempty"`           // UoT version (1 or 2)
+	AcceptProxyProtocol     bool     `json:"accept_proxy_protocol,omitempty"` // accept proxy protocol
+	HopPorts                string   `json:"hop_ports,omitempty"`
+	HopInterval             int      `json:"hop_interval,omitempty"`
+	ObfsPassword            string   `json:"obfs_password,omitempty"`
+	DisableSNI              bool     `json:"disable_sni,omitempty"`
+	ReduceRtt               bool     `json:"reduce_rtt,omitempty"`
+	UDPRelayMode            string   `json:"udp_relay_mode,omitempty"`
+	CongestionController    string   `json:"congestion_controller,omitempty"`
+	Multiplex               string   `json:"multiplex,omitempty"`                 // mux, eg: off/low/medium/high
+	PaddingScheme           string   `json:"padding_scheme,omitempty"`            // padding scheme
+	UpMbps                  int      `json:"up_mbps,omitempty"`                   // upload speed limit
+	DownMbps                int      `json:"down_mbps,omitempty"`                 // download speed limit
+	Obfs                    string   `json:"obfs,omitempty"`                      // obfs, 'none', 'http', 'tls'
+	ObfsHost                string   `json:"obfs_host,omitempty"`                 // obfs host
+	ObfsPath                string   `json:"obfs_path,omitempty"`                 // obfs path
+	XhttpMode               string   `json:"xhttp_mode,omitempty"`                // xhttp mode
+	XhttpExtra              string   `json:"xhttp_extra,omitempty"`               // xhttp extra path
+	Encryption              string   `json:"encryption,omitempty"`                // encryption，'none', 'mlkem768x25519plus'
+	EncryptionMode          string   `json:"encryption_mode,omitempty"`           // encryption mode，'native', 'xorpub', 'random'
+	EncryptionRtt           string   `json:"encryption_rtt,omitempty"`            // encryption rtt，'0rtt', '1rtt'
+	EncryptionTicket        string   `json:"encryption_ticket,omitempty"`         // encryption ticket
+	EncryptionServerPadding string   `json:"encryption_server_padding,omitempty"` // encryption server padding
+	EncryptionPrivateKey    string   `json:"encryption_private_key,omitempty"`    // encryption private key
+	EncryptionClientPadding string   `json:"encryption_client_padding,omitempty"` // encryption client padding
+	EncryptionPassword      string   `json:"encryption_password,omitempty"`       // encryption password
+	EchEnable               bool     `json:"ech_enable,omitempty"`                // ECH enable
+	EchServerName           string   `json:"ech_server_name,omitempty"`           // ECH server name
+	Ratio                   float64  `json:"ratio,omitempty"`                     // Traffic ratio, default is 1
+	CertMode                string   `json:"cert_mode,omitempty"`                 // Certificate mode, `none`｜`http`｜`dns`｜`self`
+	CertDNSProvider         string   `json:"cert_dns_provider,omitempty"`         // DNS provider for certificate
+	CertDNSEnv              string   `json:"cert_dns_env,omitempty"`              // Environment for DNS provider
 }
 
 type PubilcRegisterConfig struct {
@@ -1893,9 +1945,10 @@ type QueryOrderListResponse struct {
 }
 
 type QueryPurchaseOrderRequest struct {
-	AuthType   string `form:"auth_type"`
-	Identifier string `form:"identifier"`
-	OrderNo    string `form:"order_no"`
+	AuthType      string `form:"auth_type"`
+	Identifier    string `form:"identifier"`
+	OrderNo       string `form:"order_no"`
+	CheckoutToken string `form:"checkout_token"`
 }
 
 type QueryPurchaseOrderResponse struct {
@@ -2292,6 +2345,9 @@ type ServerPushStatusRequest struct {
 	Mem       float64 `json:"mem"`
 	Disk      float64 `json:"disk"`
 	UpdatedAt int64   `json:"updated_at"`
+	// CertPinSHA256 is transport metadata read from the
+	// X-Node-Certificate-SHA256 request header, not part of the body.
+	CertPinSHA256 string `json:"-"`
 }
 
 type ServerPushUserTrafficRequest struct {
@@ -2452,6 +2508,7 @@ type SubscribeApplication struct {
 	IsDefault         bool         `json:"is_default"`
 	SubscribeTemplate string       `json:"template"`
 	OutputFormat      string       `json:"output_format"`
+	DefaultParams     string       `json:"default_params,omitempty"`
 	DownloadLink      DownloadLink `json:"download_link,omitempty"`
 	CreatedAt         int64        `json:"created_at"`
 	UpdatedAt         int64        `json:"updated_at"`
@@ -2854,6 +2911,7 @@ type UpdateSubscribeApplicationRequest struct {
 	IsDefault         bool         `json:"is_default"`
 	SubscribeTemplate string       `json:"template"`
 	OutputFormat      string       `json:"output_format"`
+	DefaultParams     string       `json:"default_params,omitempty"`
 	DownloadLink      DownloadLink `json:"download_link,omitempty"`
 }
 
@@ -3179,6 +3237,76 @@ type UserTrafficData struct {
 	SID      int64 `json:"sid"`
 	Upload   int64 `json:"upload"`
 	Download int64 `json:"download"`
+}
+
+type V2CheckoutOrderRequest struct {
+	CheckoutToken string `json:"checkout_token,omitempty"`
+	ReturnURL     string `json:"return_url,omitempty"`
+}
+
+type V2CreateOrderRequest struct {
+	Type            string               `json:"type"`
+	PaymentID       int64                `json:"payment_id"`
+	SubscribeID     int64                `json:"subscribe_id,omitempty"`
+	UserSubscribeID int64                `json:"user_subscribe_id,omitempty"`
+	Quantity        int64                `json:"quantity,omitempty"`
+	Coupon          string               `json:"coupon,omitempty"`
+	Amount          int64                `json:"amount,omitempty"`
+	ReturnURL       string               `json:"return_url,omitempty"`
+	Guest           *V2GuestOrderRequest `json:"guest,omitempty"`
+}
+
+type V2EventTicketRequest struct {
+	CheckoutToken string `json:"checkout_token,omitempty"`
+}
+
+type V2EventTicketResponse struct {
+	URL             string `json:"url"`
+	TicketExpiresAt int64  `json:"ticket_expires_at"`
+}
+
+type V2GuestOrderRequest struct {
+	AuthType   string `json:"auth_type"`
+	Identifier string `json:"identifier"`
+	Password   string `json:"password"`
+	InviteCode string `json:"invite_code,omitempty"`
+}
+
+type V2OrderEvents struct {
+	URL             string `json:"url"`
+	TicketExpiresAt int64  `json:"ticket_expires_at"`
+}
+
+type V2OrderPayment struct {
+	Type          string `json:"type"`
+	CheckoutURL   string `json:"checkout_url,omitempty"`
+	PaymentStatus string `json:"payment_status"`
+}
+
+type V2OrderResponse struct {
+	Order         V2OrderSnapshot `json:"order"`
+	Payment       *V2OrderPayment `json:"payment,omitempty"`
+	Events        V2OrderEvents   `json:"events"`
+	CheckoutToken string          `json:"checkout_token,omitempty"`
+}
+
+type V2OrderSessionRequest struct {
+	CheckoutToken string `json:"checkout_token,omitempty"`
+}
+
+type V2OrderSessionResponse struct {
+	AccessToken string `json:"access_token"`
+}
+
+type V2OrderSnapshot struct {
+	OrderNo           string `json:"order_no"`
+	Status            string `json:"status"`
+	PaymentStatus     string `json:"payment_status"`
+	FulfillmentStatus string `json:"fulfillment_status"`
+	StateVersion      int64  `json:"state_version"`
+	Amount            int64  `json:"amount"`
+	Currency          string `json:"currency"`
+	ExpiresAt         int64  `json:"expires_at"`
 }
 
 type VeifyConfig struct {

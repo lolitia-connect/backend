@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/payment/alipay"
 	"github.com/perfect-panel/server/pkg/payment/alipayplus"
+	"github.com/perfect-panel/server/pkg/payment/cryptomus"
 	"github.com/perfect-panel/server/pkg/payment/epay"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -127,6 +129,18 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		url, err := l.CryptoSaaSPayment(paymentConfig, orderInfo, req.ReturnUrl)
 		if err != nil {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "epayPayment error: %v", err.Error())
+		}
+		resp = &types.CheckoutOrderResponse{
+			CheckoutUrl: url,
+			Type:        "url", // Client should redirect to URL
+		}
+
+	case paymentPlatform.Cryptomus:
+		// Process Cryptomus crypto payment - creates a hosted invoice for redirect
+		url, err := l.CryptomusPayment(paymentConfig, orderInfo, req.ReturnUrl)
+		if err != nil {
+			l.Logger.Errorw("[PurchaseCheckout] CryptomusPayment error", zap.Any("error", err.Error()))
+			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CryptomusPayment error: %v", err.Error())
 		}
 		resp = &types.CheckoutOrderResponse{
 			CheckoutUrl: url,
@@ -447,7 +461,7 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 	}
 
 	// Create payment URL for user redirection
-	url := client.CreatePayUrl(epay.Order{
+	url, err := client.CreatePayUrl(epay.Order{
 		Name:      payName,
 		Amount:    amount,
 		OrderNo:   info.OrderNo,
@@ -455,6 +469,10 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 		NotifyUrl: notifyUrl,
 		ReturnUrl: returnUrl,
 	})
+	if err != nil {
+		l.Logger.Errorw("[PurchaseCheckout] CreatePayUrl error", zap.Any("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CreatePayUrl error: %s", err.Error())
+	}
 	return url, nil
 }
 
@@ -524,7 +542,7 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 	}
 
 	// Create payment URL for user redirection
-	url := client.CreatePayUrl(epay.Order{
+	url, err := client.CreatePayUrl(epay.Order{
 		Name:      payName,
 		Amount:    amount,
 		OrderNo:   info.OrderNo,
@@ -532,7 +550,108 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 		NotifyUrl: notifyUrl,
 		ReturnUrl: returnUrl,
 	})
+	if err != nil {
+		l.Logger.Errorw("[PurchaseCheckout] CreatePayUrl error", zap.Any("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CreatePayUrl error: %s", err.Error())
+	}
 	return url, nil
+}
+
+// CryptomusPayment processes a Cryptomus crypto payment by creating a hosted
+// invoice in the payment currency; the gateway converts it to the payer's
+// chosen cryptocurrency at payment time.
+func (l *PurchaseCheckoutLogic) CryptomusPayment(config *payment.Payment, info *order.Order, returnUrl string) (string, error) {
+	cryptomusConfig := &payment.CryptomusConfig{}
+	if err := cryptomusConfig.Unmarshal([]byte(config.Config)); err != nil {
+		l.Logger.Errorw("[PurchaseCheckout] Unmarshal Cryptomus config error", zap.Any("error", err.Error()))
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
+	}
+	client := cryptomus.NewClient(cryptomus.Config{
+		MerchantID: cryptomusConfig.MerchantID,
+		APIKey:     cryptomusConfig.APIKey,
+	})
+
+	// Resolve the currency the invoice is denominated in.
+	currency := strings.ToUpper(strings.TrimSpace(config.CurrencyUnit))
+	if currency == "" {
+		currency = strings.ToUpper(l.svcCtx.Config.Currency.Unit)
+	}
+
+	// Convert the order amount into minor units of the payment currency.
+	converted, err := l.queryPaymentMethodExchangeRate(config, info.Amount, currency)
+	if err != nil {
+		l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", err.Error()))
+		return "", err
+	}
+	amount := int64(math.Round(converted * 100))
+	if amount <= 0 {
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "invalid Cryptomus payment amount")
+	}
+
+	// A pending order owns exactly one Cryptomus invoice. Reuse the one already
+	// claimed by the order so checkout retries stay on the same hosted URL.
+	if info.TradeNo != "" {
+		invoice, lookupErr := client.GetInvoice(info.TradeNo, "")
+		if lookupErr == nil && invoice.OrderNo == info.OrderNo && invoice.URL != "" {
+			return invoice.URL, nil
+		}
+	}
+
+	// Build notification URL for payment status callbacks.
+	notifyUrl := ""
+	if config.Domain != "" {
+		notifyUrl = strings.TrimSuffix(config.Domain, "/")
+		if report.IsGatewayMode() {
+			notifyUrl += "/api/"
+		}
+		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
+	} else {
+		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
+		if !ok {
+			host = l.svcCtx.Config.Host
+		}
+		notifyUrl = "https://" + strings.TrimSuffix(host, "/")
+		if report.IsGatewayMode() {
+			notifyUrl += "/api"
+		}
+		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
+	}
+
+	invoice, err := client.CreateInvoice(cryptomus.Order{
+		OrderNo:   info.OrderNo,
+		Amount:    amount,
+		Currency:  currency,
+		NotifyURL: notifyUrl,
+		ReturnURL: returnUrl,
+	})
+	if err != nil {
+		// The gateway enforces one active invoice per order number. A previous
+		// checkout may have created it and crashed before claiming the trade
+		// number, so recover that invoice instead of failing the checkout.
+		existing, queryErr := client.GetInvoice("", info.OrderNo)
+		if queryErr != nil {
+			l.Logger.Errorw("[PurchaseCheckout] Create Cryptomus invoice error", zap.Any("error", err.Error()))
+			return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "create Cryptomus invoice: %s", err.Error())
+		}
+		invoice = existing
+	}
+
+	if invoice.OrderNo != info.OrderNo {
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Cryptomus invoice order mismatch")
+	}
+	if invoice.URL == "" {
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Cryptomus invoice has no checkout URL")
+	}
+
+	// Claim the invoice on the order for idempotent retries and callbacks.
+	if info.TradeNo == "" {
+		info.TradeNo = invoice.UUID
+		if err = l.svcCtx.Store.Order().Update(l.ctx, info); err != nil {
+			l.Logger.Errorw("[PurchaseCheckout] Update order trade no error", zap.Any("error", err.Error()))
+			return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
+		}
+	}
+	return invoice.URL, nil
 }
 
 // queryExchangeRate converts the order amount from system currency to target currency
@@ -648,40 +767,27 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 	}
 
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		// Retrieve latest user information inside the transaction.
-		userInfo, err := store.User().FindOne(l.ctx, u.Id)
+		// Retrieve the latest wallet inside the transaction.
+		walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)
 		if err != nil {
 			return err
 		}
 
 		// Check if user has sufficient total balance (regular + gift)
-		totalAvailable := userInfo.Balance + userInfo.GiftAmount
+		totalAvailable := walletInfo.Available()
 		if totalAvailable < o.Amount {
 			return errors.Wrapf(xerr.NewErrCode(xerr.InsufficientBalance),
 				"Insufficient balance: required %d, available %d", o.Amount, totalAvailable)
 		}
 
 		// Calculate payment distribution: prioritize gift amount first
-		var giftUsed, balanceUsed int64
-		remainingAmount := o.Amount
+		giftUsed, balanceUsed := walletInfo.Reserve(o.Amount)
 
-		if userInfo.GiftAmount >= remainingAmount {
-			// Gift amount covers the entire payment
-			giftUsed = remainingAmount
-			balanceUsed = 0
-		} else {
-			// Use all available gift amount, then regular balance
-			giftUsed = userInfo.GiftAmount
-			balanceUsed = remainingAmount - giftUsed
-		}
+		// Update wallet balances
+		walletInfo.GiftAmount -= giftUsed
+		walletInfo.Balance -= balanceUsed
 
-		// Update user balances
-		userInfo.GiftAmount -= giftUsed
-		userInfo.Balance -= balanceUsed
-
-		// Save updated user information
-		err = store.User().Update(l.ctx, userInfo)
-		if err != nil {
+		if err = store.Wallet().UpdateBalanceFields(l.ctx, walletInfo); err != nil {
 			return err
 		}
 
@@ -691,14 +797,14 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 				OrderNo: o.OrderNo,
 				Type:    log.GiftTypeReduce, // Type 2 represents gift amount decrease/usage
 				Amount:  giftUsed,
-				Balance: userInfo.GiftAmount,
+				Balance: walletInfo.GiftAmount,
 				Remark:  "Purchase payment",
 			}
 			content, _ := giftLog.Marshal()
 
 			err = store.Log().Insert(l.ctx, &log.SystemLog{
 				Type:     log.TypeGift.Uint8(),
-				ObjectID: userInfo.Id,
+				ObjectID: u.Id,
 				Date:     time.Now().Format(time.DateOnly),
 				Content:  string(content),
 			})
@@ -713,13 +819,13 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 				Amount:    balanceUsed,
 				Type:      log.BalanceTypePayment, // Type 3 represents payment deduction
 				OrderNo:   o.OrderNo,
-				Balance:   userInfo.Balance,
+				Balance:   walletInfo.Balance,
 				Timestamp: time.Now().UnixMilli(),
 			}
 			content, _ := balanceLog.Marshal()
 			err = store.Log().Insert(l.ctx, &log.SystemLog{
 				Type:     log.TypeBalance.Uint8(),
-				ObjectID: userInfo.Id,
+				ObjectID: u.Id,
 				Date:     time.Now().Format(time.DateOnly),
 				Content:  string(content),
 			})

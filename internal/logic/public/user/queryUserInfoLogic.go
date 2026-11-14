@@ -39,6 +39,11 @@ func (l *QueryUserInfoLogic) QueryUserInfo() (resp *types.User, err error) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 	tool.DeepCopy(resp, u)
+	if walletInfo, err := l.svcCtx.Store.Wallet().FindOne(l.ctx, u.Id); err == nil {
+		resp.Balance = walletInfo.Balance
+		resp.GiftAmount = walletInfo.GiftAmount
+		resp.Commission = walletInfo.Commission
+	}
 
 	var userMethods []types.UserAuthMethod
 	for _, method := range resp.AuthMethods {

@@ -258,6 +258,62 @@ func (_c *OrderCreate) SetNillableStatus(v *uint8) *OrderCreate {
 	return _c
 }
 
+// SetStateVersion sets the "state_version" field.
+func (_c *OrderCreate) SetStateVersion(v int64) *OrderCreate {
+	_c.mutation.SetStateVersion(v)
+	return _c
+}
+
+// SetNillableStateVersion sets the "state_version" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableStateVersion(v *int64) *OrderCreate {
+	if v != nil {
+		_c.SetStateVersion(*v)
+	}
+	return _c
+}
+
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (_c *OrderCreate) SetIdempotencyKey(v string) *OrderCreate {
+	_c.mutation.SetIdempotencyKey(v)
+	return _c
+}
+
+// SetNillableIdempotencyKey sets the "idempotency_key" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableIdempotencyKey(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetIdempotencyKey(*v)
+	}
+	return _c
+}
+
+// SetIdempotencyHash sets the "idempotency_hash" field.
+func (_c *OrderCreate) SetIdempotencyHash(v string) *OrderCreate {
+	_c.mutation.SetIdempotencyHash(v)
+	return _c
+}
+
+// SetNillableIdempotencyHash sets the "idempotency_hash" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableIdempotencyHash(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetIdempotencyHash(*v)
+	}
+	return _c
+}
+
+// SetGuestCheckoutTokenHash sets the "guest_checkout_token_hash" field.
+func (_c *OrderCreate) SetGuestCheckoutTokenHash(v string) *OrderCreate {
+	_c.mutation.SetGuestCheckoutTokenHash(v)
+	return _c
+}
+
+// SetNillableGuestCheckoutTokenHash sets the "guest_checkout_token_hash" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableGuestCheckoutTokenHash(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetGuestCheckoutTokenHash(*v)
+	}
+	return _c
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_c *OrderCreate) SetSubscribeID(v int64) *OrderCreate {
 	_c.mutation.SetSubscribeID(v)
@@ -429,6 +485,10 @@ func (_c *OrderCreate) defaults() {
 		v := order.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.StateVersion(); !ok {
+		v := order.DefaultStateVersion
+		_c.mutation.SetStateVersion(v)
+	}
 	if _, ok := _c.mutation.SubscribeID(); !ok {
 		v := order.DefaultSubscribeID
 		_c.mutation.SetSubscribeID(v)
@@ -513,6 +573,24 @@ func (_c *OrderCreate) check() error {
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Order.status"`)}
+	}
+	if _, ok := _c.mutation.StateVersion(); !ok {
+		return &ValidationError{Name: "state_version", err: errors.New(`ent: missing required field "Order.state_version"`)}
+	}
+	if v, ok := _c.mutation.IdempotencyKey(); ok {
+		if err := order.IdempotencyKeyValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_key": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.IdempotencyHash(); ok {
+		if err := order.IdempotencyHashValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_hash", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_hash": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.GuestCheckoutTokenHash(); ok {
+		if err := order.GuestCheckoutTokenHashValidator(v); err != nil {
+			return &ValidationError{Name: "guest_checkout_token_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_checkout_token_hash": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.SubscribeID(); !ok {
 		return &ValidationError{Name: "subscribe_id", err: errors.New(`ent: missing required field "Order.subscribe_id"`)}
@@ -630,6 +708,22 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(order.FieldStatus, field.TypeUint8, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.StateVersion(); ok {
+		_spec.SetField(order.FieldStateVersion, field.TypeInt64, value)
+		_node.StateVersion = value
+	}
+	if value, ok := _c.mutation.IdempotencyKey(); ok {
+		_spec.SetField(order.FieldIdempotencyKey, field.TypeString, value)
+		_node.IdempotencyKey = &value
+	}
+	if value, ok := _c.mutation.IdempotencyHash(); ok {
+		_spec.SetField(order.FieldIdempotencyHash, field.TypeString, value)
+		_node.IdempotencyHash = &value
+	}
+	if value, ok := _c.mutation.GuestCheckoutTokenHash(); ok {
+		_spec.SetField(order.FieldGuestCheckoutTokenHash, field.TypeString, value)
+		_node.GuestCheckoutTokenHash = &value
 	}
 	if value, ok := _c.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)

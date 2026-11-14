@@ -76,6 +76,12 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 		if err != nil {
 			return err
 		}
+		// Refunds land on the billing-owned wallet, so the current money
+		// snapshot is read inside the transaction.
+		walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)
+		if err != nil {
+			return err
+		}
 		// Calculate refund distribution based on payment method and gift amount priority
 		var balance, gift int64
 		if orderInfo.Method == "balance" {
@@ -83,20 +89,20 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 			if orderInfo.GiftAmount >= remainingAmount {
 				// Gift amount covers the entire refund - refund all to gift balance
 				gift = remainingAmount
-				balance = u.Balance // Regular balance remains unchanged
+				balance = walletInfo.Balance // Regular balance remains unchanged
 			} else {
 				// Gift amount insufficient - refund to gift first, remainder to regular balance
 				gift = orderInfo.GiftAmount
-				balance = u.Balance + (remainingAmount - orderInfo.GiftAmount)
+				balance = walletInfo.Balance + (remainingAmount - orderInfo.GiftAmount)
 			}
 		} else {
 			// For non-balance payment orders, refund entirely to regular balance
-			balance = remainingAmount + u.Balance
+			balance = remainingAmount + walletInfo.Balance
 			gift = 0
 		}
 
 		// Create balance log entry only if there's an actual regular balance refund
-		balanceRefundAmount := balance - u.Balance
+		balanceRefundAmount := balance - walletInfo.Balance
 		if balanceRefundAmount > 0 {
 			balanceLog := log.Balance{
 				OrderNo:   orderInfo.OrderNo,
@@ -125,7 +131,7 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 				OrderNo:     orderInfo.OrderNo,
 				Type:        log.GiftTypeIncrease, // Type 1 represents gift amount increase
 				Amount:      gift,
-				Balance:     u.GiftAmount + gift,
+				Balance:     walletInfo.GiftAmount + gift,
 				Remark:      "Unsubscribe refund",
 			}
 			content, _ := giftLog.Marshal()
@@ -138,13 +144,13 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 			}); err != nil {
 				return err
 			}
-			// Update user's gift amount
-			u.GiftAmount += gift
+			// Update the wallet gift amount
+			walletInfo.GiftAmount += gift
 		}
 
-		// Update user's regular balance and save changes to database
-		u.Balance = balance
-		return store.User().Update(l.ctx, u)
+		// Persist the refunded regular balance and gift amount
+		walletInfo.Balance = balance
+		return store.Wallet().UpdateBalanceFields(l.ctx, walletInfo)
 	})
 
 	if err != nil {

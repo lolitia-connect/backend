@@ -68,20 +68,6 @@ func (_c *UserCreate) SetNillableAvatar(v *string) *UserCreate {
 	return _c
 }
 
-// SetBalance sets the "balance" field.
-func (_c *UserCreate) SetBalance(v int64) *UserCreate {
-	_c.mutation.SetBalance(v)
-	return _c
-}
-
-// SetNillableBalance sets the "balance" field if the given value is not nil.
-func (_c *UserCreate) SetNillableBalance(v *int64) *UserCreate {
-	if v != nil {
-		_c.SetBalance(*v)
-	}
-	return _c
-}
-
 // SetReferCode sets the "refer_code" field.
 func (_c *UserCreate) SetReferCode(v string) *UserCreate {
 	_c.mutation.SetReferCode(v)
@@ -110,20 +96,6 @@ func (_c *UserCreate) SetNillableRefererID(v *int64) *UserCreate {
 	return _c
 }
 
-// SetCommission sets the "commission" field.
-func (_c *UserCreate) SetCommission(v int64) *UserCreate {
-	_c.mutation.SetCommission(v)
-	return _c
-}
-
-// SetNillableCommission sets the "commission" field if the given value is not nil.
-func (_c *UserCreate) SetNillableCommission(v *int64) *UserCreate {
-	if v != nil {
-		_c.SetCommission(*v)
-	}
-	return _c
-}
-
 // SetReferralPercentage sets the "referral_percentage" field.
 func (_c *UserCreate) SetReferralPercentage(v uint8) *UserCreate {
 	_c.mutation.SetReferralPercentage(v)
@@ -148,20 +120,6 @@ func (_c *UserCreate) SetOnlyFirstPurchase(v bool) *UserCreate {
 func (_c *UserCreate) SetNillableOnlyFirstPurchase(v *bool) *UserCreate {
 	if v != nil {
 		_c.SetOnlyFirstPurchase(*v)
-	}
-	return _c
-}
-
-// SetGiftAmount sets the "gift_amount" field.
-func (_c *UserCreate) SetGiftAmount(v int64) *UserCreate {
-	_c.mutation.SetGiftAmount(v)
-	return _c
-}
-
-// SetNillableGiftAmount sets the "gift_amount" field if the given value is not nil.
-func (_c *UserCreate) SetNillableGiftAmount(v *int64) *UserCreate {
-	if v != nil {
-		_c.SetGiftAmount(*v)
 	}
 	return _c
 }
@@ -351,10 +309,6 @@ func (_c *UserCreate) defaults() {
 		v := user.DefaultAlgo
 		_c.mutation.SetAlgo(v)
 	}
-	if _, ok := _c.mutation.Balance(); !ok {
-		v := user.DefaultBalance
-		_c.mutation.SetBalance(v)
-	}
 	if _, ok := _c.mutation.ReferCode(); !ok {
 		v := user.DefaultReferCode
 		_c.mutation.SetReferCode(v)
@@ -363,10 +317,6 @@ func (_c *UserCreate) defaults() {
 		v := user.DefaultRefererID
 		_c.mutation.SetRefererID(v)
 	}
-	if _, ok := _c.mutation.Commission(); !ok {
-		v := user.DefaultCommission
-		_c.mutation.SetCommission(v)
-	}
 	if _, ok := _c.mutation.ReferralPercentage(); !ok {
 		v := user.DefaultReferralPercentage
 		_c.mutation.SetReferralPercentage(v)
@@ -374,10 +324,6 @@ func (_c *UserCreate) defaults() {
 	if _, ok := _c.mutation.OnlyFirstPurchase(); !ok {
 		v := user.DefaultOnlyFirstPurchase
 		_c.mutation.SetOnlyFirstPurchase(v)
-	}
-	if _, ok := _c.mutation.GiftAmount(); !ok {
-		v := user.DefaultGiftAmount
-		_c.mutation.SetGiftAmount(v)
 	}
 	if _, ok := _c.mutation.Enable(); !ok {
 		v := user.DefaultEnable
@@ -436,9 +382,6 @@ func (_c *UserCreate) check() error {
 			return &ValidationError{Name: "salt", err: fmt.Errorf(`ent: validator failed for field "User.salt": %w`, err)}
 		}
 	}
-	if _, ok := _c.mutation.Balance(); !ok {
-		return &ValidationError{Name: "balance", err: errors.New(`ent: missing required field "User.balance"`)}
-	}
 	if _, ok := _c.mutation.ReferCode(); !ok {
 		return &ValidationError{Name: "refer_code", err: errors.New(`ent: missing required field "User.refer_code"`)}
 	}
@@ -450,17 +393,11 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.RefererID(); !ok {
 		return &ValidationError{Name: "referer_id", err: errors.New(`ent: missing required field "User.referer_id"`)}
 	}
-	if _, ok := _c.mutation.Commission(); !ok {
-		return &ValidationError{Name: "commission", err: errors.New(`ent: missing required field "User.commission"`)}
-	}
 	if _, ok := _c.mutation.ReferralPercentage(); !ok {
 		return &ValidationError{Name: "referral_percentage", err: errors.New(`ent: missing required field "User.referral_percentage"`)}
 	}
 	if _, ok := _c.mutation.OnlyFirstPurchase(); !ok {
 		return &ValidationError{Name: "only_first_purchase", err: errors.New(`ent: missing required field "User.only_first_purchase"`)}
-	}
-	if _, ok := _c.mutation.GiftAmount(); !ok {
-		return &ValidationError{Name: "gift_amount", err: errors.New(`ent: missing required field "User.gift_amount"`)}
 	}
 	if _, ok := _c.mutation.Enable(); !ok {
 		return &ValidationError{Name: "enable", err: errors.New(`ent: missing required field "User.enable"`)}
@@ -534,10 +471,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldAvatar, field.TypeString, value)
 		_node.Avatar = value
 	}
-	if value, ok := _c.mutation.Balance(); ok {
-		_spec.SetField(user.FieldBalance, field.TypeInt64, value)
-		_node.Balance = value
-	}
 	if value, ok := _c.mutation.ReferCode(); ok {
 		_spec.SetField(user.FieldReferCode, field.TypeString, value)
 		_node.ReferCode = value
@@ -546,10 +479,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldRefererID, field.TypeInt64, value)
 		_node.RefererID = value
 	}
-	if value, ok := _c.mutation.Commission(); ok {
-		_spec.SetField(user.FieldCommission, field.TypeInt64, value)
-		_node.Commission = value
-	}
 	if value, ok := _c.mutation.ReferralPercentage(); ok {
 		_spec.SetField(user.FieldReferralPercentage, field.TypeUint8, value)
 		_node.ReferralPercentage = value
@@ -557,10 +486,6 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.OnlyFirstPurchase(); ok {
 		_spec.SetField(user.FieldOnlyFirstPurchase, field.TypeBool, value)
 		_node.OnlyFirstPurchase = value
-	}
-	if value, ok := _c.mutation.GiftAmount(); ok {
-		_spec.SetField(user.FieldGiftAmount, field.TypeInt64, value)
-		_node.GiftAmount = value
 	}
 	if value, ok := _c.mutation.Enable(); ok {
 		_spec.SetField(user.FieldEnable, field.TypeBool, value)

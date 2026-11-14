@@ -46,6 +46,7 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 	defer func(svcCtx *svc.ServiceContext) {
 		if userInfo != nil && userInfo.Id != 0 {
 			loginLog := log.Login{
+				Metadata:  log.MetadataFromContext(l.ctx),
 				Method:    "email",
 				LoginIP:   req.IP,
 				UserAgent: req.UserAgent,
@@ -95,6 +96,8 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 	if !*userInfo.Enable {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserDisabled), "user account is disabled")
 	}
+
+	upgradePasswordAfterLogin(l.ctx, l.svcCtx, l.Logger, userInfo, req.Password)
 
 	// Bind device to user if identifier is provided
 	if req.Identifier != "" {

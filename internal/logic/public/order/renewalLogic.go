@@ -3,10 +3,13 @@ package order
 import (
 	"context"
 	"encoding/json"
-	"github.com/perfect-panel/server/ent"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
+
 	"github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/orderaudit"
+	"github.com/perfect-panel/server/internal/orderflow"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/hibiken/asynq"
@@ -130,18 +133,15 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	}
 	amount -= coupon
 
+	walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)
+	if err != nil {
+		l.Logger.Errorw("[Renewal] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find wallet error: %v", err.Error())
+	}
 	var deductionAmount int64
-	// Check user deduction amount
-	if u.GiftAmount > 0 {
-		if u.GiftAmount >= amount {
-			deductionAmount = amount
-			u.GiftAmount -= deductionAmount
-			amount = 0
-		} else {
-			deductionAmount = u.GiftAmount
-			amount -= u.GiftAmount
-			u.GiftAmount = 0
-		}
+	// Check wallet deduction amount
+	if walletInfo.GiftAmount > 0 {
+		deductionAmount, amount = walletInfo.Reserve(amount)
 	}
 
 	var feeAmount int64
@@ -181,13 +181,22 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		SubscribeId:    userSubscribe.SubscribeId,
 		SubscribeToken: userSubscribe.Token,
 	}
+	orderflow.ApplyIdempotency(l.ctx, &orderInfo)
 	// Database transaction
 	err = store.InTx(l.ctx, func(txStore repository.Store) error {
-		// update user deduction && Pre deduction ,Return after canceling the order
+		// Reserve gift credit from a wallet read inside the transaction so a
+		// concurrent order cannot spend the same balance.
 		if orderInfo.GiftAmount > 0 {
-			// update user deduction && Pre deduction ,Return after canceling the order
-			if err := txStore.User().Update(l.ctx, u); err != nil {
-				l.Logger.Errorw("[Renewal] Database update error", zap.Any("error", err.Error()), zap.Any("user", u))
+			fresh, err := txStore.Wallet().FindOne(l.ctx, u.Id)
+			if err != nil {
+				return err
+			}
+			if fresh.GiftAmount < orderInfo.GiftAmount {
+				return errors.Wrapf(xerr.NewErrCode(xerr.InsufficientBalance), "insufficient gift balance")
+			}
+			fresh.GiftAmount -= orderInfo.GiftAmount
+			if err := txStore.Wallet().UpdateBalanceFields(l.ctx, fresh); err != nil {
+				l.Logger.Errorw("[Renewal] Database update error", zap.Any("error", err.Error()), zap.Any("wallet", fresh))
 				return err
 			}
 			// create deduction record
@@ -196,7 +205,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 				OrderNo:     orderInfo.OrderNo,
 				SubscribeId: 0,
 				Amount:      orderInfo.GiftAmount,
-				Balance:     u.GiftAmount,
+				Balance:     fresh.GiftAmount,
 				Remark:      "Renewal order deduction",
 				Timestamp:   time.Now().UnixMilli(),
 			}
@@ -213,7 +222,10 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 			}
 		}
 		// insert order
-		return txStore.Order().Insert(l.ctx, &orderInfo)
+		if err = txStore.Order().Insert(l.ctx, &orderInfo); err != nil {
+			return err
+		}
+		return orderaudit.InsertCreated(l.ctx, txStore.Log(), &orderInfo, orderaudit.SourceUser)
 	})
 	if err != nil {
 		l.Logger.Errorw("[Renewal] Database insert error", zap.Any("error", err.Error()), zap.Any("order", orderInfo))

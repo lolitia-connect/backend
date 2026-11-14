@@ -70,6 +70,14 @@ func ContextFromRequestContext(ctx *app.RequestContext) (*Context, bool) {
 	return nil, false
 }
 
+// Raw exposes the underlying hertz context for the few handlers that need
+// something this wrapper cannot express, such as the server-sent-event writer.
+// Prefer the wrapper methods everywhere else: they keep the response state and
+// the wrapper's own view of it in sync.
+func (c *Context) Raw() *app.RequestContext {
+	return c.ctx
+}
+
 func Wrap(handler HandlerFunc) app.HandlerFunc {
 	return func(base context.Context, ctx *app.RequestContext) {
 		c := NewContext(base, ctx)

@@ -1,5 +1,7 @@
 package types
 
+import "github.com/perfect-panel/server/pkg/requestmeta"
+
 const (
 	// ForthwithSendSms forthwith send email
 	ForthwithSendSms = "forthwith:sms:send"
@@ -7,6 +9,7 @@ const (
 
 type (
 	SendSmsPayload struct {
+		requestmeta.Metadata
 		Type          uint8  `json:"type"`
 		Telephone     string `json:"telephone"`
 		TelephoneArea string `json:"area"`

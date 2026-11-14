@@ -131,6 +131,15 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 	if err != nil {
 		return nil, err
 	}
+	// Layer the request's query string over the application's stored defaults so
+	// a template can rely on its own conventions while remaining overridable.
+	defaultParams, err := targetApp.DefaultParamValues()
+	if err != nil {
+		l.Logger.Errorw("[SubscribeLogic] Parse default params failed, ignoring", zap.Any("error", err.Error()), zap.Any("appId", targetApp.Id))
+		defaultParams = nil
+	}
+	params := mergeParams(defaultParams, req.Params)
+
 	a := adapter.NewAdapter(
 		targetApp.SubscribeTemplate,
 		adapter.WithServers(servers),
@@ -146,7 +155,7 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 			TrafficUnlimited: userSubscribe.TrafficUnlimited,
 			SubscribeURL:     l.getSubscribeV2URL(),
 		}),
-		adapter.WithParams(req.Params),
+		adapter.WithParams(params),
 	)
 
 	zap.S().Debugf("[SubscribeLogic] Building client config for user %d with URI %s", userSubscribe.UserId, l.getSubscribeV2URL())

@@ -33,6 +33,8 @@ type SubscribeApplication struct {
 	SubscribeTemplate string `json:"subscribe_template,omitempty"`
 	// OutputFormat holds the value of the "output_format" field.
 	OutputFormat string `json:"output_format,omitempty"`
+	// DefaultParams holds the value of the "default_params" field.
+	DefaultParams string `json:"default_params,omitempty"`
 	// DownloadLink holds the value of the "download_link" field.
 	DownloadLink string `json:"download_link,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -51,7 +53,7 @@ func (*SubscribeApplication) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case subscribeapplication.FieldID:
 			values[i] = new(sql.NullInt64)
-		case subscribeapplication.FieldName, subscribeapplication.FieldIcon, subscribeapplication.FieldDescription, subscribeapplication.FieldScheme, subscribeapplication.FieldUserAgent, subscribeapplication.FieldSubscribeTemplate, subscribeapplication.FieldOutputFormat, subscribeapplication.FieldDownloadLink:
+		case subscribeapplication.FieldName, subscribeapplication.FieldIcon, subscribeapplication.FieldDescription, subscribeapplication.FieldScheme, subscribeapplication.FieldUserAgent, subscribeapplication.FieldSubscribeTemplate, subscribeapplication.FieldOutputFormat, subscribeapplication.FieldDefaultParams, subscribeapplication.FieldDownloadLink:
 			values[i] = new(sql.NullString)
 		case subscribeapplication.FieldCreatedAt, subscribeapplication.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -123,6 +125,12 @@ func (_m *SubscribeApplication) assignValues(columns []string, values []any) err
 				return fmt.Errorf("unexpected type %T for field output_format", values[i])
 			} else if value.Valid {
 				_m.OutputFormat = value.String
+			}
+		case subscribeapplication.FieldDefaultParams:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field default_params", values[i])
+			} else if value.Valid {
+				_m.DefaultParams = value.String
 			}
 		case subscribeapplication.FieldDownloadLink:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -201,6 +209,9 @@ func (_m *SubscribeApplication) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("output_format=")
 	builder.WriteString(_m.OutputFormat)
+	builder.WriteString(", ")
+	builder.WriteString("default_params=")
+	builder.WriteString(_m.DefaultParams)
 	builder.WriteString(", ")
 	builder.WriteString("download_link=")
 	builder.WriteString(_m.DownloadLink)

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/model/wallet"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/phone"
@@ -42,9 +43,23 @@ func (l *GetUserListLogic) GetUserList(req *types.GetUserListRequest) (*types.Ge
 
 	userRespList := make([]types.User, 0, len(list))
 
+	var wallets map[int64]*wallet.Wallet
+	userIds := make([]int64, 0, len(list))
+	for _, item := range list {
+		userIds = append(userIds, item.Id)
+	}
+	if wallets, err = l.svcCtx.Store.Wallet().FindByUserIds(l.ctx, userIds); err != nil {
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "GetUserListLogic failed: %v", err.Error())
+	}
+
 	for _, item := range list {
 		var u types.User
 		tool.DeepCopy(&u, item)
+		if walletInfo, ok := wallets[item.Id]; ok {
+			u.Balance = walletInfo.Balance
+			u.GiftAmount = walletInfo.GiftAmount
+			u.Commission = walletInfo.Commission
+		}
 
 		// 处理 AuthMethods
 		authMethods := make([]types.UserAuthMethod, len(u.AuthMethods)) // 直接创建目标 slice

@@ -22,6 +22,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/ticket"
 	"github.com/perfect-panel/server/internal/model/traffic"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/model/wallet"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -37,6 +38,7 @@ type Store interface {
 	Log() log.Model
 	Node() node.Model
 	Order() order.Model
+	OrderEvent() order.EventModel
 	Payment() payment.Model
 	RedemptionCode() redemption.RedemptionCodeModel
 	RedemptionRecord() redemption.RedemptionRecordModel
@@ -46,6 +48,7 @@ type Store interface {
 	Ticket() ticket.Model
 	TrafficLog() traffic.Model
 	User() user.Model
+	Wallet() wallet.Model
 
 	InTx(ctx context.Context, fn func(store Store) error) error
 }
@@ -66,6 +69,7 @@ type StoreImpl struct {
 	log              log.Model
 	node             node.Model
 	order            order.Model
+	orderEvent       order.EventModel
 	payment          payment.Model
 	redemptionCode   redemption.RedemptionCodeModel
 	redemptionRecord redemption.RedemptionRecordModel
@@ -75,6 +79,7 @@ type StoreImpl struct {
 	ticket           ticket.Model
 	trafficLog       traffic.Model
 	user             user.Model
+	wallet           wallet.Model
 }
 
 func (s *StoreImpl) Ent() *ent.Client { return s.ent }
@@ -93,6 +98,7 @@ func NewStore(ec *ent.Client, rds *redis.Client) *StoreImpl {
 		log:              log.NewModel(ec),
 		node:             node.NewModel(ec, rds),
 		order:            order.NewModel(ec, rds),
+		orderEvent:       order.NewEventModel(ec),
 		payment:          payment.NewModel(ec),
 		redemptionCode:   redemption.NewRedemptionCodeModel(ec),
 		redemptionRecord: redemption.NewRedemptionRecordModel(ec),
@@ -102,6 +108,7 @@ func NewStore(ec *ent.Client, rds *redis.Client) *StoreImpl {
 		ticket:           ticket.NewModel(ec),
 		trafficLog:       traffic.NewModel(ec),
 		user:             user.NewModel(ec, rds),
+		wallet:           wallet.NewModel(ec),
 	}
 }
 
@@ -145,6 +152,10 @@ func (s *StoreImpl) Order() order.Model {
 	return s.order
 }
 
+func (s *StoreImpl) OrderEvent() order.EventModel {
+	return s.orderEvent
+}
+
 func (s *StoreImpl) Payment() payment.Model {
 	return s.payment
 }
@@ -179,6 +190,10 @@ func (s *StoreImpl) TrafficLog() traffic.Model {
 
 func (s *StoreImpl) User() user.Model {
 	return s.user
+}
+
+func (s *StoreImpl) Wallet() wallet.Model {
+	return s.wallet
 }
 
 func (s *StoreImpl) InTx(ctx context.Context, fn func(store Store) error) error {

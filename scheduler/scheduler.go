@@ -59,6 +59,20 @@ func (m *Service) Start() {
 		zap.S().Errorf("register recalculate group task failed: %s", err.Error())
 	}
 
+	// schedule order event publisher: every 5 seconds. This is both the retry
+	// path for a failed publish and the recovery path for events written while
+	// the queue was unavailable, so it runs far more often than any other task.
+	publishOrderEventsTask := asynq.NewTask(types.PublishOrderEvents, nil)
+	if _, err := m.server.Register("@every 5s", publishOrderEventsTask, asynq.MaxRetry(3)); err != nil {
+		zap.S().Errorf("register publish order events task failed: %s", err.Error())
+	}
+
+	// schedule order event cleanup: every day at 03:30
+	cleanupOrderEventsTask := asynq.NewTask(types.CleanupOrderEvents, nil)
+	if _, err := m.server.Register("30 3 * * *", cleanupOrderEventsTask, asynq.MaxRetry(2)); err != nil {
+		zap.S().Errorf("register cleanup order events task failed: %s", err.Error())
+	}
+
 	if err := m.server.Run(); err != nil {
 		zap.S().Errorf("run scheduler failed: %s", err.Error())
 	}

@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/perfect-panel/server/ent"
 	"time"
+
+	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/constant"
@@ -118,7 +119,7 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	pwd := tool.EncodePassWord(req.Password)
 	userInfo := &user.User{
 		Password:          pwd,
-		Algo:              "default",
+		Algo:              tool.PasswordAlgoArgon2id,
 		OnlyFirstPurchase: &l.svcCtx.Config.Invite.OnlyFirstPurchase,
 		AuthMethods: []user.AuthMethods{
 			{

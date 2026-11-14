@@ -21,6 +21,7 @@ type (
 		IsDefault         bool         `json:"is_default"`
 		SubscribeTemplate string       `json:"template"`
 		OutputFormat      string       `json:"output_format"`
+		DefaultParams     string       `json:"default_params,omitempty"`
 		DownloadLink      DownloadLink `json:"download_link,omitempty"`
 		CreatedAt         int64        `json:"created_at"`
 		UpdatedAt         int64        `json:"updated_at"`
@@ -38,6 +39,7 @@ type (
 		IsDefault         bool         `json:"is_default"`
 		SubscribeTemplate string       `json:"template"`
 		OutputFormat      string       `json:"output_format"`
+		DefaultParams     string       `json:"default_params,omitempty"`
 		DownloadLink      DownloadLink `json:"download_link"`
 	}
 	UpdateSubscribeApplicationRequest {
@@ -50,6 +52,7 @@ type (
 		IsDefault         bool         `json:"is_default"`
 		SubscribeTemplate string       `json:"template"`
 		OutputFormat      string       `json:"output_format"`
+		DefaultParams     string       `json:"default_params,omitempty"`
 		DownloadLink      DownloadLink `json:"download_link,omitempty"`
 	}
 	DeleteSubscribeApplicationRequest {

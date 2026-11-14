@@ -63,6 +63,15 @@ func (m *Service) Start() {
 		}
 	}
 
+	// Detect ambiguous email identities. Duplicated canonical emails make
+	// login/reset lookups non-deterministic; surface the problem at boot
+	// instead of failing unpredictably at request time. We log rather than
+	// panic so that an existing deployment with legacy case-variant rows is
+	// not taken offline by the upgrade.
+	if err := m.svc.Store.User().ValidateEmailIdentityUniqueness(context.Background()); err != nil {
+		zap.S().Errorf("email identity uniqueness check failed: %s", err.Error())
+	}
+
 	// get server port
 	port := m.svc.Config.Port
 	host := m.svc.Config.Host

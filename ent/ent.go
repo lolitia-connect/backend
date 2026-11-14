@@ -22,6 +22,7 @@ import (
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/order"
+	"github.com/perfect-panel/server/ent/orderevent"
 	"github.com/perfect-panel/server/ent/payment"
 	"github.com/perfect-panel/server/ent/redemptioncode"
 	"github.com/perfect-panel/server/ent/redemptionrecord"
@@ -41,6 +42,7 @@ import (
 	"github.com/perfect-panel/server/ent/userdevice"
 	"github.com/perfect-panel/server/ent/userdeviceonlinerecord"
 	"github.com/perfect-panel/server/ent/usersubscribe"
+	"github.com/perfect-panel/server/ent/userwallet"
 	"github.com/perfect-panel/server/ent/userwithdrawal"
 )
 
@@ -112,6 +114,7 @@ func checkColumn(t, c string) error {
 			node.Table:                   node.ValidColumn,
 			nodegroup.Table:              nodegroup.ValidColumn,
 			order.Table:                  order.ValidColumn,
+			orderevent.Table:             orderevent.ValidColumn,
 			payment.Table:                payment.ValidColumn,
 			redemptioncode.Table:         redemptioncode.ValidColumn,
 			redemptionrecord.Table:       redemptionrecord.ValidColumn,
@@ -131,6 +134,7 @@ func checkColumn(t, c string) error {
 			userdevice.Table:             userdevice.ValidColumn,
 			userdeviceonlinerecord.Table: userdeviceonlinerecord.ValidColumn,
 			usersubscribe.Table:          usersubscribe.ValidColumn,
+			userwallet.Table:             userwallet.ValidColumn,
 			userwithdrawal.Table:         userwithdrawal.ValidColumn,
 		})
 	})

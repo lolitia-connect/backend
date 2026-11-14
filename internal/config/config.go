@@ -8,31 +8,32 @@ import (
 )
 
 type Config struct {
-	Model         string          `yaml:"Model" default:"prod"`
-	Host          string          `yaml:"Host" default:"0.0.0.0"`
-	Port          int             `yaml:"Port" default:"8080"`
-	Debug         bool            `yaml:"Debug" default:"false"`
-	Transport     TransportConfig `yaml:"Transport"`
-	TLS           TLS             `yaml:"TLS"`
-	JwtAuth       JwtAuth         `yaml:"JwtAuth"`
-	Logger        logging.LogConf `yaml:"Logger"`
-	Database      orm.Config      `yaml:"Database"`
-	MySQL         *orm.Config     `yaml:"MySQL,omitempty"` // Deprecated: use Database.
-	Redis         RedisConfig     `yaml:"Redis"`
-	Site          SiteConfig      `yaml:"Site"`
-	Node          NodeConfig      `yaml:"Node"`
-	Mobile        MobileConfig    `yaml:"Mobile"`
-	Email         EmailConfig     `yaml:"Email"`
-	Device        DeviceConfig    `yaml:"device"`
-	Verify        Verify          `yaml:"Verify"`
-	VerifyCode    VerifyCode      `yaml:"VerifyCode"`
-	Register      RegisterConfig  `yaml:"Register"`
-	Subscribe     SubscribeConfig `yaml:"Subscribe"`
-	Invite        InviteConfig    `yaml:"Invite"`
-	Telegram      Telegram        `yaml:"Telegram"`
-	Log           Log             `yaml:"Log"`
-	Currency      Currency        `yaml:"Currency"`
-	Plugin        PluginConfig    `yaml:"Plugin"`
+	Model         string              `yaml:"Model" default:"prod"`
+	Host          string              `yaml:"Host" default:"0.0.0.0"`
+	Port          int                 `yaml:"Port" default:"8080"`
+	Debug         bool                `yaml:"Debug" default:"false"`
+	Transport     TransportConfig     `yaml:"Transport"`
+	TLS           TLS                 `yaml:"TLS"`
+	JwtAuth       JwtAuth             `yaml:"JwtAuth"`
+	Logger        logging.LogConf     `yaml:"Logger"`
+	Database      orm.Config          `yaml:"Database"`
+	MySQL         *orm.Config         `yaml:"MySQL,omitempty"` // Deprecated: use Database.
+	Redis         RedisConfig         `yaml:"Redis"`
+	Site          SiteConfig          `yaml:"Site"`
+	Node          NodeConfig          `yaml:"Node"`
+	Mobile        MobileConfig        `yaml:"Mobile"`
+	Email         EmailConfig         `yaml:"Email"`
+	Device        DeviceConfig        `yaml:"device"`
+	Verify        Verify              `yaml:"Verify"`
+	VerifyCode    VerifyCode          `yaml:"VerifyCode"`
+	Register      RegisterConfig      `yaml:"Register"`
+	Subscribe     SubscribeConfig     `yaml:"Subscribe"`
+	EdgeSubscribe EdgeSubscribeConfig `yaml:"EdgeSubscribe"`
+	Invite        InviteConfig        `yaml:"Invite"`
+	Telegram      Telegram            `yaml:"Telegram"`
+	Log           Log                 `yaml:"Log"`
+	Currency      Currency            `yaml:"Currency"`
+	Plugin        PluginConfig        `yaml:"Plugin"`
 	Administrator struct {
 		Email    string `yaml:"Email" default:"admin@ppanel.dev"`
 		Password string `yaml:"Password" default:"password"`
@@ -79,6 +80,28 @@ type SubscribeConfig struct {
 	UserAgentLimit  bool   `yaml:"UserAgentLimit" default:"false"`
 	UserAgentList   string `yaml:"UserAgentList" default:""`
 	ShowTutorial    bool   `yaml:"ShowTutorial" default:"true"`
+	// ProfileUpdateInterval and ProfileWebPageURL are surfaced to clients that
+	// refresh a subscription profile on their own schedule; 0/empty means the
+	// field is omitted from the response.
+	ProfileUpdateInterval int64  `yaml:"ProfileUpdateInterval" default:"0"`
+	ProfileWebPageURL     string `yaml:"ProfileWebPageURL" default:""`
+}
+
+// EdgeSubscribeConfig enables the signed Edge Manifest API, a private contract
+// consumed by a trusted renderer (currently a Cloudflare Worker). It is disabled
+// by default because enabling it exposes an HMAC-authenticated endpoint that
+// mints user credentials.
+type EdgeSubscribeConfig struct {
+	Enabled             bool                     `yaml:"Enabled" default:"false"`
+	MaxClockSkewSeconds int64                    `yaml:"MaxClockSkewSeconds" default:"0"`
+	Keys                []EdgeSubscribeAccessKey `yaml:"Keys"`
+}
+
+// EdgeSubscribeAccessKey is one HMAC credential. Secret is shared with the
+// renderer and must be rotated by adding a new key before removing the old one.
+type EdgeSubscribeAccessKey struct {
+	ID     string `yaml:"ID"`
+	Secret string `yaml:"Secret"`
 }
 
 type RegisterConfig struct {
@@ -105,6 +128,10 @@ type EmailConfig struct {
 	ExpirationEmailTemplate    string `yaml:"expiration_email_template"`
 	MaintenanceEmailTemplate   string `yaml:"maintenance_email_template"`
 	TrafficExceedEmailTemplate string `yaml:"traffic_exceed_email_template"`
+	VerifyEmailSubject         string `yaml:"verify_email_subject"`
+	ExpirationEmailSubject     string `yaml:"expiration_email_subject"`
+	MaintenanceEmailSubject    string `yaml:"maintenance_email_subject"`
+	TrafficExceedEmailSubject  string `yaml:"traffic_exceed_email_subject"`
 }
 
 type MobileConfig struct {

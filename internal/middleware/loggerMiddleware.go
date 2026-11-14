@@ -10,6 +10,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/hertzx"
+	"github.com/perfect-panel/server/pkg/logredact"
+	"github.com/perfect-panel/server/pkg/requestmeta"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -17,6 +19,18 @@ import (
 
 func LoggerMiddleware(svc *svc.ServiceContext) app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
+		// Capture request metadata and store in context
+		clientIP := ctx.ClientIP()
+		userAgent := string(ctx.UserAgent())
+		metadata := requestmeta.New(clientIP, userAgent)
+
+		// Enrich with IP metadata if available
+		if svc.GeoIP != nil {
+			metadata = svc.GeoIP.EnrichMetadata(metadata)
+		}
+
+		c = requestmeta.With(c, metadata)
+
 		start := time.Now()
 		ctx.Next(c)
 
@@ -26,19 +40,22 @@ func LoggerMiddleware(svc *svc.ServiceContext) app.HandlerFunc {
 		path := string(ctx.Path())
 		host := string(ctx.Host())
 
+		// The request line and query string carry credentials (subscription
+		// tokens, secret_key) and the bodies can carry identifiers, so every
+		// free-text field goes through the redactor before it reaches a sink.
 		logs := []zap.Field{
 			zap.Int("status", responseStatus),
-			zap.String("request", method+" "+host+string(ctx.URI().RequestURI())),
-			zap.String("query", string(ctx.URI().QueryString())),
+			zap.String("request", logredact.Text(method+" "+host+string(ctx.URI().RequestURI()))),
+			zap.String("query", logredact.Text(string(ctx.URI().QueryString()))),
 			zap.String("ip", ctx.ClientIP()),
 			zap.String("user-agent", string(ctx.UserAgent())),
 		}
 		if errMessage := hertzxErrorMessage(ctx); errMessage != "" {
-			logs = append(logs, zap.Any("error", errMessage))
+			logs = append(logs, zap.Any("error", logredact.Text(errMessage)))
 		}
 		if shouldLogBody(method, path) {
-			logs = append(logs, zap.Any("request_body", string(maskSensitiveFields(ctx.Request.Body(), []string{"password", "old_password", "new_password"}))))
-			logs = append(logs, zap.Any("response_body", string(ctx.Response.Body())))
+			logs = append(logs, zap.Any("request_body", logredact.Text(string(maskSensitiveFields(ctx.Request.Body(), []string{"password", "old_password", "new_password"})))))
+			logs = append(logs, zap.Any("response_body", logredact.Text(string(ctx.Response.Body()))))
 		} else if isBodyMethod(method) && isServerTelemetryPath(path) {
 			logs = append(logs, zap.Any("body_omitted", true))
 		}

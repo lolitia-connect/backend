@@ -369,6 +369,87 @@ func (_u *OrderUpdate) AddStatus(v int8) *OrderUpdate {
 	return _u
 }
 
+// SetStateVersion sets the "state_version" field.
+func (_u *OrderUpdate) SetStateVersion(v int64) *OrderUpdate {
+	_u.mutation.ResetStateVersion()
+	_u.mutation.SetStateVersion(v)
+	return _u
+}
+
+// SetNillableStateVersion sets the "state_version" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableStateVersion(v *int64) *OrderUpdate {
+	if v != nil {
+		_u.SetStateVersion(*v)
+	}
+	return _u
+}
+
+// AddStateVersion adds value to the "state_version" field.
+func (_u *OrderUpdate) AddStateVersion(v int64) *OrderUpdate {
+	_u.mutation.AddStateVersion(v)
+	return _u
+}
+
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (_u *OrderUpdate) SetIdempotencyKey(v string) *OrderUpdate {
+	_u.mutation.SetIdempotencyKey(v)
+	return _u
+}
+
+// SetNillableIdempotencyKey sets the "idempotency_key" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableIdempotencyKey(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetIdempotencyKey(*v)
+	}
+	return _u
+}
+
+// ClearIdempotencyKey clears the value of the "idempotency_key" field.
+func (_u *OrderUpdate) ClearIdempotencyKey() *OrderUpdate {
+	_u.mutation.ClearIdempotencyKey()
+	return _u
+}
+
+// SetIdempotencyHash sets the "idempotency_hash" field.
+func (_u *OrderUpdate) SetIdempotencyHash(v string) *OrderUpdate {
+	_u.mutation.SetIdempotencyHash(v)
+	return _u
+}
+
+// SetNillableIdempotencyHash sets the "idempotency_hash" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableIdempotencyHash(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetIdempotencyHash(*v)
+	}
+	return _u
+}
+
+// ClearIdempotencyHash clears the value of the "idempotency_hash" field.
+func (_u *OrderUpdate) ClearIdempotencyHash() *OrderUpdate {
+	_u.mutation.ClearIdempotencyHash()
+	return _u
+}
+
+// SetGuestCheckoutTokenHash sets the "guest_checkout_token_hash" field.
+func (_u *OrderUpdate) SetGuestCheckoutTokenHash(v string) *OrderUpdate {
+	_u.mutation.SetGuestCheckoutTokenHash(v)
+	return _u
+}
+
+// SetNillableGuestCheckoutTokenHash sets the "guest_checkout_token_hash" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableGuestCheckoutTokenHash(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetGuestCheckoutTokenHash(*v)
+	}
+	return _u
+}
+
+// ClearGuestCheckoutTokenHash clears the value of the "guest_checkout_token_hash" field.
+func (_u *OrderUpdate) ClearGuestCheckoutTokenHash() *OrderUpdate {
+	_u.mutation.ClearGuestCheckoutTokenHash()
+	return _u
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_u *OrderUpdate) SetSubscribeID(v int64) *OrderUpdate {
 	_u.mutation.ResetSubscribeID()
@@ -493,6 +574,21 @@ func (_u *OrderUpdate) check() error {
 			return &ValidationError{Name: "trade_no", err: fmt.Errorf(`ent: validator failed for field "Order.trade_no": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.IdempotencyKey(); ok {
+		if err := order.IdempotencyKeyValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_key": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.IdempotencyHash(); ok {
+		if err := order.IdempotencyHashValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_hash", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuestCheckoutTokenHash(); ok {
+		if err := order.GuestCheckoutTokenHashValidator(v); err != nil {
+			return &ValidationError{Name: "guest_checkout_token_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_checkout_token_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SubscribeToken(); ok {
 		if err := order.SubscribeTokenValidator(v); err != nil {
 			return &ValidationError{Name: "subscribe_token", err: fmt.Errorf(`ent: validator failed for field "Order.subscribe_token": %w`, err)}
@@ -608,6 +704,30 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedStatus(); ok {
 		_spec.AddField(order.FieldStatus, field.TypeUint8, value)
+	}
+	if value, ok := _u.mutation.StateVersion(); ok {
+		_spec.SetField(order.FieldStateVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedStateVersion(); ok {
+		_spec.AddField(order.FieldStateVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.IdempotencyKey(); ok {
+		_spec.SetField(order.FieldIdempotencyKey, field.TypeString, value)
+	}
+	if _u.mutation.IdempotencyKeyCleared() {
+		_spec.ClearField(order.FieldIdempotencyKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.IdempotencyHash(); ok {
+		_spec.SetField(order.FieldIdempotencyHash, field.TypeString, value)
+	}
+	if _u.mutation.IdempotencyHashCleared() {
+		_spec.ClearField(order.FieldIdempotencyHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.GuestCheckoutTokenHash(); ok {
+		_spec.SetField(order.FieldGuestCheckoutTokenHash, field.TypeString, value)
+	}
+	if _u.mutation.GuestCheckoutTokenHashCleared() {
+		_spec.ClearField(order.FieldGuestCheckoutTokenHash, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)
@@ -988,6 +1108,87 @@ func (_u *OrderUpdateOne) AddStatus(v int8) *OrderUpdateOne {
 	return _u
 }
 
+// SetStateVersion sets the "state_version" field.
+func (_u *OrderUpdateOne) SetStateVersion(v int64) *OrderUpdateOne {
+	_u.mutation.ResetStateVersion()
+	_u.mutation.SetStateVersion(v)
+	return _u
+}
+
+// SetNillableStateVersion sets the "state_version" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableStateVersion(v *int64) *OrderUpdateOne {
+	if v != nil {
+		_u.SetStateVersion(*v)
+	}
+	return _u
+}
+
+// AddStateVersion adds value to the "state_version" field.
+func (_u *OrderUpdateOne) AddStateVersion(v int64) *OrderUpdateOne {
+	_u.mutation.AddStateVersion(v)
+	return _u
+}
+
+// SetIdempotencyKey sets the "idempotency_key" field.
+func (_u *OrderUpdateOne) SetIdempotencyKey(v string) *OrderUpdateOne {
+	_u.mutation.SetIdempotencyKey(v)
+	return _u
+}
+
+// SetNillableIdempotencyKey sets the "idempotency_key" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableIdempotencyKey(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetIdempotencyKey(*v)
+	}
+	return _u
+}
+
+// ClearIdempotencyKey clears the value of the "idempotency_key" field.
+func (_u *OrderUpdateOne) ClearIdempotencyKey() *OrderUpdateOne {
+	_u.mutation.ClearIdempotencyKey()
+	return _u
+}
+
+// SetIdempotencyHash sets the "idempotency_hash" field.
+func (_u *OrderUpdateOne) SetIdempotencyHash(v string) *OrderUpdateOne {
+	_u.mutation.SetIdempotencyHash(v)
+	return _u
+}
+
+// SetNillableIdempotencyHash sets the "idempotency_hash" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableIdempotencyHash(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetIdempotencyHash(*v)
+	}
+	return _u
+}
+
+// ClearIdempotencyHash clears the value of the "idempotency_hash" field.
+func (_u *OrderUpdateOne) ClearIdempotencyHash() *OrderUpdateOne {
+	_u.mutation.ClearIdempotencyHash()
+	return _u
+}
+
+// SetGuestCheckoutTokenHash sets the "guest_checkout_token_hash" field.
+func (_u *OrderUpdateOne) SetGuestCheckoutTokenHash(v string) *OrderUpdateOne {
+	_u.mutation.SetGuestCheckoutTokenHash(v)
+	return _u
+}
+
+// SetNillableGuestCheckoutTokenHash sets the "guest_checkout_token_hash" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableGuestCheckoutTokenHash(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetGuestCheckoutTokenHash(*v)
+	}
+	return _u
+}
+
+// ClearGuestCheckoutTokenHash clears the value of the "guest_checkout_token_hash" field.
+func (_u *OrderUpdateOne) ClearGuestCheckoutTokenHash() *OrderUpdateOne {
+	_u.mutation.ClearGuestCheckoutTokenHash()
+	return _u
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_u *OrderUpdateOne) SetSubscribeID(v int64) *OrderUpdateOne {
 	_u.mutation.ResetSubscribeID()
@@ -1125,6 +1326,21 @@ func (_u *OrderUpdateOne) check() error {
 			return &ValidationError{Name: "trade_no", err: fmt.Errorf(`ent: validator failed for field "Order.trade_no": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.IdempotencyKey(); ok {
+		if err := order.IdempotencyKeyValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_key": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.IdempotencyHash(); ok {
+		if err := order.IdempotencyHashValidator(v); err != nil {
+			return &ValidationError{Name: "idempotency_hash", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuestCheckoutTokenHash(); ok {
+		if err := order.GuestCheckoutTokenHashValidator(v); err != nil {
+			return &ValidationError{Name: "guest_checkout_token_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_checkout_token_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SubscribeToken(); ok {
 		if err := order.SubscribeTokenValidator(v); err != nil {
 			return &ValidationError{Name: "subscribe_token", err: fmt.Errorf(`ent: validator failed for field "Order.subscribe_token": %w`, err)}
@@ -1257,6 +1473,30 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	}
 	if value, ok := _u.mutation.AddedStatus(); ok {
 		_spec.AddField(order.FieldStatus, field.TypeUint8, value)
+	}
+	if value, ok := _u.mutation.StateVersion(); ok {
+		_spec.SetField(order.FieldStateVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedStateVersion(); ok {
+		_spec.AddField(order.FieldStateVersion, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.IdempotencyKey(); ok {
+		_spec.SetField(order.FieldIdempotencyKey, field.TypeString, value)
+	}
+	if _u.mutation.IdempotencyKeyCleared() {
+		_spec.ClearField(order.FieldIdempotencyKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.IdempotencyHash(); ok {
+		_spec.SetField(order.FieldIdempotencyHash, field.TypeString, value)
+	}
+	if _u.mutation.IdempotencyHashCleared() {
+		_spec.ClearField(order.FieldIdempotencyHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.GuestCheckoutTokenHash(); ok {
+		_spec.SetField(order.FieldGuestCheckoutTokenHash, field.TypeString, value)
+	}
+	if _u.mutation.GuestCheckoutTokenHashCleared() {
+		_spec.ClearField(order.FieldGuestCheckoutTokenHash, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)

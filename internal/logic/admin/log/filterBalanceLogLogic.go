@@ -28,11 +28,13 @@ func NewFilterBalanceLogLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 
 func (l *FilterBalanceLogLogic) FilterBalanceLog(req *types.FilterBalanceLogRequest) (resp *types.FilterBalanceLogResponse, err error) {
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page:     req.Page,
-		Size:     req.Size,
-		Type:     log.TypeBalance.Uint8(),
-		Data:     req.Date,
-		ObjectID: req.UserId,
+		Page:      req.Page,
+		Size:      req.Size,
+		Type:      log.TypeBalance.Uint8(),
+		Data:      req.Date,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
+		ObjectID:  req.UserId,
 	})
 
 	if err != nil {

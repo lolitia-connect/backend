@@ -129,6 +129,18 @@ func (f OrderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrderMutation", m)
 }
 
+// The OrderEventFunc type is an adapter to allow the use of ordinary
+// function as OrderEvent mutator.
+type OrderEventFunc func(context.Context, *ent.OrderEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f OrderEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.OrderEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.OrderEventMutation", m)
+}
+
 // The PaymentFunc type is an adapter to allow the use of ordinary
 // function as Payment mutator.
 type PaymentFunc func(context.Context, *ent.PaymentMutation) (ent.Value, error)
@@ -355,6 +367,18 @@ func (f UserSubscribeFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserSubscribeMutation", m)
+}
+
+// The UserWalletFunc type is an adapter to allow the use of ordinary
+// function as UserWallet mutator.
+type UserWalletFunc func(context.Context, *ent.UserWalletMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f UserWalletFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.UserWalletMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.UserWalletMutation", m)
 }
 
 // The UserWithdrawalFunc type is an adapter to allow the use of ordinary

@@ -53,13 +53,10 @@ type User struct {
 	Algo                  string
 	Salt                  string
 	Avatar                string
-	Balance               int64 // User Balance Amount
 	ReferCode             string
 	RefererId             int64
-	Commission            int64 // Commission Amount
 	ReferralPercentage    uint8 // Referral Percentage
 	OnlyFirstPurchase     *bool // Only First Purchase Referral
-	GiftAmount            int64
 	Enable                *bool
 	IsAdmin               *bool
 	EnableBalanceNotify   *bool

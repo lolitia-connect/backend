@@ -3,6 +3,7 @@ package handler
 import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 	pluginHandler "github.com/perfect-panel/server/internal/handler/admin/plugin"
+	edgeHandler "github.com/perfect-panel/server/internal/handler/edge"
 	serverHandler "github.com/perfect-panel/server/internal/handler/server"
 	"github.com/perfect-panel/server/internal/middleware"
 	"github.com/perfect-panel/server/internal/svc"
@@ -17,6 +18,12 @@ func RegisterNativeHandlers(router *server.Hertz, serverCtx *svc.ServiceContext)
 	router.GET(subscribePath, SubscribeHandler(serverCtx))
 	if serverCtx.Config.Subscribe.PanDomain {
 		router.GET("/", PanDomainSubscribeHandler(serverCtx))
+	}
+
+	// Edge Manifest: private HMAC-authenticated contract for a trusted renderer.
+	// It is registered only when explicitly enabled in the configuration.
+	if serverCtx.Config.EdgeSubscribe.Enabled {
+		router.GET("/api/edge/v1/manifest", edgeHandler.ManifestHandler(serverCtx))
 	}
 
 	serverGroup := router.Group("/v1/server", serverHandler.ServerMiddleware(serverCtx))

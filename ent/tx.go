@@ -32,6 +32,8 @@ type Tx struct {
 	NodeGroup *NodeGroupClient
 	// Order is the client for interacting with the Order builders.
 	Order *OrderClient
+	// OrderEvent is the client for interacting with the OrderEvent builders.
+	OrderEvent *OrderEventClient
 	// Payment is the client for interacting with the Payment builders.
 	Payment *PaymentClient
 	// RedemptionCode is the client for interacting with the RedemptionCode builders.
@@ -70,6 +72,8 @@ type Tx struct {
 	UserDeviceOnlineRecord *UserDeviceOnlineRecordClient
 	// UserSubscribe is the client for interacting with the UserSubscribe builders.
 	UserSubscribe *UserSubscribeClient
+	// UserWallet is the client for interacting with the UserWallet builders.
+	UserWallet *UserWalletClient
 	// UserWithdrawal is the client for interacting with the UserWithdrawal builders.
 	UserWithdrawal *UserWithdrawalClient
 
@@ -213,6 +217,7 @@ func (tx *Tx) init() {
 	tx.Node = NewNodeClient(tx.config)
 	tx.NodeGroup = NewNodeGroupClient(tx.config)
 	tx.Order = NewOrderClient(tx.config)
+	tx.OrderEvent = NewOrderEventClient(tx.config)
 	tx.Payment = NewPaymentClient(tx.config)
 	tx.RedemptionCode = NewRedemptionCodeClient(tx.config)
 	tx.RedemptionRecord = NewRedemptionRecordClient(tx.config)
@@ -232,6 +237,7 @@ func (tx *Tx) init() {
 	tx.UserDevice = NewUserDeviceClient(tx.config)
 	tx.UserDeviceOnlineRecord = NewUserDeviceOnlineRecordClient(tx.config)
 	tx.UserSubscribe = NewUserSubscribeClient(tx.config)
+	tx.UserWallet = NewUserWalletClient(tx.config)
 	tx.UserWithdrawal = NewUserWithdrawalClient(tx.config)
 }
 

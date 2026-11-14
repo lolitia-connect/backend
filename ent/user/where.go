@@ -74,11 +74,6 @@ func Avatar(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldAvatar, v))
 }
 
-// Balance applies equality check predicate on the "balance" field. It's identical to BalanceEQ.
-func Balance(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldBalance, v))
-}
-
 // ReferCode applies equality check predicate on the "refer_code" field. It's identical to ReferCodeEQ.
 func ReferCode(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldReferCode, v))
@@ -89,11 +84,6 @@ func RefererID(v int64) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRefererID, v))
 }
 
-// Commission applies equality check predicate on the "commission" field. It's identical to CommissionEQ.
-func Commission(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldCommission, v))
-}
-
 // ReferralPercentage applies equality check predicate on the "referral_percentage" field. It's identical to ReferralPercentageEQ.
 func ReferralPercentage(v uint8) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldReferralPercentage, v))
@@ -102,11 +92,6 @@ func ReferralPercentage(v uint8) predicate.User {
 // OnlyFirstPurchase applies equality check predicate on the "only_first_purchase" field. It's identical to OnlyFirstPurchaseEQ.
 func OnlyFirstPurchase(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldOnlyFirstPurchase, v))
-}
-
-// GiftAmount applies equality check predicate on the "gift_amount" field. It's identical to GiftAmountEQ.
-func GiftAmount(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldGiftAmount, v))
 }
 
 // Enable applies equality check predicate on the "enable" field. It's identical to EnableEQ.
@@ -439,46 +424,6 @@ func AvatarContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldAvatar, v))
 }
 
-// BalanceEQ applies the EQ predicate on the "balance" field.
-func BalanceEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldBalance, v))
-}
-
-// BalanceNEQ applies the NEQ predicate on the "balance" field.
-func BalanceNEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldBalance, v))
-}
-
-// BalanceIn applies the In predicate on the "balance" field.
-func BalanceIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldIn(FieldBalance, vs...))
-}
-
-// BalanceNotIn applies the NotIn predicate on the "balance" field.
-func BalanceNotIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldBalance, vs...))
-}
-
-// BalanceGT applies the GT predicate on the "balance" field.
-func BalanceGT(v int64) predicate.User {
-	return predicate.User(sql.FieldGT(FieldBalance, v))
-}
-
-// BalanceGTE applies the GTE predicate on the "balance" field.
-func BalanceGTE(v int64) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldBalance, v))
-}
-
-// BalanceLT applies the LT predicate on the "balance" field.
-func BalanceLT(v int64) predicate.User {
-	return predicate.User(sql.FieldLT(FieldBalance, v))
-}
-
-// BalanceLTE applies the LTE predicate on the "balance" field.
-func BalanceLTE(v int64) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldBalance, v))
-}
-
 // ReferCodeEQ applies the EQ predicate on the "refer_code" field.
 func ReferCodeEQ(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldReferCode, v))
@@ -584,46 +529,6 @@ func RefererIDLTE(v int64) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRefererID, v))
 }
 
-// CommissionEQ applies the EQ predicate on the "commission" field.
-func CommissionEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldCommission, v))
-}
-
-// CommissionNEQ applies the NEQ predicate on the "commission" field.
-func CommissionNEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldCommission, v))
-}
-
-// CommissionIn applies the In predicate on the "commission" field.
-func CommissionIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldIn(FieldCommission, vs...))
-}
-
-// CommissionNotIn applies the NotIn predicate on the "commission" field.
-func CommissionNotIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldCommission, vs...))
-}
-
-// CommissionGT applies the GT predicate on the "commission" field.
-func CommissionGT(v int64) predicate.User {
-	return predicate.User(sql.FieldGT(FieldCommission, v))
-}
-
-// CommissionGTE applies the GTE predicate on the "commission" field.
-func CommissionGTE(v int64) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldCommission, v))
-}
-
-// CommissionLT applies the LT predicate on the "commission" field.
-func CommissionLT(v int64) predicate.User {
-	return predicate.User(sql.FieldLT(FieldCommission, v))
-}
-
-// CommissionLTE applies the LTE predicate on the "commission" field.
-func CommissionLTE(v int64) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldCommission, v))
-}
-
 // ReferralPercentageEQ applies the EQ predicate on the "referral_percentage" field.
 func ReferralPercentageEQ(v uint8) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldReferralPercentage, v))
@@ -672,46 +577,6 @@ func OnlyFirstPurchaseEQ(v bool) predicate.User {
 // OnlyFirstPurchaseNEQ applies the NEQ predicate on the "only_first_purchase" field.
 func OnlyFirstPurchaseNEQ(v bool) predicate.User {
 	return predicate.User(sql.FieldNEQ(FieldOnlyFirstPurchase, v))
-}
-
-// GiftAmountEQ applies the EQ predicate on the "gift_amount" field.
-func GiftAmountEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldGiftAmount, v))
-}
-
-// GiftAmountNEQ applies the NEQ predicate on the "gift_amount" field.
-func GiftAmountNEQ(v int64) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldGiftAmount, v))
-}
-
-// GiftAmountIn applies the In predicate on the "gift_amount" field.
-func GiftAmountIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldIn(FieldGiftAmount, vs...))
-}
-
-// GiftAmountNotIn applies the NotIn predicate on the "gift_amount" field.
-func GiftAmountNotIn(vs ...int64) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldGiftAmount, vs...))
-}
-
-// GiftAmountGT applies the GT predicate on the "gift_amount" field.
-func GiftAmountGT(v int64) predicate.User {
-	return predicate.User(sql.FieldGT(FieldGiftAmount, v))
-}
-
-// GiftAmountGTE applies the GTE predicate on the "gift_amount" field.
-func GiftAmountGTE(v int64) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldGiftAmount, v))
-}
-
-// GiftAmountLT applies the LT predicate on the "gift_amount" field.
-func GiftAmountLT(v int64) predicate.User {
-	return predicate.User(sql.FieldLT(FieldGiftAmount, v))
-}
-
-// GiftAmountLTE applies the LTE predicate on the "gift_amount" field.
-func GiftAmountLTE(v int64) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldGiftAmount, v))
 }
 
 // EnableEQ applies the EQ predicate on the "enable" field.

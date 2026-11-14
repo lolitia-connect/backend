@@ -7,6 +7,7 @@ import (
 
 	appconfig "github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/pkg/tool"
 )
 
 func TestServerSecretMiddlewareBlocksMigratedPost(t *testing.T) {
@@ -59,6 +60,41 @@ func TestCorsPreflightBypassesServerSecretMiddleware(t *testing.T) {
 	}
 	if origin := string(ctx.Response.Header.Peek("Access-Control-Allow-Origin")); origin != "https://example.com" {
 		t.Fatalf("expected CORS origin header, got %q", origin)
+	}
+}
+
+// An installation whose node secret has not been provisioned yet must not
+// authenticate anyone; a bare `?secret_key=` used to compare equal to it.
+func TestServerSecretMiddlewareRejectsUnprovisionedSecret(t *testing.T) {
+	app := newTestServer("")
+
+	status, body := performNativeRequest(app, http.MethodPost, "/v1/server/online?secret_key=")
+	if status != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, status)
+	}
+	if body != "Forbidden" {
+		t.Fatalf("expected forbidden body, got %q", body)
+	}
+}
+
+func TestQueryServerProtocolConfigRejectsUnprovisionedSecret(t *testing.T) {
+	app := newTestServer("")
+
+	status, body := performNativeRequest(app, http.MethodGet, "/v2/server/1?secret_key=")
+	if status != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, status)
+	}
+	if body != "Unauthorized" {
+		t.Fatalf("expected unauthorized body, got %q", body)
+	}
+}
+
+// The well-known default the seed data used to ship is public knowledge, so a
+// deployment still carrying it has to be reported at boot; provisioning must
+// never rotate it silently, because every node was configured with that value.
+func TestLegacyDefaultNodeSecretIsRecognised(t *testing.T) {
+	if tool.LegacyDefaultNodeSecret != "12345678" {
+		t.Fatalf("legacy default = %q, want the seeded value so the boot check still matches", tool.LegacyDefaultNodeSecret)
 	}
 }
 

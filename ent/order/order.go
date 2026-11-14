@@ -47,6 +47,14 @@ const (
 	FieldCommission = "commission"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldStateVersion holds the string denoting the state_version field in the database.
+	FieldStateVersion = "state_version"
+	// FieldIdempotencyKey holds the string denoting the idempotency_key field in the database.
+	FieldIdempotencyKey = "idempotency_key"
+	// FieldIdempotencyHash holds the string denoting the idempotency_hash field in the database.
+	FieldIdempotencyHash = "idempotency_hash"
+	// FieldGuestCheckoutTokenHash holds the string denoting the guest_checkout_token_hash field in the database.
+	FieldGuestCheckoutTokenHash = "guest_checkout_token_hash"
 	// FieldSubscribeID holds the string denoting the subscribe_id field in the database.
 	FieldSubscribeID = "subscribe_id"
 	// FieldSubscribeToken holds the string denoting the subscribe_token field in the database.
@@ -81,6 +89,10 @@ var Columns = []string{
 	FieldGiftAmount,
 	FieldCommission,
 	FieldStatus,
+	FieldStateVersion,
+	FieldIdempotencyKey,
+	FieldIdempotencyHash,
+	FieldGuestCheckoutTokenHash,
 	FieldSubscribeID,
 	FieldSubscribeToken,
 	FieldIsNew,
@@ -137,6 +149,14 @@ var (
 	DefaultCommission int64
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus uint8
+	// DefaultStateVersion holds the default value on creation for the "state_version" field.
+	DefaultStateVersion int64
+	// IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
+	IdempotencyKeyValidator func(string) error
+	// IdempotencyHashValidator is a validator for the "idempotency_hash" field. It is called by the builders before save.
+	IdempotencyHashValidator func(string) error
+	// GuestCheckoutTokenHashValidator is a validator for the "guest_checkout_token_hash" field. It is called by the builders before save.
+	GuestCheckoutTokenHashValidator func(string) error
 	// DefaultSubscribeID holds the default value on creation for the "subscribe_id" field.
 	DefaultSubscribeID int64
 	// SubscribeTokenValidator is a validator for the "subscribe_token" field. It is called by the builders before save.
@@ -242,6 +262,26 @@ func ByCommission(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByStateVersion orders the results by the state_version field.
+func ByStateVersion(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStateVersion, opts...).ToFunc()
+}
+
+// ByIdempotencyKey orders the results by the idempotency_key field.
+func ByIdempotencyKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIdempotencyKey, opts...).ToFunc()
+}
+
+// ByIdempotencyHash orders the results by the idempotency_hash field.
+func ByIdempotencyHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIdempotencyHash, opts...).ToFunc()
+}
+
+// ByGuestCheckoutTokenHash orders the results by the guest_checkout_token_hash field.
+func ByGuestCheckoutTokenHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuestCheckoutTokenHash, opts...).ToFunc()
 }
 
 // BySubscribeID orders the results by the subscribe_id field.

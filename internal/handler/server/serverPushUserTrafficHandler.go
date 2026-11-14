@@ -13,7 +13,10 @@ import (
 func ServerPushUserTrafficHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
 		req := types.ServerPushUserTrafficRequest{}
-		_ = ctx.BindJSON(&req)
+		if err := bindUserTrafficRequest(ctx, &req); err != nil {
+			writeParamError(ctx, err)
+			return
+		}
 		commonReq, err := serverCommonRequest(ctx)
 		if err != nil {
 			writeParamError(ctx, err)
@@ -26,6 +29,6 @@ func ServerPushUserTrafficHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 		}
 
 		l := server.NewServerPushUserTrafficLogic(c, svcCtx)
-		writeHTTPResult(ctx, nil, l.ServerPushUserTraffic(&req))
+		writeServerReportResult(ctx, l.ServerPushUserTraffic(&req))
 	}
 }

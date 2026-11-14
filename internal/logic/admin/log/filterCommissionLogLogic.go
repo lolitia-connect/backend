@@ -28,11 +28,13 @@ func NewFilterCommissionLogLogic(ctx context.Context, svcCtx *svc.ServiceContext
 
 func (l *FilterCommissionLogLogic) FilterCommissionLog(req *types.FilterCommissionLogRequest) (resp *types.FilterCommissionLogResponse, err error) {
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page:     req.Page,
-		Size:     req.Size,
-		Data:     req.Date,
-		Type:     log.TypeCommission.Uint8(),
-		ObjectID: req.UserId,
+		Page:      req.Page,
+		Size:      req.Size,
+		Data:      req.Date,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
+		Type:      log.TypeCommission.Uint8(),
+		ObjectID:  req.UserId,
 	})
 	if err != nil {
 		l.Logger.Errorw("Query User Commission Log failed", zap.Any("error", err.Error()))

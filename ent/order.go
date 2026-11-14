@@ -51,6 +51,14 @@ type Order struct {
 	Commission int64 `json:"commission,omitempty"`
 	// Status holds the value of the "status" field.
 	Status uint8 `json:"status,omitempty"`
+	// StateVersion holds the value of the "state_version" field.
+	StateVersion int64 `json:"state_version,omitempty"`
+	// IdempotencyKey holds the value of the "idempotency_key" field.
+	IdempotencyKey *string `json:"idempotency_key,omitempty"`
+	// IdempotencyHash holds the value of the "idempotency_hash" field.
+	IdempotencyHash *string `json:"idempotency_hash,omitempty"`
+	// GuestCheckoutTokenHash holds the value of the "guest_checkout_token_hash" field.
+	GuestCheckoutTokenHash *string `json:"guest_checkout_token_hash,omitempty"`
 	// SubscribeID holds the value of the "subscribe_id" field.
 	SubscribeID int64 `json:"subscribe_id,omitempty"`
 	// SubscribeToken holds the value of the "subscribe_token" field.
@@ -71,9 +79,9 @@ func (*Order) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case order.FieldIsNew:
 			values[i] = new(sql.NullBool)
-		case order.FieldID, order.FieldParentID, order.FieldUserID, order.FieldType, order.FieldQuantity, order.FieldPrice, order.FieldAmount, order.FieldDiscount, order.FieldCouponDiscount, order.FieldPaymentID, order.FieldFeeAmount, order.FieldGiftAmount, order.FieldCommission, order.FieldStatus, order.FieldSubscribeID:
+		case order.FieldID, order.FieldParentID, order.FieldUserID, order.FieldType, order.FieldQuantity, order.FieldPrice, order.FieldAmount, order.FieldDiscount, order.FieldCouponDiscount, order.FieldPaymentID, order.FieldFeeAmount, order.FieldGiftAmount, order.FieldCommission, order.FieldStatus, order.FieldStateVersion, order.FieldSubscribeID:
 			values[i] = new(sql.NullInt64)
-		case order.FieldOrderNo, order.FieldCoupon, order.FieldMethod, order.FieldTradeNo, order.FieldSubscribeToken:
+		case order.FieldOrderNo, order.FieldCoupon, order.FieldMethod, order.FieldTradeNo, order.FieldIdempotencyKey, order.FieldIdempotencyHash, order.FieldGuestCheckoutTokenHash, order.FieldSubscribeToken:
 			values[i] = new(sql.NullString)
 		case order.FieldCreatedAt, order.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -202,6 +210,33 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Status = uint8(value.Int64)
 			}
+		case order.FieldStateVersion:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field state_version", values[i])
+			} else if value.Valid {
+				_m.StateVersion = value.Int64
+			}
+		case order.FieldIdempotencyKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field idempotency_key", values[i])
+			} else if value.Valid {
+				_m.IdempotencyKey = new(string)
+				*_m.IdempotencyKey = value.String
+			}
+		case order.FieldIdempotencyHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field idempotency_hash", values[i])
+			} else if value.Valid {
+				_m.IdempotencyHash = new(string)
+				*_m.IdempotencyHash = value.String
+			}
+		case order.FieldGuestCheckoutTokenHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guest_checkout_token_hash", values[i])
+			} else if value.Valid {
+				_m.GuestCheckoutTokenHash = new(string)
+				*_m.GuestCheckoutTokenHash = value.String
+			}
 		case order.FieldSubscribeID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field subscribe_id", values[i])
@@ -323,6 +358,24 @@ func (_m *Order) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))
+	builder.WriteString(", ")
+	builder.WriteString("state_version=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StateVersion))
+	builder.WriteString(", ")
+	if v := _m.IdempotencyKey; v != nil {
+		builder.WriteString("idempotency_key=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.IdempotencyHash; v != nil {
+		builder.WriteString("idempotency_hash=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.GuestCheckoutTokenHash; v != nil {
+		builder.WriteString("guest_checkout_token_hash=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("subscribe_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SubscribeID))

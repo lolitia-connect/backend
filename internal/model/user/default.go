@@ -2,12 +2,14 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
 	entuser "github.com/perfect-panel/server/ent/user"
 	entauth "github.com/perfect-panel/server/ent/userauthmethod"
 	entdevice "github.com/perfect-panel/server/ent/userdevice"
+	"github.com/perfect-panel/server/pkg/authmethod"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -45,11 +47,11 @@ func newUserModel(db *ent.Client, c *redis.Client) *defaultUserModel {
 }
 
 func (m *defaultUserModel) FindOneByEmail(ctx context.Context, email string) (*User, error) {
-	auth, err := m.db.UserAuthMethod.Query().Where(entauth.AuthType("email"), entauth.AuthIdentifier(email)).First(ctx)
+	auth, err := resolveUserAuthMethodByIdentifier(ctx, m.db, authmethod.Email, email)
 	if err != nil {
 		return nil, err
 	}
-	return m.findOne(ctx, auth.UserID, true)
+	return m.findOne(ctx, auth.UserId, true)
 }
 
 func (m *defaultUserModel) Insert(ctx context.Context, data *User) error {
@@ -100,6 +102,25 @@ func (m *defaultUserModel) Transaction(ctx context.Context, fn func(db *ent.Clie
 		return err
 	}
 	return tx.Commit()
+}
+
+// UpgradePasswordHash performs an atomic compare-and-swap of the password hash.
+// It only updates when the stored hash still matches currentHash, so concurrent
+// logins cannot overwrite a newer hash. Returns false when no row was changed.
+func (m *defaultUserModel) UpgradePasswordHash(ctx context.Context, id int64, currentHash, nextHash, algo, salt string) (bool, error) {
+	affected, err := m.db.User.Update().
+		Where(entuser.ID(id), entuser.PasswordEQ(currentHash)).
+		SetPassword(nextHash).
+		SetAlgo(algo).
+		SetSalt(salt).
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	if affected > 0 {
+		_ = m.redis.Del(ctx, fmt.Sprintf("user:%d", id)).Err()
+	}
+	return affected > 0, nil
 }
 
 func (m *defaultUserModel) findOne(ctx context.Context, id int64, unscoped bool) (*User, error) {

@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/orderaudit"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/tool"
@@ -35,7 +37,7 @@ func (l *CreateOrderLogic) CreateOrder(req *types.CreateOrderRequest) error {
 		return errors.Wrapf(xerr.NewErrCode(xerr.PaymentMethodNotFound), "PaymentMethod not found: %v", err.Error())
 	}
 
-	err = store.Order().Insert(l.ctx, &order.Order{
+	orderInfo := &order.Order{
 		UserId:         req.UserId,
 		OrderNo:        tool.GenerateTradeNo(),
 		Type:           req.Type,
@@ -51,6 +53,13 @@ func (l *CreateOrderLogic) CreateOrder(req *types.CreateOrderRequest) error {
 		TradeNo:        req.TradeNo,
 		Status:         req.Status,
 		SubscribeId:    req.SubscribeId,
+	}
+	// The order and its audit trail are one atomic billing operation.
+	err = store.InTx(l.ctx, func(txStore repository.Store) error {
+		if e := txStore.Order().Insert(l.ctx, orderInfo); e != nil {
+			return e
+		}
+		return orderaudit.InsertCreated(l.ctx, txStore.Log(), orderInfo, orderaudit.SourceAdmin)
 	})
 	if err != nil {
 		l.Logger.Error("[CreateOrder] Database Error", zap.Any("error", err.Error()))

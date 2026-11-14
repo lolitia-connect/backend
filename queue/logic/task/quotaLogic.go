@@ -262,6 +262,14 @@ func (l *QuotaTaskLogic) processGift(ctx context.Context, store repository.Store
 		})
 		return nil
 	}
+	walletInfo, err := store.Wallet().FindOne(ctx, sub.UserId)
+	if err != nil {
+		*errors = append(*errors, ErrorInfo{
+			UserSubscribeId: sub.Id,
+			Error:           "find wallet error: " + err.Error(),
+		})
+		return nil
+	}
 
 	var giftAmount int64
 	switch content.GiftType {
@@ -283,24 +291,23 @@ func (l *QuotaTaskLogic) processGift(ctx context.Context, store repository.Store
 	}
 
 	if giftAmount > 0 {
-		userInfo.GiftAmount += giftAmount
-		// 使用Update而不是Save，更精确地更新单个字段
-		if err := store.User().Update(ctx, userInfo); err != nil {
+		walletInfo.GiftAmount += giftAmount
+		if err := store.Wallet().UpdateBalanceFields(ctx, walletInfo); err != nil {
 			*errors = append(*errors, ErrorInfo{
 				UserSubscribeId: sub.Id,
-				Error:           "update user gift amount error: " + err.Error(),
+				Error:           "update wallet gift amount error: " + err.Error(),
 			})
 			return nil
 		}
 
-		if err := l.createGiftLog(ctx, store, sub.Id, userInfo.Id, giftAmount, userInfo.GiftAmount, now); err != nil {
+		if err := l.createGiftLog(ctx, store, sub.Id, userInfo.Id, giftAmount, walletInfo.GiftAmount, now); err != nil {
 			*errors = append(*errors, ErrorInfo{
 				UserSubscribeId: sub.Id,
 				Error:           "create gift log error: " + err.Error(),
 			})
-			// 回滚用户金额更新
-			userInfo.GiftAmount -= giftAmount
-			_ = store.User().Update(ctx, userInfo)
+			// 回滚赠送金更新
+			walletInfo.GiftAmount -= giftAmount
+			_ = store.Wallet().UpdateBalanceFields(ctx, walletInfo)
 			return nil
 		}
 	}

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/auth"
+	"github.com/perfect-panel/server/pkg/oauth/facebook"
+	"github.com/perfect-panel/server/pkg/oauth/github"
 	"github.com/perfect-panel/server/pkg/oauth/google"
 	"github.com/perfect-panel/server/pkg/oauth/telegram"
 	"github.com/perfect-panel/server/pkg/random"
@@ -43,9 +45,9 @@ func (l *BindOAuthLogic) BindOAuth(req *types.BindOAuthRequest) (resp *types.Bin
 	case "telegram":
 		uri, err = l.telegram(req)
 	case "github":
-		uri, err = l.github()
+		uri, err = l.github(req)
 	case "facebook":
-		uri, err = l.facebook()
+		uri, err = l.facebook(req)
 	default:
 		l.Logger.Errorw("oauth login method not support: %v", zap.Any("method", req.Method))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "oauth login method not support: %v", req.Method)
@@ -86,8 +88,26 @@ func (l *BindOAuthLogic) google(req *types.BindOAuthRequest) (string, error) {
 	return uri, nil
 }
 
-func (l *BindOAuthLogic) facebook() (string, error) {
-	return "", nil
+func (l *BindOAuthLogic) facebook(req *types.BindOAuthRequest) (string, error) {
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "facebook")
+	if err != nil {
+		return "", err
+	}
+	var cfg auth.FacebookAuthConfig
+	if err = cfg.Unmarshal(authMethod.Config); err != nil {
+		l.Logger.Errorw("error unmarshal facebook config", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
+		return "", err
+	}
+	client := facebook.New(&facebook.Config{
+		ClientID:     cfg.ClientId,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  req.Redirect,
+	})
+	code := random.KeyNew(8, 1)
+	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("facebook:%s", code), req.Redirect, 5*60*time.Second).Err(); err != nil {
+		return "", err
+	}
+	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
 }
 func (l *BindOAuthLogic) apple(req *types.BindOAuthRequest) (string, error) {
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "apple")
@@ -110,8 +130,26 @@ func (l *BindOAuthLogic) apple(req *types.BindOAuthRequest) (string, error) {
 	}
 	return fmt.Sprintf(uri, cfg.ClientId, fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL), code), nil
 }
-func (l *BindOAuthLogic) github() (string, error) {
-	return "", nil
+func (l *BindOAuthLogic) github(req *types.BindOAuthRequest) (string, error) {
+	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "github")
+	if err != nil {
+		return "", err
+	}
+	var cfg auth.GithubAuthConfig
+	if err = cfg.Unmarshal(authMethod.Config); err != nil {
+		l.Logger.Errorw("error unmarshal github config", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
+		return "", err
+	}
+	client := github.New(&github.Config{
+		ClientID:     cfg.ClientId,
+		ClientSecret: cfg.ClientSecret,
+		RedirectURL:  req.Redirect,
+	})
+	code := random.KeyNew(8, 1)
+	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("github:%s", code), req.Redirect, 5*60*time.Second).Err(); err != nil {
+		return "", err
+	}
+	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
 }
 
 func (l *BindOAuthLogic) telegram(req *types.BindOAuthRequest) (string, error) {

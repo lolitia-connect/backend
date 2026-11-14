@@ -2,7 +2,9 @@ package telegram
 
 import (
 	"encoding/base64"
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/perfect-panel/server/pkg/hertzx"
@@ -31,24 +33,23 @@ func TestBase64(t *testing.T) {
 	username := "tension_c"
 	photoURL := "https://t.me/i/userpic/320/aMK6HDsJjseubWQbkv4iX8vBEAz7HVSx7vAnD0KgKEU.jpg"
 	authDate := int64(1737819074)
-	data := &AuthData{
-		Id:        &id,
-		FirstName: &firstName,
-		LastName:  &lastName,
-		Username:  &username,
-		PhotoUrl:  &photoURL,
-		AuthDate:  &authDate,
-	}
+	payload := fmt.Sprintf(`{"id":%d,"first_name":%q,"last_name":%q,"username":%q,"photo_url":%q,"auth_date":%d}`,
+		id, firstName, lastName, username, photoURL, authDate)
 	token := "7651491571:AAEVQma6niHhtqEYDowAEpPo6Fq69BWvRU8"
-	hash := computeHash(data, []byte(token))
-	text := base64.StdEncoding.EncodeToString([]byte(`{"id":824626803,"first_name":"Chang lue","last_name":"Tsen","username":"tension_c","photo_url":"https://t.me/i/userpic/320/aMK6HDsJjseubWQbkv4iX8vBEAz7HVSx7vAnD0KgKEU.jpg","auth_date":1737819074,"hash":"` + hash + `"}`))
 
-	parsed, err := ParseAndValidateBase64([]byte(text), token)
+	parsed, err := ParseAuthDataJson([]byte(payload))
 	if err != nil {
-		t.Error(err)
+		t.Fatalf("ParseAuthDataJson error: %v", err)
 	}
-	if parsed == nil || parsed.Id == nil || *parsed.Id != id {
-		t.Fatalf("unexpected parsed data: %#v", parsed)
-	}
+	hash := computeHash(parsed.raw, []byte(token))
+	signed := strings.TrimSuffix(payload, "}") + `,"hash":"` + hash + `"}`
+	text := base64.StdEncoding.EncodeToString([]byte(signed))
 
+	validated, err := ParseAndValidateBase64([]byte(text), token)
+	if err != nil {
+		t.Fatalf("ParseAndValidateBase64 error: %v", err)
+	}
+	if validated == nil || validated.Id == nil || *validated.Id != id {
+		t.Fatalf("unexpected parsed data: %#v", validated)
+	}
 }

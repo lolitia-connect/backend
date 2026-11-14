@@ -25,6 +25,38 @@ func NewSendEmailLogic(svcCtx *svc.ServiceContext) *SendEmailLogic {
 		svcCtx: svcCtx,
 	}
 }
+
+func renderEmailTemplate(name, text string, data map[string]interface{}) (string, error) {
+	tpl, err := template.New(name).Parse(text)
+	if err != nil {
+		return "", err
+	}
+	var result bytes.Buffer
+	if err := tpl.Execute(&result, data); err != nil {
+		return "", err
+	}
+	return result.String(), nil
+}
+
+// resolveSubject prefers the operator-configured subject over the fallback
+// literal the producer queued. The configured subject renders with the same
+// data as the body; if it fails to render it is still sent as raw text,
+// because a localized subject with a template typo beats silently reverting
+// to English.
+func resolveSubject(configured, fallback string, data map[string]interface{}) string {
+	if configured == "" {
+		return fallback
+	}
+	rendered, err := renderEmailTemplate("subject", configured, data)
+	if err != nil {
+		zap.S().Error("[SendEmailLogic] Execute subject template failed",
+			zap.Any("error", err.Error()),
+			zap.Any("subject", configured),
+		)
+		return configured
+	}
+	return rendered
+}
 func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) error {
 	var payload types.SendEmailPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
@@ -35,6 +67,7 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		return nil
 	}
 	messageLog := log.Message{
+		Metadata: payload.Metadata,
 		Platform: l.svcCtx.Config.Email.Platform,
 		To:       payload.Email,
 		Subject:  payload.Subject,
@@ -45,62 +78,24 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		zap.S().Error("[SendEmailLogic] NewSender failed", zap.Any("error", err.Error()))
 		return nil
 	}
-	var content string
+	// The operator-configured subject of a typed notification wins over the
+	// literal queued by the producer; it renders with the same data as the
+	// body so subjects can interpolate {{.SiteName}} and friends.
+	var content, bodyTemplate, subjectTemplate string
 	switch payload.Type {
 	case types.EmailTypeVerify:
-		tpl, _ := template.New("verify").Parse(l.svcCtx.Config.Email.VerifyEmailTemplate)
-		var result bytes.Buffer
-
 		payload.Content["Type"] = uint8(payload.Content["Type"].(float64))
-
-		err = tpl.Execute(&result, payload.Content)
-		if err != nil {
-			zap.S().Error("[SendEmailLogic] Execute template failed",
-				zap.Any("error", err.Error()),
-				zap.Any("data", payload.Content),
-			)
-			return nil
-		}
-		content = result.String()
+		bodyTemplate = l.svcCtx.Config.Email.VerifyEmailTemplate
+		subjectTemplate = l.svcCtx.Config.Email.VerifyEmailSubject
 	case types.EmailTypeMaintenance:
-		tpl, _ := template.New("maintenance").Parse(l.svcCtx.Config.Email.MaintenanceEmailTemplate)
-		var result bytes.Buffer
-		err = tpl.Execute(&result, payload.Content)
-		if err != nil {
-			zap.S().Error("[SendEmailLogic] Execute template failed",
-				zap.Any("error", err.Error()),
-				zap.Any("template", l.svcCtx.Config.Email.MaintenanceEmailTemplate),
-				zap.Any("data", payload.Content),
-			)
-			return nil
-		}
-		content = result.String()
+		bodyTemplate = l.svcCtx.Config.Email.MaintenanceEmailTemplate
+		subjectTemplate = l.svcCtx.Config.Email.MaintenanceEmailSubject
 	case types.EmailTypeExpiration:
-		tpl, _ := template.New("expiration").Parse(l.svcCtx.Config.Email.ExpirationEmailTemplate)
-		var result bytes.Buffer
-		err = tpl.Execute(&result, payload.Content)
-		if err != nil {
-			zap.S().Error("[SendEmailLogic] Execute template failed",
-				zap.Any("error", err.Error()),
-				zap.Any("template", l.svcCtx.Config.Email.ExpirationEmailTemplate),
-				zap.Any("data", payload.Content),
-			)
-			return nil
-		}
-		content = result.String()
+		bodyTemplate = l.svcCtx.Config.Email.ExpirationEmailTemplate
+		subjectTemplate = l.svcCtx.Config.Email.ExpirationEmailSubject
 	case types.EmailTypeTrafficExceed:
-		tpl, _ := template.New("traffic_exceed").Parse(l.svcCtx.Config.Email.TrafficExceedEmailTemplate)
-		var result bytes.Buffer
-		err = tpl.Execute(&result, payload.Content)
-		if err != nil {
-			zap.S().Error("[SendEmailLogic] Execute template failed",
-				zap.Any("error", err.Error()),
-				zap.Any("template", l.svcCtx.Config.Email.TrafficExceedEmailTemplate),
-				zap.Any("data", payload.Content),
-			)
-			return nil
-		}
-		content = result.String()
+		bodyTemplate = l.svcCtx.Config.Email.TrafficExceedEmailTemplate
+		subjectTemplate = l.svcCtx.Config.Email.TrafficExceedEmailSubject
 	case types.EmailTypeCustom:
 		if payload.Content == nil {
 			zap.S().Error("[SendEmailLogic] Custom email content is empty",
@@ -123,8 +118,22 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		)
 		return nil
 	}
+	if bodyTemplate != "" {
+		rendered, renderErr := renderEmailTemplate(payload.Type, bodyTemplate, payload.Content)
+		if renderErr != nil {
+			zap.S().Error("[SendEmailLogic] Execute template failed",
+				zap.Any("error", renderErr.Error()),
+				zap.Any("template", bodyTemplate),
+				zap.Any("data", payload.Content),
+			)
+			return nil
+		}
+		content = rendered
+	}
+	subject := resolveSubject(subjectTemplate, payload.Subject, payload.Content)
+	messageLog.Subject = subject
 
-	err = sender.Send([]string{payload.Email}, payload.Subject, content)
+	err = sender.Send([]string{payload.Email}, subject, content)
 	if err != nil {
 		zap.S().Error("[SendEmailLogic] Send email failed", zap.Any("error", err.Error()))
 		return nil

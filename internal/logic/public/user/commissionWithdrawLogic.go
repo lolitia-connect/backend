@@ -37,15 +37,22 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
-	if u.Commission < req.Amount {
-		zap.S().Errorf("User %d has insufficient commission balance: %.2f, requested: %.2f", u.Id, float64(u.Commission)/100, float64(req.Amount)/100)
+	walletInfo, err := l.svcCtx.Store.Wallet().FindOne(l.ctx, u.Id)
+	if err != nil {
+		l.Logger.Errorf("Failed to read wallet for user %d: %v", u.Id, err)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Failed to read wallet for user %d: %v", u.Id, err)
+	}
+	if walletInfo.Commission < req.Amount {
+		zap.S().Errorf("User %d has insufficient commission balance: %.2f, requested: %.2f", u.Id, float64(walletInfo.Commission)/100, float64(req.Amount)/100)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserCommissionNotEnough), "User %d has insufficient commission balance", u.Id)
 	}
 
 	// create withdrawal log
+	// Use a negative amount to reflect the balance decrease, so that
+	// SumAmountByTypeAndObjectID produces the correct net total.
 	logInfo := log.Commission{
 		Type:      log.CommissionTypeConvertBalance,
-		Amount:    req.Amount,
+		Amount:    -req.Amount,
 		Timestamp: time.Now().UnixMilli(),
 	}
 	b, err := logInfo.Marshal()
@@ -56,9 +63,17 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 	}
 
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		updatedUser := *u
-		updatedUser.Commission -= req.Amount
-		if err = store.User().Update(l.ctx, &updatedUser); err != nil {
+		// Re-read inside the transaction so a concurrent credit is not lost by
+		// writing back a stale snapshot.
+		walletInfo, err = store.Wallet().FindOne(l.ctx, u.Id)
+		if err != nil {
+			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Failed to read wallet for user %d: %v", u.Id, err)
+		}
+		if walletInfo.Commission < req.Amount {
+			return errors.Wrapf(xerr.NewErrCode(xerr.UserCommissionNotEnough), "User %d has insufficient commission balance", u.Id)
+		}
+		walletInfo.Commission -= req.Amount
+		if err = store.Wallet().UpdateCommission(l.ctx, walletInfo); err != nil {
 			l.Logger.Errorf("Failed to update user %d commission balance: %v", u.Id, err)
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Failed to update user %d commission balance: %v", u.Id, err)
 		}

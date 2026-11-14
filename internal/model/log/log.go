@@ -1,9 +1,19 @@
 package log
 
 import (
+	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/perfect-panel/server/pkg/requestmeta"
 )
+
+// MetadataFromContext extracts request metadata from context.
+// Returns empty metadata if not found.
+func MetadataFromContext(ctx context.Context) requestmeta.Metadata {
+	metadata, _ := requestmeta.From(ctx)
+	return metadata
+}
 
 type Type uint8
 
@@ -28,6 +38,7 @@ const (
 	TypeBalance           Type = 32 // Balance log
 	TypeCommission        Type = 33 // Commission log
 	TypeGift              Type = 34 // Gift log
+	TypeOrderCreated      Type = 35 // Order creation audit log
 	TypeUserTrafficRank   Type = 40 // Top 10 User traffic rank log
 	TypeServerTrafficRank Type = 41 // Top 10 Server traffic rank log
 	TypeTrafficStat       Type = 42 // Daily traffic statistics log
@@ -70,6 +81,7 @@ type SystemLog struct {
 
 // Message represents a message log entry.
 type Message struct {
+	requestmeta.Metadata
 	To       string                 `json:"to"`
 	Subject  string                 `json:"subject,omitempty"`
 	Content  map[string]interface{} `json:"content"`
@@ -120,6 +132,7 @@ func (s *Traffic) Unmarshal(data []byte) error {
 
 // Login represents a login log entry.
 type Login struct {
+	requestmeta.Metadata
 	Method    string `json:"method"`
 	LoginIP   string `json:"login_ip"`
 	UserAgent string `json:"user_agent"`
@@ -146,6 +159,7 @@ func (l *Login) Unmarshal(data []byte) error {
 
 // Register represents a registration log entry.
 type Register struct {
+	requestmeta.Metadata
 	AuthMethod string `json:"auth_method"`
 	Identifier string `json:"identifier"`
 	RegisterIP string `json:"register_ip"`
@@ -173,6 +187,7 @@ func (r *Register) Unmarshal(data []byte) error {
 
 // Subscribe represents a subscription log entry.
 type Subscribe struct {
+	requestmeta.Metadata
 	Token           string `json:"token"`
 	UserAgent       string `json:"user_agent"`
 	ClientIP        string `json:"client_ip"`
@@ -223,6 +238,7 @@ func (r *ResetSubscribe) Unmarshal(data []byte) error {
 
 // Balance represents a balance log entry.
 type Balance struct {
+	requestmeta.Metadata
 	Type      uint16 `json:"type"`
 	Amount    int64  `json:"amount"`
 	OrderNo   string `json:"order_no,omitempty"`
@@ -249,6 +265,7 @@ func (b *Balance) Unmarshal(data []byte) error {
 
 // Commission represents a commission log entry.
 type Commission struct {
+	requestmeta.Metadata
 	Type      uint16 `json:"type"`
 	Amount    int64  `json:"amount"`
 	OrderNo   string `json:"order_no"`
@@ -274,6 +291,7 @@ func (c *Commission) Unmarshal(data []byte) error {
 
 // Gift represents a gift log entry.
 type Gift struct {
+	requestmeta.Metadata
 	Type        uint16 `json:"type"`
 	OrderNo     string `json:"order_no"`
 	SubscribeId int64  `json:"subscribe_id"`
@@ -297,6 +315,44 @@ func (g *Gift) Marshal() ([]byte, error) {
 func (g *Gift) Unmarshal(data []byte) error {
 	type Alias Gift
 	aux := (*Alias)(g)
+	return json.Unmarshal(data, aux)
+}
+
+// OrderCreated represents a durable order-creation audit entry. It stores only
+// the order summary needed for operations and risk analysis; coupon codes,
+// gateway trade numbers and guest credentials are deliberately excluded.
+type OrderCreated struct {
+	requestmeta.Metadata
+	OrderNo        string `json:"order_no"`
+	OrderType      uint8  `json:"order_type"`
+	Quantity       int64  `json:"quantity"`
+	Price          int64  `json:"price"`
+	Amount         int64  `json:"amount"`
+	GiftAmount     int64  `json:"gift_amount"`
+	Discount       int64  `json:"discount"`
+	CouponDiscount int64  `json:"coupon_discount"`
+	PaymentID      int64  `json:"payment_id"`
+	Method         string `json:"method"`
+	FeeAmount      int64  `json:"fee_amount"`
+	SubscribeID    int64  `json:"subscribe_id,omitempty"`
+	Source         string `json:"source"`
+	Timestamp      int64  `json:"timestamp"`
+}
+
+// Marshal implements the json.Marshaler interface for OrderCreated.
+func (o *OrderCreated) Marshal() ([]byte, error) {
+	type Alias OrderCreated
+	return json.Marshal(&struct {
+		*Alias
+	}{
+		Alias: (*Alias)(o),
+	})
+}
+
+// Unmarshal implements the json.Unmarshaler interface for OrderCreated.
+func (o *OrderCreated) Unmarshal(data []byte) error {
+	type Alias OrderCreated
+	aux := (*Alias)(o)
 	return json.Unmarshal(data, aux)
 }
 

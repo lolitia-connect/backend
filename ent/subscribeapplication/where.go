@@ -94,6 +94,11 @@ func OutputFormat(v string) predicate.SubscribeApplication {
 	return predicate.SubscribeApplication(sql.FieldEQ(FieldOutputFormat, v))
 }
 
+// DefaultParams applies equality check predicate on the "default_params" field. It's identical to DefaultParamsEQ.
+func DefaultParams(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldEQ(FieldDefaultParams, v))
+}
+
 // DownloadLink applies equality check predicate on the "download_link" field. It's identical to DownloadLinkEQ.
 func DownloadLink(v string) predicate.SubscribeApplication {
 	return predicate.SubscribeApplication(sql.FieldEQ(FieldDownloadLink, v))
@@ -602,6 +607,71 @@ func OutputFormatEqualFold(v string) predicate.SubscribeApplication {
 // OutputFormatContainsFold applies the ContainsFold predicate on the "output_format" field.
 func OutputFormatContainsFold(v string) predicate.SubscribeApplication {
 	return predicate.SubscribeApplication(sql.FieldContainsFold(FieldOutputFormat, v))
+}
+
+// DefaultParamsEQ applies the EQ predicate on the "default_params" field.
+func DefaultParamsEQ(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldEQ(FieldDefaultParams, v))
+}
+
+// DefaultParamsNEQ applies the NEQ predicate on the "default_params" field.
+func DefaultParamsNEQ(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldNEQ(FieldDefaultParams, v))
+}
+
+// DefaultParamsIn applies the In predicate on the "default_params" field.
+func DefaultParamsIn(vs ...string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldIn(FieldDefaultParams, vs...))
+}
+
+// DefaultParamsNotIn applies the NotIn predicate on the "default_params" field.
+func DefaultParamsNotIn(vs ...string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldNotIn(FieldDefaultParams, vs...))
+}
+
+// DefaultParamsGT applies the GT predicate on the "default_params" field.
+func DefaultParamsGT(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldGT(FieldDefaultParams, v))
+}
+
+// DefaultParamsGTE applies the GTE predicate on the "default_params" field.
+func DefaultParamsGTE(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldGTE(FieldDefaultParams, v))
+}
+
+// DefaultParamsLT applies the LT predicate on the "default_params" field.
+func DefaultParamsLT(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldLT(FieldDefaultParams, v))
+}
+
+// DefaultParamsLTE applies the LTE predicate on the "default_params" field.
+func DefaultParamsLTE(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldLTE(FieldDefaultParams, v))
+}
+
+// DefaultParamsContains applies the Contains predicate on the "default_params" field.
+func DefaultParamsContains(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldContains(FieldDefaultParams, v))
+}
+
+// DefaultParamsHasPrefix applies the HasPrefix predicate on the "default_params" field.
+func DefaultParamsHasPrefix(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldHasPrefix(FieldDefaultParams, v))
+}
+
+// DefaultParamsHasSuffix applies the HasSuffix predicate on the "default_params" field.
+func DefaultParamsHasSuffix(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldHasSuffix(FieldDefaultParams, v))
+}
+
+// DefaultParamsEqualFold applies the EqualFold predicate on the "default_params" field.
+func DefaultParamsEqualFold(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldEqualFold(FieldDefaultParams, v))
+}
+
+// DefaultParamsContainsFold applies the ContainsFold predicate on the "default_params" field.
+func DefaultParamsContainsFold(v string) predicate.SubscribeApplication {
+	return predicate.SubscribeApplication(sql.FieldContainsFold(FieldDefaultParams, v))
 }
 
 // DownloadLinkEQ applies the EQ predicate on the "download_link" field.

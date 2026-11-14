@@ -1,9 +1,12 @@
 package user
 
 import (
+	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"entgo.io/ent/dialect"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/pkg/authmethod"
 )
@@ -62,5 +65,33 @@ func TestResolveUniqueAuthMethod(t *testing.T) {
 
 	if _, err := resolveUniqueAuthMethod([]*ent.UserAuthMethod{{ID: 1}, {ID: 2}}); !errors.Is(err, ErrAmbiguousEmailIdentity) {
 		t.Fatalf("two rows should be ambiguous, got %v", err)
+	}
+}
+
+type recipientQueryDriver struct {
+	dialect.Driver
+	query string
+}
+
+func (driver *recipientQueryDriver) Dialect() string { return dialect.MySQL }
+
+func (driver *recipientQueryDriver) Query(_ context.Context, query string, _ any, _ any) error {
+	driver.query = query
+	return errors.New("query captured")
+}
+
+func TestEmailRecipientsExcludeDeletedOwners(t *testing.T) {
+	for scope := 1; scope <= 4; scope++ {
+		driver := &recipientQueryDriver{}
+		model := &customUserModel{defaultUserModel: newUserModel(ent.NewClient(ent.Driver(driver)), nil)}
+		filter := &EmailRecipientFilter{Scope: int8(scope)}
+		_, _ = model.QueryEmailRecipients(context.Background(), filter)
+		if !strings.Contains(driver.query, "JOIN `user`") || !strings.Contains(driver.query, "`.`deleted_at` IS NULL") {
+			t.Fatalf("scope %d includes deleted recipients: %s", scope, driver.query)
+		}
+		_, _ = model.CountEmailRecipients(context.Background(), filter)
+		if !strings.Contains(driver.query, "JOIN `user`") || !strings.Contains(driver.query, "`.`deleted_at` IS NULL") {
+			t.Fatalf("scope %d counts deleted recipients: %s", scope, driver.query)
+		}
 	}
 }

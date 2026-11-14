@@ -123,7 +123,11 @@ type Client struct {
 
 func (c *Client) Build() ([]byte, error) {
 	var buf bytes.Buffer
-	tmpl, err := template.New("client").Funcs(sprig.TxtFuncMap()).Parse(c.ClientTemplate)
+	functions := sprig.TxtFuncMap()
+	for _, name := range []string{"env", "expandenv", "getHostByName"} {
+		delete(functions, name)
+	}
+	tmpl, err := template.New("client").Funcs(functions).Parse(c.ClientTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +135,9 @@ func (c *Client) Build() ([]byte, error) {
 	proxies := make([]map[string]interface{}, len(c.Proxies))
 	for i, p := range c.Proxies {
 		proxies[i] = StructToMap(p)
+		for _, name := range []string{"RealityServerAddr", "RealityServerPort", "RealityPrivateKey", "EncryptionPrivateKey", "EncryptionServerPadding", "CertMode", "CertDNSProvider", "CertDNSEnv"} {
+			delete(proxies[i], name)
+		}
 	}
 
 	err = tmpl.Execute(&buf, map[string]interface{}{

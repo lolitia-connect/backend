@@ -12,7 +12,7 @@ ALTER TABLE `order`
 
 CREATE UNIQUE INDEX `idx_order_idempotency_key` ON `order` (`idempotency_key`);
 
-CREATE TABLE `order_event` (
+CREATE TABLE IF NOT EXISTS `order_event` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `order_id` BIGINT NOT NULL,
     `order_no` VARCHAR(255) NOT NULL,

@@ -75,18 +75,12 @@ PPanel 服务端是 PPanel 项目的后端组件，为代理服务提供强大�
    go mod download
    ```
 
-3. **生成代码**：
-   ```bash
-   chmod +x script/generate.sh
-   ./script/generate.sh
-   ```
-
-4. **构建项目**（二进制输出到 `bin/`；请选择将要运行它的机器对应的目标）：
+3. **构建项目**（二进制输出到 `bin/`；请选择将要运行它的机器对应的目标）：
    ```bash
    make linux-amd64
    ```
 
-5. **启动服务器**：
+4. **启动服务器**：
    ```bash
   ./bin/ppanel-server-linux-amd64 run --config config.yaml
    ```
@@ -208,13 +202,11 @@ PPanel 服务端是 PPanel 项目的后端组件，为代理服务提供强大�
 
 ```
 .
-├── apis/             # API 定义文件
 ├── cmd/              # 应用程序入口（run、healthcheck、migrate、version）
 ├── doc/              # 文档（config.md、install.md）
 ├── docs/             # 专项文档（如 edge-subscribe.md）
 ├── config.yaml.example # 配置文件示例
 ├── ent/              # entgo 生成的 ORM 客户端与 schema
-├── generate/         # 代码生成工具
 ├── initialize/       # 系统初始化与数据库迁移
 ├── internal/         # 内部模块
 │   ├── config/       # 配置文件解析
@@ -239,19 +231,22 @@ PPanel 服务端是 PPanel 项目的后端组件，为代理服务提供强大�
 
 ## 💻 开发
 
-### 格式化 API 文件
-```bash
-goctl api format --dir apis/user.api
-```
+### 添加新接口
 
-### 添加新 API
+本分支的 HTTP 层是手写的 Hertz 处理器（`internal/handler/`），不再有 go-zero 的 `.api`
+生成步骤：上游已在 `chore(codegen): remove legacy go-zero generation assets` 中移除该工具链，
+本分支同步移除。新增接口的步骤是：
 
-1. 在 `apis/` 目录创建新的 API 文件。
-2. 在 `apis/ppanel.api` 中导入新 API。
-3. 重新生成代码：
-   ```bash
-   ./script/generate.sh
-   ```
+1. 在 `internal/types/` 增加请求/响应类型。
+2. 在 `internal/logic/` 实现业务逻辑。
+3. 在 `internal/handler/` 添加处理器，并在 `internal/handler/routes.go` 注册路由。
+4. 若前端需要接入，在 `frontend/` 中运行 `bun run api:refresh` 重新导出本地后端的路由与类型
+   （契约由 `frontend/scripts/backend-contract.go` 从本仓库的 Go AST 直接导出，见
+   [frontend 台账](../../frontend/.ai/sync-diffs/v1.22.0-to-v1.23.0.md)）。
+
+数据层是 entgo：修改 `ent/schema/` 后运行 `go generate ./ent`，或直接
+`go run entgo.io/ent/cmd/ent generate ./ent/schema`。数据库结构变更仍以
+`initialize/migrate/database/` 下成对的手写 SQL 迁移为准。
 
 ### 多平台构建
 

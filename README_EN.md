@@ -77,18 +77,12 @@ Deploying a release binary instead of building? See the [installation guide](doc
    go mod download
    ```
 
-3. **Generate code**:
-   ```bash
-   chmod +x script/generate.sh
-   ./script/generate.sh
-   ```
-
-4. **Build the project** (the binaries land in `bin/`; pick the target of the machine that will run it):
+3. **Build the project** (the binaries land in `bin/`; pick the target of the machine that will run it):
    ```bash
    make linux-amd64
    ```
 
-5. **Run the server**:
+4. **Run the server**:
    ```bash
   ./bin/ppanel-server-linux-amd64 run --config config.yaml
    ```
@@ -215,13 +209,11 @@ Visit [ppanel.dev](https://ppanel.dev/) for more details.
 
 ```
 .
-├── apis/             # API definition files
 ├── cmd/              # Application entry point (run, healthcheck, migrate, version)
 ├── doc/              # Documentation (config.md, install.md)
 ├── docs/             # Topic documents (e.g. edge-subscribe.md)
 ├── config.yaml.example # Example configuration file
 ├── ent/              # entgo generated ORM client and schemas
-├── generate/         # Code generation tools
 ├── initialize/       # System initialization and database migrations
 ├── internal/         # Internal modules
 │   ├── config/       # Configuration parsing
@@ -246,19 +238,24 @@ Visit [ppanel.dev](https://ppanel.dev/) for more details.
 
 ## 💻 Development
 
-### Format API Files
-```bash
-goctl api format --dir apis/user.api
-```
+### Adding a new endpoint
 
-### Add a New API
+This branch's HTTP layer is hand-written Hertz handlers (`internal/handler/`); there is no
+go-zero `.api` generation step any more. Upstream removed that toolchain in
+`chore(codegen): remove legacy go-zero generation assets` and this fork now mirrors that. To add
+an endpoint:
 
-1. Create a new API file in `apis/`.
-2. Import it in `apis/ppanel.api`.
-3. Regenerate code:
-   ```bash
-   ./script/generate.sh
-   ```
+1. Add the request/response types under `internal/types/`.
+2. Implement the business logic under `internal/logic/`.
+3. Add the handler under `internal/handler/` and register the route in `internal/handler/routes.go`.
+4. If the frontend needs it, run `bun run api:refresh` from `frontend/` to re-export this
+   repository's routes and types (the contract is derived straight from the Go AST by
+   `frontend/scripts/backend-contract.go`; see the
+   [frontend ledger](../../frontend/.ai/sync-diffs/v1.22.0-to-v1.23.0.md)).
+
+The data layer is entgo: after editing `ent/schema/` run `go generate ./ent`, or
+`go run entgo.io/ent/cmd/ent generate ./ent/schema` directly. Schema changes still land as paired
+hand-written SQL migrations under `initialize/migrate/database/`.
 
 ### Build for Multiple Platforms
 

@@ -2,7 +2,10 @@ package user
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/internal/model/user"
@@ -31,15 +34,41 @@ func NewUpdateUserPasswordLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 }
 
 func (l *UpdateUserPasswordLogic) UpdateUserPassword(req *types.UpdateUserPasswordRequest) error {
-	userInfo := l.ctx.Value(constant.CtxKeyUser).(*user.User)
-	//update the password
-	userInfo.Password = tool.EncodePassWord(req.Password)
-	// Reset algo to the current password algorithm, otherwise a migrated user
-	// would keep verifying the new hash with the old legacy algorithm.
-	userInfo.Algo = tool.PasswordAlgoArgon2id
-	userInfo.Salt = ""
-	if err := l.svcCtx.Store.User().Update(l.ctx, userInfo); err != nil {
+	current, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
+	if !ok || current == nil {
+		return xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	userInfo, err := l.svcCtx.Store.User().FindOne(l.ctx, current.Id)
+	if err != nil {
+		return err
+	}
+	if err := verifyCurrentIdentity(l.ctx, l.svcCtx, userInfo, req.OldPassword, req.CurrentCode, true); err != nil {
+		return err
+	}
+	if err := l.svcCtx.Store.User().UpdatePassword(l.ctx, userInfo.Id, userInfo.Password, tool.EncodePassWord(req.Password), tool.PasswordAlgoArgon2id, ""); err != nil {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update user password error")
 	}
-	return nil
+	_, err = usersession.Rotate(l.ctx, l.svcCtx.Redis, userInfo.Id)
+	return err
+}
+
+func verifyCurrentIdentity(ctx context.Context, svcCtx *svc.ServiceContext, account *user.User, password, currentCode string, changingPassword bool) error {
+	if account == nil || account.DeletedAt != nil || account.Enable == nil || !*account.Enable {
+		return xerr.NewErrCode(xerr.UserDisabled)
+	}
+	if password != "" || (changingPassword && account.Password != "") {
+		return usersession.VerifyPassword(ctx, svcCtx.Redis, account.Id, account.Algo, account.Salt, password, account.Password)
+	}
+	for _, binding := range account.AuthMethods {
+		prefix := config.AuthCodeCacheKey
+		if binding.AuthType == "mobile" {
+			prefix = config.AuthCodeTelephoneCacheKey
+		} else if binding.AuthType != "email" {
+			continue
+		}
+		if usersession.ConsumeCode(ctx, svcCtx.Redis, fmt.Sprintf("%s:%s:%s", prefix, constant.Security, binding.AuthIdentifier), currentCode) == nil {
+			return nil
+		}
+	}
+	return xerr.NewErrCode(xerr.VerifyCodeError)
 }

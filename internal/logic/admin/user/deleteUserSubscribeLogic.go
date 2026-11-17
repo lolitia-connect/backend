@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 
+	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -31,6 +32,12 @@ func (l *DeleteUserSubscribeLogic) DeleteUserSubscribe(req *types.DeleteUserSubs
 	if err != nil {
 		l.Logger.Errorw("failed to find user subscribe", zap.Any("error", err.Error()), zap.Any("userSubscribeId", req.UserSubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "failed to find user subscribe: %v", err.Error())
+	}
+	if userSubscribe == nil {
+		return xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
+	if userSubscribe.EntitlementSource != "" {
+		return user.ErrProviderManaged
 	}
 
 	err = l.svcCtx.Store.User().DeleteSubscribeById(l.ctx, req.UserSubscribeId)

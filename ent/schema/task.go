@@ -30,6 +30,8 @@ func (Task) Fields() []ent.Field {
 		field.String("errors").StorageKey("errors").Optional(),
 		field.Uint64("total").StorageKey("total").Default(0),
 		field.Uint64("current").StorageKey("current").Default(0),
+		field.String("daily_date").StorageKey("daily_date").MaxLen(10).Default(""),
+		field.Uint64("daily_sent").StorageKey("daily_sent").Default(0),
 		field.Time("created_at").StorageKey("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").StorageKey("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

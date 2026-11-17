@@ -26,6 +26,7 @@ type (
 		TradeNo        string `json:"trade_no,omitempty"`
 		Status         uint8  `json:"status,omitempty"`
 		SubscribeId    int64  `json:"subscribe_id,omitempty,string"`
+		UserSubscribeId int64 `json:"user_subscribe_id,omitempty,string"`
 	}
 	UpdateOrderStatusRequest {
 		Id        int64  `json:"id,string" validate:"required"`

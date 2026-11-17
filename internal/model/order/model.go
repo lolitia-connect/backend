@@ -14,6 +14,7 @@ import (
 	entuserauthmethod "github.com/perfect-panel/server/ent/userauthmethod"
 	paymentmodel "github.com/perfect-panel/server/internal/model/payment"
 	subscribemodel "github.com/perfect-panel/server/internal/model/subscribe"
+	"github.com/perfect-panel/server/pkg/authmethod"
 	"github.com/perfect-panel/server/pkg/orm"
 	"github.com/redis/go-redis/v9"
 )
@@ -22,8 +23,18 @@ const userAuthMethodsTable = "user_auth_methods"
 
 type customOrderLogicModel interface {
 	UpdateOrderStatus(ctx context.Context, orderNo string, status uint8) error
+	MarkOrderPaid(ctx context.Context, orderNo, tradeNo string) (bool, error)
+	ClosePendingOrder(ctx context.Context, orderNo string) (bool, error)
+	ClosePaidOrder(ctx context.Context, orderNo string) (bool, error)
+	SetPaymentExpectation(ctx context.Context, orderNo string, amount int64, currency string) (bool, error)
+	BeginPaymentSession(ctx context.Context, orderNo, session string) (bool, error)
+	CompletePaymentSession(ctx context.Context, orderNo, expectedSession, tradeNo, session string) (bool, error)
+	ClaimPaymentSession(ctx context.Context, orderNo, tradeNo, session string) (bool, error)
+	SetCommission(ctx context.Context, id, amount, refererID int64) error
+	HasCommissionedOrder(ctx context.Context, userID int64, excludingOrderNo string) (bool, error)
 	FinishOrder(ctx context.Context, orderNo string) (bool, error)
 	CountUserCouponUsage(ctx context.Context, userID int64, coupon string) (int64, error)
+	CountGuestCouponUsage(ctx context.Context, authType, identifier, coupon string) (int64, error)
 	QueryOrderListByPage(ctx context.Context, page, size int, status uint8, user, subscribe int64, search string) (int64, []*Details, error)
 	FindOneDetails(ctx context.Context, id int64) (*Details, error)
 	FindOneDetailsByOrderNo(ctx context.Context, orderNo string) (*Details, error)
@@ -51,7 +62,14 @@ func NewEventModel(conn *ent.Client) EventModel {
 }
 
 func (m *customOrderModel) CountUserCouponUsage(ctx context.Context, userID int64, coupon string) (int64, error) {
-	count, err := m.db.Order.Query().Where(entorder.UserID(userID), entorder.Coupon(coupon)).Count(ctx)
+	count, err := m.db.Order.Query().Where(entorder.UserID(userID), entorder.Coupon(coupon), entorder.StatusIn(StatusPending, StatusPaid, StatusFinished)).Count(ctx)
+	return int64(count), err
+}
+
+func (m *customOrderModel) CountGuestCouponUsage(ctx context.Context, authType, identifier, coupon string) (int64, error) {
+	count, err := m.db.Order.Query().Where(entorder.GuestAuthType(authType),
+		entorder.GuestIdentifier(authmethod.CanonicalIdentifier(authType, identifier)),
+		entorder.Coupon(coupon), entorder.StatusIn(StatusPending, StatusPaid, StatusFinished)).Count(ctx)
 	return int64(count), err
 }
 
@@ -163,6 +181,10 @@ func (m *customOrderModel) QueryTotalUserCounts(ctx context.Context) (int64, int
 func (m *customOrderModel) IsUserEligibleForNewOrder(ctx context.Context, userID int64) (bool, error) {
 	count, err := m.db.Order.Query().Where(entorder.UserID(userID), entorder.StatusIn(2, 5)).Count(ctx)
 	return count == 0, err
+}
+
+func (m *customOrderModel) HasCommissionedOrder(ctx context.Context, userID int64, excludingOrderNo string) (bool, error) {
+	return m.db.Order.Query().Where(entorder.UserID(userID), entorder.OrderNoNEQ(excludingOrderNo), entorder.CommissionGT(0)).Exist(ctx)
 }
 
 func (m *customOrderModel) QueryDailyOrdersList(ctx context.Context, date time.Time) ([]OrdersTotalWithDate, error) {

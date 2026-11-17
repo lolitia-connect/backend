@@ -6,6 +6,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/perfect-panel/server/internal/logic/server"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -44,6 +45,10 @@ func GetServerUserListHandler(svcCtx *svc.ServiceContext) app.HandlerFunc {
 		resp, err := l.GetServerUserList(&req)
 		writeHeaders(ctx, l.ResponseMeta().Headers)
 		if err != nil {
+			if errors.Is(err, node.ErrServerBusy) {
+				writeServerReportResult(ctx, err)
+				return
+			}
 			if errors.Is(err, xerr.StatusNotModified) {
 				ctx.String(consts.StatusNotModified, "Not Modified")
 				return

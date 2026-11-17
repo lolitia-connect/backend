@@ -147,10 +147,14 @@ func (l *QueryUserSubscribeNodeListLogic) getServers(userSub *user.Subscribe) (u
 			if server == nil {
 				continue
 			}
+			credential, err := node.ProtocolCredential(n.Protocol, userSub.UUID)
+			if err != nil {
+				return nil, err
+			}
 			userSubscribeNode := &types.UserSubscribeNodeInfo{
 				Id:              n.Id,
 				Name:            n.Name,
-				Uuid:            userSub.UUID,
+				Uuid:            credential,
 				Protocol:        n.Protocol,
 				Protocols:       server.Protocols,
 				Port:            n.Port,
@@ -312,10 +316,14 @@ func (l *QueryUserSubscribeNodeListLogic) createExpiredServers(userSub *user.Sub
 		if server == nil {
 			continue
 		}
+		credential, err := node.ProtocolCredential(n.Protocol, userSub.UUID)
+		if err != nil {
+			return nil, err
+		}
 		userSubscribeNode := &types.UserSubscribeNodeInfo{
 			Id:              n.Id,
 			Name:            n.Name,
-			Uuid:            userSub.UUID,
+			Uuid:            credential,
 			Protocol:        n.Protocol,
 			Protocols:       server.Protocols,
 			Port:            n.Port,

@@ -3,14 +3,17 @@ package order
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	paymentnotify "github.com/perfect-panel/server/internal/logic/notify"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
+	"github.com/perfect-panel/server/pkg/tasklock"
 
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/payment"
-	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -23,6 +26,7 @@ type CloseOrderLogic struct {
 	Logger *zap.SugaredLogger
 	ctx    context.Context
 	svcCtx *svc.ServiceContext
+	expiry bool
 }
 
 // NewCloseOrderLogic Close order
@@ -41,7 +45,25 @@ func reservesPlanInventory(orderInfo *order.Order) bool {
 	return orderInfo.Type == order.TypeSubscribe && orderInfo.SubscribeId > 0
 }
 
+func (l *CloseOrderLogic) ExpireOrder(req *types.CloseOrderRequest) error {
+	l.expiry = true
+	return l.CloseOrder(req)
+}
+
 func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
+	lock, held, err := tasklock.Acquire(l.ctx, l.svcCtx.Redis, "order-checkout:"+req.OrderNo, 2*time.Minute)
+	if err != nil {
+		return err
+	}
+	if !held {
+		return fmt.Errorf("order checkout is in progress")
+	}
+	defer lock.Release(l.ctx)
+	ctx, cancel := context.WithCancelCause(l.ctx)
+	defer cancel(nil)
+	stop := lock.KeepAlive(ctx, 2*time.Minute, cancel)
+	defer stop()
+	l.ctx = ctx
 	store := l.svcCtx.Store
 	// Find order information by order number
 	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, req.OrderNo)
@@ -50,7 +72,13 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 			zap.Any("error", err.Error()),
 			zap.Any("orderNo", req.OrderNo),
 		)
-		return nil
+		return err
+	}
+	if orderInfo == nil {
+		return fmt.Errorf("order not found")
+	}
+	if orderInfo.Status == order.StatusPaid {
+		return paymentnotify.EnqueuePaidOrder(l.ctx, l.svcCtx, orderInfo.OrderNo)
 	}
 	// If the order status is not 1, it means that the order has been closed or paid
 	if orderInfo.Status != 1 {
@@ -64,21 +92,23 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 	// Only a new subscription purchase reserves plan inventory. Renewals and
 	// traffic resets also reference a plan, but they never consume its stock, so
 	// closing one must not hand stock back that was never taken.
-	var sub *subscribe.Subscribe
-	if reservesPlanInventory(orderInfo) {
-		sub, err = store.Subscribe().FindOne(l.ctx, orderInfo.SubscribeId)
-		if err != nil {
-			l.Logger.Errorw("[CloseOrder] Find subscribe info failed",
-				zap.Any("error", err.Error()),
-				zap.Any("subscribeId", orderInfo.SubscribeId),
-			)
+	if err := l.closeGateway(orderInfo); err != nil {
+		if errors.Is(err, errPaymentRecovered) {
 			return nil
 		}
+		return err
 	}
 
 	err = store.InTx(l.ctx, func(txStore repository.Store) error {
-		// update order status
-		err := txStore.Order().UpdateOrderStatus(l.ctx, req.OrderNo, 3)
+		current, err := txStore.Order().FindOneByOrderNoForUpdate(l.ctx, req.OrderNo)
+		if err != nil {
+			return err
+		}
+		if current == nil {
+			return fmt.Errorf("order not found")
+		}
+		orderInfo = current
+		closed, err := txStore.Order().ClosePendingOrder(l.ctx, req.OrderNo)
 		if err != nil {
 			l.Logger.Errorw("[CloseOrder] Update order status failed",
 				zap.Any("error", err.Error()),
@@ -86,21 +116,20 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 			)
 			return err
 		}
-		// If User ID is 0, it means that the order is a guest order and does not need to be refunded, the order can be deleted directly
-		if orderInfo.UserId == 0 {
-			err = txStore.Order().Delete(l.ctx, orderInfo.Id)
-			if err != nil {
-				l.Logger.Errorw("[CloseOrder] Delete order failed",
-					zap.Any("error", err.Error()),
-					zap.Any("orderNo", req.OrderNo),
-				)
+		if !closed {
+			return nil
+		}
+		if current.CouponReserved && current.Coupon != "" {
+			if err := txStore.Coupon().ReleaseUsage(l.ctx, current.Coupon); err != nil {
 				return err
 			}
-			return nil
+		}
+		if orderInfo.UserId == 0 {
+			orderInfo.GiftAmount = 0
 		}
 		// refund deduction amount to the wallet gift balance
 		if orderInfo.GiftAmount > 0 {
-			walletInfo, err := txStore.Wallet().FindOne(l.ctx, orderInfo.UserId)
+			walletInfo, err := txStore.Wallet().FindOneForUpdate(l.ctx, orderInfo.UserId)
 			if err != nil {
 				l.Logger.Errorw("[CloseOrder] Find wallet info failed",
 					zap.Any("error", err.Error()),
@@ -147,20 +176,10 @@ func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {
 				)
 				return err
 			}
-			return nil
 		}
 		// Restore subscribe inventory if subscribe exists
-		if sub != nil {
-			if sub.Inventory != -1 {
-				sub.Inventory++
-				if e := txStore.Subscribe().Update(l.ctx, sub); e != nil {
-					l.Logger.Errorw("[CloseOrder] Restore subscribe inventory failed",
-						zap.Any("error", e.Error()),
-						zap.Any("subscribeId", sub.Id),
-					)
-					return e
-				}
-			}
+		if reservesPlanInventory(orderInfo) {
+			return txStore.Subscribe().RestoreInventory(l.ctx, orderInfo.SubscribeId)
 		}
 
 		return nil

@@ -217,7 +217,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 
 		// Reserve gift credit under the fresh wallet read: the fee was already
 		// calculated on the full external payable amount by design.
-		walletInfo, e := txStore.Wallet().FindOne(l.ctx, u.Id)
+		walletInfo, e := txStore.Wallet().FindOneForUpdate(l.ctx, u.Id)
 		if e != nil {
 			l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", e.Error()), zap.Any("user_id", u.Id))
 			return e
@@ -258,14 +258,11 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 			}
 		}
 
-		if sub.Inventory != -1 {
-			// decrease subscribe plan stock
-			sub.Inventory -= 1
-			// update subscribe plan stock
-			if err = txStore.Subscribe().Update(l.ctx, sub); err != nil {
-				l.Logger.Errorw("[Purchase] Database update error", zap.Any("error", err.Error()), zap.Any("subscribe", sub))
-				return err
-			}
+		if err := txStore.Subscribe().ReserveInventory(l.ctx, sub.Id); err != nil {
+			return err
+		}
+		if err := orderflow.ReserveCoupon(l.ctx, txStore, orderInfo); err != nil {
+			return err
 		}
 
 		// insert order
@@ -291,7 +288,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	if err != nil {
 		l.Logger.Errorw("[Purchase] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
-	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
+	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(25))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
 		l.Logger.Errorw("[Purchase] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", task))

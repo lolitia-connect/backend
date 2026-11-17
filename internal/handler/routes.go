@@ -23,6 +23,7 @@ import (
 	adminTicket "github.com/perfect-panel/server/internal/handler/admin/ticket"
 	adminTool "github.com/perfect-panel/server/internal/handler/admin/tool"
 	adminUser "github.com/perfect-panel/server/internal/handler/admin/user"
+	adminWithdrawal "github.com/perfect-panel/server/internal/handler/admin/withdrawal"
 	auth "github.com/perfect-panel/server/internal/handler/auth"
 	authAdmin "github.com/perfect-panel/server/internal/handler/auth/admin"
 	authOauth "github.com/perfect-panel/server/internal/handler/auth/oauth"
@@ -263,6 +264,8 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 
 		// Filter order creation audit log
 		adminLogGroupRouter.GET("/order/list", adminLog.FilterOrderLogHandler(serverCtx))
+		adminLogGroupRouter.GET("/admin-action/list", adminLog.FilterAdminActionLogHandler(serverCtx))
+		adminLogGroupRouter.GET("/unmatched-payment/list", adminLog.FilterUnmatchedPaymentLogHandler(serverCtx))
 
 		// Filter register log
 		adminLogGroupRouter.GET("/register/list", adminLog.FilterRegisterLogHandler(serverCtx))
@@ -592,6 +595,17 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 		adminToolGroupRouter.GET("/version", adminTool.GetVersionHandler(serverCtx))
 	}
 
+	adminWithdrawalGroupRouter := router.Group("/v1/admin/withdrawal")
+	adminWithdrawalGroupRouter.Use(middleware.AuthMiddleware(serverCtx))
+
+	{
+		// Get withdrawal list
+		adminWithdrawalGroupRouter.GET("/list", adminWithdrawal.GetWithdrawalListHandler(serverCtx))
+
+		// Review withdrawal
+		adminWithdrawalGroupRouter.PUT("/status", adminWithdrawal.ReviewWithdrawalHandler(serverCtx))
+	}
+
 	adminUserGroupRouter := router.Group("/v1/admin/user")
 	adminUserGroupRouter.Use(middleware.AuthMiddleware(serverCtx))
 
@@ -914,6 +928,8 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 	publicUserGroupRouter.Use(middleware.AuthMiddleware(serverCtx), middleware.DeviceMiddleware(serverCtx))
 
 	{
+		publicUserGroupRouter.POST("/logout", publicUser.LogoutHandler(serverCtx))
+
 		// Query User Affiliate Count
 		publicUserGroupRouter.GET("/affiliate/count", publicUser.QueryUserAffiliateHandler(serverCtx))
 

@@ -30,10 +30,10 @@ type (
 		Id int64 `form:"id" validate:"required"`
 	}
 	CreateTicketFollowRequest {
-		TicketId int64  `json:"ticket_id,string" validate:"required"`
-		From     string `json:"from" validate:"required"`
-		Type     uint8  `json:"type" validate:"required"`
-		Content  string `json:"content" validate:"required"`
+		TicketId int64  `json:"ticket_id,string" validate:"required,gt=0"`
+		From     string `json:"from" validate:"required,max=255"`
+		Type     uint8  `json:"type" validate:"required,oneof=1 2"`
+		Content  string `json:"content" validate:"required,max=65535"`
 	}
 )
 

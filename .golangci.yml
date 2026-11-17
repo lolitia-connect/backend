@@ -1,0 +1,221 @@
+version: "2"
+
+run:
+  timeout: 10m
+
+linters:
+  # Ported from upstream 12ab95e8 ("ci: enable gosec, noctx, sqlclosecheck and
+  # rowserrcheck"), adapted to this fork.
+  #
+  # Divergence from upstream: upstream uses `default: standard` (errcheck, govet,
+  # ineffassign, staticcheck, unused) and a further set of opt-in linters, and
+  # its tree is clean under all of them. This fork is not: measured on the
+  # committed (LF) tree, `default: standard` alone reports 142 findings
+  # (errcheck 94, staticcheck 21, unused 18, govet 7, ineffassign 2), and adding
+  # upstream's opt-in set reports 377. Turning those on here would either fail
+  # CI on day one or require disabling them globally, which is what this file
+  # must not do. So the four linters this port is actually about are enabled,
+  # `default` is `none`, and the fork's pre-existing debt in the other linters is
+  # a separate code change (tracked in
+  # .ai/sync-diffs/v1.20.3-to-v1.21.7.md, row 12ab95e8). Their absence is
+  # deliberate and is not an implicit statement that the tree passes them.
+  default: none
+  enable:
+    - gosec # insecure patterns: weak crypto, permissive files, injection, unbounded reads
+    - noctx # HTTP requests and database calls without a context
+    - rowserrcheck # sql.Rows iterated without checking Rows.Err
+    - sqlclosecheck # sql.Rows and sql.Stmt left open
+  settings:
+    gosec:
+      excludes:
+        # Unhandled errors: errcheck reports them, with its own exclusions.
+        - G104
+        # Integer conversions (int -> uint32 for argon2 parameters, uint64
+        # byte counts to int64 columns, ...): every conversion in the tree is
+        # flagged whether or not the value can overflow, so the rule hides the
+        # findings that matter (44 non-test findings on this tree).
+        - G115
+        # Files opened from a variable path: the server reads the paths its
+        # configuration and command line name (the configuration file, the log
+        # files, TLS certificates, the downloaded GeoIP database), never a path
+        # a request supplies.
+        - G304
+  exclusions:
+    generated: strict
+    paths:
+      - api/server/v1/server.pb.go
+    rules:
+      # Tests and test-support packages hold fixture credentials,
+      # world-readable temp files, listeners without a context and SQL built
+      # from table names on purpose; the security linters are for the code that
+      # ships. This is upstream's own rule and covers 65 of the 225 findings
+      # measured on this tree.
+      - path: _test\.go$
+        linters:
+          - gosec
+          - noctx
+      - path: internal/.*/[a-z]+test/
+        linters:
+          - gosec
+      #
+      # Everything below is a pre-existing finding on code that ships. Each rule
+      # is the narrowest golangci-lint offers: one path (or a small set of
+      # paths) plus the exact gosec rule or the exact linter, never a linter
+      # disabled for the whole tree. A *new* finding on any other path, or of
+      # any other rule in these files, still fails the run. The finding counts
+      # are from the committed (LF) tree with the four linters enabled.
+      #
+      # Secrets held by design: the provider client secrets, SMTP passwords and
+      # node outbound credentials are stored as JSON and edited by
+      # administrators. Upstream excludes G117 for its auth entity; this fork's
+      # equivalent lives at internal/model/auth/auth.go (18 findings), plus the
+      # admin settings masking helper (1).
+      - path: internal/model/auth/auth\.go$
+        linters: [gosec]
+        text: "G117"
+      - path: internal/logic/admin/system/secrets\.go$
+        linters: [gosec]
+        text: "G117"
+      # G101: string literals that look like credentials but are not (a token
+      # bucket name, a URL template, an error-message table).
+      - path: pkg/(limit/tokenlimit|oauth/facebook/facebook|tool/string)\.go$
+        linters: [gosec]
+        text: "G101|G404"
+      - path: pkg/xerr/errMsg\.go$
+        linters: [gosec]
+        text: "G101"
+      # G404: math/rand is used for captcha jitter, random display names and
+      # slider puzzles, none of which are security decisions.
+      - path: pkg/captcha/slider\.go$
+        linters: [gosec]
+        text: "G404"
+      - path: pkg/random/tool\.go$
+        linters: [gosec]
+        text: "G404"
+      # G102: the gateway-mode module listener binds every interface on
+      # purpose; it is only started in gateway mode. Its noctx finding is the
+      # same context-less net.Listen listed below.
+      - path: internal/report/tool\.go$
+        linters: [gosec]
+        text: "G102"
+      - path: internal/report/tool\.go$
+        linters: [noctx]
+      # G110/G302/G401: the self-updater unpacks the release archive it just
+      # downloaded over TLS from the configured repository, into its own
+      # directory. Replacing the updater with a bounded extractor is a separate
+      # change.
+      - path: pkg/updater/updater\.go$
+        linters: [gosec]
+        text: "G110|G302|G401|G501"
+      # G112: the setup wizard's listener has no ReadHeaderTimeout. It binds
+      # loopback only and lives until the installation completes.
+      - path: initialize/config\.go$
+        linters: [gosec]
+        text: "G112"
+      # G118: the activation fulfillment goroutine is deliberately detached
+      # from the request context, which is cancelled when the HTTP handler
+      # returns; it runs under the queue's own context.
+      - path: queue/logic/order/activateOrderLogic\.go$
+        linters: [gosec]
+        text: "G118"
+      # G201/G202: SQL assembled from identifiers that come from the schema and
+      # the migration's own column list, not from a request. The values are
+      # still bound as parameters.
+      - path: internal/migration/mysql2postgres/migrate\.go$
+        linters: [gosec]
+        text: "G201|G202"
+      - path: internal/plugin/store_adapter\.go$
+        linters: [gosec]
+        text: "G201|G202"
+      # G301/G302: the plugin store, the GeoIP cache, the log directory and the
+      # trace agent create their directories and files with 0755/0644. The
+      # plugin directory is administrator-managed; the GeoIP database is public
+      # data. Tightening these is a separate change with upgrade implications.
+      # G122 (gosec v2.15): the plugin installer walks the administrator's own
+      # plugin directory through an *os.File whose path came from that walk,
+      # which cannot escape the directory the administrator configured.
+      - path: internal/plugin/(install|loader|manager)\.go$
+        linters: [gosec]
+        text: "G301|G122"
+      - path: internal/svc/mmdb\.go$
+        linters: [gosec]
+        text: "G301"
+      - path: pkg/logging/logging\.go$
+        linters: [gosec]
+        text: "G301"
+      - path: pkg/trace/agent\.go$
+        linters: [gosec]
+        text: "G302"
+      # G401/G501/G505: md5 and sha1 are used where the fork needs a stable
+      # digest, not a collision-resistant one (cache keys, legacy node
+      # fingerprints, the AES helper's key derivation, tool/sha helpers). None
+      # of them authenticate a value.
+      - path: pkg/aes/aes\.go$
+        linters: [gosec]
+        text: "G401|G501"
+      - path: pkg/hash/hash\.go$
+        linters: [gosec]
+        text: "G401|G501"
+      - path: pkg/md5/md5\.go$
+        linters: [gosec]
+        text: "G401|G501"
+      - path: pkg/tool/encryption\.go$
+        linters: [gosec]
+        text: "G401|G501"
+      - path: pkg/tool/sha\.go$
+        linters: [gosec]
+        text: "G401|G505"
+      - path: pkg/device/hertz\.go$
+        linters: [gosec]
+        text: "G401|G505"
+      # G402: the healthcheck command talks to the panel's own listener and
+      # cannot know its certificate; the SMTP client's InsecureSkipVerify is the
+      # administrator's documented explicit opt-out (upstream ad8a2d5a), off by
+      # default.
+      - path: cmd/healthcheck\.go$
+        linters: [gosec]
+        text: "G402"
+      - path: pkg/email/smtp/email\.go$
+        linters: [gosec]
+        text: "G402"
+      #
+      # noctx: 25 non-test call sites still use the context-less form. Porting
+      # them means threading a context through the OAuth providers, the payment
+      # clients, the plugin host functions, the GeoIP downloader and the
+      # migration tool, which changes those callers' signatures; that is a
+      # separate change. Grouped by the package that owns the call site.
+      #
+      - path: initialize/(config|migrate/tool)\.go$
+        linters: [noctx]
+      - path: internal/logic/common/getStatLogic\.go$
+        linters: [noctx]
+      - path: internal/plugin/(hostfuncs|store_adapter)\.go$
+        linters: [noctx]
+      - path: pkg/ip/ip\.go$
+        linters: [noctx]
+      - path: pkg/oauth/facebook/facebook\.go$
+        linters: [noctx]
+      - path: pkg/oauth/github/github\.go$
+        linters: [noctx]
+      - path: pkg/oauth/google/google\.go$
+        linters: [noctx]
+      - path: pkg/payment/cryptomus/cryptomus\.go$
+        linters: [noctx]
+      - path: pkg/payment/epay/epay\.go$
+        linters: [noctx]
+      - path: pkg/turnstile/service\.go$
+        linters: [noctx]
+      - path: pkg/updater/updater\.go$
+        linters: [noctx]
+
+formatters:
+  # Formatting is not enabled: the four linters above are the port's scope, and
+  # the committed tree already has 1 gofmt and 9 goimports deviations. Note also
+  # that the working checkout is CRLF (core.autocrlf=true) while the committed
+  # blobs are LF, so a Windows checkout reports every one of the 1382 tracked Go
+  # files as unformatted; gofmt is only meaningful on the LF tree CI checks out.
+  enable: []
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

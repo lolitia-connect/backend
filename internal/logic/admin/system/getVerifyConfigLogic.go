@@ -37,5 +37,6 @@ func (l *GetVerifyConfigLogic) GetVerifyConfig() (*types.VerifyConfig, error) {
 	tool.SystemConfigSliceReflectToStruct(verifyConfigs, resp)
 	// update verify config to system
 	initialize.Verify(l.svcCtx)
+	resp.TurnstileSecret = maskSecret(resp.TurnstileSecret)
 	return resp, nil
 }

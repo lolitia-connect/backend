@@ -5,17 +5,16 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 
-	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/payment"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
-	"github.com/perfect-panel/server/queue/types"
 	"go.uber.org/zap"
 )
 
@@ -45,7 +44,7 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 	}
 	signature := r.Header.Get("Stripe-Signature")
 	stripeConfig, ok := l.ctx.Value(constant.CtxKeyPayment).(*payment.Payment)
-	if !ok {
+	if !ok || stripeConfig == nil {
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "payment config not found")
 	}
 	config := payment.StripeConfig{}
@@ -65,7 +64,10 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 	}
 
 	// Skip events that don't need processing (e.g. payment_failed, unhandled types)
-	if notify.EventType != "payment_intent.succeeded" && notify.EventType != "checkout.session.completed" {
+	if notify.EventType != "payment_intent.succeeded" && notify.EventType != "checkout.session.completed" && notify.EventType != "checkout.session.async_payment_succeeded" {
+		return nil
+	}
+	if !notify.Paid {
 		return nil
 	}
 
@@ -80,29 +82,18 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 		l.Logger.Error("[StripeNotify] Find order failed", zap.Any("error", err.Error()), zap.Any("orderNo", notify.OrderNo))
 		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
 	}
-	if orderInfo.Status == 5 {
+	if orderInfo == nil {
+		return xerr.NewErrCode(xerr.OrderNotExist)
+	}
+	if strings.HasPrefix(orderInfo.TradeNo, "cs_") && notify.EventType == "payment_intent.succeeded" {
 		return nil
 	}
-	// update order status
-	err = store.Order().UpdateOrderStatus(l.ctx, notify.OrderNo, 2)
+	activate, err := settlePayment(l.ctx, store, stripeConfig, notify.OrderNo, notify.TradeNo, notify.Amount, notify.Currency)
 	if err != nil {
 		return err
 	}
-	// create ActivateOrder task
-	activatePayload := types.ForthwithActivateOrderPayload{
-		OrderNo: notify.OrderNo,
+	if activate {
+		return enqueueActivation(l.ctx, l.svcCtx, notify.OrderNo)
 	}
-	taskBytes, err := json.Marshal(activatePayload)
-	if err != nil {
-		l.Logger.Errorw("[StripeNotify] Marshal error", zap.Any("errors", err.Error()), zap.Any("payload", activatePayload))
-		return err
-	}
-	task := asynq.NewTask(types.ForthwithActivateOrder, taskBytes, asynq.MaxRetry(5))
-	_, err = l.svcCtx.Queue.Enqueue(task)
-	if err != nil {
-		l.Logger.Errorw("[StripeNotify] Enqueue error", zap.Any("errors", err.Error()))
-		return err
-	}
-	l.Logger.Infow("[StripeNotify] success", zap.Any("orderNo", notify.OrderNo))
 	return nil
 }

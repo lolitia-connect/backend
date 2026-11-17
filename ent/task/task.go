@@ -27,6 +27,10 @@ const (
 	FieldTotal = "total"
 	// FieldCurrent holds the string denoting the current field in the database.
 	FieldCurrent = "current"
+	// FieldDailyDate holds the string denoting the daily_date field in the database.
+	FieldDailyDate = "daily_date"
+	// FieldDailySent holds the string denoting the daily_sent field in the database.
+	FieldDailySent = "daily_sent"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -45,6 +49,8 @@ var Columns = []string{
 	FieldErrors,
 	FieldTotal,
 	FieldCurrent,
+	FieldDailyDate,
+	FieldDailySent,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -66,6 +72,12 @@ var (
 	DefaultTotal uint64
 	// DefaultCurrent holds the default value on creation for the "current" field.
 	DefaultCurrent uint64
+	// DefaultDailyDate holds the default value on creation for the "daily_date" field.
+	DefaultDailyDate string
+	// DailyDateValidator is a validator for the "daily_date" field. It is called by the builders before save.
+	DailyDateValidator func(string) error
+	// DefaultDailySent holds the default value on creation for the "daily_sent" field.
+	DefaultDailySent uint64
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -115,6 +127,16 @@ func ByTotal(opts ...sql.OrderTermOption) OrderOption {
 // ByCurrent orders the results by the current field.
 func ByCurrent(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCurrent, opts...).ToFunc()
+}
+
+// ByDailyDate orders the results by the daily_date field.
+func ByDailyDate(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDailyDate, opts...).ToFunc()
+}
+
+// ByDailySent orders the results by the daily_sent field.
+func ByDailySent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDailySent, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

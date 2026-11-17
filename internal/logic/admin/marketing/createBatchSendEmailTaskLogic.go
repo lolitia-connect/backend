@@ -2,11 +2,13 @@ package marketing
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
+	modellog "github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/task"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
@@ -115,12 +117,13 @@ func (l *CreateBatchSendEmailTaskLogic) CreateBatchSendEmailTask(req *types.Crea
 	l.Logger.Infof("[CreateBatchSendEmailTask] Successfully created email task with ID: %d", taskInfo.Id)
 
 	t := asynq.NewTask(types2.ScheduledBatchSendEmail, []byte(strconv.FormatInt(taskInfo.Id, 10)))
-	info, err := l.svcCtx.Queue.EnqueueContext(l.ctx, t, asynq.ProcessAt(scheduledAt))
+	info, err := l.svcCtx.Queue.EnqueueContext(l.ctx, t, asynq.ProcessAt(scheduledAt), asynq.Timeout(types2.BatchEmailTaskTimeout))
 	if err != nil {
 		l.Logger.Errorf("[CreateBatchSendEmailTask] Failed to enqueue email task: %v", err.Error())
 		return xerr.NewErrCode(xerr.QueueEnqueueError)
 	}
 	l.Logger.Infof("[CreateBatchSendEmailTask] Successfully enqueued email task with ID: %s, scheduled at: %s", info.ID, scheduledAt.Format(time.DateTime))
+	modellog.RecordAdminAction(l.ctx, l.svcCtx.Store.Log(), modellog.AdminAction{Action: "marketing.email.create", Object: "task", ObjectID: taskInfo.Id, Detail: fmt.Sprintf("recipients=%d,scope=%d", total, scope.Int8())})
 
 	return nil
 }

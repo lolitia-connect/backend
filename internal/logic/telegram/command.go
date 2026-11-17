@@ -14,7 +14,7 @@ func commandEntity(msg *models.Message) (models.MessageEntity, bool) {
 		return models.MessageEntity{}, false
 	}
 	entity := msg.Entities[0]
-	if entity.Type != models.MessageEntityTypeBotCommand || entity.Offset != 0 ||
+	if !strings.HasPrefix(msg.Text, "/") || entity.Type != models.MessageEntityTypeBotCommand || entity.Offset != 0 ||
 		entity.Length <= 0 || entity.Length > len(msg.Text) {
 		return models.MessageEntity{}, false
 	}
@@ -42,5 +42,5 @@ func commandArguments(msg *models.Message) string {
 	if !ok || entity.Length >= len(msg.Text) {
 		return ""
 	}
-	return msg.Text[entity.Length+1:]
+	return strings.TrimSpace(msg.Text[entity.Length:])
 }

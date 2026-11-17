@@ -71,6 +71,9 @@ func (m *Server) UnmarshalProtocols() ([]Protocol, error) {
 	if err != nil {
 		return nil, err
 	}
+	for index := range list {
+		upgradeStoredNowhere(&list[index])
+	}
 	return list, nil
 }
 
@@ -80,10 +83,10 @@ type Protocol struct {
 	Type                    string   `json:"type"`
 	Port                    uint16   `json:"port"`
 	Enable                  bool     `json:"enable"`
-	Version                 int      `json:"version,omitempty"`        // Snell accepts 5/6, TUIC 5, Nowhere 1; 0 means the protocol default
+	Version                 int      `json:"version,omitempty"`        // Snell accepts 5/6, TUIC 5, Nowhere 3; 0 means the protocol default
 	Mode                    string   `json:"mode,omitempty"`           // Snell v6 work mode; no other protocol sets it
 	Network                 string   `json:"network,omitempty"`        // Listener network: tcp/udp/both; Nowhere normalizes to mix/tcp/udp
-	ALPN                    []string `json:"alpn,omitempty"`           // TLS ALPN list; Nowhere takes exactly one value, defaulting to now/1
+	ALPN                    []string `json:"alpn,omitempty"`           // TLS ALPN list; Nowhere uses nw3
 	SSRProtocol             string   `json:"ssr_protocol,omitempty"`   // ShadowsocksR obfs/auth protocol
 	ProtocolParam           string   `json:"protocol_param,omitempty"` // ShadowsocksR protocol parameter (user:pass)
 	ObfsParam               string   `json:"obfs_param,omitempty"`     // ShadowsocksR obfs parameter

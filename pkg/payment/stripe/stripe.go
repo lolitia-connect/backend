@@ -1,15 +1,19 @@
 package stripe
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhookendpoint"
 
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/customer"
+	"github.com/stripe/stripe-go/v81/paymentintent"
 	"github.com/stripe/stripe-go/v81/paymentmethod"
 	"github.com/stripe/stripe-go/v81/webhook"
 	"go.uber.org/zap"
@@ -32,6 +36,8 @@ type NotifyResult struct {
 	Method    string
 	UserId    int64
 	Amount    int64
+	Currency  string
+	Paid      bool
 }
 type Order struct {
 	OrderNo                   string
@@ -44,6 +50,7 @@ type Order struct {
 
 type Client struct {
 	Config
+	backend stripe.Backend
 }
 
 type CheckoutResult struct {
@@ -54,20 +61,20 @@ type CheckoutResult struct {
 
 func NewClient(config Config) *Client {
 	return &Client{
-		Config: config,
+		Config:  config,
+		backend: stripe.GetBackend(stripe.APIBackend),
 	}
 }
 
 // SearchStripeCustomer  Search for a Stripe customer by email or user ID
 func (c *Client) SearchStripeCustomer(user *User) (*stripe.Customer, error) {
-	stripe.Key = c.SecretKey
 	params := &stripe.CustomerSearchParams{}
 	if user.Email != "" {
 		params.SearchParams.Query = fmt.Sprintf("email:'%s'", user.Email)
 	} else {
 		params.SearchParams.Query = fmt.Sprintf("metadata['user_id']:'%d'", user.UserId)
 	}
-	result := customer.Search(params)
+	result := (customer.Client{B: c.backend, Key: c.SecretKey}).Search(params)
 	if result.Err() != nil {
 		fmt.Printf("Error: %v\n", result.Err().Error())
 		return nil, result.Err()
@@ -81,23 +88,47 @@ func (c *Client) SearchStripeCustomer(user *User) (*stripe.Customer, error) {
 
 // CreateCustomer Create a new Stripe customer
 func (c *Client) CreateCustomer(user *User) (*stripe.Customer, error) {
-	stripe.Key = c.SecretKey
 	customerData := &stripe.CustomerParams{}
 	if user.Email != "" {
 		customerData.Email = &user.Email
 	}
 	customerData.AddMetadata("user_id", strconv.FormatInt(user.UserId, 10))
-	return customer.New(customerData)
+	return (customer.Client{B: c.backend, Key: c.SecretKey}).New(customerData)
 }
 
 // QueryOrderStatus Query the status of the order via Checkout Session
 func (c *Client) QueryOrderStatus(orderNo string) (bool, error) {
-	stripe.Key = c.SecretKey
-	sess, err := session.Get(orderNo, nil)
+	receipt, err := c.QueryPayment(context.Background(), orderNo)
 	if err != nil {
 		return false, err
 	}
-	return sess.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid, nil
+	return receipt.Paid, nil
+}
+
+func (c *Client) QueryPayment(ctx context.Context, tradeNo string) (*NotifyResult, error) {
+	if strings.HasPrefix(tradeNo, "pi_") {
+		params := &stripe.PaymentIntentParams{}
+		params.Context = ctx
+		intent, err := (paymentintent.Client{B: c.backend, Key: c.SecretKey}).Get(tradeNo, params)
+		if err != nil {
+			return nil, err
+		}
+		return &NotifyResult{OrderNo: intent.Metadata["order_no"], TradeNo: intent.ID, Amount: FromStripeAmount(intent.AmountReceived, string(intent.Currency)), Currency: string(intent.Currency), Paid: intent.Status == stripe.PaymentIntentStatusSucceeded}, nil
+	}
+	if !strings.HasPrefix(tradeNo, "cs_") {
+		return nil, fmt.Errorf("invalid Stripe payment reference")
+	}
+	params := &stripe.CheckoutSessionParams{}
+	params.Context = ctx
+	current, err := (session.Client{B: c.backend, Key: c.SecretKey}).Get(tradeNo, params)
+	if err != nil {
+		return nil, err
+	}
+	orderNo := current.ClientReferenceID
+	if orderNo == "" {
+		orderNo = current.Metadata["order_no"]
+	}
+	return &NotifyResult{OrderNo: orderNo, TradeNo: current.ID, Amount: FromStripeAmount(current.AmountTotal, string(current.Currency)), Currency: string(current.Currency), Paid: current.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid}, nil
 }
 
 // ParseNotify
@@ -110,7 +141,7 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 	}
 
 	switch event.Type {
-	case "checkout.session.completed":
+	case "checkout.session.completed", "checkout.session.async_payment_succeeded":
 		var sess stripe.CheckoutSession
 		if err := json.Unmarshal(event.Data.Raw, &sess); err != nil {
 			zap.S().Error("Failed to unmarshal checkout session", zap.Any("error", err.Error()))
@@ -135,7 +166,9 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 			TradeNo:   sess.ID,
 			UserId:    uid,
 			Method:    method,
-			Amount:    sess.AmountTotal,
+			Amount:    FromStripeAmount(sess.AmountTotal, string(sess.Currency)),
+			Currency:  string(sess.Currency),
+			Paid:      sess.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid,
 		}, nil
 
 	case "payment_intent.succeeded":
@@ -163,7 +196,9 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 			TradeNo:   paymentIntent.ID,
 			UserId:    uid,
 			Method:    method,
-			Amount:    paymentIntent.Amount,
+			Amount:    FromStripeAmount(paymentIntent.AmountReceived, string(paymentIntent.Currency)),
+			Currency:  string(paymentIntent.Currency),
+			Paid:      paymentIntent.Status == stripe.PaymentIntentStatusSucceeded,
 		}, nil
 
 	case "payment_intent.payment_failed":
@@ -182,13 +217,18 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 
 // RetrievePaymentMethod 查询支付方式
 func (c *Client) RetrievePaymentMethod(id string) (*stripe.PaymentMethod, error) {
-	stripe.Key = c.SecretKey
-	return paymentmethod.Get(id, nil)
+	return (paymentmethod.Client{B: c.backend, Key: c.SecretKey}).Get(id, nil)
 }
 
 // CreateCheckoutSession creates a Stripe Checkout Session for redirect-based payment
 func (c *Client) CreateCheckoutSession(order *Order, user *User, successURL, cancelURL string) (*CheckoutResult, error) {
-	stripe.Key = c.SecretKey
+	return c.CreateCheckoutSessionContext(context.Background(), order, user, successURL, cancelURL)
+}
+
+func (c *Client) CreateCheckoutSessionContext(ctx context.Context, order *Order, user *User, successURL, cancelURL string) (*CheckoutResult, error) {
+	if order.Amount <= 0 || order.Amount > math.MaxInt64/10 {
+		return nil, fmt.Errorf("invalid Stripe amount")
+	}
 
 	// Pass the configured payment method directly to Stripe Checkout Session
 	// Supported values include: card, alipay, wechat_pay, google_pay, apple_pay,
@@ -211,7 +251,7 @@ func (c *Client) CreateCheckoutSession(order *Order, user *User, successURL, can
 					ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
 						Name: stripe.String("Order " + order.OrderNo),
 					},
-					UnitAmount: stripe.Int64(order.Amount),
+					UnitAmount: stripe.Int64(ToStripeAmount(RoundHundredths(order.Amount, order.Currency), order.Currency)),
 				},
 				Quantity: stripe.Int64(1),
 			},
@@ -238,8 +278,10 @@ func (c *Client) CreateCheckoutSession(order *Order, user *User, successURL, can
 	}
 
 	params.PaymentIntentData = intentData
+	params.Context = ctx
+	params.SetIdempotencyKey("checkout:" + order.OrderNo)
 
-	result, err := session.New(params)
+	result, err := (session.Client{B: c.backend, Key: c.SecretKey}).New(params)
 	if err != nil {
 		return nil, err
 	}
@@ -253,14 +295,64 @@ func (c *Client) CreateCheckoutSession(order *Order, user *User, successURL, can
 
 // CreateWebhookEndpoint 创建 webhook endpoint
 func (c *Client) CreateWebhookEndpoint(url string) (*stripe.WebhookEndpoint, error) {
-	stripe.Key = c.SecretKey
 	params := &stripe.WebhookEndpointParams{
 		URL: stripe.String(url),
 		EnabledEvents: []*string{
 			stripe.String("checkout.session.completed"),
+			stripe.String("checkout.session.async_payment_succeeded"),
+			stripe.String("checkout.session.async_payment_failed"),
 			stripe.String("payment_intent.succeeded"),
 			stripe.String("payment_intent.payment_failed"),
 		},
 	}
-	return webhookendpoint.New(params)
+	return (webhookendpoint.Client{B: c.backend, Key: c.SecretKey}).New(params)
+}
+
+func (c *Client) DeleteWebhookEndpoint(ctx context.Context, id string) error {
+	params := &stripe.WebhookEndpointParams{}
+	params.Context = ctx
+	_, err := (webhookendpoint.Client{B: c.backend, Key: c.SecretKey}).Del(id, params)
+	return err
+}
+
+func (c *Client) CancelCheckout(ctx context.Context, tradeNo string) error {
+	if strings.HasPrefix(tradeNo, "pi_") {
+		client := paymentintent.Client{B: c.backend, Key: c.SecretKey}
+		params := &stripe.PaymentIntentParams{}
+		params.Context = ctx
+		intent, err := client.Get(tradeNo, params)
+		if err != nil {
+			return err
+		}
+		if intent.Status == stripe.PaymentIntentStatusCanceled {
+			return nil
+		}
+		if intent.Status == stripe.PaymentIntentStatusSucceeded {
+			return fmt.Errorf("Stripe payment already settled")
+		}
+		cancel := &stripe.PaymentIntentCancelParams{}
+		cancel.Context = ctx
+		_, err = client.Cancel(tradeNo, cancel)
+		return err
+	}
+	client := session.Client{B: c.backend, Key: c.SecretKey}
+	params := &stripe.CheckoutSessionParams{}
+	params.Context = ctx
+	current, err := client.Get(tradeNo, params)
+	if err != nil {
+		return err
+	}
+	if current.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid {
+		return fmt.Errorf("Stripe payment already settled")
+	}
+	if current.Status == stripe.CheckoutSessionStatusExpired {
+		return nil
+	}
+	if current.Status != stripe.CheckoutSessionStatusOpen {
+		return fmt.Errorf("Stripe checkout cannot be canceled yet")
+	}
+	expire := &stripe.CheckoutSessionExpireParams{}
+	expire.Context = ctx
+	_, err = client.Expire(tradeNo, expire)
+	return err
 }

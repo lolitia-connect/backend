@@ -7,6 +7,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // Order holds the schema definition for the order table.
@@ -33,12 +34,17 @@ func (Order) Fields() []ent.Field {
 		field.Int64("discount").StorageKey("discount").Default(0),
 		field.String("coupon").StorageKey("coupon").MaxLen(255).Optional().Nillable(),
 		field.Int64("coupon_discount").StorageKey("coupon_discount").Default(0),
+		field.Bool("coupon_reserved").Default(false),
 		field.Int64("payment_id").StorageKey("payment_id").Default(0),
 		field.String("method").StorageKey("method").MaxLen(255).Default(""),
 		field.Int64("fee_amount").StorageKey("fee_amount").Default(0),
 		field.String("trade_no").StorageKey("trade_no").MaxLen(255).Optional().Nillable(),
 		field.Int64("gift_amount").StorageKey("gift_amount").Default(0),
 		field.Int64("commission").StorageKey("commission").Default(0),
+		field.Int64("commission_referer_id").Default(0),
+		field.Int64("payment_amount").Default(0),
+		field.String("payment_currency").MaxLen(16).Default(""),
+		field.Text("payment_session").Optional().Nillable(),
 		field.Uint8("status").StorageKey("status").Default(1),
 		field.Int64("state_version").StorageKey("state_version").Default(0),
 		field.String("idempotency_key").StorageKey("idempotency_key").MaxLen(128).Optional().Nillable(),
@@ -46,10 +52,19 @@ func (Order) Fields() []ent.Field {
 		// guest_checkout_token_hash is the durable half of the guest checkout
 		// capability: the caller keeps the token, the panel keeps only its hash.
 		field.String("guest_checkout_token_hash").StorageKey("guest_checkout_token_hash").MaxLen(64).Optional().Nillable(),
+		field.String("guest_auth_type").MaxLen(32).Default(""),
+		field.String("guest_identifier").MaxLen(255).Default(""),
 		field.Int64("subscribe_id").StorageKey("subscribe_id").Default(0),
 		field.String("subscribe_token").StorageKey("subscribe_token").MaxLen(255).Optional().Nillable(),
+		field.Int64("user_subscribe_id").StorageKey("user_subscribe_id").Default(0),
 		field.Bool("is_new").StorageKey("is_new").Default(false),
 		field.Time("created_at").StorageKey("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").StorageKey("updated_at").Default(time.Now).UpdateDefault(time.Now),
+	}
+}
+
+func (Order) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("guest_auth_type", "guest_identifier", "coupon", "status"),
 	}
 }

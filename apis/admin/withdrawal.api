@@ -1,0 +1,46 @@
+syntax = "v1"
+
+info (
+	title:   "Withdrawal API"
+	desc:    "Administrator review of commission withdrawal requests"
+	author:  "ppanel"
+	version: "0.0.1"
+)
+
+import (
+	"../types.api"
+	"../public/user.api"
+)
+
+type (
+	GetWithdrawalListRequest {
+		Page   int   `form:"page"`
+		Size   int   `form:"size"`
+		Status uint8 `form:"status,optional"`
+		UserId int64 `form:"user_id,optional"`
+	}
+	GetWithdrawalListResponse {
+		List  []WithdrawalLog `json:"list"`
+		Total int64           `json:"total"`
+	}
+	ReviewWithdrawalRequest {
+		Id     int64  `json:"id,string"`
+		Status uint8  `json:"status"`
+		Reason string `json:"reason,optional"`
+	}
+)
+
+@server (
+	prefix:     v1/admin/withdrawal
+	group:      admin/withdrawal
+	middleware: AuthMiddleware
+)
+service ppanel {
+	@doc "Get withdrawal list"
+	@handler GetWithdrawalList
+	get /list (GetWithdrawalListRequest) returns (GetWithdrawalListResponse)
+
+	@doc "Review withdrawal"
+	@handler ReviewWithdrawal
+	put /status (ReviewWithdrawalRequest)
+}

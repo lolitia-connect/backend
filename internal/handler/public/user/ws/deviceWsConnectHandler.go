@@ -1,22 +1,14 @@
 package ws
 
 import (
-	"net/http"
+	"errors"
 
-	"github.com/gorilla/websocket"
 	wslogic "github.com/perfect-panel/server/internal/logic/public/user/ws"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/pkg/device"
 	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/result"
 )
-
-var upGrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // 允许所有来源，生产环境中应该根据需求限制
-	},
-}
 
 // Webosocket Device Connect
 func DeviceWsConnectHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
@@ -24,6 +16,13 @@ func DeviceWsConnectHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) 
 
 		l := wslogic.NewDeviceWsConnectLogic(c.Request.Context(), svcCtx)
 		err := l.DeviceWsConnect(c)
-		result.HttpResult(c, nil, err)
+		if err != nil {
+			var handshake *device.HandshakeError
+			if errors.As(err, &handshake) {
+				c.String(handshake.Status, "%s", handshake.Reason)
+				return
+			}
+			result.HttpResult(c, nil, err)
+		}
 	}
 }

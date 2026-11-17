@@ -3,11 +3,15 @@ package email
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/task"
+	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/tool"
-	"go.uber.org/zap"
 )
 
 type ErrorInfo struct {
@@ -16,175 +20,227 @@ type ErrorInfo struct {
 	Time  int64  `json:"time"`
 }
 
+var ErrTaskNotActive = errors.New("email campaign is no longer active")
+
+type DailyLimitReached struct {
+	NextAt time.Time
+}
+
+func (limit *DailyLimitReached) Error() string {
+	return fmt.Sprintf("email campaign daily limit reached; resume at %s", limit.NextAt.Format(time.RFC3339))
+}
+
+type RunBudgetExhausted struct {
+	Sent     uint64
+	ResumeAt time.Time
+}
+
+func (budget *RunBudgetExhausted) Error() string {
+	return fmt.Sprintf("email campaign needs continuation at recipient %d", budget.Sent)
+}
+
+type RecipientResolver interface {
+	QueryEmailRecipients(context.Context, *user.EmailRecipientFilter) ([]string, error)
+}
+
+type WorkerOption func(*Worker)
+
+func WithRecipientResolver(resolver RecipientResolver) WorkerOption {
+	return func(worker *Worker) { worker.recipients = resolver }
+}
+
 type Worker struct {
-	id     int64           // 任务ID
-	tasks  task.Model      // task repository
-	ctx    context.Context // 上下文
-	sender Sender          // 邮件发送器接口
-	status uint8           // 任务状态，0 表示未运行，1 表示运行中 2 表示已完成
+	id         int64
+	tasks      task.Model
+	ctx        context.Context
+	sender     Sender
+	status     atomic.Uint32
+	recipients RecipientResolver
+	reserve    time.Duration
 }
 
-func NewWorker(ctx context.Context, id int64, tasks task.Model, sender Sender) *Worker {
-	return &Worker{
-		id:     id,
-		tasks:  tasks,
-		ctx:    ctx,
-		sender: sender,
+func NewWorker(ctx context.Context, id int64, tasks task.Model, sender Sender, options ...WorkerOption) *Worker {
+	worker := &Worker{id: id, tasks: tasks, ctx: ctx, sender: sender, reserve: time.Minute}
+	for _, option := range options {
+		if option != nil {
+			option(worker)
+		}
 	}
+	return worker
 }
 
-// GetID 获取Worker的任务ID
-func (w *Worker) GetID() int64 {
-	return w.id
+func withBudgetReserve(reserve time.Duration) WorkerOption {
+	return func(worker *Worker) { worker.reserve = reserve }
 }
 
-// IsRunning 检查Worker是否正在运行
-func (w *Worker) IsRunning() uint8 {
-	return w.status
+func (worker *Worker) GetID() int64 {
+	return worker.id
 }
 
-// Start 启动Worker，开始处理任务
-func (w *Worker) Start() {
-	// 检查并发限制
-	limit.Lock()
-	defer limit.Unlock()
-	taskInfo, err := w.tasks.FindOne(w.ctx, w.id)
+func (worker *Worker) IsRunning() uint8 {
+	return uint8(worker.status.Load())
+}
+
+func (worker *Worker) Start() error {
+	worker.status.Store(1)
+	defer worker.status.Store(2)
+	current, err := worker.tasks.FindOneByType(worker.ctx, worker.id, task.TypeEmail)
 	if err != nil {
-		zap.S().Error("Batch Send Email",
-			zap.Any("message", "Failed to find task"),
-			zap.Any("error", err.Error()),
-			zap.Any("task_id", w.id),
-		)
-		return
+		return err
 	}
-	if taskInfo.Status != 0 {
-		zap.S().Error("Batch Send Email",
-			zap.Any("message", "Task already completed or in progress"),
-			zap.Any("task_id", w.id),
-		)
-		return
+	if current == nil || (current.Status != 0 && current.Status != 1) {
+		return ErrTaskNotActive
 	}
-
 	var scope task.EmailScope
-	if err := json.Unmarshal([]byte(taskInfo.Scope), &scope); err != nil {
-		zap.S().Error("Batch Send Email",
-			zap.Any("message", "Failed to parse task scope"),
-			zap.Any("error", err.Error()),
-			zap.Any("task_id", w.id),
-		)
-		return
+	if err := json.Unmarshal([]byte(current.Scope), &scope); err != nil {
+		return err
 	}
-
-	if len(scope.Recipients) == 0 && len(scope.Additional) == 0 {
-		zap.S().Error("Batch Send Email",
-			zap.Any("message", "No recipients or additional emails provided"),
-			zap.Any("task_id", w.id),
-		)
-		return
-	}
-
 	var content task.EmailContent
-	if err := json.Unmarshal([]byte(taskInfo.Content), &content); err != nil {
-		zap.S().Error("Batch Send Email",
-			zap.Any("message", "Failed to parse task content"),
-			zap.Any("error", err.Error()),
-			zap.Any("task_id", w.id),
-		)
-		return
+	if err := json.Unmarshal([]byte(current.Content), &content); err != nil {
+		return err
 	}
-
-	w.status = 1 // 设置状态为运行中
-	var recipients []string
-	// 解析收件人
-	if len(scope.Recipients) > 0 {
-		recipients = append(recipients, scope.Recipients...)
-	}
-	// 解析附加收件人
-	if len(scope.Additional) > 0 {
-		recipients = append(recipients, scope.Additional...)
-	}
-	// 去重和清理空字符串
+	recipients := append(append([]string{}, scope.Recipients...), scope.Additional...)
 	recipients = tool.RemoveDuplicateElements(recipients...)
-
-	if len(recipients) == 0 {
-		zap.S().Error("Batch Send Email",
-			zap.Any("message", "No valid recipients found"),
-			zap.Any("task_id", w.id),
-		)
-		w.status = 2 // 设置状态为已完成
-		return
+	if len(recipients) == 0 || current.Current > uint64(len(recipients)) {
+		return errors.New("invalid email campaign recipients or cursor")
 	}
-
-	// 设置发送间隔时间
-	var intervalTime time.Duration
-	if scope.Interval == 0 {
-		intervalTime = 1 * time.Second
+	skipped, err := worker.staleRecipients(&scope)
+	if err != nil {
+		return err
+	}
+	var failures []ErrorInfo
+	if current.Errors != "" {
+		if err := json.Unmarshal([]byte(current.Errors), &failures); err != nil {
+			return err
+		}
+	}
+	if current.DailyDate == "" && current.DailySent == 0 {
+		current.DailyDate = scope.DailyDate
+		current.DailySent = scope.DailySent
 	} else {
-		intervalTime = time.Duration(scope.Interval) * time.Second
+		scope.DailyDate = current.DailyDate
+		scope.DailySent = current.DailySent
 	}
-
-	var errors []ErrorInfo
-	var count uint64
+	today := time.Now().Format("2006-01-02")
+	if scope.DailyDate != today {
+		scope.DailyDate = today
+		scope.DailySent = 0
+	}
+	current.Total, current.Status = uint64(len(recipients)), task.StatusInProgress
+	if err := worker.persist(current, &scope); err != nil {
+		return err
+	}
+	interval := time.Second
+	if scope.Interval != 0 {
+		interval = time.Duration(scope.Interval) * time.Second
+	}
+	delivered := false
+	for position := int(current.Current); position < len(recipients); position++ {
+		if err := worker.ctx.Err(); err != nil {
+			return err
+		}
+		recipient := recipients[position]
+		if !skipped[strings.ToLower(strings.TrimSpace(recipient))] {
+			if scope.Limit > 0 && scope.DailySent >= scope.Limit {
+				now := time.Now()
+				next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+				return &DailyLimitReached{NextAt: next}
+			}
+			if deadline, exists := worker.ctx.Deadline(); exists && time.Until(deadline) < interval+worker.reserve {
+				return &RunBudgetExhausted{Sent: current.Current, ResumeAt: time.Now().Add(interval)}
+			}
+			if delivered {
+				timer := time.NewTimer(interval)
+				select {
+				case <-worker.ctx.Done():
+					timer.Stop()
+					return worker.ctx.Err()
+				case <-timer.C:
+				}
+			}
+			fresh, err := worker.tasks.FindOneByType(worker.ctx, worker.id, task.TypeEmail)
+			if err != nil {
+				return err
+			}
+			if fresh == nil || fresh.Status != task.StatusInProgress {
+				return ErrTaskNotActive
+			}
+			if err := SendContext(worker.ctx, worker.sender, []string{recipient}, content.Subject, content.Content); err != nil {
+				if worker.ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return err
+				}
+				failures = append(failures, ErrorInfo{Error: err.Error(), Email: recipient, Time: time.Now().Unix()})
+				encoded, err := json.Marshal(failures)
+				if err != nil {
+					return err
+				}
+				current.Errors = string(encoded)
+			}
+			delivered = true
+			scope.DailySent++
+		}
+		current.Current = uint64(position + 1)
+		if err := worker.persist(current, &scope); err != nil {
+			return err
+		}
+	}
+	current.Status = task.StatusCompleted
+	recipientSet := make(map[string]struct{}, len(recipients))
 	for _, recipient := range recipients {
-		select {
-		case <-w.ctx.Done():
-			zap.S().Info("Batch Send Email",
-				zap.Any("message", "Worker stopped by context cancellation"),
-				zap.Any("task_id", w.id),
-			)
-			return
-		default:
-		}
-		if taskInfo.Status == 0 {
-			taskInfo.Status = 1 // 1 表示任务进行中
-		}
-
-		if err := w.sender.Send([]string{recipient}, content.Subject, content.Content); err != nil {
-			zap.S().Error("Batch Send Email",
-				zap.Any("message", "Failed to send email"),
-				zap.Any("error", err.Error()),
-				zap.Any("recipient", recipient),
-				zap.Any("task_id", w.id),
-			)
-			errors = append(errors, ErrorInfo{
-				Error: err.Error(),
-				Email: recipient,
-				Time:  time.Now().Unix(),
-			})
-			text, _ := json.Marshal(errors)
-			taskInfo.Errors = string(text)
-		}
-		count++
-		taskInfo.Current = count
-		if err := w.tasks.Update(w.ctx, taskInfo); err != nil {
-			zap.S().Error("Batch Send Email",
-				zap.Any("message", "Failed to update task progress"),
-				zap.Any("error", err.Error()),
-				zap.Any("task_id", w.id),
-			)
-			errors = append(errors, ErrorInfo{
-				Error: err.Error(),
-				Email: recipient,
-				Time:  time.Now().Unix(),
-			})
-			w.status = 2 // 设置状态为已完成
-		}
-		time.Sleep(intervalTime)
+		recipientSet[recipient] = struct{}{}
 	}
-	taskInfo.Status = 2 // 2 表示任务已完成
-	w.status = 2        // 设置状态为已完成
-
-	if err := w.tasks.Update(w.ctx, taskInfo); err != nil {
-		zap.S().Error("Batch Send Email",
-			zap.Any("message", "Failed to finalize task"),
-			zap.Any("error", err.Error()),
-			zap.Any("task_id", w.id),
-		)
-	} else {
-		zap.S().Info("Batch Send Email",
-			zap.Any("message", "Task completed successfully"),
-			zap.Any("task_id", w.id),
-			zap.Any("total_sent", count),
-		)
+	failedRecipients := make(map[string]struct{}, len(failures))
+	for _, failure := range failures {
+		if _, ok := recipientSet[failure.Email]; ok {
+			failedRecipients[failure.Email] = struct{}{}
+		}
 	}
+	if len(failedRecipients) >= len(recipients) {
+		current.Status = task.StatusFailed
+	}
+	return worker.persist(current, &scope)
+}
+
+func (worker *Worker) persist(current *task.Task, scope *task.EmailScope) error {
+	if scope != nil {
+		encoded, err := scope.Marshal()
+		if err != nil {
+			return err
+		}
+		current.Scope = string(encoded)
+		current.DailyDate = scope.DailyDate
+		current.DailySent = scope.DailySent
+	}
+	saved, err := worker.tasks.SaveEmailProgress(worker.ctx, current)
+	if err != nil {
+		return err
+	}
+	if !saved {
+		return ErrTaskNotActive
+	}
+	return nil
+}
+
+func (worker *Worker) staleRecipients(scope *task.EmailScope) (map[string]bool, error) {
+	if worker.recipients == nil || len(scope.Recipients) == 0 || task.ParseScopeType(scope.Type) == task.ScopeSkip {
+		return nil, nil
+	}
+	selected, err := worker.recipients.QueryEmailRecipients(worker.ctx, &user.EmailRecipientFilter{
+		Scope: scope.Type, RegisterStartTime: scope.RegisterStartTime, RegisterEndTime: scope.RegisterEndTime,
+	})
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]bool)
+	for _, recipient := range append(selected, scope.Additional...) {
+		allowed[strings.ToLower(strings.TrimSpace(recipient))] = true
+	}
+	skipped := make(map[string]bool)
+	for _, recipient := range scope.Recipients {
+		key := strings.ToLower(strings.TrimSpace(recipient))
+		if !allowed[key] {
+			skipped[key] = true
+		}
+	}
+	return skipped, nil
 }

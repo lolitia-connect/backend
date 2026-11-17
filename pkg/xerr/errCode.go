@@ -129,3 +129,11 @@ const (
 	InsufficientOfPeriod  uint32 = 61004
 	ExistAvailableTraffic uint32 = 61005
 )
+
+// Withdrawal error
+const (
+	// WithdrawalAlreadyReviewed rejects a second decision on a request that is
+	// no longer pending, which is what keeps a rejection's commission refund
+	// from being applied twice.
+	WithdrawalAlreadyReviewed uint32 = 61006
+)

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -47,13 +48,50 @@ type Client struct {
 	httpClient *http.Client
 }
 
+func ResolveEndpoint(raw, domain string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "//") {
+		raw = "https:" + raw
+	} else if strings.HasPrefix(raw, "/") {
+		base, err := url.Parse(strings.TrimSpace(domain))
+		if err != nil || base.Scheme != "https" || base.Hostname() == "" || base.User != nil || base.RawQuery != "" || base.ForceQuery || base.Fragment != "" {
+			return "", errors.New("site-relative EPay endpoint requires a configured HTTPS payment domain")
+		}
+		base.Path = strings.TrimRight(base.Path, "/") + raw
+		raw = base.String()
+	}
+	endpoint, err := url.Parse(raw)
+	if err != nil || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.ForceQuery || endpoint.Fragment != "" || endpoint.RawPath != "" || endpoint.EscapedPath() != endpoint.Path || strings.ContainsAny(endpoint.Path, "%\\") || strings.Contains(endpoint.Path, "//") {
+		return "", errors.New("invalid EPay endpoint")
+	}
+	cleaned := strings.TrimSuffix(endpoint.Path, "/")
+	if cleaned != "" && path.Clean(cleaned) != cleaned {
+		return "", errors.New("EPay endpoint contains path traversal")
+	}
+	return endpoint.String(), nil
+}
+
+func BrowserURL(configured, checkout string) string {
+	configured = strings.TrimSpace(configured)
+	if strings.HasPrefix(configured, "//") {
+		return strings.TrimPrefix(checkout, "https:")
+	}
+	if strings.HasPrefix(configured, "/") {
+		if parsed, err := url.Parse(checkout); err == nil {
+			return parsed.RequestURI()
+		}
+	}
+	return checkout
+}
+
 type Order struct {
-	Name      string
-	OrderNo   string
-	Amount    float64
-	SignType  string
-	NotifyUrl string
-	ReturnUrl string
+	Name        string
+	OrderNo     string
+	Amount      float64
+	AmountMinor int64
+	SignType    string
+	NotifyUrl   string
+	ReturnUrl   string
 }
 
 type QueryResult struct {
@@ -63,6 +101,7 @@ type QueryResult struct {
 	Type       string
 	Money      string
 	Paid       bool
+	Unpaid     bool
 	Message    string
 	// StatusOnly reports that the gateway query API returned only a payment
 	// status. Callers must not treat omitted payment details as verified.
@@ -77,7 +116,7 @@ type queryOrderResponse struct {
 	Type       string          `json:"type"`
 	Money      string          `json:"money"`
 	Pid        json.RawMessage `json:"pid"`
-	Status     int             `json:"status"`
+	Status     *int            `json:"status"`
 }
 
 // easyPayQueryOrderResponse is used by a non-standard EPay variant. Its
@@ -202,6 +241,9 @@ func (c *Client) queryStandardOrder(orderNo string) (*QueryResult, error) {
 	if response.Code != 1 {
 		return nil, fmt.Errorf("gateway order lookup failed: code=%d", response.Code)
 	}
+	if response.Status == nil || (*response.Status != 0 && *response.Status != 1) {
+		return nil, errors.New("gateway query response has no valid order status")
+	}
 	merchantID, err := rawString(response.Pid)
 	if err != nil {
 		return nil, fmt.Errorf("decode merchant id: %w", err)
@@ -212,7 +254,8 @@ func (c *Client) queryStandardOrder(orderNo string) (*QueryResult, error) {
 		OrderNo:    response.OutTradeNo,
 		Type:       response.Type,
 		Money:      response.Money,
-		Paid:       response.Status == 1,
+		Paid:       *response.Status == 1,
+		Unpaid:     *response.Status == 0,
 		Message:    response.Msg,
 	}, nil
 }
@@ -267,6 +310,7 @@ func (c *Client) queryEasyPayOrder(orderNo string) (*QueryResult, error) {
 	}
 	return &QueryResult{
 		Paid:       strings.EqualFold(response.Data.Status, "success"),
+		Unpaid:     strings.EqualFold(response.Data.Status, "pending") || strings.EqualFold(response.Data.Status, "unpaid"),
 		Message:    response.Msg,
 		StatusOnly: true,
 	}, nil
@@ -313,7 +357,11 @@ func rawString(value json.RawMessage) (string, error) {
 }
 
 func (c *Client) endpoint(script string) (*url.URL, error) {
-	endpoint, err := url.Parse(c.Url)
+	resolved, err := ResolveEndpoint(c.Url, "")
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := url.Parse(resolved)
 	if err != nil {
 		return nil, fmt.Errorf("parse payment endpoint: %w", err)
 	}
@@ -336,8 +384,12 @@ func (c *Client) endpoint(script string) (*url.URL, error) {
 }
 
 func (c *Client) orderParams(order Order) map[string]string {
+	amount := FormatMoney(order.Amount)
+	if order.AmountMinor > 0 {
+		amount = paymentUtil.FormatAmount(order.AmountMinor)
+	}
 	return map[string]string{
-		"money":        FormatMoney(order.Amount),
+		"money":        amount,
 		"name":         order.Name,
 		"notify_url":   order.NotifyUrl,
 		"out_trade_no": order.OrderNo,

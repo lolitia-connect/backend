@@ -17,6 +17,7 @@ type Model interface {
 	QueryTaskList(ctx context.Context, filter *Filter) (int64, []*Task, error)
 	Update(ctx context.Context, data *Task) error
 	UpdateStatus(ctx context.Context, id int64, status int8) error
+	SaveEmailProgress(ctx context.Context, data *Task) (bool, error)
 }
 
 type Filter struct {
@@ -46,6 +47,8 @@ func (m *defaultTaskModel) Insert(ctx context.Context, data *Task) error {
 		SetErrors(data.Errors).
 		SetTotal(data.Total).
 		SetCurrent(data.Current).
+		SetDailyDate(data.DailyDate).
+		SetDailySent(data.DailySent).
 		Save(ctx)
 	if err != nil {
 		return err
@@ -151,6 +154,8 @@ func (m *defaultTaskModel) Update(ctx context.Context, data *Task) error {
 		SetErrors(data.Errors).
 		SetTotal(data.Total).
 		SetCurrent(data.Current).
+		SetDailyDate(data.DailyDate).
+		SetDailySent(data.DailySent).
 		SetUpdatedAt(time.Now()).
 		Save(ctx)
 	if err != nil {
@@ -162,6 +167,20 @@ func (m *defaultTaskModel) Update(ctx context.Context, data *Task) error {
 
 func (m *defaultTaskModel) UpdateStatus(ctx context.Context, id int64, status int8) error {
 	return m.db.Task.UpdateOneID(id).SetStatus(status).SetUpdatedAt(time.Now()).Exec(ctx)
+}
+
+func (m *defaultTaskModel) SaveEmailProgress(ctx context.Context, data *Task) (bool, error) {
+	affected, err := m.db.Task.Update().
+		Where(enttask.IDEQ(data.Id), enttask.TypeEQ(int8(TypeEmail)), enttask.StatusIn(0, 1)).
+		SetStatus(data.Status).
+		SetErrors(data.Errors).
+		SetTotal(data.Total).
+		SetCurrent(data.Current).
+		SetDailyDate(data.DailyDate).
+		SetDailySent(data.DailySent).
+		SetUpdatedAt(time.Now()).
+		Save(ctx)
+	return affected == 1, err
 }
 
 func taskFromEnt(data *ent.Task) *Task {
@@ -177,6 +196,8 @@ func taskFromEnt(data *ent.Task) *Task {
 		Errors:    data.Errors,
 		Total:     data.Total,
 		Current:   data.Current,
+		DailyDate: data.DailyDate,
+		DailySent: data.DailySent,
 		CreatedAt: data.CreatedAt,
 		UpdatedAt: data.UpdatedAt,
 	}

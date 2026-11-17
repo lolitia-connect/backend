@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (svc ServiceContext) Validate(dataStruct interface{}) error {
+func (svc *ServiceContext) Validate(dataStruct interface{}) error {
 	enUs := en.New()
 	validate := validator.New()
 	//  RegisterTagNameFunc registers a function to get field name for error messages

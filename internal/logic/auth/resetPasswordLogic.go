@@ -10,8 +10,8 @@ import (
 
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/captcha"
-	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/uuidx"
 
 	"github.com/perfect-panel/server/internal/config"
@@ -110,11 +110,15 @@ func (l *ResetPasswordLogic) ResetPassword(req *types.ResetPasswordRequest) (res
 	}
 
 	// Update password
-	userInfo.Password = tool.EncodePassWord(req.Password)
-	userInfo.Algo = tool.PasswordAlgoArgon2id
-	userInfo.Salt = ""
-	if err = l.svcCtx.Store.User().Update(l.ctx, userInfo); err != nil {
+	if userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {
+		return nil, xerr.NewErrCode(xerr.UserDisabled)
+	}
+	if err = l.svcCtx.Store.User().UpdatePassword(l.ctx, userInfo.Id, userInfo.Password, tool.EncodePassWord(req.Password), tool.PasswordAlgoArgon2id, ""); err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update user info failed: %v", err.Error())
+	}
+	sessionEpoch, err := usersession.Rotate(l.ctx, l.svcCtx.Redis, userInfo.Id)
+	if err != nil {
+		return nil, err
 	}
 
 	// Bind device to user if identifier is provided
@@ -135,14 +139,10 @@ func (l *ResetPasswordLogic) ResetPassword(req *types.ResetPasswordRequest) (res
 	// Generate session id
 	sessionId := uuidx.NewUUID().String()
 	// Generate token
-	token, err := jwt.NewJwtToken(
+	token, err := usersession.Issue(l.ctx, l.svcCtx.Redis,
 		l.svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
 		l.svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userInfo.Id),
-		jwt.WithOption("SessionId", sessionId),
-		jwt.WithOption("identifier", req.Identifier),
-		jwt.WithOption("CtxLoginType", req.LoginType),
+		userInfo.Id, sessionId, req.LoginType, sessionEpoch, req.Identifier,
 	)
 	if err != nil {
 		l.Logger.Error("[UserLogin] token generate error", zap.Any("error", err.Error()))

@@ -204,6 +204,64 @@ type (
 		Total int64      `json:"total"`
 		List  []OrderLog `json:"list"`
 	}
+	AdminActionLog {
+		Id               int64  `json:"id,string"`
+		UserId           int64  `json:"user_id,string"`
+		Action           string `json:"action"`
+		Object           string `json:"object,omitempty"`
+		ObjectId         int64  `json:"object_id,omitempty,string"`
+		Detail           string `json:"detail,omitempty"`
+		Source           string `json:"source"`
+		TelegramSenderId int64  `json:"telegram_sender_id,omitempty,string"`
+		Timestamp        int64  `json:"timestamp"`
+		CreatedAt        int64  `json:"created_at"`
+		ClientIP         string `json:"client_ip,omitempty"`
+		UserAgent        string `json:"user_agent,omitempty"`
+		ActorID          int64  `json:"actor_id,omitempty,string"`
+		IPCountryCode    string `json:"ip_country_code,omitempty"`
+		IPCountry        string `json:"ip_country,omitempty"`
+		IPRegion         string `json:"ip_region,omitempty"`
+		IPCity           string `json:"ip_city,omitempty"`
+		IPASN            uint   `json:"ip_asn,omitempty"`
+		IPASOrganization string `json:"ip_as_organization,omitempty"`
+	}
+	FilterAdminActionLogRequest {
+		FilterLogParams
+		UserId int64 `form:"user_id,optional"`
+	}
+	FilterAdminActionLogResponse {
+		Total int64            `json:"total"`
+		List  []AdminActionLog `json:"list"`
+	}
+	UnmatchedPaymentLog {
+		Id               int64  `json:"id,string"`
+		UserId           int64  `json:"user_id,string"`
+		OrderNo          string `json:"order_no"`
+		TradeNo          string `json:"trade_no"`
+		Platform         string `json:"platform"`
+		Amount           int64  `json:"amount"`
+		Currency         string `json:"currency"`
+		Reason           string `json:"reason"`
+		Timestamp        int64  `json:"timestamp"`
+		CreatedAt        int64  `json:"created_at"`
+		ClientIP         string `json:"client_ip,omitempty"`
+		UserAgent        string `json:"user_agent,omitempty"`
+		ActorID          int64  `json:"actor_id,omitempty,string"`
+		IPCountryCode    string `json:"ip_country_code,omitempty"`
+		IPCountry        string `json:"ip_country,omitempty"`
+		IPRegion         string `json:"ip_region,omitempty"`
+		IPCity           string `json:"ip_city,omitempty"`
+		IPASN            uint   `json:"ip_asn,omitempty"`
+		IPASOrganization string `json:"ip_as_organization,omitempty"`
+	}
+	FilterUnmatchedPaymentLogRequest {
+		FilterLogParams
+		UserId int64 `form:"user_id,optional"`
+	}
+	FilterUnmatchedPaymentLogResponse {
+		Total int64                 `json:"total"`
+		List  []UnmatchedPaymentLog `json:"list"`
+	}
 	TrafficLogDetails {
 		Id          int64 `json:"id,string"`
 		ServerId    int64 `json:"server_id,string"`
@@ -286,6 +344,14 @@ service ppanel {
 	@doc "Filter order creation audit log"
 	@handler FilterOrderLog
 	get /order/list (FilterOrderLogRequest) returns (FilterOrderLogResponse)
+
+	@doc "Filter administrator actions"
+	@handler FilterAdminActionLog
+	get /admin-action/list (FilterAdminActionLogRequest) returns (FilterAdminActionLogResponse)
+
+	@doc "Filter unmatched gateway payments"
+	@handler FilterUnmatchedPaymentLog
+	get /unmatched-payment/list (FilterUnmatchedPaymentLogRequest) returns (FilterUnmatchedPaymentLogResponse)
 
 	@doc "Filter traffic log details"
 	@handler FilterTrafficLogDetails

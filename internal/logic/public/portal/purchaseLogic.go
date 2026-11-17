@@ -14,6 +14,7 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/authmethod"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/payment"
 	"github.com/perfect-panel/server/pkg/random"
@@ -46,6 +47,13 @@ const (
 )
 
 func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.PortalPurchaseResponse, err error) {
+	if req == nil || req.Quantity < 1 || req.Quantity > 1000 || len(req.Password) < 8 || len(req.Password) > 128 {
+		return nil, xerr.NewErrCode(xerr.InvalidParams)
+	}
+	req.Identifier = authmethod.CanonicalIdentifier(req.AuthType, req.Identifier)
+	if req.Identifier == "" || len(req.Identifier) > 255 || (req.AuthType != authmethod.Email && req.AuthType != authmethod.Mobile) {
+		return nil, xerr.NewErrCode(xerr.InvalidParams)
+	}
 	// find user auth
 	userAuth, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, req.AuthType, req.Identifier)
 	if err != nil && !ent.IsNotFound(err) {
@@ -134,21 +142,23 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		checkoutToken = random.KeyNew(32, 1)
 	}
 	orderInfo := &order.Order{
-		OrderNo:        tool.GenerateTradeNo(),
-		Type:           1,
-		Quantity:       req.Quantity,
-		Price:          price,
-		Amount:         amount,
-		Discount:       discountAmount,
-		GiftAmount:     0,
-		Coupon:         req.Coupon,
-		CouponDiscount: couponAmount,
-		PaymentId:      req.Payment,
-		Method:         paymentConfig.Platform,
-		FeeAmount:      feeAmount,
-		Status:         1,
-		IsNew:          true,
-		SubscribeId:    req.SubscribeId,
+		OrderNo:         tool.GenerateTradeNo(),
+		Type:            1,
+		Quantity:        req.Quantity,
+		Price:           price,
+		Amount:          amount,
+		Discount:        discountAmount,
+		GiftAmount:      0,
+		Coupon:          req.Coupon,
+		CouponDiscount:  couponAmount,
+		PaymentId:       req.Payment,
+		Method:          paymentConfig.Platform,
+		FeeAmount:       feeAmount,
+		Status:          1,
+		IsNew:           true,
+		SubscribeId:     req.SubscribeId,
+		GuestAuthType:   req.AuthType,
+		GuestIdentifier: req.Identifier,
 	}
 	// The durable half of the guest checkout capability. Only the caller ever
 	// holds the token itself, so the order row can prove a later status query
@@ -175,12 +185,11 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		l.Logger.Infow("[Purchase] Guest order", zap.Any("order_no", orderInfo.OrderNo), zap.Any("identifier", req.Identifier))
 
 		// Decrease subscribe plan stock
-		if sub.Inventory != -1 {
-			sub.Inventory--
-			if e := store.Subscribe().Update(l.ctx, sub); e != nil {
-				l.Logger.Errorw("[Purchase] Database update error", zap.Any("error", e.Error()), zap.Any("subscribe_id", sub.Id))
-				return e
-			}
+		if err := store.Subscribe().ReserveInventory(l.ctx, sub.Id); err != nil {
+			return err
+		}
+		if err := orderflow.ReserveCoupon(l.ctx, store, orderInfo); err != nil {
+			return err
 		}
 
 		// save guest order
@@ -201,7 +210,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	if err != nil {
 		l.Logger.Errorw("[CloseOrder Task] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
-	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
+	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(25))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
 		l.Logger.Errorw("[CloseOrder Task] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", taskInfo))

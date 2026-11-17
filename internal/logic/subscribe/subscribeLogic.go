@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/adapter"
+	"github.com/perfect-panel/server/ent"
 	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
 	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/model/client"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/node"
+	modelsubscribe "github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/report"
 
 	"github.com/perfect-panel/server/internal/model/user"
@@ -121,9 +123,12 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 	}()
 	// find subscribe info
 	subscribeInfo, err := l.svc.Store.Subscribe().FindOne(l.ctx, userSubscribe.SubscribeId)
-	if err != nil {
+	if err != nil && !ent.IsNotFound(err) {
 		l.Logger.Errorw("[SubscribeLogic] Find subscribe info failed", zap.Any("error", err.Error()), zap.Any("subscribeId", userSubscribe.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find subscribe info failed: %v", err.Error())
+	}
+	if subscribeInfo == nil {
+		subscribeInfo = &modelsubscribe.Subscribe{}
 	}
 
 	// Find server list by user subscribe
@@ -233,7 +238,7 @@ func (l *SubscribeLogic) getUserSubscribe(token string) (*user.Subscribe, error)
 		l.Logger.Infow("[Generate Subscribe] failed to get user info", zap.Any("error", err.Error()), zap.Any("userId", userSub.UserId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "failed to get user info: %v", err.Error())
 	}
-	if !*userInfo.Enable {
+	if userInfo == nil || userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {
 		l.Logger.Infow("[Generate Subscribe] user account is disabled", zap.Any("userId", userSub.UserId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserDisabled), "User account is disabled")
 	}
@@ -273,6 +278,9 @@ func (l *SubscribeLogic) logSubscribeActivity(subscribeStatus bool, userSub *use
 }
 
 func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string) ([]*node.Node, error) {
+	if userSub == nil || userSub.Status == 4 || userSub.Status == 5 {
+		return nil, xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
 	if l.isSubscriptionExpired(userSub) {
 		// 尝试获取过期节点组的节点
 		expiredNodes, err := l.getExpiredGroupNodes(userSub)
@@ -300,6 +308,9 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 	}
 
 	subDetails, err := l.svc.Store.Subscribe().FindOne(l.ctx, userSub.SubscribeId)
+	if ent.IsNotFound(err) || (err == nil && subDetails == nil) {
+		return []*node.Node{}, nil
+	}
 	if err != nil {
 		l.Logger.Errorw("[Generate Subscribe]find subscribe details error: %v", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe details error: %v", err.Error())
@@ -450,8 +461,7 @@ func (l *SubscribeLogic) getServers(userSub *user.Subscribe, protocolType string
 }
 
 func (l *SubscribeLogic) isSubscriptionExpired(userSub *user.Subscribe) bool {
-	expireTime := tool.Unix(userSub.ExpireTime)
-	return expireTime < time.Now().Unix() && expireTime != 0
+	return userSub.ExpireTime.Year() >= 1971 && userSub.ExpireTime.Before(time.Now())
 }
 
 // isGroupEnabled 判断分组功能是否启用

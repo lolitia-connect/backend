@@ -67,6 +67,12 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user subscribe error: %v", err.Error())
 	}
 	// find subscription
+	if userSubscribe == nil || userSubscribe.UserId != u.Id {
+		return nil, xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	if userSubscribe.EntitlementSource != "" {
+		return nil, user.ErrProviderManaged
+	}
 	sub, err := store.Subscribe().FindOne(l.ctx, userSubscribe.SubscribeId)
 	if err != nil {
 		l.Logger.Errorw("[Renewal] Database query error", zap.Any("error", err.Error()), zap.Any("subscribe_id", userSubscribe.SubscribeId))
@@ -121,7 +127,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 			l.Logger.Errorw("[Renewal] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id), zap.Any("coupon", req.Coupon))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find coupon error: %v", err.Error())
 		}
-		if count >= couponInfo.UserLimit {
+		if couponInfo.UserLimit > 0 && count >= couponInfo.UserLimit {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.CouponInsufficientUsage), "coupon limit exceeded")
 		}
 		coupon = calculateCoupon(amount, couponInfo)
@@ -163,34 +169,35 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 
 	// create order
 	orderInfo := order.Order{
-		UserId:         u.Id,
-		ParentId:       userSubscribe.OrderId,
-		OrderNo:        orderNo,
-		Type:           2,
-		Quantity:       req.Quantity,
-		Price:          price,
-		Amount:         amount,
-		GiftAmount:     deductionAmount,
-		Discount:       discountAmount,
-		Coupon:         req.Coupon,
-		CouponDiscount: coupon,
-		PaymentId:      payment.Id,
-		Method:         payment.Platform,
-		FeeAmount:      feeAmount,
-		Status:         1,
-		SubscribeId:    userSubscribe.SubscribeId,
-		SubscribeToken: userSubscribe.Token,
+		UserId:          u.Id,
+		ParentId:        userSubscribe.OrderId,
+		OrderNo:         orderNo,
+		Type:            2,
+		Quantity:        req.Quantity,
+		Price:           price,
+		Amount:          amount,
+		GiftAmount:      deductionAmount,
+		Discount:        discountAmount,
+		Coupon:          req.Coupon,
+		CouponDiscount:  coupon,
+		PaymentId:       payment.Id,
+		Method:          payment.Platform,
+		FeeAmount:       feeAmount,
+		Status:          1,
+		SubscribeId:     userSubscribe.SubscribeId,
+		SubscribeToken:  userSubscribe.Token,
+		UserSubscribeId: userSubscribe.Id,
 	}
 	orderflow.ApplyIdempotency(l.ctx, &orderInfo)
 	// Database transaction
 	err = store.InTx(l.ctx, func(txStore repository.Store) error {
+		fresh, err := txStore.Wallet().FindOneForUpdate(l.ctx, u.Id)
+		if err != nil {
+			return err
+		}
 		// Reserve gift credit from a wallet read inside the transaction so a
 		// concurrent order cannot spend the same balance.
 		if orderInfo.GiftAmount > 0 {
-			fresh, err := txStore.Wallet().FindOne(l.ctx, u.Id)
-			if err != nil {
-				return err
-			}
 			if fresh.GiftAmount < orderInfo.GiftAmount {
 				return errors.Wrapf(xerr.NewErrCode(xerr.InsufficientBalance), "insufficient gift balance")
 			}
@@ -222,6 +229,9 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 			}
 		}
 		// insert order
+		if err := orderflow.ReserveCoupon(l.ctx, txStore, &orderInfo); err != nil {
+			return err
+		}
 		if err = txStore.Order().Insert(l.ctx, &orderInfo); err != nil {
 			return err
 		}
@@ -239,7 +249,7 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 	if err != nil {
 		l.Logger.Errorw("[Renewal] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
-	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
+	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(25))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
 		l.Logger.Errorw("[Renewal] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", task))

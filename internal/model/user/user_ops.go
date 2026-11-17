@@ -7,6 +7,7 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	entuser "github.com/perfect-panel/server/ent/user"
 	entauth "github.com/perfect-panel/server/ent/userauthmethod"
+	"github.com/perfect-panel/server/internal/model/node"
 )
 
 // BatchDeleteUser deletes multiple records by primary key.
@@ -15,7 +16,10 @@ func (m *customUserModel) BatchDeleteUser(ctx context.Context, ids []int64) erro
 		return nil
 	}
 	_, err := m.db.User.Update().Where(entuser.IDIn(ids...)).SetDeletedAt(time.Now()).Save(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	return node.NewModel(m.db, m.redis).ClearServerAllCache(ctx)
 }
 
 func (m *customUserModel) UpdateUserSubscribeWithTraffic(ctx context.Context, id, download, upload int64, isExpired bool) error {

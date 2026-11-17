@@ -4,16 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
-	"github.com/perfect-panel/server/internal/report"
 	"github.com/perfect-panel/server/internal/repository"
-	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/exchangeRate"
+	"github.com/perfect-panel/server/pkg/requestmeta"
+	"github.com/perfect-panel/server/pkg/tasklock"
 
 	paymentPlatform "github.com/perfect-panel/server/pkg/payment"
 
@@ -56,6 +55,19 @@ func NewPurchaseCheckoutLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 // PurchaseCheckout processes the checkout for an order using the specified payment method
 // It validates the order, retrieves payment configuration, and routes to the appropriate payment handler
 func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest) (resp *types.CheckoutOrderResponse, err error) {
+	lock, held, err := tasklock.Acquire(l.ctx, l.svcCtx.Redis, "order-checkout:"+req.OrderNo, 2*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	if !held {
+		return nil, fmt.Errorf("order checkout is already being processed")
+	}
+	defer lock.Release(l.ctx)
+	ctx, cancel := context.WithCancelCause(l.ctx)
+	defer cancel(nil)
+	stop := lock.KeepAlive(ctx, 2*time.Minute, cancel)
+	defer stop()
+	l.ctx = ctx
 
 	// Validate and retrieve order information
 	orderInfo, err := l.svcCtx.Store.Order().FindOneByOrderNo(l.ctx, req.OrderNo)
@@ -76,19 +88,19 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		l.Logger.Error("[PurchaseCheckout] Database query error", zap.Any("error", err.Error()), zap.Any("payment", orderInfo.Method))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
 	}
+	if paymentConfig.Enable == nil || !*paymentConfig.Enable {
+		return nil, fmt.Errorf("payment method is disabled")
+	}
+	if orderInfo.PaymentSession != "" && orderInfo.TradeNo != "" {
+		var cached types.CheckoutOrderResponse
+		if json.Unmarshal([]byte(orderInfo.PaymentSession), &cached) == nil && cached.CheckoutUrl != "" {
+			return &cached, nil
+		}
+	}
 	// Route to appropriate payment handler based on payment platform
 	switch paymentPlatform.ParsePlatform(orderInfo.Method) {
 	case paymentPlatform.EPay:
-		// Process EPay payment - generates payment URL for redirect
-		url, err := l.epayPayment(paymentConfig, orderInfo, req.ReturnUrl)
-		if err != nil {
-			l.Logger.Error("[PurchaseCheckout] epay error", zap.Any("error", err.Error()))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "epayPayment error: %v", err.Error())
-		}
-		resp = &types.CheckoutOrderResponse{
-			CheckoutUrl: url,
-			Type:        "url", // Client should redirect to URL
-		}
+		return l.epayPayment(paymentConfig, orderInfo, req.ReturnUrl)
 
 	case paymentPlatform.Stripe:
 		// Process Stripe payment - creates Checkout Session for redirect
@@ -174,6 +186,17 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		l.Logger.Errorw("[PurchaseCheckout] payment method not found", zap.Any("method", orderInfo.Method))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "payment method not found")
 	}
+	if err == nil && resp != nil && resp.CheckoutUrl != "" {
+		encoded, encodeErr := json.Marshal(resp)
+		if encodeErr != nil {
+			return nil, encodeErr
+		}
+		if orderInfo.TradeNo != "" {
+			if err := l.claimPayment(orderInfo, orderInfo.TradeNo, string(encoded)); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return
 }
 
@@ -187,16 +210,9 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 
-	// Build notification URL for payment status callbacks
-	notifyUrl := ""
-	if pay.Domain != "" {
-		notifyUrl = strings.TrimSuffix(pay.Domain, "/") + "/v1/notify/" + pay.Platform + "/" + pay.Token
-	} else {
-		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
-		if !ok {
-			host = l.svcCtx.Config.Host
-		}
-		notifyUrl = "https://" + strings.TrimSuffix(host, "/") + "/v1/notify/" + pay.Platform + "/" + pay.Token
+	notifyUrl, err := l.paymentNotifyURL(pay)
+	if err != nil {
+		return "", err
 	}
 
 	// Initialize Alipay client with configuration
@@ -218,17 +234,17 @@ func (l *PurchaseCheckoutLogic) alipayF2fPayment(pay *payment.Payment, info *ord
 	})
 
 	// Convert order amount to CNY using current exchange rate
-	amount, err := l.queryPaymentMethodExchangeRate(pay, info.Amount, "CNY")
+	convertAmount, err := l.paymentAmount(pay, info, "CNY")
 	if err != nil {
 		l.Logger.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", err.Error())
 	}
-	convertAmount := int64(amount * 100) // Convert to cents for API
 
 	// Create pre-payment trade and generate QR code
 	QRCode, err := client.PreCreateTrade(l.ctx, alipay.Order{
-		OrderNo: info.OrderNo,
-		Amount:  convertAmount,
+		OrderNo:   info.OrderNo,
+		Amount:    convertAmount,
+		ExpiresAt: info.CreatedAt.Add(15 * time.Minute),
 	})
 	if err != nil {
 		l.Logger.Errorw("[PurchaseCheckout] PreCreateTrade error", zap.Any("error", err.Error()))
@@ -255,25 +271,9 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "AlipayPlus payment method is empty")
 	}
 
-	// Build notification URL for payment status callbacks
-	isGatewayMod := report.IsGatewayMode()
-	notifyURL := ""
-	if pay.Domain != "" {
-		notifyURL = pay.Domain
-		if isGatewayMod {
-			notifyURL += "/api"
-		}
-		notifyURL += "/v1/notify/" + pay.Platform + "/" + pay.Token
-	} else {
-		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
-		if !ok {
-			host = l.svcCtx.Config.Host
-		}
-		notifyURL = "https://" + host
-		if isGatewayMod {
-			notifyURL += "/api"
-		}
-		notifyURL += "/v1/notify/" + pay.Platform + "/" + pay.Token
+	notifyURL, err := l.paymentNotifyURL(pay)
+	if err != nil {
+		return "", err
 	}
 
 	// Use resolved bill desc as invoice name
@@ -292,25 +292,24 @@ func (l *PurchaseCheckoutLogic) alipayPlusPayment(pay *payment.Payment, info *or
 		RedirectURL:     returnURL,
 	})
 
-	amount, err := l.queryPaymentMethodExchangeRate(pay, info.Amount, targetCurrency)
+	convertAmount, err := l.paymentAmount(pay, info, targetCurrency)
 	if err != nil {
 		l.Logger.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", err.Error())
 	}
-	convertAmount := int64(amount * 100)
 
 	payload, err := client.PreCreateTrade(l.ctx, alipayplus.Order{
-		OrderNo:          info.OrderNo,
-		Amount:           convertAmount,
-		ReferenceBuyerId: strconv.FormatInt(info.UserId, 10),
+		OrderNo:           info.OrderNo,
+		Amount:            convertAmount,
+		ReferenceBuyerId:  strconv.FormatInt(info.UserId, 10),
+		PaymentExpiryTime: info.CreatedAt.Add(15 * time.Minute).Format(time.RFC3339),
 	})
 	if err != nil {
 		l.Logger.Errorw("[PurchaseCheckout] AlipayPlus PreCreateTrade error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "PreCreateTrade error: %s", err.Error())
 	}
 
-	info.TradeNo = info.OrderNo
-	if err := l.svcCtx.Store.Order().Update(l.ctx, info); err != nil {
+	if err := l.claimPayment(info, info.OrderNo, ""); err != nil {
 		l.Logger.Errorw("[PurchaseCheckout] Update order error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
 	}
@@ -343,13 +342,11 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	}
 
 	// Apply exchange rate conversion
-	convertedAmount, convertErr := l.queryPaymentMethodExchangeRate(pay, info.Amount, "")
+	stripeAmount, convertErr := l.paymentAmount(pay, info, stripeCurrency)
 	if convertErr != nil {
 		l.Logger.Errorw("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", convertErr.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "queryPaymentMethodExchangeRate error: %s", convertErr.Error())
 	}
-	// Convert back to cents for Stripe API
-	stripeAmount := int64(convertedAmount * 100)
 
 	// Resolve billing description template
 	statementDescriptorSuffix := l.resolveBillDesc(pay.BillDesc, info, "")
@@ -357,16 +354,18 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	// Build success/cancel URLs
 	successURL := returnUrl
 	if successURL == "" {
-		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
-		if !ok {
-			host = l.svcCtx.Config.Host
+		successURL = strings.TrimSpace(strings.Split(l.svcCtx.Config.Site.Host, "\n")[0])
+		if successURL == "" {
+			return "", fmt.Errorf("configure the site host for Stripe checkout")
 		}
-		successURL = "https://" + host
+		if !strings.Contains(successURL, "://") {
+			successURL = "https://" + successURL
+		}
 	}
 	cancelURL := successURL
 
 	// Create Stripe Checkout Session for redirect-based payment
-	result, err := client.CreateCheckoutSession(&stripe.Order{
+	result, err := client.CreateCheckoutSessionContext(l.ctx, &stripe.Order{
 		OrderNo:                   info.OrderNo,
 		Subscribe:                 strconv.FormatInt(info.SubscribeId, 10),
 		Amount:                    stripeAmount,
@@ -387,8 +386,7 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 	}
 
 	// Save Stripe trade number to order for tracking
-	info.TradeNo = result.TradeNo
-	err = l.svcCtx.Store.Order().Update(l.ctx, info)
+	err = l.claimPayment(info, result.TradeNo, "")
 	if err != nil {
 		l.Logger.Errorw("[PurchaseCheckout] Update order error", zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
@@ -398,60 +396,35 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 
 // epayPayment processes EPay payment by generating a payment URL for redirect
 // It handles currency conversion and creates a payment URL for external payment processing
-func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order.Order, returnUrl string) (string, error) {
-	var err error
-	// Parse EPay configuration from payment settings
+func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order.Order, returnUrl string) (*types.CheckoutOrderResponse, error) {
 	epayConfig := &payment.EPayConfig{}
 	if err := epayConfig.Unmarshal([]byte(config.Config)); err != nil {
-		l.Logger.Errorw("[PurchaseCheckout] Unmarshal EPay config error", zap.Any("error", err.Error()))
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
+		return nil, err
 	}
-	// Initialize EPay client with merchant credentials
-	client := epay.NewClient(epayConfig.Pid, epayConfig.Url, epayConfig.Key, epayConfig.Type)
-	var amount float64
-	if config.CurrencyUnit != "" && !strings.EqualFold(config.CurrencyUnit, l.svcCtx.Config.Currency.Unit) {
-		// Use per-payment exchange rate
-		converted, convertErr := l.queryPaymentMethodExchangeRate(config, info.Amount, "CNY")
-		if convertErr != nil {
-			l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", convertErr.Error()))
-			return "", convertErr
+	gateway, err := epay.Open(epay.GatewayConfig{Version: epayConfig.Version, CheckoutMode: epayConfig.CheckoutMode, Endpoint: epayConfig.Url, Domain: config.Domain, MerchantID: epayConfig.Pid, Key: epayConfig.Key, PrivateKey: epayConfig.PrivateKey, PublicKey: epayConfig.PublicKey, PaymentType: epayConfig.Type})
+	if err != nil {
+		return nil, err
+	}
+	if info.PaymentSession != "" {
+		var saved epay.PaymentSession
+		if json.Unmarshal([]byte(info.PaymentSession), &saved) != nil || saved.State != "ready" || saved.TradeNo == "" || saved.TradeNo != info.TradeNo {
+			return nil, fmt.Errorf("EPay checkout attempt is awaiting reconciliation")
 		}
-		amount = converted
-	} else if l.svcCtx.Config.Currency.Unit != "CNY" {
-		// Convert order amount to CNY using current exchange rate
-		amount, err = l.queryExchangeRate("CNY", info.Amount)
+		kind, entry, err := saved.CheckoutURL()
 		if err != nil {
-			l.Logger.Error("[PurchaseCheckout] queryExchangeRate error", zap.Any("error", err.Error()))
-			return "", err
+			return nil, err
 		}
-	} else {
-		amount = float64(info.Amount) / float64(100)
+		return &types.CheckoutOrderResponse{Type: kind, CheckoutUrl: entry}, nil
+	}
+	minorAmount, err := l.paymentAmount(config, info, "CNY")
+	if err != nil {
+		return nil, err
+	}
+	notifyUrl, err := l.paymentNotifyURL(config)
+	if err != nil {
+		return nil, err
 	}
 
-	// gateway mod
-	isGatewayMod := report.IsGatewayMode()
-
-	// Build notification URL for payment status callbacks
-	notifyUrl := ""
-	if config.Domain != "" {
-		notifyUrl = strings.TrimSuffix(config.Domain, "/")
-		if isGatewayMod {
-			notifyUrl += "/api/"
-		}
-		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
-	} else {
-		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
-		if !ok {
-			host = l.svcCtx.Config.Host
-		}
-		notifyUrl = "https://" + strings.TrimSuffix(host, "/")
-		if isGatewayMod {
-			notifyUrl += "/api"
-		}
-		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
-	}
-
-	// Use resolved bill desc if available, otherwise fall back to site name
 	payName := l.svcCtx.Config.Site.SiteName
 	if config.BillDesc != "" {
 		resolved := l.resolveBillDesc(config.BillDesc, info, "")
@@ -460,26 +433,56 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 		}
 	}
 
-	// Create payment URL for user redirection
-	url, err := client.CreatePayUrl(epay.Order{
-		Name:      payName,
-		Amount:    amount,
-		OrderNo:   info.OrderNo,
-		SignType:  "MD5",
-		NotifyUrl: notifyUrl,
-		ReturnUrl: returnUrl,
-	})
-	if err != nil {
-		l.Logger.Errorw("[PurchaseCheckout] CreatePayUrl error", zap.Any("error", err.Error()))
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CreatePayUrl error: %s", err.Error())
+	money := paymentPlatform.FormatAmount(minorAmount)
+	if !strings.EqualFold(strings.TrimSpace(epayConfig.CheckoutMode), "api") {
+		entry, err := gateway.PagePayment(payName, info.OrderNo, money, notifyUrl, returnUrl)
+		if err != nil {
+			return nil, err
+		}
+		return &types.CheckoutOrderResponse{Type: "url", CheckoutUrl: epay.BrowserURL(epayConfig.Url, entry)}, nil
 	}
-	return url, nil
+	metadata, _ := requestmeta.From(l.ctx)
+	if err := gateway.ValidatePayment(payName, info.OrderNo, money, notifyUrl, returnUrl, metadata.ClientIP); err != nil {
+		return nil, err
+	}
+	const creating = `{"state":"creating"}`
+	started, err := l.svcCtx.Store.Order().BeginPaymentSession(l.ctx, info.OrderNo, creating)
+	if err != nil {
+		return nil, err
+	}
+	if !started {
+		return nil, fmt.Errorf("EPay checkout already started or order is no longer pending")
+	}
+	session, err := gateway.CreatePayment(l.ctx, payName, info.OrderNo, money, notifyUrl, returnUrl, metadata.ClientIP)
+	if err != nil {
+		return nil, fmt.Errorf("EPay create outcome requires reconciliation: %w", err)
+	}
+	session.State = "ready"
+	if strings.TrimSpace(session.TradeNo) != session.TradeNo || session.TradeNo == "" || len(session.TradeNo) > 255 {
+		return nil, fmt.Errorf("invalid EPay trade number")
+	}
+	kind, entry, err := session.CheckoutURL()
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(session)
+	if err != nil {
+		return nil, err
+	}
+	saved, err := l.svcCtx.Store.Order().CompletePaymentSession(l.ctx, info.OrderNo, creating, session.TradeNo, string(encoded))
+	if err != nil {
+		return nil, err
+	}
+	if !saved {
+		return nil, fmt.Errorf("EPay order changed before checkout could be saved")
+	}
+	info.TradeNo, info.PaymentSession = session.TradeNo, string(encoded)
+	return &types.CheckoutOrderResponse{Type: kind, CheckoutUrl: entry}, nil
 }
 
 // CryptoSaaSPayment processes CryptoSaaSPayment payment by generating a payment URL for redirect
 // It handles currency conversion and creates a payment URL for external payment processing
 func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info *order.Order, returnUrl string) (string, error) {
-	var err error
 	// Parse EPay configuration from payment settings
 	epayConfig := &payment.CryptoSaaSConfig{}
 	if err := epayConfig.Unmarshal([]byte(config.Config)); err != nil {
@@ -489,47 +492,13 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 	// Initialize EPay client with merchant credentials
 	client := epay.NewClient(epayConfig.AccountID, epayConfig.Endpoint, epayConfig.SecretKey, epayConfig.Type)
 
-	var amount float64
-
-	if config.CurrencyUnit != "" && !strings.EqualFold(config.CurrencyUnit, l.svcCtx.Config.Currency.Unit) {
-		// Use per-payment exchange rate
-		converted, convertErr := l.queryPaymentMethodExchangeRate(config, info.Amount, "CNY")
-		if convertErr != nil {
-			return "", convertErr
-		}
-		amount = converted
-	} else if l.svcCtx.Config.Currency.Unit != "CNY" {
-		// Convert order amount to CNY using current exchange rate
-		amount, err = l.queryExchangeRate("CNY", info.Amount)
-		if err != nil {
-			return "", err
-		}
-	} else {
-		amount = float64(info.Amount) / float64(100)
+	minorAmount, err := l.paymentAmount(config, info, "CNY")
+	if err != nil {
+		return "", err
 	}
-
-	// gateway mod
-	isGatewayMod := report.IsGatewayMode()
-
-	// Build notification URL for payment status callbacks
-	notifyUrl := ""
-	if config.Domain != "" {
-		notifyUrl = strings.TrimSuffix(config.Domain, "/")
-		if isGatewayMod {
-			notifyUrl += "/api/"
-		}
-		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
-	} else {
-		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
-		if !ok {
-			host = l.svcCtx.Config.Host
-		}
-
-		notifyUrl = "https://" + strings.TrimSuffix(host, "/")
-		if isGatewayMod {
-			notifyUrl += "/api"
-		}
-		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
+	notifyUrl, err := l.paymentNotifyURL(config)
+	if err != nil {
+		return "", err
 	}
 
 	// Use resolved bill desc if available, otherwise fall back to site name
@@ -543,12 +512,12 @@ func (l *PurchaseCheckoutLogic) CryptoSaaSPayment(config *payment.Payment, info 
 
 	// Create payment URL for user redirection
 	url, err := client.CreatePayUrl(epay.Order{
-		Name:      payName,
-		Amount:    amount,
-		OrderNo:   info.OrderNo,
-		SignType:  "MD5",
-		NotifyUrl: notifyUrl,
-		ReturnUrl: returnUrl,
+		Name:        payName,
+		AmountMinor: minorAmount,
+		OrderNo:     info.OrderNo,
+		SignType:    "MD5",
+		NotifyUrl:   notifyUrl,
+		ReturnUrl:   returnUrl,
 	})
 	if err != nil {
 		l.Logger.Errorw("[PurchaseCheckout] CreatePayUrl error", zap.Any("error", err.Error()))
@@ -578,12 +547,11 @@ func (l *PurchaseCheckoutLogic) CryptomusPayment(config *payment.Payment, info *
 	}
 
 	// Convert the order amount into minor units of the payment currency.
-	converted, err := l.queryPaymentMethodExchangeRate(config, info.Amount, currency)
+	amount, err := l.paymentAmount(config, info, currency)
 	if err != nil {
 		l.Logger.Error("[PurchaseCheckout] queryPaymentMethodExchangeRate error", zap.Any("error", err.Error()))
 		return "", err
 	}
-	amount := int64(math.Round(converted * 100))
 	if amount <= 0 {
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "invalid Cryptomus payment amount")
 	}
@@ -597,24 +565,9 @@ func (l *PurchaseCheckoutLogic) CryptomusPayment(config *payment.Payment, info *
 		}
 	}
 
-	// Build notification URL for payment status callbacks.
-	notifyUrl := ""
-	if config.Domain != "" {
-		notifyUrl = strings.TrimSuffix(config.Domain, "/")
-		if report.IsGatewayMode() {
-			notifyUrl += "/api/"
-		}
-		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
-	} else {
-		host, ok := l.ctx.Value(constant.CtxKeyRequestHost).(string)
-		if !ok {
-			host = l.svcCtx.Config.Host
-		}
-		notifyUrl = "https://" + strings.TrimSuffix(host, "/")
-		if report.IsGatewayMode() {
-			notifyUrl += "/api"
-		}
-		notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + config.Platform + "/" + config.Token
+	notifyUrl, err := l.paymentNotifyURL(config)
+	if err != nil {
+		return "", err
 	}
 
 	invoice, err := client.CreateInvoice(cryptomus.Order{
@@ -645,8 +598,7 @@ func (l *PurchaseCheckoutLogic) CryptomusPayment(config *payment.Payment, info *
 
 	// Claim the invoice on the order for idempotent retries and callbacks.
 	if info.TradeNo == "" {
-		info.TradeNo = invoice.UUID
-		if err = l.svcCtx.Store.Order().Update(l.ctx, info); err != nil {
+		if err = l.claimPayment(info, invoice.UUID, ""); err != nil {
 			l.Logger.Errorw("[PurchaseCheckout] Update order trade no error", zap.Any("error", err.Error()))
 			return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
 		}
@@ -748,27 +700,19 @@ func (l *PurchaseCheckoutLogic) resolveBillDesc(template string, info *order.Ord
 // It prioritizes using gift amount first, then regular balance, and creates proper audit logs
 func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) error {
 	var err error
-	if o.Amount == 0 {
-		// No payment required for zero-amount orders
-		l.Logger.Info(
-			"[PurchaseCheckout] No payment required for zero-amount order",
-			zap.Any("orderNo", o.OrderNo),
-			zap.Any("userId", u.Id),
-		)
-		err = l.svcCtx.Store.Order().UpdateOrderStatus(l.ctx, o.OrderNo, 2)
-		if err != nil {
-			l.Logger.Errorw("[PurchaseCheckout] Update order status error",
-				zap.Any("error", err.Error()),
-				zap.Any("orderNo", o.OrderNo),
-				zap.Any("userId", u.Id))
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update order status error: %s", err.Error())
-		}
-		goto activation
-	}
-
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		// Retrieve the latest wallet inside the transaction.
-		walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)
+		locked, err := store.Order().FindOneByOrderNoForUpdate(l.ctx, o.OrderNo)
+		if err != nil {
+			return err
+		}
+		if locked.UserId != u.Id || locked.Method != "balance" || locked.Status != order.StatusPending {
+			return xerr.NewErrCode(xerr.OrderStatusError)
+		}
+		if locked.Amount < 0 || locked.GiftAmount < 0 {
+			return xerr.NewErrCode(xerr.InvalidParams)
+		}
+		o = locked
+		walletInfo, err := store.Wallet().FindOneForUpdate(l.ctx, u.Id)
 		if err != nil {
 			return err
 		}
@@ -835,7 +779,8 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 		}
 
 		// Store gift amount used in order for potential refund tracking
-		o.GiftAmount = giftUsed
+		o.Amount -= giftUsed
+		o.GiftAmount += giftUsed
 		err = store.Order().Update(l.ctx, o)
 		if err != nil {
 			return err
@@ -853,7 +798,6 @@ func (l *PurchaseCheckoutLogic) balancePayment(u *user.User, o *order.Order) err
 		return err
 	}
 
-activation:
 	// Enqueue order activation task for immediate processing
 	payload := queueType.ForthwithActivateOrderPayload{
 		OrderNo: o.OrderNo,

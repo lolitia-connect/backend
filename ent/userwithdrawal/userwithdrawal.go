@@ -28,7 +28,7 @@ const (
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
 	// Table holds the table name of the userwithdrawal in the database.
-	Table = "user_withdrawal"
+	Table = "withdrawals"
 )
 
 // Columns holds all SQL columns for userwithdrawal fields.

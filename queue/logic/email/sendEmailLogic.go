@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"text/template"
 	"time"
 
@@ -66,6 +68,11 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		)
 		return nil
 	}
+	if payload.Type == types.EmailTypeVerify {
+		if err := normalizeVerificationType(payload.Content); err != nil {
+			return fmt.Errorf("%w: %v", asynq.SkipRetry, err)
+		}
+	}
 	messageLog := log.Message{
 		Metadata: payload.Metadata,
 		Platform: l.svcCtx.Config.Email.Platform,
@@ -84,7 +91,6 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 	var content, bodyTemplate, subjectTemplate string
 	switch payload.Type {
 	case types.EmailTypeVerify:
-		payload.Content["Type"] = uint8(payload.Content["Type"].(float64))
 		bodyTemplate = l.svcCtx.Config.Email.VerifyEmailTemplate
 		subjectTemplate = l.svcCtx.Config.Email.VerifyEmailSubject
 	case types.EmailTypeMaintenance:
@@ -133,10 +139,10 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 	subject := resolveSubject(subjectTemplate, payload.Subject, payload.Content)
 	messageLog.Subject = subject
 
-	err = sender.Send([]string{payload.Email}, subject, content)
+	err = email.SendContext(ctx, sender, []string{payload.Email}, subject, content)
 	if err != nil {
 		zap.S().Error("[SendEmailLogic] Send email failed", zap.Any("error", err.Error()))
-		return nil
+		return err
 	}
 	messageLog.Status = 1
 	emailLog, err := messageLog.Marshal()
@@ -160,5 +166,14 @@ func (l *SendEmailLogic) ProcessTask(ctx context.Context, task *asynq.Task) erro
 		)
 		return nil
 	}
+	return nil
+}
+
+func normalizeVerificationType(content map[string]interface{}) error {
+	value, ok := content["Type"].(float64)
+	if !ok || math.IsNaN(value) || math.IsInf(value, 0) || (value != 1 && value != 2) {
+		return fmt.Errorf("invalid verification email purpose")
+	}
+	content["Type"] = uint8(value)
 	return nil
 }

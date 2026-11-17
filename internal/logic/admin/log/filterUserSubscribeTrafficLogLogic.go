@@ -31,6 +31,9 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 	if req.Size <= 0 {
 		req.Size = 10
 	}
+	if req.Size > 100 {
+		req.Size = 100
+	}
 	if req.Page <= 0 {
 		req.Page = 1
 	}
@@ -38,11 +41,18 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 	today := time.Now().Format("2006-01-02")
 	var list []types.UserSubscribeTrafficLog
 	var total int64
+	contentFilters := make(map[string]int64)
+	if req.UserId > 0 {
+		contentFilters["user_id"] = req.UserId
+	}
+	if req.UserSubscribeId > 0 {
+		contentFilters["subscribe_id"] = req.UserSubscribeId
+	}
 
 	if req.Date == today || req.Date == "" {
 		now := time.Now()
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-		end := start.Add(24 * time.Hour)
+		end := start.AddDate(0, 0, 1)
 
 		userTraffic, err := l.svcCtx.Store.TrafficLog().QueryUserTrafficRanking(l.ctx, start, end)
 		if err != nil {
@@ -51,6 +61,9 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 		}
 
 		for _, v := range userTraffic {
+			if (req.UserId > 0 && v.UserId != req.UserId) || (req.UserSubscribeId > 0 && v.SubscribeId != req.UserSubscribeId) {
+				continue
+			}
 			list = append(list, types.UserSubscribeTrafficLog{
 				UserId:      v.UserId,
 				SubscribeId: v.SubscribeId,
@@ -64,24 +77,18 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 		todayTotal := len(list)
 
 		startIdx := (req.Page - 1) * req.Size
-		endIdx := startIdx + req.Size
+		pageData := make([]types.UserSubscribeTrafficLog, 0, req.Size)
 		if startIdx < todayTotal {
-			if endIdx > todayTotal {
-				endIdx = todayTotal
-			}
-			pageData := list[startIdx:endIdx]
-			return &types.FilterSubscribeTrafficResponse{
-				List:  pageData,
-				Total: int64(todayTotal),
-			}, nil
+			pageData = append(pageData, list[startIdx:min(startIdx+req.Size, todayTotal)]...)
 		}
-
-		need := endIdx - todayTotal
-		historyPage := (need + req.Size - 1) / req.Size // 算出需要的历史页数
+		historyOffset := max(startIdx-todayTotal, 0)
+		need := req.Size - len(pageData)
 		historyData, historyTotal, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-			Page: historyPage,
-			Size: need,
-			Type: log.TypeSubscribeTraffic.Uint8(),
+			Page:         1,
+			Size:         max(need, 1),
+			Offset:       &historyOffset,
+			Type:         log.TypeSubscribeTraffic.Uint8(),
+			ContentInt64: contentFilters,
 		})
 
 		if err != nil {
@@ -90,13 +97,16 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 		}
 
 		for _, datum := range historyData {
+			if need == 0 {
+				break
+			}
 			var item log.UserTraffic
 			err = item.Unmarshal([]byte(datum.Content))
 			if err != nil {
 				l.Logger.Errorw("[FilterUserSubscribeTrafficLog] Unmarshal Content Error", zap.Any("error", err.Error()))
 				continue
 			}
-			list = append(list, types.UserSubscribeTrafficLog{
+			pageData = append(pageData, types.UserSubscribeTrafficLog{
 				UserId:      item.UserId,
 				SubscribeId: item.SubscribeId,
 				Upload:      item.Upload,
@@ -106,12 +116,6 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 				Details:     false,
 			})
 		}
-		// 返回最终分页数据
-		if endIdx > len(list) {
-			endIdx = len(list)
-		}
-		pageData := list[startIdx:endIdx]
-
 		return &types.FilterSubscribeTrafficResponse{
 			List:  pageData,
 			Total: int64(todayTotal) + historyTotal,
@@ -119,10 +123,11 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 	}
 	var data []*log.SystemLog
 	data, total, err = l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page: req.Page,
-		Size: req.Size,
-		Type: log.TypeSubscribeTraffic.Uint8(),
-		Data: req.Date,
+		Page:         req.Page,
+		Size:         req.Size,
+		Type:         log.TypeSubscribeTraffic.Uint8(),
+		Data:         req.Date,
+		ContentInt64: contentFilters,
 	})
 	if err != nil {
 		l.Logger.Errorw("[FilterUserSubscribeTrafficLog] Query Database Error", zap.Any("error", err.Error()))

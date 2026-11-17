@@ -1,0 +1,1 @@
+ALTER TABLE user_subscribe ADD COLUMN traffic_reset_at TIMESTAMPTZ NULL;

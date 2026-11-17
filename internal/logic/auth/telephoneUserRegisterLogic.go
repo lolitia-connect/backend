@@ -16,8 +16,8 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/captcha"
-	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
@@ -175,14 +175,10 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	// Generate session id
 	sessionId := uuidx.NewUUID().String()
 	// Generate token
-	token, err := jwt.NewJwtToken(
+	token, err := usersession.Issue(l.ctx, l.svcCtx.Redis,
 		l.svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
 		l.svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userInfo.Id),
-		jwt.WithOption("SessionId", sessionId),
-		jwt.WithOption("identifier", req.Identifier),
-		jwt.WithOption("CtxLoginType", req.LoginType),
+		userInfo.Id, sessionId, req.LoginType, "", req.Identifier,
 	)
 	if err != nil {
 		l.Logger.Error("[UserLogin] token generate error", zap.Any("error", err.Error()))
@@ -249,19 +245,24 @@ func (l *TelephoneUserRegisterLogic) activeTrial(store repository.Store, uid int
 	if err != nil {
 		return nil, err
 	}
+	if sub == nil {
+		return nil, xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
 	userSub := &user.Subscribe{
-		Id:          0,
-		UserId:      uid,
-		OrderId:     0,
-		SubscribeId: sub.Id,
-		StartTime:   time.Now(),
-		ExpireTime:  tool.AddTime(l.svcCtx.Config.Register.TrialTimeUnit, l.svcCtx.Config.Register.TrialTime, time.Now()),
-		Traffic:     sub.Traffic,
-		Download:    0,
-		Upload:      0,
-		Token:       uuidx.SubscribeToken(fmt.Sprintf("Trial-%v-%s", uid, uuidx.NewUUID().String())),
-		UUID:        uuidx.NewUUID().String(),
-		Status:      1,
+		Id:               0,
+		UserId:           uid,
+		OrderId:          0,
+		SubscribeId:      sub.Id,
+		StartTime:        time.Now(),
+		ExpireTime:       tool.AddTime(l.svcCtx.Config.Register.TrialTimeUnit, l.svcCtx.Config.Register.TrialTime, time.Now()),
+		Traffic:          sub.Traffic,
+		TrafficUnlimited: sub.TrafficUnlimited,
+		NodeGroupId:      sub.NodeGroupId,
+		Download:         0,
+		Upload:           0,
+		Token:            uuidx.SubscribeToken(""),
+		UUID:             uuidx.NewRandomUUID().String(),
+		Status:           1,
 	}
 	return userSub, store.User().InsertSubscribe(l.ctx, userSub)
 }

@@ -2,11 +2,14 @@ package user
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
 	"github.com/redis/go-redis/v9"
 )
+
+var ErrProviderManaged = errors.New("subscription is managed by its payment provider")
 
 type customUserLogicModel interface {
 	QueryPageList(ctx context.Context, page, size int, filter *UserFilterParams) ([]*User, int64, error)
@@ -19,14 +22,25 @@ type customUserLogicModel interface {
 	FindOneSubscribeByToken(ctx context.Context, token string) (*Subscribe, error)
 	FindOneSubscribeByOrderId(ctx context.Context, orderId int64) (*Subscribe, error)
 	FindOneSubscribe(ctx context.Context, id int64) (*Subscribe, error)
+	FindOneSubscribeForUpdate(ctx context.Context, id int64) (*Subscribe, error)
+	CancelSubscribe(ctx context.Context, id, userID int64) (bool, error)
+	RenewSubscribe(ctx context.Context, data *Subscribe, resetTraffic bool) error
+	ApplyQuotaGrant(ctx context.Context, id int64, grant QuotaGrant) error
+	ResetSubscribeTraffic(ctx context.Context, id int64) error
+	RotateSubscribeCredentials(ctx context.Context, id, userID int64, token, nodeUUID string) error
+	UpdateSubscribeNote(ctx context.Context, id, userID int64, note string) error
+	CompareSubscribeStatus(ctx context.Context, id int64, previous, next uint8) (bool, error)
+	ResetSubscribeCounters(ctx context.Context, id int64) error
+	UpdateSubscribeSettings(ctx context.Context, data *Subscribe, previous uint8) error
+	RedeemSubscribe(ctx context.Context, data *Subscribe, resetTraffic bool) error
 	FindSubscribesByIds(ctx context.Context, ids []int64) ([]*Subscribe, error)
 	QueryMonthlyResetSubscribeIds(ctx context.Context, subscribeIds []int64, now time.Time) ([]int64, error)
 	QueryFirstResetSubscribeIds(ctx context.Context, subscribeIds []int64, now time.Time) ([]int64, error)
 	QueryYearlyResetSubscribeIds(ctx context.Context, subscribeIds []int64, now time.Time) ([]int64, error)
-	ResetSubscribeTrafficByIds(ctx context.Context, ids []int64) error
+	ResetSubscribeTrafficByIds(ctx context.Context, ids []int64, now time.Time) ([]*Subscribe, error)
 	FindTrafficExceededSubscribes(ctx context.Context) ([]*Subscribe, error)
 	FindExpiredSubscribes(ctx context.Context, now time.Time) ([]*Subscribe, error)
-	MarkSubscribesFinished(ctx context.Context, ids []int64, status uint8, finishedAt time.Time) error
+	MarkSubscribesFinished(ctx context.Context, ids []int64, status uint8, finishedAt time.Time) ([]*Subscribe, error)
 	UpdateSubscribe(ctx context.Context, data *Subscribe) error
 	DeleteSubscribe(ctx context.Context, token string) error
 	DeleteSubscribeById(ctx context.Context, id int64) error
@@ -78,11 +92,15 @@ type customUserLogicModel interface {
 	FindDeviceOnlineRecordsSince(ctx context.Context, userId int64, since time.Time) ([]*DeviceOnlineRecord, error)
 	InsertDeviceOnlineRecord(ctx context.Context, data *DeviceOnlineRecord) error
 	InsertWithdrawal(ctx context.Context, data *Withdrawal) error
+	QueryWithdrawalPageList(ctx context.Context, filter *WithdrawalFilter, page, size int) ([]*Withdrawal, int64, error)
+	FindWithdrawalForUpdate(ctx context.Context, id int64) (*Withdrawal, error)
+	UpdateWithdrawalStatus(ctx context.Context, id int64, from, to uint8, reason string) (bool, error)
 	QuerySubscribeIdsByFilter(ctx context.Context, filter *SubscribeFilter) ([]int64, error)
 	CountSubscribesByFilter(ctx context.Context, filter *SubscribeFilter) (int64, error)
 	QueryDailyUserStatisticsList(ctx context.Context, date time.Time) ([]UserStatisticsWithDate, error)
 	QueryMonthlyUserStatisticsList(ctx context.Context, date time.Time) ([]UserStatisticsWithDate, error)
 	UpgradePasswordHash(ctx context.Context, id int64, currentHash, nextHash, algo, salt string) (bool, error)
+	UpdatePassword(ctx context.Context, id int64, currentHash, nextHash, algo, salt string) error
 }
 
 // NewModel returns a model for the database table.

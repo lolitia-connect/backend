@@ -19,6 +19,8 @@ type (
 	}
 	UpdateUserPasswordRequest {
 		Password string `json:"password" validate:"required"`
+		OldPassword string `json:"old_password,optional"`
+		CurrentCode string `json:"current_code,optional"`
 	}
 	QueryUserSubscribeListResponse {
 		List  []UserSubscribe `json:"list"`
@@ -86,9 +88,14 @@ type (
 		AreaCode string `json:"area_code" validate:"required"`
 		Mobile   string `json:"mobile" validate:"required"`
 		Code     string `json:"code" validate:"required"`
+		Password string `json:"password,optional"`
+		CurrentCode string `json:"current_code,optional"`
 	}
 	UpdateBindEmailRequest {
 		Email string `json:"email" validate:"required"`
+		Code string `json:"code" validate:"required"`
+		Password string `json:"password,optional"`
+		CurrentCode string `json:"current_code,optional"`
 	}
 	VerifyEmailRequest {
 		Email string `json:"email" validate:"required"`
@@ -168,6 +175,9 @@ type (
 	middleware: AuthMiddleware,DeviceMiddleware
 )
 service ppanel {
+	@handler Logout
+	post /logout
+
 	@doc "Query User Info"
 	@handler QueryUserInfo
 	get /info returns (User)

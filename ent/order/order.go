@@ -33,6 +33,8 @@ const (
 	FieldCoupon = "coupon"
 	// FieldCouponDiscount holds the string denoting the coupon_discount field in the database.
 	FieldCouponDiscount = "coupon_discount"
+	// FieldCouponReserved holds the string denoting the coupon_reserved field in the database.
+	FieldCouponReserved = "coupon_reserved"
 	// FieldPaymentID holds the string denoting the payment_id field in the database.
 	FieldPaymentID = "payment_id"
 	// FieldMethod holds the string denoting the method field in the database.
@@ -45,6 +47,14 @@ const (
 	FieldGiftAmount = "gift_amount"
 	// FieldCommission holds the string denoting the commission field in the database.
 	FieldCommission = "commission"
+	// FieldCommissionRefererID holds the string denoting the commission_referer_id field in the database.
+	FieldCommissionRefererID = "commission_referer_id"
+	// FieldPaymentAmount holds the string denoting the payment_amount field in the database.
+	FieldPaymentAmount = "payment_amount"
+	// FieldPaymentCurrency holds the string denoting the payment_currency field in the database.
+	FieldPaymentCurrency = "payment_currency"
+	// FieldPaymentSession holds the string denoting the payment_session field in the database.
+	FieldPaymentSession = "payment_session"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldStateVersion holds the string denoting the state_version field in the database.
@@ -55,10 +65,16 @@ const (
 	FieldIdempotencyHash = "idempotency_hash"
 	// FieldGuestCheckoutTokenHash holds the string denoting the guest_checkout_token_hash field in the database.
 	FieldGuestCheckoutTokenHash = "guest_checkout_token_hash"
+	// FieldGuestAuthType holds the string denoting the guest_auth_type field in the database.
+	FieldGuestAuthType = "guest_auth_type"
+	// FieldGuestIdentifier holds the string denoting the guest_identifier field in the database.
+	FieldGuestIdentifier = "guest_identifier"
 	// FieldSubscribeID holds the string denoting the subscribe_id field in the database.
 	FieldSubscribeID = "subscribe_id"
 	// FieldSubscribeToken holds the string denoting the subscribe_token field in the database.
 	FieldSubscribeToken = "subscribe_token"
+	// FieldUserSubscribeID holds the string denoting the user_subscribe_id field in the database.
+	FieldUserSubscribeID = "user_subscribe_id"
 	// FieldIsNew holds the string denoting the is_new field in the database.
 	FieldIsNew = "is_new"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -82,19 +98,27 @@ var Columns = []string{
 	FieldDiscount,
 	FieldCoupon,
 	FieldCouponDiscount,
+	FieldCouponReserved,
 	FieldPaymentID,
 	FieldMethod,
 	FieldFeeAmount,
 	FieldTradeNo,
 	FieldGiftAmount,
 	FieldCommission,
+	FieldCommissionRefererID,
+	FieldPaymentAmount,
+	FieldPaymentCurrency,
+	FieldPaymentSession,
 	FieldStatus,
 	FieldStateVersion,
 	FieldIdempotencyKey,
 	FieldIdempotencyHash,
 	FieldGuestCheckoutTokenHash,
+	FieldGuestAuthType,
+	FieldGuestIdentifier,
 	FieldSubscribeID,
 	FieldSubscribeToken,
+	FieldUserSubscribeID,
 	FieldIsNew,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -133,6 +157,8 @@ var (
 	CouponValidator func(string) error
 	// DefaultCouponDiscount holds the default value on creation for the "coupon_discount" field.
 	DefaultCouponDiscount int64
+	// DefaultCouponReserved holds the default value on creation for the "coupon_reserved" field.
+	DefaultCouponReserved bool
 	// DefaultPaymentID holds the default value on creation for the "payment_id" field.
 	DefaultPaymentID int64
 	// DefaultMethod holds the default value on creation for the "method" field.
@@ -147,6 +173,14 @@ var (
 	DefaultGiftAmount int64
 	// DefaultCommission holds the default value on creation for the "commission" field.
 	DefaultCommission int64
+	// DefaultCommissionRefererID holds the default value on creation for the "commission_referer_id" field.
+	DefaultCommissionRefererID int64
+	// DefaultPaymentAmount holds the default value on creation for the "payment_amount" field.
+	DefaultPaymentAmount int64
+	// DefaultPaymentCurrency holds the default value on creation for the "payment_currency" field.
+	DefaultPaymentCurrency string
+	// PaymentCurrencyValidator is a validator for the "payment_currency" field. It is called by the builders before save.
+	PaymentCurrencyValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus uint8
 	// DefaultStateVersion holds the default value on creation for the "state_version" field.
@@ -157,10 +191,20 @@ var (
 	IdempotencyHashValidator func(string) error
 	// GuestCheckoutTokenHashValidator is a validator for the "guest_checkout_token_hash" field. It is called by the builders before save.
 	GuestCheckoutTokenHashValidator func(string) error
+	// DefaultGuestAuthType holds the default value on creation for the "guest_auth_type" field.
+	DefaultGuestAuthType string
+	// GuestAuthTypeValidator is a validator for the "guest_auth_type" field. It is called by the builders before save.
+	GuestAuthTypeValidator func(string) error
+	// DefaultGuestIdentifier holds the default value on creation for the "guest_identifier" field.
+	DefaultGuestIdentifier string
+	// GuestIdentifierValidator is a validator for the "guest_identifier" field. It is called by the builders before save.
+	GuestIdentifierValidator func(string) error
 	// DefaultSubscribeID holds the default value on creation for the "subscribe_id" field.
 	DefaultSubscribeID int64
 	// SubscribeTokenValidator is a validator for the "subscribe_token" field. It is called by the builders before save.
 	SubscribeTokenValidator func(string) error
+	// DefaultUserSubscribeID holds the default value on creation for the "user_subscribe_id" field.
+	DefaultUserSubscribeID int64
 	// DefaultIsNew holds the default value on creation for the "is_new" field.
 	DefaultIsNew bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -229,6 +273,11 @@ func ByCouponDiscount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCouponDiscount, opts...).ToFunc()
 }
 
+// ByCouponReserved orders the results by the coupon_reserved field.
+func ByCouponReserved(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCouponReserved, opts...).ToFunc()
+}
+
 // ByPaymentID orders the results by the payment_id field.
 func ByPaymentID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPaymentID, opts...).ToFunc()
@@ -259,6 +308,26 @@ func ByCommission(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCommission, opts...).ToFunc()
 }
 
+// ByCommissionRefererID orders the results by the commission_referer_id field.
+func ByCommissionRefererID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCommissionRefererID, opts...).ToFunc()
+}
+
+// ByPaymentAmount orders the results by the payment_amount field.
+func ByPaymentAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPaymentAmount, opts...).ToFunc()
+}
+
+// ByPaymentCurrency orders the results by the payment_currency field.
+func ByPaymentCurrency(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPaymentCurrency, opts...).ToFunc()
+}
+
+// ByPaymentSession orders the results by the payment_session field.
+func ByPaymentSession(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPaymentSession, opts...).ToFunc()
+}
+
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
@@ -284,6 +353,16 @@ func ByGuestCheckoutTokenHash(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGuestCheckoutTokenHash, opts...).ToFunc()
 }
 
+// ByGuestAuthType orders the results by the guest_auth_type field.
+func ByGuestAuthType(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuestAuthType, opts...).ToFunc()
+}
+
+// ByGuestIdentifier orders the results by the guest_identifier field.
+func ByGuestIdentifier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuestIdentifier, opts...).ToFunc()
+}
+
 // BySubscribeID orders the results by the subscribe_id field.
 func BySubscribeID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscribeID, opts...).ToFunc()
@@ -292,6 +371,11 @@ func BySubscribeID(opts ...sql.OrderTermOption) OrderOption {
 // BySubscribeToken orders the results by the subscribe_token field.
 func BySubscribeToken(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscribeToken, opts...).ToFunc()
+}
+
+// ByUserSubscribeID orders the results by the user_subscribe_id field.
+func ByUserSubscribeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserSubscribeID, opts...).ToFunc()
 }
 
 // ByIsNew orders the results by the is_new field.

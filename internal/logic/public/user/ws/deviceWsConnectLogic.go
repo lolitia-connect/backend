@@ -2,12 +2,14 @@ package ws
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/hertzx"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 
@@ -31,28 +33,33 @@ func NewDeviceWsConnectLogic(ctx context.Context, svcCtx *svc.ServiceContext) *D
 }
 
 func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
-
-	value := l.ctx.Value(constant.CtxKeyIdentifier)
-	if value == nil || value.(string) == "" {
-		value, _ = c.GetQuery("identifier")
-		if value == nil || value.(string) == "" {
-			l.Logger.Errorf("DeviceWsConnectLogic DeviceWsConnect identifier is empty")
-			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "identifier is empty")
-		}
+	identifier, _ := l.ctx.Value(constant.CtxKeyIdentifier).(string)
+	if identifier == "" {
+		identifier = c.Param("identifier")
 	}
-	identifier := value.(string)
-	_, err := l.svcCtx.Store.User().FindOneDeviceByIdentifier(l.ctx, identifier)
+	if identifier == "" {
+		identifier = c.Query("identifier")
+	}
+	if identifier == "" || len(identifier) > 255 {
+		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "invalid device identifier")
+	}
+	userInfo, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
+	session, sessionOK := l.ctx.Value(constant.CtxKeySessionID).(string)
+	if !ok || userInfo == nil || !sessionOK || session == "" {
+		return xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	if pathID := c.Param("userid"); pathID != "" && pathID != strconv.FormatInt(userInfo.Id, 10) {
+		return xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	oneDevice, err := l.svcCtx.Store.User().FindOneDeviceByIdentifier(l.ctx, identifier)
 	if err != nil && !ent.IsNotFound(err) {
 		l.Logger.Errorf("DeviceWsConnectLogic DeviceWsConnect FindOneDeviceByIdentifier err: %v", err)
 		return errors.Wrap(xerr.NewErrCode(xerr.DatabaseQueryError), err.Error())
 	}
 
-	value = l.ctx.Value(constant.CtxKeyUser)
-	if value == nil {
-		l.Logger.Errorf("DeviceWsConnectLogic DeviceWsConnect value is nil")
-		return nil
+	if oneDevice != nil && (oneDevice.UserId != userInfo.Id || !oneDevice.Enabled) {
+		return xerr.NewErrCode(xerr.InvalidAccess)
 	}
-	userInfo := value.(*user.User)
 	if ent.IsNotFound(err) {
 		device := user.Device{
 			Identifier: identifier,
@@ -73,7 +80,7 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 	subscribe, err := l.svcCtx.Store.User().QueryUserSubscribe(l.ctx, userInfo.Id, 1, 2)
 	if err == nil {
 		for _, sub := range subscribe {
-			if time.Now().Before(sub.ExpireTime) {
+			if sub.Subscribe != nil && (tool.Unix(sub.ExpireTime) == 0 || time.Now().Before(sub.ExpireTime)) {
 				deviceLimit := int(sub.Subscribe.DeviceLimit)
 				if deviceLimit > maxDevice {
 					maxDevice = deviceLimit
@@ -81,6 +88,8 @@ func (l *DeviceWsConnectLogic) DeviceWsConnect(c *hertzx.Context) error {
 			}
 		}
 	}
-	l.svcCtx.DeviceManager.AddDevice(c.Writer, c.Request, l.ctx.Value(constant.CtxKeySessionID).(string), userInfo.Id, identifier, maxDevice)
-	return nil
+	if l.svcCtx.DeviceManager == nil {
+		return xerr.NewErrCode(xerr.ERROR)
+	}
+	return l.svcCtx.DeviceManager.UpgradeHertz(c.Raw(), session, userInfo.Id, identifier, maxDevice)
 }

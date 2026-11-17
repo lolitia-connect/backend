@@ -160,6 +160,20 @@ func (_c *OrderCreate) SetNillableCouponDiscount(v *int64) *OrderCreate {
 	return _c
 }
 
+// SetCouponReserved sets the "coupon_reserved" field.
+func (_c *OrderCreate) SetCouponReserved(v bool) *OrderCreate {
+	_c.mutation.SetCouponReserved(v)
+	return _c
+}
+
+// SetNillableCouponReserved sets the "coupon_reserved" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableCouponReserved(v *bool) *OrderCreate {
+	if v != nil {
+		_c.SetCouponReserved(*v)
+	}
+	return _c
+}
+
 // SetPaymentID sets the "payment_id" field.
 func (_c *OrderCreate) SetPaymentID(v int64) *OrderCreate {
 	_c.mutation.SetPaymentID(v)
@@ -244,6 +258,62 @@ func (_c *OrderCreate) SetNillableCommission(v *int64) *OrderCreate {
 	return _c
 }
 
+// SetCommissionRefererID sets the "commission_referer_id" field.
+func (_c *OrderCreate) SetCommissionRefererID(v int64) *OrderCreate {
+	_c.mutation.SetCommissionRefererID(v)
+	return _c
+}
+
+// SetNillableCommissionRefererID sets the "commission_referer_id" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableCommissionRefererID(v *int64) *OrderCreate {
+	if v != nil {
+		_c.SetCommissionRefererID(*v)
+	}
+	return _c
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (_c *OrderCreate) SetPaymentAmount(v int64) *OrderCreate {
+	_c.mutation.SetPaymentAmount(v)
+	return _c
+}
+
+// SetNillablePaymentAmount sets the "payment_amount" field if the given value is not nil.
+func (_c *OrderCreate) SetNillablePaymentAmount(v *int64) *OrderCreate {
+	if v != nil {
+		_c.SetPaymentAmount(*v)
+	}
+	return _c
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (_c *OrderCreate) SetPaymentCurrency(v string) *OrderCreate {
+	_c.mutation.SetPaymentCurrency(v)
+	return _c
+}
+
+// SetNillablePaymentCurrency sets the "payment_currency" field if the given value is not nil.
+func (_c *OrderCreate) SetNillablePaymentCurrency(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetPaymentCurrency(*v)
+	}
+	return _c
+}
+
+// SetPaymentSession sets the "payment_session" field.
+func (_c *OrderCreate) SetPaymentSession(v string) *OrderCreate {
+	_c.mutation.SetPaymentSession(v)
+	return _c
+}
+
+// SetNillablePaymentSession sets the "payment_session" field if the given value is not nil.
+func (_c *OrderCreate) SetNillablePaymentSession(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetPaymentSession(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *OrderCreate) SetStatus(v uint8) *OrderCreate {
 	_c.mutation.SetStatus(v)
@@ -314,6 +384,34 @@ func (_c *OrderCreate) SetNillableGuestCheckoutTokenHash(v *string) *OrderCreate
 	return _c
 }
 
+// SetGuestAuthType sets the "guest_auth_type" field.
+func (_c *OrderCreate) SetGuestAuthType(v string) *OrderCreate {
+	_c.mutation.SetGuestAuthType(v)
+	return _c
+}
+
+// SetNillableGuestAuthType sets the "guest_auth_type" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableGuestAuthType(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetGuestAuthType(*v)
+	}
+	return _c
+}
+
+// SetGuestIdentifier sets the "guest_identifier" field.
+func (_c *OrderCreate) SetGuestIdentifier(v string) *OrderCreate {
+	_c.mutation.SetGuestIdentifier(v)
+	return _c
+}
+
+// SetNillableGuestIdentifier sets the "guest_identifier" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableGuestIdentifier(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetGuestIdentifier(*v)
+	}
+	return _c
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_c *OrderCreate) SetSubscribeID(v int64) *OrderCreate {
 	_c.mutation.SetSubscribeID(v)
@@ -338,6 +436,20 @@ func (_c *OrderCreate) SetSubscribeToken(v string) *OrderCreate {
 func (_c *OrderCreate) SetNillableSubscribeToken(v *string) *OrderCreate {
 	if v != nil {
 		_c.SetSubscribeToken(*v)
+	}
+	return _c
+}
+
+// SetUserSubscribeID sets the "user_subscribe_id" field.
+func (_c *OrderCreate) SetUserSubscribeID(v int64) *OrderCreate {
+	_c.mutation.SetUserSubscribeID(v)
+	return _c
+}
+
+// SetNillableUserSubscribeID sets the "user_subscribe_id" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableUserSubscribeID(v *int64) *OrderCreate {
+	if v != nil {
+		_c.SetUserSubscribeID(*v)
 	}
 	return _c
 }
@@ -461,6 +573,10 @@ func (_c *OrderCreate) defaults() {
 		v := order.DefaultCouponDiscount
 		_c.mutation.SetCouponDiscount(v)
 	}
+	if _, ok := _c.mutation.CouponReserved(); !ok {
+		v := order.DefaultCouponReserved
+		_c.mutation.SetCouponReserved(v)
+	}
 	if _, ok := _c.mutation.PaymentID(); !ok {
 		v := order.DefaultPaymentID
 		_c.mutation.SetPaymentID(v)
@@ -481,6 +597,18 @@ func (_c *OrderCreate) defaults() {
 		v := order.DefaultCommission
 		_c.mutation.SetCommission(v)
 	}
+	if _, ok := _c.mutation.CommissionRefererID(); !ok {
+		v := order.DefaultCommissionRefererID
+		_c.mutation.SetCommissionRefererID(v)
+	}
+	if _, ok := _c.mutation.PaymentAmount(); !ok {
+		v := order.DefaultPaymentAmount
+		_c.mutation.SetPaymentAmount(v)
+	}
+	if _, ok := _c.mutation.PaymentCurrency(); !ok {
+		v := order.DefaultPaymentCurrency
+		_c.mutation.SetPaymentCurrency(v)
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		v := order.DefaultStatus
 		_c.mutation.SetStatus(v)
@@ -489,9 +617,21 @@ func (_c *OrderCreate) defaults() {
 		v := order.DefaultStateVersion
 		_c.mutation.SetStateVersion(v)
 	}
+	if _, ok := _c.mutation.GuestAuthType(); !ok {
+		v := order.DefaultGuestAuthType
+		_c.mutation.SetGuestAuthType(v)
+	}
+	if _, ok := _c.mutation.GuestIdentifier(); !ok {
+		v := order.DefaultGuestIdentifier
+		_c.mutation.SetGuestIdentifier(v)
+	}
 	if _, ok := _c.mutation.SubscribeID(); !ok {
 		v := order.DefaultSubscribeID
 		_c.mutation.SetSubscribeID(v)
+	}
+	if _, ok := _c.mutation.UserSubscribeID(); !ok {
+		v := order.DefaultUserSubscribeID
+		_c.mutation.SetUserSubscribeID(v)
 	}
 	if _, ok := _c.mutation.IsNew(); !ok {
 		v := order.DefaultIsNew
@@ -546,6 +686,9 @@ func (_c *OrderCreate) check() error {
 	if _, ok := _c.mutation.CouponDiscount(); !ok {
 		return &ValidationError{Name: "coupon_discount", err: errors.New(`ent: missing required field "Order.coupon_discount"`)}
 	}
+	if _, ok := _c.mutation.CouponReserved(); !ok {
+		return &ValidationError{Name: "coupon_reserved", err: errors.New(`ent: missing required field "Order.coupon_reserved"`)}
+	}
 	if _, ok := _c.mutation.PaymentID(); !ok {
 		return &ValidationError{Name: "payment_id", err: errors.New(`ent: missing required field "Order.payment_id"`)}
 	}
@@ -571,6 +714,20 @@ func (_c *OrderCreate) check() error {
 	if _, ok := _c.mutation.Commission(); !ok {
 		return &ValidationError{Name: "commission", err: errors.New(`ent: missing required field "Order.commission"`)}
 	}
+	if _, ok := _c.mutation.CommissionRefererID(); !ok {
+		return &ValidationError{Name: "commission_referer_id", err: errors.New(`ent: missing required field "Order.commission_referer_id"`)}
+	}
+	if _, ok := _c.mutation.PaymentAmount(); !ok {
+		return &ValidationError{Name: "payment_amount", err: errors.New(`ent: missing required field "Order.payment_amount"`)}
+	}
+	if _, ok := _c.mutation.PaymentCurrency(); !ok {
+		return &ValidationError{Name: "payment_currency", err: errors.New(`ent: missing required field "Order.payment_currency"`)}
+	}
+	if v, ok := _c.mutation.PaymentCurrency(); ok {
+		if err := order.PaymentCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "payment_currency", err: fmt.Errorf(`ent: validator failed for field "Order.payment_currency": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Order.status"`)}
 	}
@@ -592,6 +749,22 @@ func (_c *OrderCreate) check() error {
 			return &ValidationError{Name: "guest_checkout_token_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_checkout_token_hash": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.GuestAuthType(); !ok {
+		return &ValidationError{Name: "guest_auth_type", err: errors.New(`ent: missing required field "Order.guest_auth_type"`)}
+	}
+	if v, ok := _c.mutation.GuestAuthType(); ok {
+		if err := order.GuestAuthTypeValidator(v); err != nil {
+			return &ValidationError{Name: "guest_auth_type", err: fmt.Errorf(`ent: validator failed for field "Order.guest_auth_type": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.GuestIdentifier(); !ok {
+		return &ValidationError{Name: "guest_identifier", err: errors.New(`ent: missing required field "Order.guest_identifier"`)}
+	}
+	if v, ok := _c.mutation.GuestIdentifier(); ok {
+		if err := order.GuestIdentifierValidator(v); err != nil {
+			return &ValidationError{Name: "guest_identifier", err: fmt.Errorf(`ent: validator failed for field "Order.guest_identifier": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.SubscribeID(); !ok {
 		return &ValidationError{Name: "subscribe_id", err: errors.New(`ent: missing required field "Order.subscribe_id"`)}
 	}
@@ -599,6 +772,9 @@ func (_c *OrderCreate) check() error {
 		if err := order.SubscribeTokenValidator(v); err != nil {
 			return &ValidationError{Name: "subscribe_token", err: fmt.Errorf(`ent: validator failed for field "Order.subscribe_token": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.UserSubscribeID(); !ok {
+		return &ValidationError{Name: "user_subscribe_id", err: errors.New(`ent: missing required field "Order.user_subscribe_id"`)}
 	}
 	if _, ok := _c.mutation.IsNew(); !ok {
 		return &ValidationError{Name: "is_new", err: errors.New(`ent: missing required field "Order.is_new"`)}
@@ -681,6 +857,10 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 		_spec.SetField(order.FieldCouponDiscount, field.TypeInt64, value)
 		_node.CouponDiscount = value
 	}
+	if value, ok := _c.mutation.CouponReserved(); ok {
+		_spec.SetField(order.FieldCouponReserved, field.TypeBool, value)
+		_node.CouponReserved = value
+	}
 	if value, ok := _c.mutation.PaymentID(); ok {
 		_spec.SetField(order.FieldPaymentID, field.TypeInt64, value)
 		_node.PaymentID = value
@@ -705,6 +885,22 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 		_spec.SetField(order.FieldCommission, field.TypeInt64, value)
 		_node.Commission = value
 	}
+	if value, ok := _c.mutation.CommissionRefererID(); ok {
+		_spec.SetField(order.FieldCommissionRefererID, field.TypeInt64, value)
+		_node.CommissionRefererID = value
+	}
+	if value, ok := _c.mutation.PaymentAmount(); ok {
+		_spec.SetField(order.FieldPaymentAmount, field.TypeInt64, value)
+		_node.PaymentAmount = value
+	}
+	if value, ok := _c.mutation.PaymentCurrency(); ok {
+		_spec.SetField(order.FieldPaymentCurrency, field.TypeString, value)
+		_node.PaymentCurrency = value
+	}
+	if value, ok := _c.mutation.PaymentSession(); ok {
+		_spec.SetField(order.FieldPaymentSession, field.TypeString, value)
+		_node.PaymentSession = &value
+	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(order.FieldStatus, field.TypeUint8, value)
 		_node.Status = value
@@ -725,6 +921,14 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 		_spec.SetField(order.FieldGuestCheckoutTokenHash, field.TypeString, value)
 		_node.GuestCheckoutTokenHash = &value
 	}
+	if value, ok := _c.mutation.GuestAuthType(); ok {
+		_spec.SetField(order.FieldGuestAuthType, field.TypeString, value)
+		_node.GuestAuthType = value
+	}
+	if value, ok := _c.mutation.GuestIdentifier(); ok {
+		_spec.SetField(order.FieldGuestIdentifier, field.TypeString, value)
+		_node.GuestIdentifier = value
+	}
 	if value, ok := _c.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)
 		_node.SubscribeID = value
@@ -732,6 +936,10 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SubscribeToken(); ok {
 		_spec.SetField(order.FieldSubscribeToken, field.TypeString, value)
 		_node.SubscribeToken = &value
+	}
+	if value, ok := _c.mutation.UserSubscribeID(); ok {
+		_spec.SetField(order.FieldUserSubscribeID, field.TypeInt64, value)
+		_node.UserSubscribeID = value
 	}
 	if value, ok := _c.mutation.IsNew(); ok {
 		_spec.SetField(order.FieldIsNew, field.TypeBool, value)

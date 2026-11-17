@@ -46,6 +46,7 @@ func (w *Wallet) Reserve(amount int64) (gift, remainder int64) {
 // Accounts are only ever soft-deleted, so there is no delete path here.
 type Model interface {
 	FindOne(ctx context.Context, userId int64) (*Wallet, error)
+	FindOneForUpdate(ctx context.Context, userId int64) (*Wallet, error)
 	FindByUserIds(ctx context.Context, userIds []int64) (map[int64]*Wallet, error)
 	Insert(ctx context.Context, data *Wallet) error
 	// UpdateBalanceFields persists the balance and gift columns. Commission

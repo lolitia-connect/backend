@@ -1,7 +1,12 @@
 package plugin
 
 import (
+	"database/sql"
+	"strings"
 	"testing"
+
+	"github.com/perfect-panel/server/internal/model/ticket"
+	_ "modernc.org/sqlite"
 )
 
 func TestModelWhitelistAllowed(t *testing.T) {
@@ -75,7 +80,7 @@ func TestModelWhitelistTableMapping(t *testing.T) {
 		{"user_device", "user_device"},
 		{"user_device_online_record", "user_device_online_record"},
 		{"user_subscribe", "user_subscribe"},
-		{"user_withdrawal", "user_withdrawal"},
+		{"user_withdrawal", "withdrawals"},
 	}
 
 	for _, tt := range tests {
@@ -185,5 +190,48 @@ func TestStoreAdapterTicketReplyRequiresCreate(t *testing.T) {
 	_, _, err := adapter.query("ticket_reply", "update", map[string]interface{}{"ticket_id": int64(1), "content": "hello"}, nil, 0, 0)
 	if err == nil {
 		t.Fatal("expected unsupported ticket_reply operation to fail")
+	}
+}
+
+func TestStoreAdapterTicketReplySafetyAndRollback(t *testing.T) {
+	database, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	database.SetMaxOpenConns(1)
+	if _, err := database.Exec(`CREATE TABLE ticket (id INTEGER PRIMARY KEY, status INTEGER NOT NULL, updated_at TIMESTAMP); CREATE TABLE ticket_follow (id INTEGER PRIMARY KEY, ticket_id INTEGER, "from" TEXT, type INTEGER, content TEXT, created_at TIMESTAMP); INSERT INTO ticket (id, status) VALUES (1, 1), (2, 4)`); err != nil {
+		t.Fatal(err)
+	}
+	adapter := NewStoreAdapter(database, "sqlite")
+	for _, conditions := range []map[string]interface{}{
+		{"ticket_id": int64(2), "content": "closed"},
+		{"ticket_id": int64(1)},
+		{"ticket_id": int64(1), "content": "bad type", "type": int64(257)},
+		{"ticket_id": int64(1), "content": "data:image/svg+xml;base64,PHN2Zz4=", "type": int64(2)},
+		{"ticket_id": int64(1), "content": strings.Repeat("x", ticket.MaxFollowLength+1)},
+	} {
+		if _, _, err := adapter.Query("ticket_reply", "create", conditions, nil, 0, 0); err == nil {
+			t.Fatalf("invalid reply accepted: %v", conditions["ticket_id"])
+		}
+	}
+	if _, _, err := adapter.Query("ticket_reply", "create", map[string]interface{}{"ticket_id": int64(1), "content": "answer"}, nil, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	var count, status int
+	if err := database.QueryRow("SELECT COUNT(*) FROM ticket_follow").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("reply count = %d, %v", count, err)
+	}
+	if err := database.QueryRow("SELECT status FROM ticket WHERE id = 1").Scan(&status); err != nil || status != ticket.Waiting {
+		t.Fatalf("ticket status = %d, %v", status, err)
+	}
+	if _, err := database.Exec("CREATE TRIGGER reject_ticket_status BEFORE UPDATE ON ticket BEGIN SELECT RAISE(ABORT, 'status write failed'); END"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := adapter.Query("ticket_reply", "create", map[string]interface{}{"ticket_id": int64(1), "content": "another answer"}, nil, 0, 0); err == nil {
+		t.Fatal("status failure ignored")
+	}
+	if err := database.QueryRow("SELECT COUNT(*) FROM ticket_follow").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("failed reply was not rolled back: %d, %v", count, err)
 	}
 }

@@ -22,6 +22,8 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/jwt"
+	"github.com/perfect-panel/server/pkg/limit"
+	"github.com/perfect-panel/server/pkg/requestmeta"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -69,14 +71,7 @@ func (l *V2OrderLogic) CreateAndCheckout(req *types.V2CreateOrderRequest, idempo
 
 	orderInfo, err := l.svcCtx.Store.Order().FindOneByIdempotencyKey(l.ctx, idempotencyKey)
 	if err == nil {
-		if !sameIdempotencyHash(orderInfo.IdempotencyHash, hash) {
-			return nil, ErrIdempotencyKeyReused
-		}
-		checkoutToken := l.guestCheckoutToken(idempotencyKey, orderInfo)
-		if err := l.authorizeExistingCreate(orderInfo, req, checkoutToken); err != nil {
-			return nil, err
-		}
-		return l.checkoutResponse(orderInfo, checkoutToken, req.ReturnURL)
+		return l.replayCreate(orderInfo, req, idempotencyKey, hash)
 	}
 	if !ent.IsNotFound(err) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find idempotent order: %v", err)
@@ -95,10 +90,7 @@ func (l *V2OrderLogic) CreateAndCheckout(req *types.V2CreateOrderRequest, idempo
 		// returning the duplicate-key error.
 		existing, findErr := l.svcCtx.Store.Order().FindOneByIdempotencyKey(l.ctx, idempotencyKey)
 		if findErr == nil {
-			if !sameIdempotencyHash(existing.IdempotencyHash, hash) {
-				return nil, ErrIdempotencyKeyReused
-			}
-			return l.checkoutResponse(existing, l.guestCheckoutToken(idempotencyKey, existing), req.ReturnURL)
+			return l.replayCreate(existing, req, idempotencyKey, hash)
 		}
 		return nil, err
 	}
@@ -110,6 +102,45 @@ func (l *V2OrderLogic) CreateAndCheckout(req *types.V2CreateOrderRequest, idempo
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "load created order: %v", err)
 	}
 	return l.checkoutResponse(orderInfo, checkoutToken, req.ReturnURL)
+}
+
+func (l *V2OrderLogic) replayCreate(current *order.Order, req *types.V2CreateOrderRequest, key, hash string) (*types.V2OrderResponse, error) {
+	if l.currentUser() == nil {
+		if err := l.limitGuestReplay(key); err != nil {
+			return nil, err
+		}
+	} else if err := l.authorizeOrder(current, ""); err != nil {
+		return nil, err
+	}
+	if !sameIdempotencyHash(current.IdempotencyHash, hash) {
+		return nil, ErrIdempotencyKeyReused
+	}
+	checkoutToken := l.guestCheckoutToken(key, current)
+	if err := l.authorizeExistingCreate(current, req, checkoutToken); err != nil {
+		return nil, err
+	}
+	return l.checkoutResponse(current, checkoutToken, req.ReturnURL)
+}
+
+func (l *V2OrderLogic) limitGuestReplay(key string) error {
+	if l.svcCtx.Redis == nil {
+		return xerr.NewErrCode(xerr.TooManyRequests)
+	}
+	metadata, _ := requestmeta.From(l.ctx)
+	for _, scope := range []struct {
+		name, value string
+		quota       int
+	}{
+		{"key", key, 10}, {"ip", metadata.ClientIP, 60},
+	} {
+		digest := sha256.Sum256([]byte(scope.value))
+		limiter := limit.NewPeriodLimit(15*60, scope.quota, l.svcCtx.Redis, "order:guest_replay:"+scope.name+":")
+		state, err := limiter.TakeCtx(l.ctx, hex.EncodeToString(digest[:]))
+		if err != nil || !limiter.ParsePermitState(state) {
+			return xerr.NewErrCode(xerr.TooManyRequests)
+		}
+	}
+	return nil
 }
 
 func (l *V2OrderLogic) Checkout(orderNo string, req *types.V2CheckoutOrderRequest) (*types.V2OrderResponse, error) {
@@ -180,7 +211,7 @@ func (l *V2OrderLogic) Session(orderNo, checkoutToken string) (*types.V2OrderSes
 	if orderInfo.UserId == 0 || (orderInfo.Status != order.StatusPaid && orderInfo.Status != order.StatusFinished) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.OrderStatusError), "guest account is not ready")
 	}
-	token, err := portal.IssuePurchaseSession(l.ctx, l.svcCtx, orderInfo.UserId)
+	token, err := portal.IssuePurchaseSession(l.ctx, l.svcCtx, orderInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +363,8 @@ func (l *V2OrderLogic) guestIdentityMatches(orderNo string, guest *types.V2Guest
 	if tempOrder.OrderNo != orderNo {
 		return false
 	}
-	return tempOrder.AuthType == guest.AuthType && tempOrder.Identifier == guest.Identifier
+	return tempOrder.AuthType == guest.AuthType && tempOrder.Identifier == guest.Identifier &&
+		subtle.ConstantTimeCompare([]byte(tempOrder.Password), []byte(guest.Password)) == 1
 }
 
 func (l *V2OrderLogic) authorizeOrder(orderInfo *order.Order, checkoutToken string) error {

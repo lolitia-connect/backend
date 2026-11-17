@@ -1,15 +1,90 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	serverv1 "github.com/perfect-panel/server/api/server/v1"
+	"github.com/perfect-panel/server/internal/model/node"
+	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"google.golang.org/protobuf/proto"
 )
+
+type deviceEndpointStub struct {
+	claim *types.ClaimServerDeviceRequest
+	err   error
+}
+
+func (stub *deviceEndpointStub) ClaimServerDevice(_ context.Context, request *types.ClaimServerDeviceRequest) (*types.ClaimServerDeviceResponse, error) {
+	stub.claim = request
+	return &types.ClaimServerDeviceResponse{Allowed: true, TTLSeconds: 300}, stub.err
+}
+
+func (stub *deviceEndpointStub) GetServerAliveList(context.Context, *types.GetServerUserListRequest) (*types.GetServerAliveListResponse, error) {
+	return &types.GetServerAliveListResponse{Alive: map[int64]int64{7: 2}}, stub.err
+}
+
+func TestDeviceEndpointsJSONAndProtobuf(t *testing.T) {
+	for _, binary := range []bool{false, true} {
+		request := app.NewContext(0)
+		request.Request.SetRequestURI("/v1/server/device?server_id=4&protocol=vless&protocol_id=2")
+		request.Request.Header.SetMethod("POST")
+		if binary {
+			body, err := proto.Marshal(&serverv1.ClaimServerDeviceRequest{UserId: 7, Ip: "192.0.2.1"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Request.Header.SetContentTypeBytes([]byte(protobufContentType))
+			request.Request.Header.Set("Accept", protobufContentType)
+			request.Request.SetBody(body)
+		} else {
+			request.Request.Header.SetContentTypeBytes([]byte("application/json"))
+			request.Request.SetBodyString(`{"uid":7,"ip":"192.0.2.1"}`)
+		}
+		stub := &deviceEndpointStub{}
+		claimServerDeviceHandler(&svc.ServiceContext{}, stub)(context.Background(), request)
+		if stub.claim == nil || stub.claim.SID != 7 || stub.claim.ProtocolId != "2" || stub.claim.ServerId != 4 {
+			t.Fatalf("bound claim = %+v", stub.claim)
+		}
+		if request.Response.StatusCode() != 200 || string(request.Response.Header.Peek("Cache-Control")) != "no-store" {
+			t.Fatalf("claim response = %d %s", request.Response.StatusCode(), request.Response.Body())
+		}
+		if binary {
+			var response serverv1.ClaimServerDeviceResponse
+			if err := proto.Unmarshal(request.Response.Body(), &response); err != nil || response.Code != 200 || response.Data == nil || !response.Data.Allowed || response.Data.TtlSeconds != 300 {
+				t.Fatalf("protobuf claim = %+v, %v", &response, err)
+			}
+		} else {
+			var response types.ClaimServerDeviceResponse
+			if err := json.Unmarshal(request.Response.Body(), &response); err != nil || !response.Allowed || response.TTLSeconds != 300 {
+				t.Fatalf("JSON claim = %+v, %v", response, err)
+			}
+		}
+		request.Response.Reset()
+		getServerAliveListHandler(&svc.ServiceContext{}, stub)(context.Background(), request)
+		if binary {
+			var response serverv1.GetServerAliveListResponse
+			if err := proto.Unmarshal(request.Response.Body(), &response); err != nil || response.Data == nil || response.Data.Alive[7] != 2 {
+				t.Fatalf("protobuf counts = %+v, %v", &response, err)
+			}
+		} else {
+			var response types.GetServerAliveListResponse
+			if err := json.Unmarshal(request.Response.Body(), &response); err != nil || response.Alive[7] != 2 {
+				t.Fatalf("JSON counts = %+v, %v", response, err)
+			}
+		}
+		request.Response.Reset()
+		stub.err = node.ErrServerBusy
+		claimServerDeviceHandler(&svc.ServiceContext{}, stub)(context.Background(), request)
+		if request.Response.StatusCode() != 503 || string(request.Response.Header.Peek("Retry-After")) != "1" {
+			t.Fatalf("busy response = %d %s", request.Response.StatusCode(), request.Response.Body())
+		}
+	}
+}
 
 func newProtobufContext(t *testing.T, message proto.Message) *app.RequestContext {
 	t.Helper()

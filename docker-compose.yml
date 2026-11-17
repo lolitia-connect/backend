@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   ppanel:
     container_name: ppanel-server
@@ -8,6 +6,23 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      PPANEL_DB: ${PPANEL_DB:-}
+      PPANEL_REDIS: ${PPANEL_REDIS:-}
     volumes:
+      # Create this as a file, writable by UID 65532, before the first start.
+      # The setup wizard binds loopback; environment installation works in containers.
       - ./config.yaml:/app/config.yaml
+      - ppanel-logs:/app/logs
+      - ppanel-cache:/app/cache
+    healthcheck:
+      test: ["CMD", "/app/ppanel", "healthcheck", "--config", "/app/config.yaml"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     restart: always
+
+volumes:
+  ppanel-logs:
+  ppanel-cache:

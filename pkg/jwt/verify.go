@@ -8,11 +8,6 @@ var (
 )
 
 func VerifyToken(tokenString, secret string) error {
-	_, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(secret), nil
-	})
-	if err != nil {
-		return err
-	}
-	return nil
+	_, err := ParseJwtToken(tokenString, secret)
+	return err
 }

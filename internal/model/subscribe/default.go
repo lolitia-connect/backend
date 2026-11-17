@@ -27,6 +27,8 @@ type (
 		FindOne(ctx context.Context, id int64) (*Subscribe, error)
 		Update(ctx context.Context, data *Subscribe) error
 		Delete(ctx context.Context, id int64) error
+		RestoreInventory(ctx context.Context, id int64) error
+		ReserveInventory(ctx context.Context, id int64) error
 	}
 
 	customSubscribeModel struct {
@@ -68,6 +70,23 @@ func (m *defaultSubscribeModel) getCacheKeys(data *Subscribe) []string {
 		nodes, err := m.db.Node.Query().Where(nodeTagsContainAny(tags)).All(context.Background())
 		if err == nil {
 			keys = append(keys, serverUserListKeys(nodes)...)
+		}
+	}
+	groupIDs := append([]int64{}, data.NodeGroupIds...)
+	if data.NodeGroupId > 0 {
+		groupIDs = append(groupIDs, data.NodeGroupId)
+	}
+	if len(groupIDs) > 0 {
+		nodes, err := m.db.Node.Query().All(context.Background())
+		if err == nil {
+			for _, item := range nodes {
+				for _, groupID := range groupIDs {
+					if tool.Contains(item.NodeGroupIds, groupID) {
+						keys = append(keys, serverUserListKeys([]*ent.Node{item})...)
+						break
+					}
+				}
+			}
 		}
 	}
 	return keys
@@ -120,6 +139,7 @@ func (m *defaultSubscribeModel) Update(ctx context.Context, data *Subscribe) err
 	if err := m.subscribeUpdate(data).Exec(ctx); err != nil {
 		return err
 	}
+	cacheKeys = append(cacheKeys, m.getCacheKeys(data)...)
 	return m.delCache(ctx, cacheKeys...)
 }
 
@@ -146,6 +166,26 @@ func (m *defaultSubscribeModel) Delete(ctx context.Context, id int64) error {
 	return m.delCache(ctx, cacheKeys...)
 }
 
+func (m *defaultSubscribeModel) RestoreInventory(ctx context.Context, id int64) error {
+	_, err := m.db.Subscribe.Update().Where(entsubscribe.ID(id), entsubscribe.InventoryNEQ(-1)).AddInventory(1).Save(ctx)
+	return err
+}
+
+func (m *defaultSubscribeModel) ReserveInventory(ctx context.Context, id int64) error {
+	affected, err := m.db.Subscribe.Update().Where(entsubscribe.ID(id), entsubscribe.InventoryGT(0)).AddInventory(-1).Save(ctx)
+	if err != nil || affected == 1 {
+		return err
+	}
+	unlimited, err := m.db.Subscribe.Query().Where(entsubscribe.ID(id), entsubscribe.Inventory(-1)).Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if !unlimited {
+		return fmt.Errorf("subscribe out of stock")
+	}
+	return nil
+}
+
 func (m *defaultSubscribeModel) subscribeCreate(data *Subscribe) *ent.SubscribeCreate {
 	return m.db.Subscribe.Create().SetName(data.Name).SetLanguage(data.Language).SetDescription(data.Description).SetUnitPrice(data.UnitPrice).SetUnitTime(data.UnitTime).SetDiscount(data.Discount).SetReplacement(data.Replacement).SetInventory(data.Inventory).SetTraffic(data.Traffic).SetTrafficUnlimited(data.TrafficUnlimited).SetSpeedLimit(data.SpeedLimit).SetDeviceLimit(data.DeviceLimit).SetQuota(data.Quota).SetNodes(data.Nodes).SetNodeTags(data.NodeTags).SetNodeGroupIds([]int64(data.NodeGroupIds)).SetNodeGroupID(data.NodeGroupId).SetTrafficLimit(data.TrafficLimit).SetNillableShow(data.Show).SetNillableSell(data.Sell).SetSort(data.Sort).SetDeductionRatio(data.DeductionRatio).SetNillableAllowDeduction(data.AllowDeduction).SetResetCycle(data.ResetCycle).SetNillableRenewalReset(data.RenewalReset).SetShowOriginalPrice(data.ShowOriginalPrice)
 }
@@ -170,6 +210,9 @@ func (m *defaultSubscribeModel) ensureUniqueSort(ctx context.Context, data *Subs
 func (m *defaultSubscribeModel) delCache(ctx context.Context, keys ...string) error {
 	if len(keys) == 0 || m.redis == nil {
 		return nil
+	}
+	if err := node.InvalidateServerUserListKeys(ctx, m.redis, keys...); err != nil {
+		return err
 	}
 	return m.redis.Del(ctx, tool.RemoveDuplicateElements(keys...)...).Err()
 }

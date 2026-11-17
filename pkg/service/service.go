@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/perfect-panel/server/pkg/proc"
@@ -8,6 +9,10 @@ import (
 )
 
 type (
+	Runner interface {
+		Run() error
+	}
+
 	// Starter is the interface wraps the Start method.
 	Starter interface {
 		Start()
@@ -49,11 +54,17 @@ func (sg *Group) Add(service Service) {
 // There should not be any logic code after calling this method, because this method is a blocking one.
 // Also, quitting this method will close the logx output.
 func (sg *Group) Start() {
+	if err := sg.Run(); err != nil {
+		panic(err)
+	}
+}
+
+func (sg *Group) Run() error {
 	proc.AddShutdownListener(func() {
 		sg.stopOnce()
 	})
 
-	sg.doStart()
+	return sg.doStart()
 }
 
 // Stop stops the ServiceGroup.
@@ -61,17 +72,36 @@ func (sg *Group) Stop() {
 	sg.stopOnce()
 }
 
-func (sg *Group) doStart() {
+func (sg *Group) doStart() error {
 	routineGroup := threading.NewRoutineGroup()
+	results := make(chan error, len(sg.services))
 
 	for i := range sg.services {
 		service := sg.services[i]
 		routineGroup.Run(func() {
-			service.Start()
+			defer func() {
+				if failure := recover(); failure != nil {
+					results <- fmt.Errorf("service startup failed: %v", failure)
+				}
+			}()
+			if runner, ok := service.(Runner); ok {
+				results <- runner.Run()
+			} else {
+				service.Start()
+				results <- nil
+			}
 		})
 	}
 
+	var firstError error
+	for range sg.services {
+		if err := <-results; err != nil && firstError == nil {
+			firstError = err
+			sg.Stop()
+		}
+	}
 	routineGroup.Wait()
+	return firstError
 }
 
 func (sg *Group) doStop() {
@@ -85,6 +115,10 @@ func WithStart(start func()) Service {
 	return startOnlyService{
 		start: start,
 	}
+}
+
+func WithStop(stop func()) Service {
+	return stopOnlyService{stop: stop}
 }
 
 // WithStarter wraps a Starter as a Service.
@@ -106,7 +140,15 @@ type (
 		Starter
 		stopper
 	}
+
+	stopOnlyService struct {
+		stop func()
+	}
 )
+
+func (s stopOnlyService) Start() {}
+
+func (s stopOnlyService) Stop() { s.stop() }
 
 func (s stopper) Stop() {
 }

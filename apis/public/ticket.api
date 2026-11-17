@@ -16,8 +16,8 @@ type (
 		List  []Ticket `json:"list"`
 	}
 	CreateUserTicketRequest {
-		Title       string `json:"title"`
-		Description string `json:"description"`
+		Title       string `json:"title" validate:"required,max=255"`
+		Description string `json:"description" validate:"max=10000"`
 	}
 	GetUserTicketListRequest {
 		Page   int    `form:"page"`
@@ -33,10 +33,10 @@ type (
 		Status *uint8 `json:"status" validate:"required"`
 	}
 	CreateUserTicketFollowRequest {
-		TicketId int64  `json:"ticket_id,string"`
-		From     string `json:"from"`
-		Type     uint8  `json:"type"`
-		Content  string `json:"content"`
+		TicketId int64  `json:"ticket_id,string" validate:"required,gt=0"`
+		From     string `json:"from" validate:"max=255"`
+		Type     uint8  `json:"type" validate:"oneof=0 1 2"`
+		Content  string `json:"content" validate:"required,max=65535"`
 	}
 )
 

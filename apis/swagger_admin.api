@@ -26,5 +26,6 @@ import (
 	"./admin/ads.api"
 	"./admin/marketing.api"
 	"./admin/application.api"
+	"./admin/withdrawal.api"
 )
 

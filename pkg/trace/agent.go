@@ -4,12 +4,13 @@ package trace
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/jaeger"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -66,22 +67,21 @@ func StopAgent() {
 	defer lock.Unlock()
 
 	if tp != nil {
-		_ = tp.Shutdown(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = tp.Shutdown(ctx)
 		tp = nil
 	}
+	clear(agents)
 }
 
 func createExporter(c Config) (sdktrace.SpanExporter, error) {
 	// Just support jaeger and zipkin now, more for later
 	switch c.Batcher {
 	case kindJaeger:
-		u, err := url.Parse(c.Endpoint)
-		if err == nil && u.Scheme == protocolUdp {
-			return jaeger.New(jaeger.WithAgentEndpoint(jaeger.WithAgentHost(u.Hostname()),
-				jaeger.WithAgentPort(u.Port())))
-		}
-		return jaeger.New(jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(c.Endpoint)))
+		return otlptracehttp.New(context.Background(), jaegerOptions(c)...)
 	case kindZipkin:
+		zap.S().Warn("zipkin trace exporter is deprecated; use OTLP")
 		return zipkin.New(c.Endpoint)
 	case kindOtlpGrpc:
 		// Always treat trace exporter as optional component, so we use nonblock here,
@@ -90,8 +90,10 @@ func createExporter(c Config) (sdktrace.SpanExporter, error) {
 		// If the connection not dial success, the global otel ErrorHandler will catch error
 		// when reporting data like other exporters.
 		opts := []otlptracegrpc.Option{
-			otlptracegrpc.WithInsecure(),
 			otlptracegrpc.WithEndpoint(c.Endpoint),
+		}
+		if !c.OtlpGrpcSecure {
+			opts = append(opts, otlptracegrpc.WithInsecure())
 		}
 		if len(c.OtlpHeaders) > 0 {
 			opts = append(opts, otlptracegrpc.WithHeaders(c.OtlpHeaders))
@@ -122,6 +124,38 @@ func createExporter(c Config) (sdktrace.SpanExporter, error) {
 	default:
 		return nil, fmt.Errorf("unknown exporter: %s", c.Batcher)
 	}
+}
+
+func jaegerOptions(config Config) []otlptracehttp.Option {
+	options := []otlptracehttp.Option{}
+	endpoint, err := url.Parse(config.Endpoint)
+	if err == nil && (endpoint.Scheme == protocolUdp || endpoint.Scheme == "http" || endpoint.Scheme == "https") {
+		if endpoint.Scheme == protocolUdp || endpoint.Path == "/api/traces" {
+			if endpoint.Scheme == protocolUdp || endpoint.Port() == "" || endpoint.Port() == "14268" {
+				endpoint.Host = net.JoinHostPort(endpoint.Hostname(), "4318")
+			}
+			if endpoint.Scheme == protocolUdp {
+				endpoint.Scheme = "http"
+			}
+			endpoint.Path = "/v1/traces"
+			zap.S().Warn("legacy Jaeger endpoint uses OTLP HTTP on port 4318")
+		} else if endpoint.Path == "" || endpoint.Path == "/" {
+			endpoint.Path = "/v1/traces"
+		}
+		options = append(options, otlptracehttp.WithEndpointURL(endpoint.String()))
+	} else {
+		options = append(options, otlptracehttp.WithEndpoint(config.Endpoint))
+		if !config.OtlpHttpSecure {
+			options = append(options, otlptracehttp.WithInsecure())
+		}
+		if config.OtlpHttpPath != "" {
+			options = append(options, otlptracehttp.WithURLPath(config.OtlpHttpPath))
+		}
+	}
+	if len(config.OtlpHeaders) > 0 {
+		options = append(options, otlptracehttp.WithHeaders(config.OtlpHeaders))
+	}
+	return options
 }
 
 func startAgent(c Config) error {

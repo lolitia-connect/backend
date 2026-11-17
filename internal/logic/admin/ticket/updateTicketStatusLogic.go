@@ -2,7 +2,9 @@ package ticket
 
 import (
 	"context"
+	"fmt"
 
+	modellog "github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -26,11 +28,14 @@ func NewUpdateTicketStatusLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 }
 
 func (l *UpdateTicketStatusLogic) UpdateTicketStatus(req *types.UpdateTicketStatusRequest) error {
-
+	if req == nil || req.Id <= 0 || req.Status == nil || *req.Status < 1 || *req.Status > 4 {
+		return xerr.NewErrCode(xerr.InvalidParams)
+	}
 	err := l.svcCtx.Store.Ticket().UpdateTicketStatus(l.ctx, req.Id, 0, *req.Status)
 	if err != nil {
 		l.Logger.Errorw("[UpdateTicketStatus] Update Database Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update ticket error: %v", err.Error())
 	}
+	modellog.RecordAdminAction(l.ctx, l.svcCtx.Store.Log(), modellog.AdminAction{Action: "ticket.status", Object: "ticket", ObjectID: req.Id, Detail: fmt.Sprintf("status=%d", *req.Status)})
 	return nil
 }

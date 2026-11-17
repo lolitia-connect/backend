@@ -1,7 +1,7 @@
 package uuidx
 
 import (
-	"crypto/sha256"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -17,6 +17,14 @@ func NewUUID() uuid.UUID {
 	if err != nil {
 		fmt.Println("fail to generate UUID", err.Error())
 		return uuid.UUID{}
+	}
+	return id
+}
+
+func NewRandomUUID() uuid.UUID {
+	id, err := uuid.NewV4()
+	if err != nil {
+		panic(fmt.Errorf("generate random UUID: %w", err))
 	}
 	return id
 }
@@ -82,9 +90,12 @@ func AffiliateInviteCode(id int64) string {
 	return "A" + random.EncodeBase62(id)
 }
 
-func SubscribeToken(orderNo string) string {
-	hash := sha256.Sum256([]byte(orderNo))
-	return hex.EncodeToString(hash[:16])
+func SubscribeToken(_ string) string {
+	var token [16]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		panic(fmt.Errorf("generate subscription token: %w", err))
+	}
+	return hex.EncodeToString(token[:])
 }
 
 func UUIDToBase64(uuid string, length int) string {

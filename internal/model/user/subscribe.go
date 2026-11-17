@@ -2,8 +2,10 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/predicate"
@@ -44,6 +46,177 @@ func (m *defaultUserModel) FindOneSubscribe(ctx context.Context, id int64) (*Sub
 		return nil, err
 	}
 	return entToSubscribe(item), nil
+}
+
+// FindOneSubscribeForUpdate reads a subscription under a row lock so a
+// concurrent writer cannot interleave with the caller's read-modify-write.
+//
+// SQLite has no `SELECT ... FOR UPDATE`, so the clause is omitted there (the
+// dialect the tests run on); MySQL and PostgreSQL, the supported production
+// engines, always take the lock.
+func (m *defaultUserModel) FindOneSubscribeForUpdate(ctx context.Context, id int64) (*Subscribe, error) {
+	query := m.db.UserSubscribe.Query().Where(entsub.ID(id))
+	if m.db.Driver().Dialect() != dialect.SQLite {
+		query = query.Where(func(selector *entsql.Selector) { selector.ForUpdate() })
+	}
+	item, err := query.Only(ctx)
+	return entToSubscribe(item), err
+}
+
+func (m *defaultUserModel) CancelSubscribe(ctx context.Context, id, userID int64) (bool, error) {
+	count, err := m.db.UserSubscribe.Update().Where(entsub.ID(id), entsub.UserID(userID), entsub.StatusIn(0, 1, 2), entsub.EntitlementSourceEQ("")).SetStatus(4).SetFinishedAt(time.Now()).Save(ctx)
+	return count == 1, err
+}
+
+func (m *defaultUserModel) RenewSubscribe(ctx context.Context, data *Subscribe, resetTraffic bool) error {
+	update := m.db.UserSubscribe.Update().Where(entsub.ID(data.Id), entsub.UserID(data.UserId), entsub.SubscribeID(data.SubscribeId), entsub.StatusLT(4), entsub.EntitlementSourceEQ("")).
+		SetExpireTime(data.ExpireTime).SetStatus(1).ClearFinishedAt().SetTrafficUnlimited(data.TrafficUnlimited).
+		SetExpiredDownload(0).SetExpiredUpload(0)
+	if resetTraffic {
+		update.SetDownload(0).SetUpload(0)
+	}
+	count, err := update.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("subscription changed during renewal")
+	}
+	return nil
+}
+
+func (m *defaultUserModel) ResetSubscribeTraffic(ctx context.Context, id int64) error {
+	count, err := m.db.UserSubscribe.Update().Where(entsub.ID(id), entsub.StatusLT(4), entsub.EntitlementSourceEQ("")).
+		SetDownload(0).SetUpload(0).SetExpiredDownload(0).SetExpiredUpload(0).SetStatus(1).ClearFinishedAt().Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("subscription changed during traffic reset")
+	}
+	return nil
+}
+
+// QuotaGrant describes the columns a quota task is allowed to change on one
+// subscription. It is deliberately a set of optional fields rather than a whole
+// Subscribe row: the quota task loads its subscribers before it opens the
+// transaction, so writing a snapshot back would revert any traffic settlement or
+// credential rotation that landed in between.
+type QuotaGrant struct {
+	// ExpireTime is the new expiry, when the grant extends the subscription.
+	ExpireTime *time.Time
+	// Status is the new status, when the grant also changes it.
+	Status *uint8
+	// ResetTraffic zeroes the counters when the grant resets traffic.
+	ResetTraffic bool
+}
+
+// Empty reports whether the grant would change nothing.
+func (g QuotaGrant) Empty() bool {
+	return g.ExpireTime == nil && g.Status == nil && !g.ResetTraffic
+}
+
+// ApplyQuotaGrant persists exactly the columns the grant names, leaving every
+// other column — traffic counters, credentials, node group — as the row has
+// them now.
+func (m *defaultUserModel) ApplyQuotaGrant(ctx context.Context, id int64, grant QuotaGrant) error {
+	if grant.Empty() {
+		return nil
+	}
+	update := m.db.UserSubscribe.Update().Where(entsub.ID(id), entsub.StatusLT(4), entsub.EntitlementSourceEQ(""))
+	if grant.ExpireTime != nil {
+		update.SetExpireTime(*grant.ExpireTime)
+	}
+	if grant.Status != nil {
+		update.SetStatus(*grant.Status)
+	}
+	if grant.ResetTraffic {
+		update.SetDownload(0).SetUpload(0)
+	}
+	count, err := update.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("subscription changed during quota grant")
+	}
+	return nil
+}
+
+func (m *defaultUserModel) RotateSubscribeCredentials(ctx context.Context, id, userID int64, token, nodeUUID string) error {
+	if token == "" || nodeUUID == "" {
+		return fmt.Errorf("subscription credentials cannot be empty")
+	}
+	count, err := m.db.UserSubscribe.Update().Where(entsub.ID(id), entsub.UserID(userID)).SetToken(token).SetUUID(nodeUUID).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("subscription does not belong to account")
+	}
+	return nil
+}
+
+func (m *defaultUserModel) UpdateSubscribeNote(ctx context.Context, id, userID int64, note string) error {
+	count, err := m.db.UserSubscribe.Update().Where(entsub.ID(id), entsub.UserID(userID)).SetNote(note).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("subscription does not belong to account")
+	}
+	return nil
+}
+
+func (m *defaultUserModel) CompareSubscribeStatus(ctx context.Context, id int64, previous, next uint8) (bool, error) {
+	count, err := m.db.UserSubscribe.Update().Where(entsub.ID(id), entsub.Status(previous), entsub.EntitlementSourceEQ("")).SetStatus(next).Save(ctx)
+	return count == 1, err
+}
+
+func (m *defaultUserModel) ResetSubscribeCounters(ctx context.Context, id int64) error {
+	subscription, err := m.FindOneSubscribe(ctx, id)
+	if err != nil {
+		return err
+	}
+	if subscription.EntitlementSource != "" {
+		return ErrProviderManaged
+	}
+	return m.db.UserSubscribe.UpdateOneID(id).SetDownload(0).SetUpload(0).Exec(ctx)
+}
+
+func (m *defaultUserModel) UpdateSubscribeSettings(ctx context.Context, data *Subscribe, previous uint8) error {
+	update := m.db.UserSubscribe.Update().Where(entsub.ID(data.Id), entsub.Status(previous), entsub.EntitlementSourceEQ("")).
+		SetSubscribeID(data.SubscribeId).SetExpireTime(data.ExpireTime).SetTraffic(data.Traffic).
+		SetTrafficUnlimited(data.TrafficUnlimited).SetDownload(data.Download).SetUpload(data.Upload).SetStatus(data.Status)
+	if data.Status == 1 {
+		update.ClearFinishedAt()
+	} else {
+		update.SetFinishedAt(time.Now())
+	}
+	count, err := update.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("subscription changed; refresh and retry")
+	}
+	return nil
+}
+
+func (m *defaultUserModel) RedeemSubscribe(ctx context.Context, data *Subscribe, resetTraffic bool) error {
+	update := m.db.UserSubscribe.Update().Where(entsub.ID(data.Id), entsub.UserID(data.UserId), entsub.StatusLT(4), entsub.EntitlementSourceEQ("")).
+		SetOrderID(data.OrderId).SetExpireTime(data.ExpireTime).SetStatus(1).ClearFinishedAt().SetTrafficUnlimited(data.TrafficUnlimited)
+	if resetTraffic {
+		update.SetTraffic(data.Traffic).SetDownload(0).SetUpload(0).SetExpiredDownload(0).SetExpiredUpload(0)
+	}
+	count, err := update.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("subscription changed during redemption")
+	}
+	return nil
 }
 
 func (m *defaultUserModel) FindUsersSubscribeBySubscribeId(ctx context.Context, subscribeId int64) ([]*Subscribe, error) {
@@ -103,7 +276,7 @@ func (m *defaultUserModel) ActivatePendingSubscribesBySubscribeId(ctx context.Co
 		return err
 	}
 
-	if _, err := m.db.UserSubscribe.Update().Where(entsub.SubscribeID(subscribeId), entsub.Status(0)).SetStatus(1).Save(ctx); err != nil {
+	if _, err := m.db.UserSubscribe.Update().Where(entsub.SubscribeID(subscribeId), entsub.Status(0), entsub.EntitlementSourceEQ("")).SetStatus(1).Save(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -225,6 +398,9 @@ func (m *defaultUserModel) UpdateSubscribe(ctx context.Context, data *Subscribe)
 	old, err := m.FindOneSubscribe(ctx, data.Id)
 	if err != nil {
 		return err
+	}
+	if old.EntitlementSource != "" {
+		return ErrProviderManaged
 	}
 
 	if data.GroupLocked == nil {

@@ -3,6 +3,8 @@ package marketing
 import (
 	"context"
 
+	modellog "github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/model/task"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/email"
@@ -26,16 +28,15 @@ func NewStopBatchSendEmailTaskLogic(ctx context.Context, svcCtx *svc.ServiceCont
 }
 
 func (l *StopBatchSendEmailTaskLogic) StopBatchSendEmailTask(req *types.StopBatchSendEmailTaskRequest) (err error) {
-	if email.Manager != nil {
-		email.Manager.RemoveWorker(req.Id)
-	} else {
-		zap.S().Error("[StopBatchSendEmailTaskLogic] email.Manager is nil, cannot stop task")
-	}
-	err = l.svcCtx.Store.Task().UpdateStatus(l.ctx, req.Id, 2)
+	err = l.svcCtx.Store.Task().UpdateStatus(l.ctx, req.Id, task.StatusCancelled)
 
 	if err != nil {
 		l.Logger.Errorf("failed to stop email task, error: %v", err)
 		return xerr.NewErrCode(xerr.DatabaseUpdateError)
 	}
+	if email.Manager != nil {
+		email.Manager.RemoveWorker(req.Id)
+	}
+	modellog.RecordAdminAction(l.ctx, l.svcCtx.Store.Log(), modellog.AdminAction{Action: "marketing.email.stop", Object: "task", ObjectID: req.Id})
 	return
 }

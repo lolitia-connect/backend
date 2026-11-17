@@ -39,6 +39,9 @@ func newTicketModel(db *ent.Client) *defaultTicketModel {
 }
 
 func (m *defaultTicketModel) Insert(ctx context.Context, data *Ticket) error {
+	if err := ValidateTicket(data); err != nil {
+		return err
+	}
 	created, err := m.db.Ticket.Create().
 		SetTitle(data.Title).
 		SetDescription(data.Description).

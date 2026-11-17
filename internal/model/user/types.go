@@ -72,52 +72,54 @@ type User struct {
 }
 
 type Subscribe struct {
-	Id               int64
-	UserId           int64
-	User             User
-	OrderId          int64
-	SubscribeId      int64
-	NodeGroupId      int64
-	GroupLocked      *bool
-	StartTime        time.Time
-	ExpireTime       time.Time
-	FinishedAt       *time.Time
-	Traffic          int64
-	TrafficUnlimited bool
-	Download         int64
-	Upload           int64
-	ExpiredDownload  int64
-	ExpiredUpload    int64
-	Token            string
-	UUID             string
-	Status           uint8
-	Note             string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	Id                int64
+	UserId            int64
+	User              User
+	OrderId           int64
+	SubscribeId       int64
+	EntitlementSource string
+	NodeGroupId       int64
+	GroupLocked       *bool
+	StartTime         time.Time
+	ExpireTime        time.Time
+	FinishedAt        *time.Time
+	Traffic           int64
+	TrafficUnlimited  bool
+	Download          int64
+	Upload            int64
+	ExpiredDownload   int64
+	ExpiredUpload     int64
+	Token             string
+	UUID              string
+	Status            uint8
+	Note              string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type SubscribeDetails struct {
-	Id               int64
-	UserId           int64
-	User             *User
-	OrderId          int64
-	SubscribeId      int64
-	Subscribe        *subscribe.Subscribe
-	NodeGroupId      int64
-	GroupLocked      *bool
-	StartTime        time.Time
-	ExpireTime       time.Time
-	FinishedAt       *time.Time
-	Traffic          int64
-	TrafficUnlimited bool
-	Download         int64
-	Upload           int64
-	Token            string
-	UUID             string
-	Status           uint8
-	Note             string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	Id                int64
+	UserId            int64
+	User              *User
+	OrderId           int64
+	SubscribeId       int64
+	EntitlementSource string
+	Subscribe         *subscribe.Subscribe
+	NodeGroupId       int64
+	GroupLocked       *bool
+	StartTime         time.Time
+	ExpireTime        time.Time
+	FinishedAt        *time.Time
+	Traffic           int64
+	TrafficUnlimited  bool
+	Download          int64
+	Upload            int64
+	Token             string
+	UUID              string
+	Status            uint8
+	Note              string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type AuthMethods struct {

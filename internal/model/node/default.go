@@ -91,6 +91,14 @@ func (m *defaultServerModel) FindOneServer(ctx context.Context, id int64) (*Serv
 	return entToServer(data), nil
 }
 
+// UpdateServer writes the administrator-editable columns of a server.
+//
+// last_reported_at is deliberately absent: it is node-reported liveness data,
+// owned by the heartbeat path (UpdateServerLastReportedAtBatch). The caller
+// loads the row, edits it and saves it back; if this method wrote that column
+// too, a heartbeat landing between the load and the save would be overwritten
+// by the older value and the server would read as offline until the next
+// report.
 func (m *defaultServerModel) UpdateServer(ctx context.Context, data *Server) error {
 	if err := m.ensureUniqueServerSort(ctx, data); err != nil {
 		return err
@@ -102,7 +110,6 @@ func (m *defaultServerModel) UpdateServer(ctx context.Context, data *Server) err
 		SetAddress(data.Address).
 		SetSort(data.Sort).
 		SetNillableProtocols(nilIfEmpty(data.Protocols)).
-		SetNillableLastReportedAt(data.LastReportedAt).
 		SetLongitude(data.Longitude).
 		SetLatitude(data.Latitude).
 		SetLongitudeCenter(data.LongitudeCenter).

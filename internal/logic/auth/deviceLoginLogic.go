@@ -13,7 +13,7 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/jwt"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -101,16 +101,16 @@ func (l *DeviceLoginLogic) DeviceLogin(req *types.DeviceLoginRequest) (resp *typ
 	}
 
 	// Generate session id
+	if userInfo == nil || userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable || (deviceInfo != nil && !deviceInfo.Enabled) {
+		return nil, xerr.NewErrCode(xerr.UserDisabled)
+	}
 	sessionId := uuidx.NewUUID().String()
 
 	// Generate token
-	token, err := jwt.NewJwtToken(
+	token, err := usersession.Issue(l.ctx, l.svcCtx.Redis,
 		l.svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
 		l.svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userInfo.Id),
-		jwt.WithOption("SessionId", sessionId),
-		jwt.WithOption("LoginType", "device"),
+		userInfo.Id, sessionId, "device", "", req.Identifier,
 	)
 	if err != nil {
 		l.Logger.Errorw("token generate error",
@@ -293,21 +293,26 @@ func (l *DeviceLoginLogic) activeTrial(store repository.Store, userId int64) (*u
 
 	startTime := time.Now()
 	expireTime := tool.AddTime(l.svcCtx.Config.Register.TrialTimeUnit, l.svcCtx.Config.Register.TrialTime, startTime)
-	subscribeToken := uuidx.SubscribeToken(fmt.Sprintf("Trial-%v-%s", userId, uuidx.NewUUID().String()))
-	subscribeUUID := uuidx.NewUUID().String()
+	if sub == nil {
+		return nil, xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
+	subscribeToken := uuidx.SubscribeToken("")
+	subscribeUUID := uuidx.NewRandomUUID().String()
 
 	userSub := &user.Subscribe{
-		UserId:      userId,
-		OrderId:     0,
-		SubscribeId: sub.Id,
-		StartTime:   startTime,
-		ExpireTime:  expireTime,
-		Traffic:     sub.Traffic,
-		Download:    0,
-		Upload:      0,
-		Token:       subscribeToken,
-		UUID:        subscribeUUID,
-		Status:      1,
+		UserId:           userId,
+		OrderId:          0,
+		SubscribeId:      sub.Id,
+		StartTime:        startTime,
+		ExpireTime:       expireTime,
+		Traffic:          sub.Traffic,
+		TrafficUnlimited: sub.TrafficUnlimited,
+		NodeGroupId:      sub.NodeGroupId,
+		Download:         0,
+		Upload:           0,
+		Token:            subscribeToken,
+		UUID:             subscribeUUID,
+		Status:           1,
 	}
 
 	if err := store.User().InsertSubscribe(l.ctx, userSub); err != nil {

@@ -49,7 +49,7 @@ func (l *GetNodeConfigLogic) GetNodeConfig() (*types.NodeConfig, error) {
 		err = json.Unmarshal([]byte(dbConfig.DNS), &dns)
 		if err != nil {
 			zap.S().Errorf("[Node] Unmarshal DNS config error: %s", err.Error())
-			panic(err)
+			return nil, xerr.NewErrCode(xerr.DatabaseQueryError)
 		}
 		c.DNS = dns
 	}
@@ -63,9 +63,13 @@ func (l *GetNodeConfigLogic) GetNodeConfig() (*types.NodeConfig, error) {
 		err = json.Unmarshal([]byte(dbConfig.Outbound), &outbound)
 		if err != nil {
 			zap.S().Errorf("[Node] Unmarshal Outbound config error: %s", err.Error())
-			panic(err)
+			return nil, xerr.NewErrCode(xerr.DatabaseQueryError)
 		}
 		c.Outbound = outbound
+	}
+	for index := range c.Outbound {
+		c.Outbound[index].Password = maskSecret(c.Outbound[index].Password)
+		c.Outbound[index].UUID = maskSecret(c.Outbound[index].UUID)
 	}
 
 	return c, nil

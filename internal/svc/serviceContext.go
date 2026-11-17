@@ -3,12 +3,16 @@ package svc
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/pkg/device"
 
 	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/pkg/limit"
 	"github.com/perfect-panel/server/pkg/nodeMultiplier"
@@ -43,6 +47,15 @@ type ServiceContext struct {
 	DeviceManager         *device.DeviceManager
 	PluginReady           PluginReadySignaler
 	PluginMgr             any // *plugin.Manager, avoids import cycle
+	closeOnce             sync.Once
+	closeError            error
+	userIndexOnce         sync.Once
+	userIndexes           *node.UserIndexCache
+}
+
+func (srv *ServiceContext) NodeUserIndexes() *node.UserIndexCache {
+	srv.userIndexOnce.Do(func() { srv.userIndexes = node.NewUserIndexCache() })
+	return srv.userIndexes
 }
 
 func NewServiceContext(c config.Config) *ServiceContext {
@@ -55,12 +68,23 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		panic(err.Error())
 	}
 	entClient := orm.NewEntClient(sqlDB, sqlDialect)
+	initialized := false
+	defer func() {
+		if !initialized {
+			_ = entClient.Close()
+		}
+	}()
 
 	// IP location initialize
-	geoIP, err := NewIPLocation("./cache/GeoLite2-City.mmdb")
+	geoIP, err := OpenIPLocation(c.GeoIP)
 	if err != nil {
-		panic(err.Error())
+		panic(fmt.Errorf("required GeoIP database unavailable: %w", err))
 	}
+	defer func() {
+		if !initialized {
+			_ = geoIP.Close()
+		}
+	}()
 
 	rds := redis.NewClient(&redis.Options{
 		Addr:            c.Redis.Host,
@@ -76,6 +100,11 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		ReadTimeout:     time.Second * time.Duration(c.Redis.ReadTimeout),  // 读操作超时时间
 		WriteTimeout:    time.Second * time.Duration(c.Redis.WriteTimeout), // 写操作超时时间
 	})
+	defer func() {
+		if !initialized {
+			_ = rds.Close()
+		}
+	}()
 	err = rds.Ping(context.Background()).Err()
 	if err != nil {
 		panic(err.Error())
@@ -96,6 +125,30 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		AuthLimiter: authLimiter,
 	}
 	srv.DeviceManager = NewDeviceManager(srv)
+	initialized = true
 	return srv
 
+}
+
+func (srv *ServiceContext) Close() error {
+	srv.closeOnce.Do(func() {
+		if srv.DeviceManager != nil {
+			srv.DeviceManager.Close()
+		}
+		var failures []error
+		if srv.Queue != nil {
+			failures = append(failures, srv.Queue.Close())
+		}
+		if srv.Ent != nil {
+			failures = append(failures, srv.Ent.Close())
+		} else if srv.SQLDB != nil {
+			failures = append(failures, srv.SQLDB.Close())
+		}
+		if srv.Redis != nil {
+			failures = append(failures, srv.Redis.Close())
+		}
+		failures = append(failures, srv.GeoIP.Close())
+		srv.closeError = errors.Join(failures...)
+	})
+	return srv.closeError
 }

@@ -16,7 +16,7 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/jwt"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/oauth/apple"
 	"github.com/perfect-panel/server/pkg/oauth/facebook"
 	"github.com/perfect-panel/server/pkg/oauth/github"
@@ -68,6 +68,9 @@ func NewOAuthLoginGetTokenLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 }
 
 func (l *OAuthLoginGetTokenLogic) OAuthLoginGetToken(req *types.OAuthLoginGetTokenRequest, ip, userAgent string) (resp *types.LoginResponse, err error) {
+	if _, ok := req.Callback.(map[string]interface{}); !ok {
+		return nil, xerr.NewErrCode(xerr.InvalidParams)
+	}
 	requestID := uuidx.NewUUID().String()
 	loginStatus := false
 	var userInfo *user.User
@@ -454,7 +457,7 @@ func (l *OAuthLoginGetTokenLogic) claimTelegramCallback(payload, requestID strin
 			zap.Any("provider", OAuthTelegram),
 			zap.Any("error", err.Error()),
 		)
-		return nil
+		return err
 	}
 	if !allowed {
 		l.Logger.Errorw("telegram callback replayed",
@@ -726,6 +729,9 @@ func (l *OAuthLoginGetTokenLogic) handleOAuthProvider(req *types.OAuthLoginGetTo
 }
 
 func (l *OAuthLoginGetTokenLogic) generateToken(userInfo *user.User, requestID string) (string, error) {
+	if userInfo == nil || userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {
+		return "", xerr.NewErrCode(xerr.UserDisabled)
+	}
 	startTime := time.Now()
 	sessionId := uuidx.NewUUID().String()
 
@@ -735,12 +741,10 @@ func (l *OAuthLoginGetTokenLogic) generateToken(userInfo *user.User, requestID s
 		zap.Any("session_id", sessionId),
 	)
 
-	token, err := jwt.NewJwtToken(
+	token, err := usersession.Issue(l.ctx, l.svcCtx.Redis,
 		l.svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
 		l.svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userInfo.Id),
-		jwt.WithOption("SessionId", sessionId),
+		userInfo.Id, sessionId, "oauth", "", "",
 	)
 	if err != nil {
 		l.Logger.Errorw("failed to generate jwt token",
@@ -780,7 +784,7 @@ func (l *OAuthLoginGetTokenLogic) validateStateCode(provider, state, requestID s
 		zap.Any("state_key", stateKey),
 	)
 
-	redirect, err := l.svcCtx.Redis.Get(l.ctx, stateKey).Result()
+	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, provider, "login", 0, state)
 	if err != nil {
 		l.Logger.Errorw("failed to validate state code",
 			zap.Any("request_id", requestID),
@@ -974,6 +978,9 @@ func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, av
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth method by openid failed: %v", err)
 	}
 
+	if userAuthMethod == nil || !userAuthMethod.Verified {
+		return nil, xerr.NewErrCode(xerr.InvalidAccess)
+	}
 	l.Logger.Debugw("found existing user auth method",
 		zap.Any("request_id", requestID),
 		zap.Any("auth_type", authType),
@@ -1019,8 +1026,11 @@ func (l *OAuthLoginGetTokenLogic) activeTrial(store repository.Store, uid int64,
 
 	startTime := time.Now()
 	expireTime := tool.AddTime(l.svcCtx.Config.Register.TrialTimeUnit, l.svcCtx.Config.Register.TrialTime, startTime)
-	subscribeToken := uuidx.SubscribeToken(fmt.Sprintf("Trial-%v-%s", uid, uuidx.NewUUID().String()))
-	subscribeUUID := uuidx.NewUUID().String()
+	if sub == nil {
+		return nil, xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
+	subscribeToken := uuidx.SubscribeToken("")
+	subscribeUUID := uuidx.NewRandomUUID().String()
 
 	l.Logger.Debugw("creating trial subscription",
 		zap.Any("request_id", requestID),
@@ -1029,23 +1039,23 @@ func (l *OAuthLoginGetTokenLogic) activeTrial(store repository.Store, uid int64,
 		zap.Any("start_time", startTime),
 		zap.Any("expire_time", expireTime),
 		zap.Any("traffic", sub.Traffic),
-		zap.Any("token", subscribeToken),
-		zap.Any("uuid", subscribeUUID),
 	)
 
 	userSub := &user.Subscribe{
-		Id:          0,
-		UserId:      uid,
-		OrderId:     0,
-		SubscribeId: sub.Id,
-		StartTime:   startTime,
-		ExpireTime:  expireTime,
-		Traffic:     sub.Traffic,
-		Download:    0,
-		Upload:      0,
-		Token:       subscribeToken,
-		UUID:        subscribeUUID,
-		Status:      1,
+		Id:               0,
+		UserId:           uid,
+		OrderId:          0,
+		SubscribeId:      sub.Id,
+		StartTime:        startTime,
+		ExpireTime:       expireTime,
+		Traffic:          sub.Traffic,
+		TrafficUnlimited: sub.TrafficUnlimited,
+		NodeGroupId:      sub.NodeGroupId,
+		Download:         0,
+		Upload:           0,
+		Token:            subscribeToken,
+		UUID:             subscribeUUID,
+		Status:           1,
 	}
 
 	if err := store.User().InsertSubscribe(l.ctx, userSub); err != nil {

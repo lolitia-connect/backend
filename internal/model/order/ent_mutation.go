@@ -15,7 +15,12 @@ func (m *defaultOrderModel) orderCreate(data *Order) *ent.OrderCreate {
 		SetDiscount(data.Discount).
 		SetNillableCoupon(nilIfEmpty(data.Coupon)).
 		SetCouponDiscount(data.CouponDiscount).
+		SetCouponReserved(data.CouponReserved).
 		SetCommission(data.Commission).
+		SetCommissionRefererID(data.CommissionRefererId).
+		SetPaymentAmount(data.PaymentAmount).
+		SetPaymentCurrency(data.PaymentCurrency).
+		SetNillablePaymentSession(nilIfEmpty(data.PaymentSession)).
 		SetPaymentID(data.PaymentId).
 		SetMethod(data.Method).
 		SetFeeAmount(data.FeeAmount).
@@ -25,8 +30,11 @@ func (m *defaultOrderModel) orderCreate(data *Order) *ent.OrderCreate {
 		SetNillableIdempotencyKey(nilIfEmpty(data.IdempotencyKey)).
 		SetNillableIdempotencyHash(nilIfEmpty(data.IdempotencyHash)).
 		SetNillableGuestCheckoutTokenHash(nilIfEmpty(data.GuestCheckoutTokenHash)).
+		SetGuestAuthType(data.GuestAuthType).
+		SetGuestIdentifier(data.GuestIdentifier).
 		SetSubscribeID(data.SubscribeId).
 		SetNillableSubscribeToken(nilIfEmpty(data.SubscribeToken)).
+		SetUserSubscribeID(data.UserSubscribeId).
 		SetIsNew(data.IsNew)
 	if data.Id > 0 {
 		create.SetID(data.Id)
@@ -57,6 +65,7 @@ func (m *defaultOrderModel) orderUpdate(data *Order) *ent.OrderUpdateOne {
 		SetDiscount(data.Discount).
 		SetNillableCoupon(nilIfEmpty(data.Coupon)).
 		SetCouponDiscount(data.CouponDiscount).
+		SetCouponReserved(data.CouponReserved).
 		SetCommission(data.Commission).
 		SetPaymentID(data.PaymentId).
 		SetMethod(data.Method).
@@ -66,8 +75,11 @@ func (m *defaultOrderModel) orderUpdate(data *Order) *ent.OrderUpdateOne {
 		SetNillableIdempotencyKey(nilIfEmpty(data.IdempotencyKey)).
 		SetNillableIdempotencyHash(nilIfEmpty(data.IdempotencyHash)).
 		SetNillableGuestCheckoutTokenHash(nilIfEmpty(data.GuestCheckoutTokenHash)).
+		SetGuestAuthType(data.GuestAuthType).
+		SetGuestIdentifier(data.GuestIdentifier).
 		SetSubscribeID(data.SubscribeId).
 		SetNillableSubscribeToken(nilIfEmpty(data.SubscribeToken)).
+		SetUserSubscribeID(data.UserSubscribeId).
 		SetIsNew(data.IsNew)
 	if !data.UpdatedAt.IsZero() {
 		update.SetUpdatedAt(data.UpdatedAt)

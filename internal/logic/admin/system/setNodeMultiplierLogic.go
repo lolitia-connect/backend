@@ -33,7 +33,7 @@ func (l *SetNodeMultiplierLogic) SetNodeMultiplier(req *types.SetNodeMultiplierR
 		l.Logger.Error("Marshal Node Multiplier Config Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Marshal Node Multiplier Config Error: %s", err.Error())
 	}
-	if err = l.svcCtx.Store.System().UpdateNodeMultiplierConfig(l.ctx, string(data)); err != nil {
+	if err = updateConfigFields(l.ctx, l.svcCtx, "server", []configFieldValue{{key: "NodeMultiplierConfig", value: string(data), typ: "string"}}); err != nil {
 		l.Logger.Error("Update Node Multiplier Config Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update Node Multiplier Config Error: %s", err.Error())
 	}

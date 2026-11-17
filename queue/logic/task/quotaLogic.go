@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/task"
 	"github.com/perfect-panel/server/internal/model/user"
@@ -181,6 +182,13 @@ func (l *QuotaTaskLogic) processSubscribes(ctx context.Context, subscribes []*us
 	})
 }
 
+// processSubscription applies one subscription's share of a quota task.
+//
+// The row is re-read under a write lock inside the caller's transaction and only
+// the columns the grant actually changes are written (see ApplyQuotaGrant). The
+// snapshot collected before the transaction must not be saved back: it predates
+// any traffic settlement, credential rotation or admin edit that happened in
+// between, so a whole-row write would silently revert them.
 func (l *QuotaTaskLogic) processSubscription(ctx context.Context, store repository.Store, sub *user.Subscribe, content task.QuotaContent, now time.Time, errors *[]ErrorInfo) error {
 	// 验证订阅数据
 	if sub == nil {
@@ -190,34 +198,76 @@ func (l *QuotaTaskLogic) processSubscription(ctx context.Context, store reposito
 		})
 		return nil
 	}
+	if sub.EntitlementSource != "" {
+		return nil
+	}
 
-	updated := false
+	current, err := store.User().FindOneSubscribeForUpdate(ctx, sub.Id)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			// The subscription was removed between the snapshot and the
+			// transaction; skip it rather than failing the whole task.
+			*errors = append(*errors, ErrorInfo{
+				UserSubscribeId: sub.Id,
+				Error:           "subscription no longer exists",
+			})
+			return nil
+		}
+		return err
+	}
+	if current == nil {
+		return nil
+	}
+	if current.EntitlementSource != "" {
+		return nil
+	}
+	// Keep the caller's snapshot in step for the log writers below, which read
+	// the identity fields only.
+	sub.UserId, sub.SubscribeId = current.UserId, current.SubscribeId
+
+	grant := user.QuotaGrant{}
 
 	// 处理时间延长 - 修复逻辑：只要Days不为0就处理，不管ExpireTime是否为0
 	if content.Days != 0 {
-		if sub.ExpireTime.Unix() == 0 || sub.ExpireTime.Before(now) {
+		expireTime := current.ExpireTime
+		if expireTime.Unix() == 0 || expireTime.Before(now) {
 			// 如果没有过期时间或已过期，从现在开始计算
-			sub.ExpireTime = now.AddDate(0, 0, int(content.Days))
+			expireTime = now.AddDate(0, 0, int(content.Days))
 		} else {
 			// 在原有过期时间基础上延长
-			sub.ExpireTime = sub.ExpireTime.AddDate(0, 0, int(content.Days))
+			expireTime = expireTime.AddDate(0, 0, int(content.Days))
 		}
+		grant.ExpireTime = &expireTime
 		// 如果订阅延长到未来时间，设置为激活状态
-		if sub.ExpireTime.After(now) && sub.Status != 1 {
-			sub.Status = 1 // Active
+		if expireTime.After(now) && current.Status != 1 {
+			active := uint8(1)
+			grant.Status = &active
 		}
-		updated = true
 	}
 
 	// 处理流量重置
+	//
+	// The grant is applied first and the audit log is written only once the
+	// counters were actually zeroed. ApplyQuotaGrant refuses a row the CAS
+	// predicate rejects (status >= 4, provider-managed) and reports that as an
+	// error rather than rolling the transaction back, so writing the log first
+	// would leave a durable "traffic reset" entry for a subscription that was
+	// never reset.
+	grant.ResetTraffic = content.ResetTraffic
+
+	if err := store.User().ApplyQuotaGrant(ctx, current.Id, grant); err != nil {
+		*errors = append(*errors, ErrorInfo{
+			UserSubscribeId: current.Id,
+			Error:           "update subscription error: " + err.Error(),
+		})
+		return nil
+	}
+
 	if content.ResetTraffic {
-		sub.Download = 0
-		sub.Upload = 0
-		updated = true
-		if err := l.createResetTrafficLog(ctx, store, sub.Id, sub.UserId, now); err != nil {
+		if err := l.createResetTrafficLog(ctx, store, current.Id, current.UserId, now); err != nil {
 			// 记录错误但不阻断整个任务,日志失败不影响主流程
 			*errors = append(*errors, ErrorInfo{
-				UserSubscribeId: sub.Id,
+				UserSubscribeId: current.Id,
 				Error:           "create reset traffic log error: " + err.Error(),
 			})
 		}
@@ -225,19 +275,8 @@ func (l *QuotaTaskLogic) processSubscription(ctx context.Context, store reposito
 
 	// 处理赠送金
 	if content.GiftValue != 0 {
-		if err := l.processGift(ctx, store, sub, content, now, errors); err != nil {
+		if err := l.processGift(ctx, store, current, content, now, errors); err != nil {
 			return err
-		}
-	}
-
-	// 只有在有更新时才保存订阅信息
-	if updated {
-		if err := store.User().UpdateSubscribe(ctx, sub); err != nil {
-			*errors = append(*errors, ErrorInfo{
-				UserSubscribeId: sub.Id,
-				Error:           "update subscription error: " + err.Error(),
-			})
-			return nil
 		}
 	}
 

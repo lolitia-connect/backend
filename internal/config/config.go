@@ -5,39 +5,47 @@ import (
 
 	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/pkg/orm"
+	tracepkg "github.com/perfect-panel/server/pkg/trace"
 )
 
 type Config struct {
-	Model         string              `yaml:"Model" default:"prod"`
-	Host          string              `yaml:"Host" default:"0.0.0.0"`
-	Port          int                 `yaml:"Port" default:"8080"`
-	Debug         bool                `yaml:"Debug" default:"false"`
-	Transport     TransportConfig     `yaml:"Transport"`
-	TLS           TLS                 `yaml:"TLS"`
-	JwtAuth       JwtAuth             `yaml:"JwtAuth"`
-	Logger        logging.LogConf     `yaml:"Logger"`
-	Database      orm.Config          `yaml:"Database"`
-	MySQL         *orm.Config         `yaml:"MySQL,omitempty"` // Deprecated: use Database.
-	Redis         RedisConfig         `yaml:"Redis"`
-	Site          SiteConfig          `yaml:"Site"`
-	Node          NodeConfig          `yaml:"Node"`
-	Mobile        MobileConfig        `yaml:"Mobile"`
-	Email         EmailConfig         `yaml:"Email"`
-	Device        DeviceConfig        `yaml:"device"`
-	Verify        Verify              `yaml:"Verify"`
-	VerifyCode    VerifyCode          `yaml:"VerifyCode"`
-	Register      RegisterConfig      `yaml:"Register"`
-	Subscribe     SubscribeConfig     `yaml:"Subscribe"`
-	EdgeSubscribe EdgeSubscribeConfig `yaml:"EdgeSubscribe"`
-	Invite        InviteConfig        `yaml:"Invite"`
-	Telegram      Telegram            `yaml:"Telegram"`
-	Log           Log                 `yaml:"Log"`
-	Currency      Currency            `yaml:"Currency"`
-	Plugin        PluginConfig        `yaml:"Plugin"`
-	Administrator struct {
-		Email    string `yaml:"Email" default:"admin@ppanel.dev"`
-		Password string `yaml:"Password" default:"password"`
-	} `yaml:"Administrator"`
+	Model          string              `yaml:"Model" default:"prod"`
+	Host           string              `yaml:"Host" default:"0.0.0.0"`
+	Port           int                 `yaml:"Port" default:"8080"`
+	Debug          bool                `yaml:"Debug" default:"false"`
+	TrustedProxies []string            `yaml:"TrustedProxies"`
+	AllowedOrigins []string            `yaml:"AllowedOrigins"`
+	HTTP           HTTPConfig          `yaml:"HTTP"`
+	GeoIP          GeoIPConfig         `yaml:"GeoIP"`
+	Transport      TransportConfig     `yaml:"Transport"`
+	TLS            TLS                 `yaml:"TLS"`
+	JwtAuth        JwtAuth             `yaml:"JwtAuth"`
+	Logger         logging.LogConf     `yaml:"Logger"`
+	Trace          tracepkg.Config     `yaml:"Trace"`
+	Database       orm.Config          `yaml:"Database"`
+	MySQL          *orm.Config         `yaml:"MySQL,omitempty"` // Deprecated: use Database.
+	Redis          RedisConfig         `yaml:"Redis"`
+	Site           SiteConfig          `yaml:"Site"`
+	Node           NodeConfig          `yaml:"Node"`
+	Mobile         MobileConfig        `yaml:"Mobile"`
+	Email          EmailConfig         `yaml:"Email"`
+	Device         DeviceConfig        `yaml:"device"`
+	Verify         Verify              `yaml:"Verify"`
+	VerifyCode     VerifyCode          `yaml:"VerifyCode"`
+	Register       RegisterConfig      `yaml:"Register"`
+	Subscribe      SubscribeConfig     `yaml:"Subscribe"`
+	EdgeSubscribe  EdgeSubscribeConfig `yaml:"EdgeSubscribe"`
+	Invite         InviteConfig        `yaml:"Invite"`
+	Telegram       Telegram            `yaml:"Telegram"`
+	Log            Log                 `yaml:"Log"`
+	Currency       Currency            `yaml:"Currency"`
+	Plugin         PluginConfig        `yaml:"Plugin"`
+	Administrator  AdministratorConfig `yaml:"Administrator"`
+}
+
+type AdministratorConfig struct {
+	Email    string `yaml:"Email" default:"admin@ppanel.dev"`
+	Password string `yaml:"Password,omitempty"`
 }
 
 type RedisConfig struct {
@@ -57,6 +65,23 @@ type RedisConfig struct {
 
 type TransportConfig struct {
 	Driver string `yaml:"Driver" default:"hertz"`
+}
+
+var DefaultTrustedProxies = []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7"}
+
+type HTTPConfig struct {
+	ReadTimeoutSeconds  int `yaml:"ReadTimeoutSeconds" default:"180"`
+	WriteTimeoutSeconds int `yaml:"WriteTimeoutSeconds" default:"0"`
+	IdleTimeoutSeconds  int `yaml:"IdleTimeoutSeconds" default:"180"`
+	MaxRequestBodyMB    int `yaml:"MaxRequestBodyMB" default:"4"`
+}
+
+type GeoIPConfig struct {
+	Path        string `yaml:"Path" default:"./cache/GeoLite2-City.mmdb"`
+	Download    bool   `yaml:"Download" default:"true"`
+	DownloadURL string `yaml:"DownloadURL"`
+	SHA256      string `yaml:"SHA256"`
+	Required    bool   `yaml:"Required" default:"false"`
 }
 
 type JwtAuth struct {
@@ -258,16 +283,21 @@ func (n *NodeOutbound) Marshal() ([]byte, error) {
 }
 
 type File struct {
-	Host      string          `yaml:"Host" default:"0.0.0.0"`
-	Port      int             `yaml:"Port" default:"8080"`
-	Transport TransportConfig `yaml:"Transport"`
-	TLS       TLS             `yaml:"TLS"`
-	Debug     bool            `yaml:"Debug" default:"true"`
-	JwtAuth   JwtAuth         `yaml:"JwtAuth"`
-	Logger    logging.LogConf `yaml:"Logger"`
-	Database  orm.Config      `yaml:"Database"`
-	MySQL     *orm.Config     `yaml:"MySQL,omitempty"` // Deprecated: use Database.
-	Redis     RedisConfig     `yaml:"Redis"`
+	Host           string              `yaml:"Host" default:"0.0.0.0"`
+	Port           int                 `yaml:"Port" default:"8080"`
+	Transport      TransportConfig     `yaml:"Transport"`
+	TLS            TLS                 `yaml:"TLS"`
+	Debug          bool                `yaml:"Debug" default:"true"`
+	TrustedProxies []string            `yaml:"TrustedProxies"`
+	AllowedOrigins []string            `yaml:"AllowedOrigins"`
+	HTTP           HTTPConfig          `yaml:"HTTP"`
+	GeoIP          GeoIPConfig         `yaml:"GeoIP"`
+	JwtAuth        JwtAuth             `yaml:"JwtAuth"`
+	Logger         logging.LogConf     `yaml:"Logger"`
+	Database       orm.Config          `yaml:"Database"`
+	MySQL          *orm.Config         `yaml:"MySQL,omitempty"` // Deprecated: use Database.
+	Redis          RedisConfig         `yaml:"Redis"`
+	Administrator  AdministratorConfig `yaml:"Administrator"`
 }
 
 func (c Config) DatabaseConfig() orm.Config {
@@ -348,8 +378,8 @@ type NodeDBConfig struct {
 }
 
 type Currency struct {
-	Unit      string `yaml:"Unit" default:"CNY"`
-	Symbol    string `yaml:"Symbol" default:"USD"`
+	Unit      string `yaml:"Unit" default:"USD"`
+	Symbol    string `yaml:"Symbol" default:"$"`
 	AccessKey string `yaml:"AccessKey" default:""`
 }
 

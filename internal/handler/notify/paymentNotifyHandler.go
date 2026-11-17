@@ -35,10 +35,13 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 			}
 			if err := c.Request.ParseForm(); err != nil {
 				zap.L().Error("[PaymentNotifyHandler] ParseForm failed", zap.Any("error", err.Error()))
+				c.String(http.StatusBadRequest, "%s", "invalid payment notification")
+				return
 			}
 			l := notify.NewEPayNotifyLogic(c.Request.Context(), svcCtx, notify.EPayNotifyMeta{
 				Method: c.Request.Method,
 				Params: formValues(c.Request.Form),
+				Values: c.Request.Form,
 			})
 			if err := l.EPayNotify(req); err != nil {
 				zap.S().Errorf("EPayNotify failed: %v", err.Error())
@@ -49,7 +52,7 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 		case payment.Stripe:
 			l := notify.NewStripeNotifyLogic(c.Request.Context(), svcCtx)
 			if err := l.StripeNotify(c.Request, c.Writer); err != nil {
-				result.HttpResult(c, nil, err)
+				c.String(http.StatusInternalServerError, "%s", "payment notification could not be processed")
 				return
 			}
 			result.HttpResult(c, nil, nil)

@@ -2,14 +2,19 @@ package coupon
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 	entcoupon "github.com/perfect-panel/server/ent/coupon"
 )
 
 type customCouponLogicModel interface {
 	UpdateCount(ctx context.Context, code string) error
+	ReserveUsage(ctx context.Context, code string) error
+	ReleaseUsage(ctx context.Context, code string) error
 	QueryCouponListByPage(ctx context.Context, page, size int, subscribe int64, search string) (total int64, list []*Coupon, err error)
 	BatchDelete(ctx context.Context, ids []int64) error
 }
@@ -57,10 +62,34 @@ func (m *customCouponModel) BatchDelete(ctx context.Context, ids []int64) error 
 }
 
 func (m *customCouponModel) UpdateCount(ctx context.Context, code string) error {
-	data, err := m.FindOneByCode(ctx, code)
+	affected, err := m.db.Coupon.Update().Where(entcoupon.Code(code)).AddUsedCount(1).Save(ctx)
 	if err != nil {
 		return err
 	}
-	data.UsedCount++
-	return m.Update(ctx, data)
+	if affected == 0 {
+		return &ent.NotFoundError{}
+	}
+	return nil
+}
+
+func (m *customCouponModel) ReserveUsage(ctx context.Context, code string) error {
+	now := time.Now().Unix()
+	affected, err := m.db.Coupon.Update().Where(entcoupon.Code(code), entcoupon.Enable(true),
+		entcoupon.StartTimeLTE(now), entcoupon.Or(entcoupon.ExpireTime(0), entcoupon.ExpireTimeGTE(now)),
+		func(selector *entsql.Selector) {
+			selector.Where(entsql.Or(entsql.EQ(selector.C(entcoupon.FieldCount), 0),
+				entsql.ColumnsLT(selector.C(entcoupon.FieldUsedCount), selector.C(entcoupon.FieldCount))))
+		}).AddUsedCount(1).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return fmt.Errorf("coupon is unavailable or exhausted")
+	}
+	return nil
+}
+
+func (m *customCouponModel) ReleaseUsage(ctx context.Context, code string) error {
+	_, err := m.db.Coupon.Update().Where(entcoupon.Code(code), entcoupon.UsedCountGT(0)).AddUsedCount(-1).Save(ctx)
+	return err
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 
@@ -21,26 +22,34 @@ func Migrate(ctx *svc.ServiceContext) {
 		Config: ctx.Config.DatabaseConfig(),
 	}
 	now := time.Now()
-	if err := migrate.Migrate(mc.Driver(), mc.MigrationDsn()).Up(); err != nil {
+	migration := migrate.Migrate(mc.Driver(), mc.MigrationDsn())
+	defer migration.Close()
+	if err := migration.Up(); err != nil {
 		if errors.Is(err, migrate.NoChange) {
 			zap.S().Info("[Migrate] database not change")
-			return
+		} else {
+			zap.S().Errorf("[Migrate] Up error: %v", err.Error())
+			panic(err)
 		}
-		zap.S().Errorf("[Migrate] Up error: %v", err.Error())
-		panic(err)
 	} else {
 		zap.S().Info("[Migrate] Database change, took " + time.Since(now).String())
 	}
 	// if not found admin user
+	generatedPassword := ""
 	err := ctx.Store.InTx(context.Background(), func(store repository.Store) error {
 		count, err := store.User().QueryResisterUserTotal(context.Background())
 		if err != nil {
 			return err
 		}
 		if count == 0 {
+			password := ctx.Config.Administrator.Password
+			if password == "" {
+				generatedPassword = uuid.NewString()
+				password = generatedPassword
+			}
 			enable := true
 			admin := &user.User{
-				Password:  tool.EncodePassWord(ctx.Config.Administrator.Password),
+				Password:  tool.EncodePassWord(password),
 				IsAdmin:   &enable,
 				ReferCode: uuidx.UserInviteCode(time.Now().Unix()),
 			}
@@ -63,5 +72,8 @@ func Migrate(ctx *svc.ServiceContext) {
 	})
 	if err != nil {
 		panic(err)
+	}
+	if generatedPassword != "" {
+		zap.S().Warnf("Initial administrator %s password: %s", ctx.Config.Administrator.Email, generatedPassword)
 	}
 }

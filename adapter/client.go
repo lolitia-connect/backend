@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
+	"github.com/perfect-panel/server/internal/model/node"
 )
 
 type Proxy struct {
@@ -20,9 +21,10 @@ type Proxy struct {
 
 	// Version/Network/ALPN are shared by the protocols that expose them; the
 	// subscription templates read only the ones their protocol defines.
-	Version int      // Snell 5/6, TUIC 5, Nowhere 1
-	Network string   // Nowhere: mix/tcp/udp
-	ALPN    []string // Nowhere: exactly one value, now/1 by default
+	Version  int      // Snell 5/6, TUIC 5, Nowhere 3
+	Network  string   // Nowhere: mix/tcp/udp
+	ALPN     []string // Nowhere: nw3
+	Password string
 
 	// Security Options
 	Security          string
@@ -123,7 +125,11 @@ type Client struct {
 
 func (c *Client) Build() ([]byte, error) {
 	var buf bytes.Buffer
-	tmpl, err := template.New("client").Funcs(sprig.TxtFuncMap()).Parse(c.ClientTemplate)
+	functions := sprig.TxtFuncMap()
+	for _, name := range []string{"env", "expandenv", "getHostByName"} {
+		delete(functions, name)
+	}
+	tmpl, err := template.New("client").Funcs(functions).Parse(c.ClientTemplate)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +137,14 @@ func (c *Client) Build() ([]byte, error) {
 	proxies := make([]map[string]interface{}, len(c.Proxies))
 	for i, p := range c.Proxies {
 		proxies[i] = StructToMap(p)
+		password, err := node.ProtocolCredential(p.Type, c.UserInfo.Password)
+		if err != nil {
+			return nil, err
+		}
+		proxies[i]["Password"] = password
+		for _, name := range []string{"RealityServerAddr", "RealityServerPort", "RealityPrivateKey", "EncryptionPrivateKey", "EncryptionServerPadding", "CertMode", "CertDNSProvider", "CertDNSEnv"} {
+			delete(proxies[i], name)
+		}
 	}
 
 	err = tmpl.Execute(&buf, map[string]interface{}{

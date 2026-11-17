@@ -31,6 +31,10 @@ type Task struct {
 	Total uint64 `json:"total,omitempty"`
 	// Current holds the value of the "current" field.
 	Current uint64 `json:"current,omitempty"`
+	// DailyDate holds the value of the "daily_date" field.
+	DailyDate string `json:"daily_date,omitempty"`
+	// DailySent holds the value of the "daily_sent" field.
+	DailySent uint64 `json:"daily_sent,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -43,9 +47,9 @@ func (*Task) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case task.FieldID, task.FieldType, task.FieldStatus, task.FieldTotal, task.FieldCurrent:
+		case task.FieldID, task.FieldType, task.FieldStatus, task.FieldTotal, task.FieldCurrent, task.FieldDailySent:
 			values[i] = new(sql.NullInt64)
-		case task.FieldScope, task.FieldContent, task.FieldErrors:
+		case task.FieldScope, task.FieldContent, task.FieldErrors, task.FieldDailyDate:
 			values[i] = new(sql.NullString)
 		case task.FieldCreatedAt, task.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -111,6 +115,18 @@ func (_m *Task) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field current", values[i])
 			} else if value.Valid {
 				_m.Current = uint64(value.Int64)
+			}
+		case task.FieldDailyDate:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field daily_date", values[i])
+			} else if value.Valid {
+				_m.DailyDate = value.String
+			}
+		case task.FieldDailySent:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field daily_sent", values[i])
+			} else if value.Valid {
+				_m.DailySent = uint64(value.Int64)
 			}
 		case task.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -180,6 +196,12 @@ func (_m *Task) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("current=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Current))
+	builder.WriteString(", ")
+	builder.WriteString("daily_date=")
+	builder.WriteString(_m.DailyDate)
+	builder.WriteString(", ")
+	builder.WriteString("daily_sent=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DailySent))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

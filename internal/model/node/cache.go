@@ -170,6 +170,13 @@ func (m *customServerModel) ClearNodeCache(ctx context.Context, params *FilterNo
 	if err != nil {
 		return err
 	}
+	var serverIDs []int64
+	for _, item := range nodes {
+		serverIDs = append(serverIDs, item.ServerId)
+	}
+	if err := InvalidateServerCaches(ctx, m.Cache, serverIDs...); err != nil {
+		return err
+	}
 	var cacheKeys []string
 	for _, node := range nodes {
 		patterns := []string{
@@ -204,6 +211,9 @@ func (m *customServerModel) ClearNodeCache(ctx context.Context, params *FilterNo
 
 // ClearServerCache Clear Server Cache
 func (m *customServerModel) ClearServerCache(ctx context.Context, serverId int64) error {
+	if err := InvalidateServerCaches(ctx, m.Cache, serverId); err != nil {
+		return err
+	}
 	var cacheKeys []string
 	patterns := []string{
 		fmt.Sprintf("%s%d:*", ServerUserListCacheKey, serverId),
@@ -235,6 +245,16 @@ func (m *customServerModel) ClearServerCache(ctx context.Context, serverId int64
 }
 
 func (m *customServerModel) ClearServerAllCache(ctx context.Context) error {
+	if m.Cache == nil {
+		return nil
+	}
+	ids, err := m.db.Server.Query().IDs(ctx)
+	if err != nil {
+		return err
+	}
+	if err := InvalidateServerCaches(ctx, m.Cache, ids...); err != nil {
+		return err
+	}
 	var cursor uint64
 	var keys []string
 	prefix := ServerUserListCacheKey + "*"

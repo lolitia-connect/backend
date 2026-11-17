@@ -3,14 +3,16 @@ package user
 import (
 	"context"
 	"fmt"
-	"time"
+	"net/url"
 
 	"github.com/perfect-panel/server/internal/model/auth"
+	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/oauth/facebook"
 	"github.com/perfect-panel/server/pkg/oauth/github"
 	"github.com/perfect-panel/server/pkg/oauth/google"
 	"github.com/perfect-panel/server/pkg/oauth/telegram"
-	"github.com/perfect-panel/server/pkg/random"
+	"github.com/perfect-panel/server/pkg/oauthstate"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -36,6 +38,11 @@ func NewBindOAuthLogic(ctx context.Context, svcCtx *svc.ServiceContext) *BindOAu
 }
 
 func (l *BindOAuthLogic) BindOAuth(req *types.BindOAuthRequest) (resp *types.BindOAuthResponse, err error) {
+	if req.Method == "apple" || req.Method == "telegram" {
+		if err := oauthstate.ValidateRedirect(req.Redirect, l.svcCtx.Config.Site.Host); err != nil {
+			return nil, err
+		}
+	}
 	var uri string
 	switch req.Method {
 	case "google":
@@ -78,9 +85,7 @@ func (l *BindOAuthLogic) google(req *types.BindOAuthRequest) (string, error) {
 		RedirectURL:  req.Redirect,
 	})
 	// generate the state code
-	code := random.KeyNew(8, 1)
-	// save the state code
-	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("google:%s", code), req.Redirect, 5*60*time.Second).Err()
+	code, err := l.issueState("google", req.Redirect)
 	if err != nil {
 		return "", err
 	}
@@ -103,8 +108,8 @@ func (l *BindOAuthLogic) facebook(req *types.BindOAuthRequest) (string, error) {
 		ClientSecret: cfg.ClientSecret,
 		RedirectURL:  req.Redirect,
 	})
-	code := random.KeyNew(8, 1)
-	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("facebook:%s", code), req.Redirect, 5*60*time.Second).Err(); err != nil {
+	code, err := l.issueState("facebook", req.Redirect)
+	if err != nil {
 		return "", err
 	}
 	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
@@ -122,13 +127,12 @@ func (l *BindOAuthLogic) apple(req *types.BindOAuthRequest) (string, error) {
 	}
 	uri := "https://appleid.apple.com/auth/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s&scope=name email&response_mode=form_post"
 	// generate the state code
-	code := random.KeyNew(8, 1)
-	// save the state code
-	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("apple:%s", code), req.Redirect, 5*60*time.Second).Err()
+	code, err := l.issueState("apple", req.Redirect)
 	if err != nil {
 		l.Logger.Errorw("error save state code to redis: %v", zap.Any("code", code), zap.Any("error", err.Error()))
+		return "", err
 	}
-	return fmt.Sprintf(uri, cfg.ClientId, fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL), code), nil
+	return fmt.Sprintf(uri, url.QueryEscape(cfg.ClientId), url.QueryEscape(fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL)), code), nil
 }
 func (l *BindOAuthLogic) github(req *types.BindOAuthRequest) (string, error) {
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "github")
@@ -145,8 +149,8 @@ func (l *BindOAuthLogic) github(req *types.BindOAuthRequest) (string, error) {
 		ClientSecret: cfg.ClientSecret,
 		RedirectURL:  req.Redirect,
 	})
-	code := random.KeyNew(8, 1)
-	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("github:%s", code), req.Redirect, 5*60*time.Second).Err(); err != nil {
+	code, err := l.issueState("github", req.Redirect)
+	if err != nil {
 		return "", err
 	}
 	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
@@ -163,6 +167,17 @@ func (l *BindOAuthLogic) telegram(req *types.BindOAuthRequest) (string, error) {
 		l.Logger.Errorw("error unmarshal telegram config", zap.Any("config", authMethod.Config), zap.Any("error", err.Error()))
 		return "", err
 	}
-	code := random.KeyNew(8, 1)
+	code, err := l.issueState("telegram", req.Redirect)
+	if err != nil {
+		return "", err
+	}
 	return telegram.GenerateTelegramOAuthURL(cfg.BotToken, code, req.Redirect), nil
+}
+
+func (l *BindOAuthLogic) issueState(provider, redirect string) (string, error) {
+	account, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
+	if !ok || account == nil {
+		return "", xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	return oauthstate.Issue(l.ctx, l.svcCtx.Redis, provider, "bind", account.Id, redirect)
 }

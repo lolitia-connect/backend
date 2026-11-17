@@ -33,11 +33,15 @@ import (
 	"github.com/perfect-panel/server/ent/subscribe"
 	"github.com/perfect-panel/server/ent/subscribeapplication"
 	"github.com/perfect-panel/server/ent/subscribegroup"
+	"github.com/perfect-panel/server/ent/subscriptionentitlement"
+	"github.com/perfect-panel/server/ent/subscriptionentitlementrevision"
+	"github.com/perfect-panel/server/ent/subscriptionperiod"
 	"github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/ent/task"
 	"github.com/perfect-panel/server/ent/ticket"
 	"github.com/perfect-panel/server/ent/ticketfollow"
+	"github.com/perfect-panel/server/ent/trafficbatch"
 	"github.com/perfect-panel/server/ent/trafficlog"
 	"github.com/perfect-panel/server/ent/user"
 	"github.com/perfect-panel/server/ent/userauthmethod"
@@ -91,6 +95,12 @@ type Client struct {
 	SubscribeApplication *SubscribeApplicationClient
 	// SubscribeGroup is the client for interacting with the SubscribeGroup builders.
 	SubscribeGroup *SubscribeGroupClient
+	// SubscriptionEntitlement is the client for interacting with the SubscriptionEntitlement builders.
+	SubscriptionEntitlement *SubscriptionEntitlementClient
+	// SubscriptionEntitlementRevision is the client for interacting with the SubscriptionEntitlementRevision builders.
+	SubscriptionEntitlementRevision *SubscriptionEntitlementRevisionClient
+	// SubscriptionPeriod is the client for interacting with the SubscriptionPeriod builders.
+	SubscriptionPeriod *SubscriptionPeriodClient
 	// System is the client for interacting with the System builders.
 	System *SystemClient
 	// SystemLog is the client for interacting with the SystemLog builders.
@@ -101,6 +111,8 @@ type Client struct {
 	Ticket *TicketClient
 	// TicketFollow is the client for interacting with the TicketFollow builders.
 	TicketFollow *TicketFollowClient
+	// TrafficBatch is the client for interacting with the TrafficBatch builders.
+	TrafficBatch *TrafficBatchClient
 	// TrafficLog is the client for interacting with the TrafficLog builders.
 	TrafficLog *TrafficLogClient
 	// User is the client for interacting with the User builders.
@@ -147,11 +159,15 @@ func (c *Client) init() {
 	c.Subscribe = NewSubscribeClient(c.config)
 	c.SubscribeApplication = NewSubscribeApplicationClient(c.config)
 	c.SubscribeGroup = NewSubscribeGroupClient(c.config)
+	c.SubscriptionEntitlement = NewSubscriptionEntitlementClient(c.config)
+	c.SubscriptionEntitlementRevision = NewSubscriptionEntitlementRevisionClient(c.config)
+	c.SubscriptionPeriod = NewSubscriptionPeriodClient(c.config)
 	c.System = NewSystemClient(c.config)
 	c.SystemLog = NewSystemLogClient(c.config)
 	c.Task = NewTaskClient(c.config)
 	c.Ticket = NewTicketClient(c.config)
 	c.TicketFollow = NewTicketFollowClient(c.config)
+	c.TrafficBatch = NewTrafficBatchClient(c.config)
 	c.TrafficLog = NewTrafficLogClient(c.config)
 	c.User = NewUserClient(c.config)
 	c.UserAuthMethod = NewUserAuthMethodClient(c.config)
@@ -250,40 +266,44 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                    ctx,
-		config:                 cfg,
-		Ads:                    NewAdsClient(cfg),
-		Announcement:           NewAnnouncementClient(cfg),
-		AuthMethod:             NewAuthMethodClient(cfg),
-		Coupon:                 NewCouponClient(cfg),
-		Document:               NewDocumentClient(cfg),
-		GroupHistory:           NewGroupHistoryClient(cfg),
-		GroupHistoryDetail:     NewGroupHistoryDetailClient(cfg),
-		Node:                   NewNodeClient(cfg),
-		NodeGroup:              NewNodeGroupClient(cfg),
-		Order:                  NewOrderClient(cfg),
-		OrderEvent:             NewOrderEventClient(cfg),
-		Payment:                NewPaymentClient(cfg),
-		RedemptionCode:         NewRedemptionCodeClient(cfg),
-		RedemptionRecord:       NewRedemptionRecordClient(cfg),
-		Server:                 NewServerClient(cfg),
-		ServerConfigOverride:   NewServerConfigOverrideClient(cfg),
-		Subscribe:              NewSubscribeClient(cfg),
-		SubscribeApplication:   NewSubscribeApplicationClient(cfg),
-		SubscribeGroup:         NewSubscribeGroupClient(cfg),
-		System:                 NewSystemClient(cfg),
-		SystemLog:              NewSystemLogClient(cfg),
-		Task:                   NewTaskClient(cfg),
-		Ticket:                 NewTicketClient(cfg),
-		TicketFollow:           NewTicketFollowClient(cfg),
-		TrafficLog:             NewTrafficLogClient(cfg),
-		User:                   NewUserClient(cfg),
-		UserAuthMethod:         NewUserAuthMethodClient(cfg),
-		UserDevice:             NewUserDeviceClient(cfg),
-		UserDeviceOnlineRecord: NewUserDeviceOnlineRecordClient(cfg),
-		UserSubscribe:          NewUserSubscribeClient(cfg),
-		UserWallet:             NewUserWalletClient(cfg),
-		UserWithdrawal:         NewUserWithdrawalClient(cfg),
+		ctx:                             ctx,
+		config:                          cfg,
+		Ads:                             NewAdsClient(cfg),
+		Announcement:                    NewAnnouncementClient(cfg),
+		AuthMethod:                      NewAuthMethodClient(cfg),
+		Coupon:                          NewCouponClient(cfg),
+		Document:                        NewDocumentClient(cfg),
+		GroupHistory:                    NewGroupHistoryClient(cfg),
+		GroupHistoryDetail:              NewGroupHistoryDetailClient(cfg),
+		Node:                            NewNodeClient(cfg),
+		NodeGroup:                       NewNodeGroupClient(cfg),
+		Order:                           NewOrderClient(cfg),
+		OrderEvent:                      NewOrderEventClient(cfg),
+		Payment:                         NewPaymentClient(cfg),
+		RedemptionCode:                  NewRedemptionCodeClient(cfg),
+		RedemptionRecord:                NewRedemptionRecordClient(cfg),
+		Server:                          NewServerClient(cfg),
+		ServerConfigOverride:            NewServerConfigOverrideClient(cfg),
+		Subscribe:                       NewSubscribeClient(cfg),
+		SubscribeApplication:            NewSubscribeApplicationClient(cfg),
+		SubscribeGroup:                  NewSubscribeGroupClient(cfg),
+		SubscriptionEntitlement:         NewSubscriptionEntitlementClient(cfg),
+		SubscriptionEntitlementRevision: NewSubscriptionEntitlementRevisionClient(cfg),
+		SubscriptionPeriod:              NewSubscriptionPeriodClient(cfg),
+		System:                          NewSystemClient(cfg),
+		SystemLog:                       NewSystemLogClient(cfg),
+		Task:                            NewTaskClient(cfg),
+		Ticket:                          NewTicketClient(cfg),
+		TicketFollow:                    NewTicketFollowClient(cfg),
+		TrafficBatch:                    NewTrafficBatchClient(cfg),
+		TrafficLog:                      NewTrafficLogClient(cfg),
+		User:                            NewUserClient(cfg),
+		UserAuthMethod:                  NewUserAuthMethodClient(cfg),
+		UserDevice:                      NewUserDeviceClient(cfg),
+		UserDeviceOnlineRecord:          NewUserDeviceOnlineRecordClient(cfg),
+		UserSubscribe:                   NewUserSubscribeClient(cfg),
+		UserWallet:                      NewUserWalletClient(cfg),
+		UserWithdrawal:                  NewUserWithdrawalClient(cfg),
 	}, nil
 }
 
@@ -301,40 +321,44 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                    ctx,
-		config:                 cfg,
-		Ads:                    NewAdsClient(cfg),
-		Announcement:           NewAnnouncementClient(cfg),
-		AuthMethod:             NewAuthMethodClient(cfg),
-		Coupon:                 NewCouponClient(cfg),
-		Document:               NewDocumentClient(cfg),
-		GroupHistory:           NewGroupHistoryClient(cfg),
-		GroupHistoryDetail:     NewGroupHistoryDetailClient(cfg),
-		Node:                   NewNodeClient(cfg),
-		NodeGroup:              NewNodeGroupClient(cfg),
-		Order:                  NewOrderClient(cfg),
-		OrderEvent:             NewOrderEventClient(cfg),
-		Payment:                NewPaymentClient(cfg),
-		RedemptionCode:         NewRedemptionCodeClient(cfg),
-		RedemptionRecord:       NewRedemptionRecordClient(cfg),
-		Server:                 NewServerClient(cfg),
-		ServerConfigOverride:   NewServerConfigOverrideClient(cfg),
-		Subscribe:              NewSubscribeClient(cfg),
-		SubscribeApplication:   NewSubscribeApplicationClient(cfg),
-		SubscribeGroup:         NewSubscribeGroupClient(cfg),
-		System:                 NewSystemClient(cfg),
-		SystemLog:              NewSystemLogClient(cfg),
-		Task:                   NewTaskClient(cfg),
-		Ticket:                 NewTicketClient(cfg),
-		TicketFollow:           NewTicketFollowClient(cfg),
-		TrafficLog:             NewTrafficLogClient(cfg),
-		User:                   NewUserClient(cfg),
-		UserAuthMethod:         NewUserAuthMethodClient(cfg),
-		UserDevice:             NewUserDeviceClient(cfg),
-		UserDeviceOnlineRecord: NewUserDeviceOnlineRecordClient(cfg),
-		UserSubscribe:          NewUserSubscribeClient(cfg),
-		UserWallet:             NewUserWalletClient(cfg),
-		UserWithdrawal:         NewUserWithdrawalClient(cfg),
+		ctx:                             ctx,
+		config:                          cfg,
+		Ads:                             NewAdsClient(cfg),
+		Announcement:                    NewAnnouncementClient(cfg),
+		AuthMethod:                      NewAuthMethodClient(cfg),
+		Coupon:                          NewCouponClient(cfg),
+		Document:                        NewDocumentClient(cfg),
+		GroupHistory:                    NewGroupHistoryClient(cfg),
+		GroupHistoryDetail:              NewGroupHistoryDetailClient(cfg),
+		Node:                            NewNodeClient(cfg),
+		NodeGroup:                       NewNodeGroupClient(cfg),
+		Order:                           NewOrderClient(cfg),
+		OrderEvent:                      NewOrderEventClient(cfg),
+		Payment:                         NewPaymentClient(cfg),
+		RedemptionCode:                  NewRedemptionCodeClient(cfg),
+		RedemptionRecord:                NewRedemptionRecordClient(cfg),
+		Server:                          NewServerClient(cfg),
+		ServerConfigOverride:            NewServerConfigOverrideClient(cfg),
+		Subscribe:                       NewSubscribeClient(cfg),
+		SubscribeApplication:            NewSubscribeApplicationClient(cfg),
+		SubscribeGroup:                  NewSubscribeGroupClient(cfg),
+		SubscriptionEntitlement:         NewSubscriptionEntitlementClient(cfg),
+		SubscriptionEntitlementRevision: NewSubscriptionEntitlementRevisionClient(cfg),
+		SubscriptionPeriod:              NewSubscriptionPeriodClient(cfg),
+		System:                          NewSystemClient(cfg),
+		SystemLog:                       NewSystemLogClient(cfg),
+		Task:                            NewTaskClient(cfg),
+		Ticket:                          NewTicketClient(cfg),
+		TicketFollow:                    NewTicketFollowClient(cfg),
+		TrafficBatch:                    NewTrafficBatchClient(cfg),
+		TrafficLog:                      NewTrafficLogClient(cfg),
+		User:                            NewUserClient(cfg),
+		UserAuthMethod:                  NewUserAuthMethodClient(cfg),
+		UserDevice:                      NewUserDeviceClient(cfg),
+		UserDeviceOnlineRecord:          NewUserDeviceOnlineRecordClient(cfg),
+		UserSubscribe:                   NewUserSubscribeClient(cfg),
+		UserWallet:                      NewUserWalletClient(cfg),
+		UserWithdrawal:                  NewUserWithdrawalClient(cfg),
 	}, nil
 }
 
@@ -367,10 +391,11 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Ads, c.Announcement, c.AuthMethod, c.Coupon, c.Document, c.GroupHistory,
 		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.OrderEvent, c.Payment,
 		c.RedemptionCode, c.RedemptionRecord, c.Server, c.ServerConfigOverride,
-		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup, c.System, c.SystemLog,
-		c.Task, c.Ticket, c.TicketFollow, c.TrafficLog, c.User, c.UserAuthMethod,
-		c.UserDevice, c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWallet,
-		c.UserWithdrawal,
+		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup,
+		c.SubscriptionEntitlement, c.SubscriptionEntitlementRevision,
+		c.SubscriptionPeriod, c.System, c.SystemLog, c.Task, c.Ticket, c.TicketFollow,
+		c.TrafficBatch, c.TrafficLog, c.User, c.UserAuthMethod, c.UserDevice,
+		c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWallet, c.UserWithdrawal,
 	} {
 		n.Use(hooks...)
 	}
@@ -383,10 +408,11 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Ads, c.Announcement, c.AuthMethod, c.Coupon, c.Document, c.GroupHistory,
 		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.OrderEvent, c.Payment,
 		c.RedemptionCode, c.RedemptionRecord, c.Server, c.ServerConfigOverride,
-		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup, c.System, c.SystemLog,
-		c.Task, c.Ticket, c.TicketFollow, c.TrafficLog, c.User, c.UserAuthMethod,
-		c.UserDevice, c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWallet,
-		c.UserWithdrawal,
+		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup,
+		c.SubscriptionEntitlement, c.SubscriptionEntitlementRevision,
+		c.SubscriptionPeriod, c.System, c.SystemLog, c.Task, c.Ticket, c.TicketFollow,
+		c.TrafficBatch, c.TrafficLog, c.User, c.UserAuthMethod, c.UserDevice,
+		c.UserDeviceOnlineRecord, c.UserSubscribe, c.UserWallet, c.UserWithdrawal,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -433,6 +459,12 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.SubscribeApplication.mutate(ctx, m)
 	case *SubscribeGroupMutation:
 		return c.SubscribeGroup.mutate(ctx, m)
+	case *SubscriptionEntitlementMutation:
+		return c.SubscriptionEntitlement.mutate(ctx, m)
+	case *SubscriptionEntitlementRevisionMutation:
+		return c.SubscriptionEntitlementRevision.mutate(ctx, m)
+	case *SubscriptionPeriodMutation:
+		return c.SubscriptionPeriod.mutate(ctx, m)
 	case *SystemMutation:
 		return c.System.mutate(ctx, m)
 	case *SystemLogMutation:
@@ -443,6 +475,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Ticket.mutate(ctx, m)
 	case *TicketFollowMutation:
 		return c.TicketFollow.mutate(ctx, m)
+	case *TrafficBatchMutation:
+		return c.TrafficBatch.mutate(ctx, m)
 	case *TrafficLogMutation:
 		return c.TrafficLog.mutate(ctx, m)
 	case *UserMutation:
@@ -2991,6 +3025,405 @@ func (c *SubscribeGroupClient) mutate(ctx context.Context, m *SubscribeGroupMuta
 	}
 }
 
+// SubscriptionEntitlementClient is a client for the SubscriptionEntitlement schema.
+type SubscriptionEntitlementClient struct {
+	config
+}
+
+// NewSubscriptionEntitlementClient returns a client for the SubscriptionEntitlement from the given config.
+func NewSubscriptionEntitlementClient(c config) *SubscriptionEntitlementClient {
+	return &SubscriptionEntitlementClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subscriptionentitlement.Hooks(f(g(h())))`.
+func (c *SubscriptionEntitlementClient) Use(hooks ...Hook) {
+	c.hooks.SubscriptionEntitlement = append(c.hooks.SubscriptionEntitlement, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subscriptionentitlement.Intercept(f(g(h())))`.
+func (c *SubscriptionEntitlementClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SubscriptionEntitlement = append(c.inters.SubscriptionEntitlement, interceptors...)
+}
+
+// Create returns a builder for creating a SubscriptionEntitlement entity.
+func (c *SubscriptionEntitlementClient) Create() *SubscriptionEntitlementCreate {
+	mutation := newSubscriptionEntitlementMutation(c.config, OpCreate)
+	return &SubscriptionEntitlementCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SubscriptionEntitlement entities.
+func (c *SubscriptionEntitlementClient) CreateBulk(builders ...*SubscriptionEntitlementCreate) *SubscriptionEntitlementCreateBulk {
+	return &SubscriptionEntitlementCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubscriptionEntitlementClient) MapCreateBulk(slice any, setFunc func(*SubscriptionEntitlementCreate, int)) *SubscriptionEntitlementCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubscriptionEntitlementCreateBulk{err: fmt.Errorf("calling to SubscriptionEntitlementClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubscriptionEntitlementCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubscriptionEntitlementCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SubscriptionEntitlement.
+func (c *SubscriptionEntitlementClient) Update() *SubscriptionEntitlementUpdate {
+	mutation := newSubscriptionEntitlementMutation(c.config, OpUpdate)
+	return &SubscriptionEntitlementUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubscriptionEntitlementClient) UpdateOne(_m *SubscriptionEntitlement) *SubscriptionEntitlementUpdateOne {
+	mutation := newSubscriptionEntitlementMutation(c.config, OpUpdateOne, withSubscriptionEntitlement(_m))
+	return &SubscriptionEntitlementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubscriptionEntitlementClient) UpdateOneID(id string) *SubscriptionEntitlementUpdateOne {
+	mutation := newSubscriptionEntitlementMutation(c.config, OpUpdateOne, withSubscriptionEntitlementID(id))
+	return &SubscriptionEntitlementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SubscriptionEntitlement.
+func (c *SubscriptionEntitlementClient) Delete() *SubscriptionEntitlementDelete {
+	mutation := newSubscriptionEntitlementMutation(c.config, OpDelete)
+	return &SubscriptionEntitlementDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubscriptionEntitlementClient) DeleteOne(_m *SubscriptionEntitlement) *SubscriptionEntitlementDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubscriptionEntitlementClient) DeleteOneID(id string) *SubscriptionEntitlementDeleteOne {
+	builder := c.Delete().Where(subscriptionentitlement.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubscriptionEntitlementDeleteOne{builder}
+}
+
+// Query returns a query builder for SubscriptionEntitlement.
+func (c *SubscriptionEntitlementClient) Query() *SubscriptionEntitlementQuery {
+	return &SubscriptionEntitlementQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubscriptionEntitlement},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SubscriptionEntitlement entity by its id.
+func (c *SubscriptionEntitlementClient) Get(ctx context.Context, id string) (*SubscriptionEntitlement, error) {
+	return c.Query().Where(subscriptionentitlement.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubscriptionEntitlementClient) GetX(ctx context.Context, id string) *SubscriptionEntitlement {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SubscriptionEntitlementClient) Hooks() []Hook {
+	return c.hooks.SubscriptionEntitlement
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubscriptionEntitlementClient) Interceptors() []Interceptor {
+	return c.inters.SubscriptionEntitlement
+}
+
+func (c *SubscriptionEntitlementClient) mutate(ctx context.Context, m *SubscriptionEntitlementMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubscriptionEntitlementCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubscriptionEntitlementUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubscriptionEntitlementUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubscriptionEntitlementDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SubscriptionEntitlement mutation op: %q", m.Op())
+	}
+}
+
+// SubscriptionEntitlementRevisionClient is a client for the SubscriptionEntitlementRevision schema.
+type SubscriptionEntitlementRevisionClient struct {
+	config
+}
+
+// NewSubscriptionEntitlementRevisionClient returns a client for the SubscriptionEntitlementRevision from the given config.
+func NewSubscriptionEntitlementRevisionClient(c config) *SubscriptionEntitlementRevisionClient {
+	return &SubscriptionEntitlementRevisionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subscriptionentitlementrevision.Hooks(f(g(h())))`.
+func (c *SubscriptionEntitlementRevisionClient) Use(hooks ...Hook) {
+	c.hooks.SubscriptionEntitlementRevision = append(c.hooks.SubscriptionEntitlementRevision, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subscriptionentitlementrevision.Intercept(f(g(h())))`.
+func (c *SubscriptionEntitlementRevisionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SubscriptionEntitlementRevision = append(c.inters.SubscriptionEntitlementRevision, interceptors...)
+}
+
+// Create returns a builder for creating a SubscriptionEntitlementRevision entity.
+func (c *SubscriptionEntitlementRevisionClient) Create() *SubscriptionEntitlementRevisionCreate {
+	mutation := newSubscriptionEntitlementRevisionMutation(c.config, OpCreate)
+	return &SubscriptionEntitlementRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SubscriptionEntitlementRevision entities.
+func (c *SubscriptionEntitlementRevisionClient) CreateBulk(builders ...*SubscriptionEntitlementRevisionCreate) *SubscriptionEntitlementRevisionCreateBulk {
+	return &SubscriptionEntitlementRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubscriptionEntitlementRevisionClient) MapCreateBulk(slice any, setFunc func(*SubscriptionEntitlementRevisionCreate, int)) *SubscriptionEntitlementRevisionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubscriptionEntitlementRevisionCreateBulk{err: fmt.Errorf("calling to SubscriptionEntitlementRevisionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubscriptionEntitlementRevisionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubscriptionEntitlementRevisionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SubscriptionEntitlementRevision.
+func (c *SubscriptionEntitlementRevisionClient) Update() *SubscriptionEntitlementRevisionUpdate {
+	mutation := newSubscriptionEntitlementRevisionMutation(c.config, OpUpdate)
+	return &SubscriptionEntitlementRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubscriptionEntitlementRevisionClient) UpdateOne(_m *SubscriptionEntitlementRevision) *SubscriptionEntitlementRevisionUpdateOne {
+	mutation := newSubscriptionEntitlementRevisionMutation(c.config, OpUpdateOne, withSubscriptionEntitlementRevision(_m))
+	return &SubscriptionEntitlementRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubscriptionEntitlementRevisionClient) UpdateOneID(id string) *SubscriptionEntitlementRevisionUpdateOne {
+	mutation := newSubscriptionEntitlementRevisionMutation(c.config, OpUpdateOne, withSubscriptionEntitlementRevisionID(id))
+	return &SubscriptionEntitlementRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SubscriptionEntitlementRevision.
+func (c *SubscriptionEntitlementRevisionClient) Delete() *SubscriptionEntitlementRevisionDelete {
+	mutation := newSubscriptionEntitlementRevisionMutation(c.config, OpDelete)
+	return &SubscriptionEntitlementRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubscriptionEntitlementRevisionClient) DeleteOne(_m *SubscriptionEntitlementRevision) *SubscriptionEntitlementRevisionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubscriptionEntitlementRevisionClient) DeleteOneID(id string) *SubscriptionEntitlementRevisionDeleteOne {
+	builder := c.Delete().Where(subscriptionentitlementrevision.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubscriptionEntitlementRevisionDeleteOne{builder}
+}
+
+// Query returns a query builder for SubscriptionEntitlementRevision.
+func (c *SubscriptionEntitlementRevisionClient) Query() *SubscriptionEntitlementRevisionQuery {
+	return &SubscriptionEntitlementRevisionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubscriptionEntitlementRevision},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SubscriptionEntitlementRevision entity by its id.
+func (c *SubscriptionEntitlementRevisionClient) Get(ctx context.Context, id string) (*SubscriptionEntitlementRevision, error) {
+	return c.Query().Where(subscriptionentitlementrevision.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubscriptionEntitlementRevisionClient) GetX(ctx context.Context, id string) *SubscriptionEntitlementRevision {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SubscriptionEntitlementRevisionClient) Hooks() []Hook {
+	return c.hooks.SubscriptionEntitlementRevision
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubscriptionEntitlementRevisionClient) Interceptors() []Interceptor {
+	return c.inters.SubscriptionEntitlementRevision
+}
+
+func (c *SubscriptionEntitlementRevisionClient) mutate(ctx context.Context, m *SubscriptionEntitlementRevisionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubscriptionEntitlementRevisionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubscriptionEntitlementRevisionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubscriptionEntitlementRevisionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubscriptionEntitlementRevisionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SubscriptionEntitlementRevision mutation op: %q", m.Op())
+	}
+}
+
+// SubscriptionPeriodClient is a client for the SubscriptionPeriod schema.
+type SubscriptionPeriodClient struct {
+	config
+}
+
+// NewSubscriptionPeriodClient returns a client for the SubscriptionPeriod from the given config.
+func NewSubscriptionPeriodClient(c config) *SubscriptionPeriodClient {
+	return &SubscriptionPeriodClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `subscriptionperiod.Hooks(f(g(h())))`.
+func (c *SubscriptionPeriodClient) Use(hooks ...Hook) {
+	c.hooks.SubscriptionPeriod = append(c.hooks.SubscriptionPeriod, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `subscriptionperiod.Intercept(f(g(h())))`.
+func (c *SubscriptionPeriodClient) Intercept(interceptors ...Interceptor) {
+	c.inters.SubscriptionPeriod = append(c.inters.SubscriptionPeriod, interceptors...)
+}
+
+// Create returns a builder for creating a SubscriptionPeriod entity.
+func (c *SubscriptionPeriodClient) Create() *SubscriptionPeriodCreate {
+	mutation := newSubscriptionPeriodMutation(c.config, OpCreate)
+	return &SubscriptionPeriodCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of SubscriptionPeriod entities.
+func (c *SubscriptionPeriodClient) CreateBulk(builders ...*SubscriptionPeriodCreate) *SubscriptionPeriodCreateBulk {
+	return &SubscriptionPeriodCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *SubscriptionPeriodClient) MapCreateBulk(slice any, setFunc func(*SubscriptionPeriodCreate, int)) *SubscriptionPeriodCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &SubscriptionPeriodCreateBulk{err: fmt.Errorf("calling to SubscriptionPeriodClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*SubscriptionPeriodCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &SubscriptionPeriodCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for SubscriptionPeriod.
+func (c *SubscriptionPeriodClient) Update() *SubscriptionPeriodUpdate {
+	mutation := newSubscriptionPeriodMutation(c.config, OpUpdate)
+	return &SubscriptionPeriodUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *SubscriptionPeriodClient) UpdateOne(_m *SubscriptionPeriod) *SubscriptionPeriodUpdateOne {
+	mutation := newSubscriptionPeriodMutation(c.config, OpUpdateOne, withSubscriptionPeriod(_m))
+	return &SubscriptionPeriodUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *SubscriptionPeriodClient) UpdateOneID(id string) *SubscriptionPeriodUpdateOne {
+	mutation := newSubscriptionPeriodMutation(c.config, OpUpdateOne, withSubscriptionPeriodID(id))
+	return &SubscriptionPeriodUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for SubscriptionPeriod.
+func (c *SubscriptionPeriodClient) Delete() *SubscriptionPeriodDelete {
+	mutation := newSubscriptionPeriodMutation(c.config, OpDelete)
+	return &SubscriptionPeriodDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *SubscriptionPeriodClient) DeleteOne(_m *SubscriptionPeriod) *SubscriptionPeriodDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *SubscriptionPeriodClient) DeleteOneID(id string) *SubscriptionPeriodDeleteOne {
+	builder := c.Delete().Where(subscriptionperiod.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &SubscriptionPeriodDeleteOne{builder}
+}
+
+// Query returns a query builder for SubscriptionPeriod.
+func (c *SubscriptionPeriodClient) Query() *SubscriptionPeriodQuery {
+	return &SubscriptionPeriodQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeSubscriptionPeriod},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a SubscriptionPeriod entity by its id.
+func (c *SubscriptionPeriodClient) Get(ctx context.Context, id string) (*SubscriptionPeriod, error) {
+	return c.Query().Where(subscriptionperiod.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *SubscriptionPeriodClient) GetX(ctx context.Context, id string) *SubscriptionPeriod {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *SubscriptionPeriodClient) Hooks() []Hook {
+	return c.hooks.SubscriptionPeriod
+}
+
+// Interceptors returns the client interceptors.
+func (c *SubscriptionPeriodClient) Interceptors() []Interceptor {
+	return c.inters.SubscriptionPeriod
+}
+
+func (c *SubscriptionPeriodClient) mutate(ctx context.Context, m *SubscriptionPeriodMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&SubscriptionPeriodCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&SubscriptionPeriodUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&SubscriptionPeriodUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&SubscriptionPeriodDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown SubscriptionPeriod mutation op: %q", m.Op())
+	}
+}
+
 // SystemClient is a client for the System schema.
 type SystemClient struct {
 	config
@@ -3653,6 +4086,139 @@ func (c *TicketFollowClient) mutate(ctx context.Context, m *TicketFollowMutation
 		return (&TicketFollowDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown TicketFollow mutation op: %q", m.Op())
+	}
+}
+
+// TrafficBatchClient is a client for the TrafficBatch schema.
+type TrafficBatchClient struct {
+	config
+}
+
+// NewTrafficBatchClient returns a client for the TrafficBatch from the given config.
+func NewTrafficBatchClient(c config) *TrafficBatchClient {
+	return &TrafficBatchClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `trafficbatch.Hooks(f(g(h())))`.
+func (c *TrafficBatchClient) Use(hooks ...Hook) {
+	c.hooks.TrafficBatch = append(c.hooks.TrafficBatch, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `trafficbatch.Intercept(f(g(h())))`.
+func (c *TrafficBatchClient) Intercept(interceptors ...Interceptor) {
+	c.inters.TrafficBatch = append(c.inters.TrafficBatch, interceptors...)
+}
+
+// Create returns a builder for creating a TrafficBatch entity.
+func (c *TrafficBatchClient) Create() *TrafficBatchCreate {
+	mutation := newTrafficBatchMutation(c.config, OpCreate)
+	return &TrafficBatchCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of TrafficBatch entities.
+func (c *TrafficBatchClient) CreateBulk(builders ...*TrafficBatchCreate) *TrafficBatchCreateBulk {
+	return &TrafficBatchCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *TrafficBatchClient) MapCreateBulk(slice any, setFunc func(*TrafficBatchCreate, int)) *TrafficBatchCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &TrafficBatchCreateBulk{err: fmt.Errorf("calling to TrafficBatchClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*TrafficBatchCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &TrafficBatchCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for TrafficBatch.
+func (c *TrafficBatchClient) Update() *TrafficBatchUpdate {
+	mutation := newTrafficBatchMutation(c.config, OpUpdate)
+	return &TrafficBatchUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *TrafficBatchClient) UpdateOne(_m *TrafficBatch) *TrafficBatchUpdateOne {
+	mutation := newTrafficBatchMutation(c.config, OpUpdateOne, withTrafficBatch(_m))
+	return &TrafficBatchUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *TrafficBatchClient) UpdateOneID(id string) *TrafficBatchUpdateOne {
+	mutation := newTrafficBatchMutation(c.config, OpUpdateOne, withTrafficBatchID(id))
+	return &TrafficBatchUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for TrafficBatch.
+func (c *TrafficBatchClient) Delete() *TrafficBatchDelete {
+	mutation := newTrafficBatchMutation(c.config, OpDelete)
+	return &TrafficBatchDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *TrafficBatchClient) DeleteOne(_m *TrafficBatch) *TrafficBatchDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *TrafficBatchClient) DeleteOneID(id string) *TrafficBatchDeleteOne {
+	builder := c.Delete().Where(trafficbatch.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &TrafficBatchDeleteOne{builder}
+}
+
+// Query returns a query builder for TrafficBatch.
+func (c *TrafficBatchClient) Query() *TrafficBatchQuery {
+	return &TrafficBatchQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeTrafficBatch},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a TrafficBatch entity by its id.
+func (c *TrafficBatchClient) Get(ctx context.Context, id string) (*TrafficBatch, error) {
+	return c.Query().Where(trafficbatch.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *TrafficBatchClient) GetX(ctx context.Context, id string) *TrafficBatch {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *TrafficBatchClient) Hooks() []Hook {
+	return c.hooks.TrafficBatch
+}
+
+// Interceptors returns the client interceptors.
+func (c *TrafficBatchClient) Interceptors() []Interceptor {
+	return c.inters.TrafficBatch
+}
+
+func (c *TrafficBatchClient) mutate(ctx context.Context, m *TrafficBatchMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&TrafficBatchCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&TrafficBatchUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&TrafficBatchUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&TrafficBatchDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown TrafficBatch mutation op: %q", m.Op())
 	}
 }
 
@@ -4726,17 +5292,20 @@ type (
 		Ads, Announcement, AuthMethod, Coupon, Document, GroupHistory,
 		GroupHistoryDetail, Node, NodeGroup, Order, OrderEvent, Payment,
 		RedemptionCode, RedemptionRecord, Server, ServerConfigOverride, Subscribe,
-		SubscribeApplication, SubscribeGroup, System, SystemLog, Task, Ticket,
-		TicketFollow, TrafficLog, User, UserAuthMethod, UserDevice,
-		UserDeviceOnlineRecord, UserSubscribe, UserWallet, UserWithdrawal []ent.Hook
+		SubscribeApplication, SubscribeGroup, SubscriptionEntitlement,
+		SubscriptionEntitlementRevision, SubscriptionPeriod, System, SystemLog, Task,
+		Ticket, TicketFollow, TrafficBatch, TrafficLog, User, UserAuthMethod,
+		UserDevice, UserDeviceOnlineRecord, UserSubscribe, UserWallet,
+		UserWithdrawal []ent.Hook
 	}
 	inters struct {
 		Ads, Announcement, AuthMethod, Coupon, Document, GroupHistory,
 		GroupHistoryDetail, Node, NodeGroup, Order, OrderEvent, Payment,
 		RedemptionCode, RedemptionRecord, Server, ServerConfigOverride, Subscribe,
-		SubscribeApplication, SubscribeGroup, System, SystemLog, Task, Ticket,
-		TicketFollow, TrafficLog, User, UserAuthMethod, UserDevice,
-		UserDeviceOnlineRecord, UserSubscribe, UserWallet,
+		SubscribeApplication, SubscribeGroup, SubscriptionEntitlement,
+		SubscriptionEntitlementRevision, SubscriptionPeriod, System, SystemLog, Task,
+		Ticket, TicketFollow, TrafficBatch, TrafficLog, User, UserAuthMethod,
+		UserDevice, UserDeviceOnlineRecord, UserSubscribe, UserWallet,
 		UserWithdrawal []ent.Interceptor
 	}
 )

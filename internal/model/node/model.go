@@ -2,7 +2,9 @@ package node
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +23,7 @@ type customServerLogicModel interface {
 	UpdateNodeSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error
+	UpdateServerLastReportedAtBatch(ctx context.Context, reports map[int64]time.Time) error
 	ApplyReportedCertPin(ctx context.Context, serverId int64, protocolType, fingerprint string) (bool, error)
 	DeleteServerWithOverrides(ctx context.Context, serverId int64) error
 	QueryNodeTags(ctx context.Context) ([]string, error)
@@ -136,6 +139,38 @@ func (m *customServerModel) UpdateServerLastReportedAt(ctx context.Context, id i
 	return m.db.Server.UpdateOneID(id).SetLastReportedAt(t).Exec(ctx)
 }
 
+func (m *customServerModel) UpdateServerLastReportedAtBatch(ctx context.Context, reports map[int64]time.Time) error {
+	ids := make([]int64, 0, len(reports))
+	for id := range reports {
+		if id > 0 {
+			ids = append(ids, id)
+		}
+	}
+	sort.Slice(ids, func(first, second int) bool { return ids[first] < ids[second] })
+	for offset := 0; offset < len(ids); offset += 200 {
+		batch := ids[offset:min(offset+200, len(ids))]
+		arguments := make([]driver.Value, len(batch))
+		for index, id := range batch {
+			arguments[index] = id
+		}
+		statement := sql.Dialect(m.db.Driver().Dialect()).Update(entserver.Table).
+			Set(entserver.FieldLastReportedAt, sql.ExprFunc(func(builder *sql.Builder) {
+				builder.WriteString("CASE")
+				for _, id := range batch {
+					builder.WriteString(" WHEN ").Ident(entserver.FieldID).WriteString(" = ").Arg(id).
+						WriteString(" AND (").Ident(entserver.FieldLastReportedAt).WriteString(" IS NULL OR ").
+						Ident(entserver.FieldLastReportedAt).WriteString(" < ").Arg(reports[id]).WriteString(") THEN ").Arg(reports[id])
+				}
+				builder.WriteString(" ELSE ").Ident(entserver.FieldLastReportedAt).WriteString(" END")
+			})).Where(sql.InValues(entserver.FieldID, arguments...))
+		query, parameters := statement.Query()
+		if err := m.db.Driver().Exec(ctx, query, parameters, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ApplyReportedCertPin folds a node-reported certificate fingerprint into the
 // server's protocols JSON. Like UpdateServerLastReportedAt it touches a single
 // column, so a heartbeat cannot collide with a concurrent admin edit, and it
@@ -154,10 +189,28 @@ func (m *customServerModel) ApplyReportedCertPin(ctx context.Context, serverId i
 }
 
 func (m *customServerModel) DeleteServerWithOverrides(ctx context.Context, serverId int64) error {
-	if err := m.DeleteServerConfigOverride(ctx, serverId); err != nil {
+	transaction, err := m.db.Tx(ctx)
+	if err != nil {
 		return err
 	}
-	return m.DeleteServer(ctx, serverId)
+	defer transaction.Rollback()
+	model := NewModel(transaction.Client(), m.Cache)
+	nodes, err := transaction.Client().Node.Query().Where(entnode.ServerID(serverId)).Order(entnode.BySort(), entnode.ByID()).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, node := range nodes {
+		if err := model.DeleteNode(ctx, node.ID); err != nil {
+			return err
+		}
+	}
+	if err := model.DeleteServerConfigOverride(ctx, serverId); err != nil {
+		return err
+	}
+	if err := model.DeleteServer(ctx, serverId); err != nil {
+		return err
+	}
+	return transaction.Commit()
 }
 
 // FilterNodeList Filter Node List

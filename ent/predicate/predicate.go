@@ -63,6 +63,15 @@ type SubscribeApplication func(*sql.Selector)
 // SubscribeGroup is the predicate function for subscribegroup builders.
 type SubscribeGroup func(*sql.Selector)
 
+// SubscriptionEntitlement is the predicate function for subscriptionentitlement builders.
+type SubscriptionEntitlement func(*sql.Selector)
+
+// SubscriptionEntitlementRevision is the predicate function for subscriptionentitlementrevision builders.
+type SubscriptionEntitlementRevision func(*sql.Selector)
+
+// SubscriptionPeriod is the predicate function for subscriptionperiod builders.
+type SubscriptionPeriod func(*sql.Selector)
+
 // System is the predicate function for system builders.
 type System func(*sql.Selector)
 
@@ -77,6 +86,9 @@ type Ticket func(*sql.Selector)
 
 // TicketFollow is the predicate function for ticketfollow builders.
 type TicketFollow func(*sql.Selector)
+
+// TrafficBatch is the predicate function for trafficbatch builders.
+type TrafficBatch func(*sql.Selector)
 
 // TrafficLog is the predicate function for trafficlog builders.
 type TrafficLog func(*sql.Selector)

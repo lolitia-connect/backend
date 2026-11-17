@@ -49,9 +49,12 @@ type argon2idHash struct {
 var (
 	legacyPBKDF2Options = &pbkdf2Options{SaltLen: 16, Iterations: 100, KeyLen: 32, HashFunction: sha512.New}
 	defaultArgon2id     = argon2idParams{Memory: 19 * 1024, Iterations: 2, Parallelism: 1, SaltLen: 16, KeyLen: 32}
+	argon2Slots         = make(chan struct{}, 4)
 )
 
 func EncodePassWord(str string) string {
+	argon2Slots <- struct{}{}
+	defer func() { <-argon2Slots }()
 	salt := make([]byte, defaultArgon2id.SaltLen)
 	if _, err := rand.Read(salt); err != nil {
 		panic(fmt.Errorf("generate password salt: %w", err))
@@ -153,6 +156,8 @@ func verifyArgon2id(password, hash string) bool {
 	if err != nil {
 		return false
 	}
+	argon2Slots <- struct{}{}
+	defer func() { <-argon2Slots }()
 	key := argon2.IDKey(
 		[]byte(password),
 		parsed.Salt,
@@ -174,11 +179,11 @@ func parseArgon2idPHC(hash string) (*argon2idHash, error) {
 		return nil, err
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil || len(salt) == 0 {
+	if err != nil || len(salt) == 0 || len(salt) > 64 {
 		return nil, errors.New("invalid argon2id salt")
 	}
 	key, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil || len(key) == 0 {
+	if err != nil || len(key) == 0 || len(key) > 64 {
 		return nil, errors.New("invalid argon2id hash")
 	}
 	params.SaltLen = uint32(len(salt))

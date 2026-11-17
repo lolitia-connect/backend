@@ -1,10 +1,13 @@
 package plugin
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/perfect-panel/server/internal/model/ticket"
 )
 
 // modelWhitelist 定义插件可查询的数据库表白名单
@@ -32,7 +35,7 @@ var modelWhitelist = map[string]string{
 	"user_device":               "user_device",
 	"user_device_online_record": "user_device_online_record",
 	"user_subscribe":            "user_subscribe",
-	"user_withdrawal":           "user_withdrawal",
+	"user_withdrawal":           "withdrawals",
 }
 
 var modelFieldWhitelist = map[string]map[string]bool{
@@ -277,33 +280,45 @@ func (a *StoreAdapter) createTicketReply(operation string, conditions map[string
 	if !ok || ticketID <= 0 {
 		return nil, 0, fmt.Errorf("ticket_reply requires ticket_id")
 	}
-	content := fmt.Sprint(conditions["content"])
-	if content == "" {
+	content, ok := conditions["content"].(string)
+	if !ok || content == "" {
 		return nil, 0, fmt.Errorf("ticket_reply requires content")
 	}
-	from := fmt.Sprint(conditions["from"])
+	from, _ := conditions["from"].(string)
 	if from == "" {
 		from = "admin"
 	}
 	replyType, ok := int64FromValue(conditions["type"])
-	if !ok || replyType <= 0 {
-		replyType = 1
+	if conditions["type"] == nil || (ok && replyType == 0) {
+		replyType = ticket.FollowText
+	} else if !ok || (replyType != ticket.FollowText && replyType != ticket.FollowImage) {
+		return nil, 0, fmt.Errorf("ticket_reply has an invalid type")
+	}
+	if err := ticket.ValidateFollow(&ticket.Follow{TicketId: ticketID, From: from, Type: uint8(replyType), Content: content}); err != nil {
+		return nil, 0, err
 	}
 
-	tx, err := a.db.Begin()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer tx.Rollback()
 	err = func() error {
-		var count int64
-		if err := tx.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s = %s", quoteIdentifier("ticket"), quoteIdentifier("id"), a.placeholder(1)), ticketID).Scan(&count); err != nil {
+		statement := fmt.Sprintf("SELECT %s FROM %s WHERE %s = %s", quoteIdentifier("status"), quoteIdentifier("ticket"), quoteIdentifier("id"), a.placeholder(1))
+		if a.dialect == "mysql" || a.dialect == "postgres" {
+			statement += " FOR UPDATE"
+		}
+		var status uint8
+		if err := tx.QueryRowContext(ctx, statement, ticketID).Scan(&status); err != nil {
 			return fmt.Errorf("find ticket: %w", err)
 		}
-		if count == 0 {
-			return fmt.Errorf("ticket %d not found", ticketID)
+		if status == ticket.Closed {
+			return fmt.Errorf("ticket %d is closed", ticketID)
 		}
 
-		_, err := tx.Exec(fmt.Sprintf("INSERT INTO %s (%s, %s, %s, %s, %s) VALUES (%s, %s, %s, %s, %s)",
+		_, err := tx.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s (%s, %s, %s, %s, %s) VALUES (%s, %s, %s, %s, %s)",
 			quoteIdentifier("ticket_follow"), quoteIdentifier("ticket_id"), quoteIdentifier("from"), quoteIdentifier("type"), quoteIdentifier("content"), quoteIdentifier("created_at"),
 			a.placeholder(1), a.placeholder(2), a.placeholder(3), a.placeholder(4), a.placeholder(5)),
 			ticketID, from, uint8(replyType), content, time.Now())
@@ -311,9 +326,9 @@ func (a *StoreAdapter) createTicketReply(operation string, conditions map[string
 			return fmt.Errorf("create ticket follow: %w", err)
 		}
 
-		_, err = tx.Exec(fmt.Sprintf("UPDATE %s SET %s = %s, %s = %s WHERE %s = %s",
+		_, err = tx.ExecContext(ctx, fmt.Sprintf("UPDATE %s SET %s = %s, %s = %s WHERE %s = %s",
 			quoteIdentifier("ticket"), quoteIdentifier("status"), a.placeholder(1), quoteIdentifier("updated_at"), a.placeholder(2), quoteIdentifier("id"), a.placeholder(3)),
-			2, time.Now(), ticketID)
+			ticket.Waiting, time.Now(), ticketID)
 		if err != nil {
 			return fmt.Errorf("update ticket status: %w", err)
 		}

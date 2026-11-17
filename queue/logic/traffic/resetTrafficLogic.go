@@ -12,6 +12,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/pkg/tasklock"
 	"github.com/perfect-panel/server/queue/types"
 	"go.uber.org/zap"
 
@@ -65,12 +66,19 @@ func (l *ResetTrafficLogic) ProcessTask(ctx context.Context, _ *asynq.Task) erro
 		zap.Any("startTime", startTime))
 
 	// Acquire distributed lock to prevent duplicate execution
-	lockAcquired := l.acquireLock(ctx)
-	if !lockAcquired {
+	lock, held, lockErr := tasklock.Acquire(ctx, l.svc.Redis, lockKey, lockTimeout)
+	if lockErr != nil {
+		return lockErr
+	}
+	if !held {
 		zap.S().Infow("[ResetTraffic] Another task is already running, skipping execution")
 		return nil
 	}
-	defer l.releaseLock(ctx)
+	defer lock.Release(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	stop := lock.KeepAlive(ctx, lockTimeout, cancel)
+	defer stop()
 
 	defer func() {
 		if err != nil {
@@ -137,19 +145,19 @@ func (l *ResetTrafficLogic) ProcessTask(ctx context.Context, _ *asynq.Task) erro
 	}
 
 	// Execute reset operations in order: yearly -> monthly (1st) -> monthly (cycle)
-	err = l.resetYear(ctx)
+	err = l.resetCycle(ctx, 3, startTime)
 	if err != nil {
 		zap.S().Errorw("[ResetTraffic] Yearly reset failed", zap.Any("error", err.Error()))
 		return err
 	}
 
-	err = l.reset1st(ctx, cache)
+	err = l.resetCycle(ctx, 1, startTime)
 	if err != nil {
 		zap.S().Errorw("[ResetTraffic] Monthly 1st reset failed", zap.Any("error", err.Error()))
 		return err
 	}
 
-	err = l.resetMonth(ctx)
+	err = l.resetCycle(ctx, 2, startTime)
 	if err != nil {
 		zap.S().Errorw("[ResetTraffic] Monthly cycle reset failed", zap.Any("error", err.Error()))
 		return err
@@ -205,7 +213,7 @@ func (l *ResetTrafficLogic) resetMonth(ctx context.Context) error {
 				zap.Any("count", len(monthlyResetUsers)),
 				zap.Any("userIds", monthlyResetUsers))
 
-			if err = store.User().ResetSubscribeTrafficByIds(ctx, monthlyResetUsers); err != nil {
+			if _, err = store.User().ResetSubscribeTrafficByIds(ctx, monthlyResetUsers, now); err != nil {
 				zap.S().Errorw("[ResetTraffic] Failed to update monthly reset users", zap.Any("error", err.Error()))
 				return err
 			}
@@ -237,20 +245,6 @@ func (l *ResetTrafficLogic) resetMonth(ctx context.Context) error {
 func (l *ResetTrafficLogic) reset1st(ctx context.Context, cache resetTrafficCache) error {
 	now := time.Now()
 
-	// Check if we already reset this month using cache
-	if firstDayResetAlreadyProcessed(now, cache) {
-		zap.S().Infow("[ResetTraffic] Already reset this month, skipping 1st reset",
-			zap.Any("lastResetTime", cache.LastResetTime),
-			zap.Any("currentTime", now))
-		return nil
-	}
-
-	// Only reset if it's the 1st day of the month
-	if now.Day() != 1 {
-		zap.S().Infow("[ResetTraffic] Not 1st day of month, skipping 1st reset", zap.Any("currentDay", now.Day()))
-		return nil
-	}
-
 	err := l.svc.Store.InTx(ctx, func(store repository.Store) error {
 		// Get all subscriptions that reset on 1st of month
 		reset1stSubIds, err := store.Subscribe().QueryResetCycleSubscribeIds(ctx, 1)
@@ -277,7 +271,7 @@ func (l *ResetTrafficLogic) reset1st(ctx context.Context, cache resetTrafficCach
 				zap.Any("userIds", users1stReset))
 
 			// Reset upload and download traffic to zero
-			if err = store.User().ResetSubscribeTrafficByIds(ctx, users1stReset); err != nil {
+			if _, err = store.User().ResetSubscribeTrafficByIds(ctx, users1stReset, now); err != nil {
 				zap.S().Errorw("[ResetTraffic] Failed to update 1st reset users", zap.Any("error", err.Error()))
 				return err
 			}
@@ -342,7 +336,7 @@ func (l *ResetTrafficLogic) resetYear(ctx context.Context) error {
 				zap.Any("userIds", usersYearReset))
 
 			// Reset upload and download traffic to zero
-			if err = store.User().ResetSubscribeTrafficByIds(ctx, usersYearReset); err != nil {
+			if _, err = store.User().ResetSubscribeTrafficByIds(ctx, usersYearReset, now); err != nil {
 				zap.S().Errorw("[ResetTraffic] Failed to update yearly reset users", zap.Any("error", err.Error()))
 				return err
 			}
@@ -375,6 +369,59 @@ func (l *ResetTrafficLogic) resetYear(ctx context.Context) error {
 }
 
 // getRetryCount retrieves the current retry count from Redis
+func (l *ResetTrafficLogic) resetCycle(ctx context.Context, cycle int, now time.Time) error {
+	plans, err := l.svc.Store.Subscribe().QueryResetCycleSubscribeIds(ctx, cycle)
+	if err != nil || len(plans) == 0 {
+		return err
+	}
+	var ids []int64
+	switch cycle {
+	case 1:
+		ids, err = l.svc.Store.User().QueryFirstResetSubscribeIds(ctx, plans, now)
+	case 2:
+		ids, err = l.svc.Store.User().QueryMonthlyResetSubscribeIds(ctx, plans, now)
+	case 3:
+		ids, err = l.svc.Store.User().QueryYearlyResetSubscribeIds(ctx, plans, now)
+	}
+	if err != nil {
+		return err
+	}
+	for offset := 0; offset < len(ids); offset += 500 {
+		var changed []*user.Subscribe
+		err := l.svc.Store.InTx(ctx, func(store repository.Store) error {
+			var err error
+			changed, err = store.User().ResetSubscribeTrafficByIds(ctx, ids[offset:min(offset+500, len(ids))], now)
+			if err != nil {
+				return err
+			}
+			for _, subscription := range changed {
+				entry := log.ResetSubscribe{Type: log.ResetSubscribeTypeAuto, UserId: subscription.UserId, Timestamp: now.UnixMilli()}
+				content, err := entry.Marshal()
+				if err != nil {
+					return err
+				}
+				if err := store.Log().Insert(ctx, &log.SystemLog{Type: log.TypeResetSubscribe.Uint8(), ObjectID: subscription.Id, Date: now.Format(time.DateOnly), Content: string(content)}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		planIDs := make(map[int64]struct{})
+		for _, subscription := range changed {
+			planIDs[subscription.SubscribeId] = struct{}{}
+		}
+		for planID := range planIDs {
+			if err := l.svc.Store.Subscribe().ClearCache(ctx, planID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (l *ResetTrafficLogic) getRetryCount(ctx context.Context) int {
 	countStr, err := l.svc.Redis.Get(ctx, retryCountKey).Result()
 	if err != nil {
@@ -409,34 +456,6 @@ func (l *ResetTrafficLogic) clearRetryCount(ctx context.Context) {
 	err := l.svc.Redis.Del(ctx, retryCountKey).Err()
 	if err != nil {
 		zap.S().Errorw("[ResetTraffic] Failed to clear retry count", zap.Any("error", err.Error()))
-	}
-}
-
-// acquireLock attempts to acquire a distributed lock
-func (l *ResetTrafficLogic) acquireLock(ctx context.Context) bool {
-	result := l.svc.Redis.SetNX(ctx, lockKey, "locked", lockTimeout)
-	acquired, err := result.Result()
-	if err != nil {
-		zap.S().Errorw("[ResetTraffic] Failed to acquire lock", zap.Any("error", err.Error()))
-		return false
-	}
-
-	if acquired {
-		zap.S().Infow("[ResetTraffic] Lock acquired successfully")
-	} else {
-		zap.S().Infow("[ResetTraffic] Lock already exists, another task is running")
-	}
-
-	return acquired
-}
-
-// releaseLock releases the distributed lock
-func (l *ResetTrafficLogic) releaseLock(ctx context.Context) {
-	err := l.svc.Redis.Del(ctx, lockKey).Err()
-	if err != nil {
-		zap.S().Errorw("[ResetTraffic] Failed to release lock", zap.Any("error", err.Error()))
-	} else {
-		zap.S().Infow("[ResetTraffic] Lock released successfully")
 	}
 }
 

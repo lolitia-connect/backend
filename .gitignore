@@ -44,3 +44,8 @@ plugins/**/*.wasm
 
 # Application generated files
 logs
+
+# GeoIP database: downloaded at runtime to GeoIP.Path (see internal/svc/mmdb.go).
+# It is a 60 MB city database, not source, and the release archives do not ship
+# it, so it must not be committed. Keeping the local copy is fine.
+/cache/*.mmdb

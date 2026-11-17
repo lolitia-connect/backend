@@ -9,6 +9,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
@@ -149,6 +150,11 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 	if err != nil {
 		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update User Error")
+	}
+	if req.Password != "" && req.Password != "***" {
+		if _, err := usersession.Rotate(l.ctx, l.svcCtx.Redis, userInfo.Id); err != nil {
+			return err
+		}
 	}
 
 	balanceChanged := walletInfo.Balance != req.Balance || walletInfo.GiftAmount != req.GiftAmount

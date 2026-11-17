@@ -31,7 +31,7 @@ func NewCreateUserTicketFollowLogic(ctx context.Context, svcCtx *svc.ServiceCont
 
 func (l *CreateUserTicketFollowLogic) CreateUserTicketFollow(req *types.CreateUserTicketFollowRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
-	if !ok {
+	if !ok || u == nil {
 		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
@@ -46,21 +46,24 @@ func (l *CreateUserTicketFollowLogic) CreateUserTicketFollow(req *types.CreateUs
 		l.Logger.Errorw("[CreateUserTicketFollow] Invalid access", zap.Any("user_id", u.Id), zap.Any("ticket_user_id", t.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "invalid access")
 	}
-	// insert follow
-	err = l.svcCtx.Store.Ticket().InsertTicketFollow(l.ctx, &ticket.Follow{
+	data := &ticket.Follow{
 		TicketId: req.TicketId,
-		From:     req.From,
+		From:     "User",
 		Type:     req.Type,
 		Content:  req.Content,
-	})
-	if err != nil {
-		l.Logger.Errorw("[CreateUserTicketFollow] Database insert error", zap.Any("error", err.Error()), zap.Any("request", req))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create ticket follow failed: %v", err.Error())
 	}
-	err = l.svcCtx.Store.Ticket().UpdateTicketStatus(l.ctx, req.TicketId, u.Id, ticket.Pending)
+	if data.Type == 0 {
+		data.Type = ticket.FollowText
+	}
+	if err := ticket.ValidateFollow(data); err != nil {
+		return err
+	}
+	if err := ticket.AllowWrite(l.ctx, l.svcCtx.Redis, u.Id, true); err != nil {
+		return err
+	}
+	err = l.svcCtx.Store.Ticket().Reply(l.ctx, data, u.Id)
 	if err != nil {
-		l.Logger.Errorw("[CreateUserTicketFollow] Database update error", zap.Any("error", err.Error()), zap.Any("status", ticket.Pending))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update ticket status failed: %v", err.Error())
+		return err
 	}
 	return nil
 }

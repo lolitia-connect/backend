@@ -13,6 +13,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/pkg/tasklock"
 )
 
 type CheckSubscriptionLogic struct {
@@ -26,74 +27,55 @@ func NewCheckSubscriptionLogic(svc *svc.ServiceContext) *CheckSubscriptionLogic 
 }
 
 func (l *CheckSubscriptionLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
-	zap.S().Infof("[CheckSubscription] Start check subscription: %s", time.Now().Format("2006-01-02 15:04:05"))
-	// Check subscription traffic
-	err := l.svc.Store.InTx(ctx, func(store repository.Store) error {
-		list, err := store.User().FindTrafficExceededSubscribes(ctx)
-		if err != nil {
-			zap.S().Errorw("[Check Subscription Traffic] Query subscribe failed", zap.Any("error", err.Error()))
-			return err
-		}
-		var ids []int64
-		for _, item := range list {
-			ids = append(ids, item.Id)
-		}
-		if len(ids) > 0 {
-			if err = store.User().MarkSubscribesFinished(ctx, ids, 2, time.Now()); err != nil {
-				zap.S().Errorw("[Check Subscription Traffic] Update subscribe status failed", zap.Any("error", err.Error()))
-				return nil
-			}
-			err = l.sendTrafficNotify(ctx, ids)
-			if err != nil {
-				zap.S().Errorw("[Check Subscription Traffic] Send email failed", zap.Any("error", err.Error()))
-				return nil
-			}
-
-			l.clearServerCache(ctx, list...)
-			zap.S().Infow("[Check Subscription Traffic] Update subscribe status", zap.Any("user_ids", ids), zap.Any("count", int64(len(ids))))
-		} else {
-			zap.S().Info("[Check Subscription Traffic] No subscribe need to update")
-		}
-
-		return nil
-	})
-	if err != nil {
-		zap.S().Error("[CheckSubscription] Transaction failed", zap.Any("error", err.Error()))
+	lock, held, err := tasklock.Acquire(ctx, l.svc.Redis, "subscription:sweep:lock", 5*time.Minute)
+	if err != nil || !held {
+		return err
 	}
-	// Check subscription expire
-	err = l.svc.Store.InTx(ctx, func(store repository.Store) error {
-		list, err := store.User().FindExpiredSubscribes(ctx, time.Now())
-		if err != nil {
-			zap.S().Error("[Check Subscription] Find subscribe failed", zap.Any("error", err.Error()))
-			return err
-		}
-		var ids []int64
-		for _, item := range list {
-			ids = append(ids, item.Id)
-		}
-		if len(ids) > 0 {
-			if err = store.User().MarkSubscribesFinished(ctx, ids, 3, time.Now()); err != nil {
-				zap.S().Error("[Check Subscription Expire] Update subscribe status failed", zap.Any("error", err.Error()))
+	defer lock.Release(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	stop := lock.KeepAlive(ctx, 5*time.Minute, cancel)
+	defer stop()
+	for _, status := range []uint8{2, 3} {
+		var finished []*user.Subscribe
+		err := l.svc.Store.InTx(ctx, func(store repository.Store) error {
+			var selected []*user.Subscribe
+			var err error
+			if status == 2 {
+				selected, err = store.User().FindTrafficExceededSubscribes(ctx)
+			} else {
+				selected, err = store.User().FindExpiredSubscribes(ctx, time.Now())
+			}
+			if err != nil {
 				return err
 			}
-			err = l.sendExpiredNotify(ctx, ids)
-			if err != nil {
-				zap.S().Error("[Check Subscription Expire] Send email failed", zap.Any("error", err.Error()))
-				return nil
-			}
-			l.clearServerCache(ctx, list...)
-
-			zap.S().Info("[Check Subscription Expire] Update subscribe status", zap.Any("user_ids", ids), zap.Any("count", int64(len(ids))))
-		} else {
-			zap.S().Info("[Check Subscription Expire] No subscribe need to update")
+			finished, err = store.User().MarkSubscribesFinished(ctx, finishedSubscriptionIDs(selected), status, time.Now())
+			return err
+		})
+		if err != nil {
+			return err
 		}
-
-		return nil
-	})
-	if err != nil {
-		zap.S().Info("[CheckSubscription] Transaction failed", zap.Any("error", err.Error()))
+		l.clearServerCache(ctx, finished...)
+		if status == 2 {
+			err = l.sendTrafficNotify(ctx, finishedSubscriptionIDs(finished))
+		} else {
+			err = l.sendExpiredNotify(ctx, finishedSubscriptionIDs(finished))
+		}
+		if err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func finishedSubscriptionIDs(subscriptions []*user.Subscribe) []int64 {
+	ids := make([]int64, 0, len(subscriptions))
+	for _, subscription := range subscriptions {
+		if subscription != nil {
+			ids = append(ids, subscription.Id)
+		}
+	}
+	return ids
 }
 
 func (l *CheckSubscriptionLogic) sendExpiredNotify(ctx context.Context, subs []int64) error {

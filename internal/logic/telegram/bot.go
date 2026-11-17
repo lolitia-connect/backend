@@ -3,17 +3,17 @@ package telegram
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/perfect-panel/server/internal/config"
+	tgbot "github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/tool"
+	"github.com/perfect-panel/server/pkg/telegramsecret"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -25,6 +25,9 @@ func GetTelegramConfig(ctx context.Context, svcCtx *svc.ServiceContext) (*types.
 	if err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "get Telegram config failed: %v", err.Error())
 	}
+	if data == nil {
+		return nil, xerr.NewErrCode(xerr.InvalidParams)
+	}
 	var telegramConfig auth.TelegramAuthConfig
 	err = json.Unmarshal([]byte(data.Config), &telegramConfig)
 	if err != nil {
@@ -34,86 +37,64 @@ func GetTelegramConfig(ctx context.Context, svcCtx *svc.ServiceContext) (*types.
 
 	return &types.TelegramConfig{
 		TelegramBotToken:      telegramConfig.BotToken,
-		TelegramNotify:        *data.Enabled,
+		TelegramNotify:        data.Enabled != nil && *data.Enabled,
 		TelegramWebHookDomain: telegramConfig.WebHookDomain,
 	}, nil
 }
 
 func ApiLink(ctx context.Context, svcCtx *svc.ServiceContext, method string) string {
-	cfg, _ := GetTelegramConfig(ctx, svcCtx)
+	cfg, err := GetTelegramConfig(ctx, svcCtx)
+	if err != nil {
+		return ""
+	}
 	return "https://api.telegram.org/bot" + cfg.TelegramBotToken + "/" + method
 }
 
 func SendUserMessage(ctx context.Context, svcCtx *svc.ServiceContext, u user.User, text string, parseMode string) {
-	req, _ := http.NewRequest("GET", ApiLink(ctx, svcCtx, "sendMessage"), nil)
-	q := req.URL.Query()
-
 	userTelegramChatId, ok := findTelegram(&u)
-	if !ok {
+	if !ok || svcCtx.TelegramBot == nil || u.DeletedAt != nil || u.Enable == nil || !*u.Enable {
 		return
 	}
-	q.Add("chat_id", strconv.FormatInt(userTelegramChatId, 10))
 	if parseMode == "markdown" {
 		text = strings.ReplaceAll(text, "_", "\\_")
 	}
-	q.Add("text", text)
-	q.Add("parse_mode", parseMode)
-	req.URL.RawQuery = q.Encode()
-	_, _ = http.DefaultClient.Do(req)
-
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := svcCtx.TelegramBot.SendMessage(ctx, &tgbot.SendMessageParams{ChatID: userTelegramChatId, Text: text, ParseMode: models.ParseMode(parseMode)}); err != nil {
+		zap.S().Warnw("Telegram notification failed", "user_id", u.Id)
+	}
 }
 
 func SendAdminMessage(ctx context.Context, svcCtx *svc.ServiceContext, text string, parseMode string) {
-	var adminTelegram []int64
-	f := false
-	adminTelegramJson, err := svcCtx.Redis.Get(ctx, config.AdminTelegramChatIdsKey).Result()
-	if err == nil {
-		err = json.Unmarshal([]byte(adminTelegramJson), &adminTelegram)
-		if err == nil {
-			f = true
-		}
+	if svcCtx.TelegramBot == nil {
+		return
 	}
-	if !f {
-		admins, err := svcCtx.Store.User().QueryAdminUsers(ctx)
-		if err != nil {
-			zap.S().Error("[SendAdminMessage] query admin users failed", zap.Any("error", err.Error()))
-			return
-		}
-		for _, admin := range admins {
-			if telegram, ok := findTelegram(admin); ok {
-				adminTelegram = append(adminTelegram, telegram)
-			}
-		}
-		val, _ := json.Marshal(adminTelegram)
-		_ = svcCtx.Redis.Set(ctx, config.AdminTelegramChatIdsKey, string(val), time.Duration(3600)*time.Second).Err()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	admins, err := svcCtx.Store.User().QueryAdminUsers(ctx)
+	if err != nil {
+		zap.S().Error("[SendAdminMessage] query admin users failed", zap.Any("error", err.Error()))
+		return
 	}
-	req, _ := http.NewRequest("GET", ApiLink(ctx, svcCtx, "sendMessage"), nil)
-	q := req.URL.Query()
-	if parseMode == "markdown" {
-		text = strings.ReplaceAll(text, "_", "\\_")
-	}
-	q.Add("text", text)
-	q.Add("parse_mode", parseMode)
-	for _, telegram := range adminTelegram {
-		q.Add("chat_id", strconv.FormatInt(telegram, 10))
-		req.URL.RawQuery = q.Encode()
-		_, _ = http.DefaultClient.Do(req)
+	for _, admin := range admins {
+		if admin != nil {
+			SendUserMessage(ctx, svcCtx, *admin, text, parseMode)
+		}
 	}
 }
 
 func SetWebhook(ctx context.Context, svcCtx *svc.ServiceContext) error {
-	configs, _ := svcCtx.Store.System().GetSiteConfig(ctx)
-	cfg := &types.SiteConfig{}
-	tool.SystemConfigSliceReflectToStruct(configs, cfg)
-	req, _ := http.NewRequest("GET", ApiLink(ctx, svcCtx, "setWebhook"), nil)
-	q := req.URL.Query()
-	q.Add("url", cfg.Host+"/telegram/webhook")
-	req.URL.RawQuery = q.Encode()
-	_, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "set webhook error: %v", err)
+	if svcCtx.TelegramBot == nil || svcCtx.Config.Telegram.WebHookDomain == "" {
+		return xerr.NewErrCode(xerr.InvalidParams)
 	}
-	return nil
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err := svcCtx.TelegramBot.SetWebhook(ctx, &tgbot.SetWebhookParams{
+		URL:            strings.TrimRight(svcCtx.Config.Telegram.WebHookDomain, "/") + "/v1/telegram/webhook",
+		SecretToken:    telegramsecret.Derive(svcCtx.Config.Telegram.BotToken),
+		AllowedUpdates: []string{models.AllowedUpdateMessage}, MaxConnections: 1,
+	})
+	return err
 }
 
 func findTelegram(u *user.User) (int64, bool) {

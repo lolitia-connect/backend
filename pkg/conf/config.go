@@ -14,7 +14,9 @@ func MustLoad(file string, v any) {
 }
 
 func Load(file string, v any) error {
-	setDefaults(v)
+	if err := setDefaults(v); err != nil {
+		return err
+	}
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return err

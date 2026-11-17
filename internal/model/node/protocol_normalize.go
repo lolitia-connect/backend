@@ -66,7 +66,11 @@ func normalizeProtocolNoopFields(protocol *Protocol) {
 	protocol.Security = normalizeNone(protocol.Security)
 	protocol.CertMode = normalizeNone(protocol.CertMode)
 	protocol.Flow = normalizeNone(protocol.Flow)
-	protocol.Obfs = normalizeNone(protocol.Obfs)
+	if protocol.Type == "nowhere" {
+		protocol.Obfs = strings.ToLower(strings.TrimSpace(protocol.Obfs))
+	} else {
+		protocol.Obfs = normalizeNone(protocol.Obfs)
+	}
 	protocol.Multiplex = normalizeDisabled(protocol.Multiplex)
 	protocol.Encryption = normalizeNone(protocol.Encryption)
 	if protocol.Security != "tls" {
@@ -121,10 +125,10 @@ func validateRuntimeProtocol(protocol *Protocol) error {
 			return fmt.Errorf("nowhere requires tls security")
 		}
 		if protocol.Version == 0 {
-			protocol.Version = 1
+			protocol.Version = 3
 		}
-		if protocol.Version != 1 {
-			return fmt.Errorf("nowhere requires version 1")
+		if protocol.Version != 3 {
+			return fmt.Errorf("nowhere requires NW3")
 		}
 		network, err := normalizeNowhereNetwork(protocol.Network)
 		if err != nil {
@@ -132,14 +136,20 @@ func validateRuntimeProtocol(protocol *Protocol) error {
 		}
 		protocol.Network = network
 		if len(protocol.ALPN) == 0 {
-			protocol.ALPN = []string{"now/1"}
+			protocol.ALPN = []string{"nw3"}
 		}
 		if len(protocol.ALPN) != 1 {
 			return fmt.Errorf("nowhere requires exactly one alpn value")
 		}
 		protocol.ALPN[0] = strings.TrimSpace(protocol.ALPN[0])
-		if len(protocol.ALPN[0]) == 0 || len(protocol.ALPN[0]) > 255 {
-			return fmt.Errorf("nowhere alpn must be between 1 and 255 bytes")
+		if protocol.ALPN[0] != "nw3" {
+			return fmt.Errorf("nowhere requires nw3 ALPN")
+		}
+		if protocol.Obfs == "" {
+			protocol.Obfs = "morph"
+		}
+		if protocol.Obfs != "morph" && protocol.Obfs != "none" {
+			return fmt.Errorf("nowhere requires morph or none obfuscation")
 		}
 		protocol.SNI = strings.TrimSpace(protocol.SNI)
 		if err := validateNowhereUnsupportedOptions(*protocol); err != nil {
@@ -261,7 +271,7 @@ func validateNowhereUnsupportedOptions(protocol Protocol) error {
 		protocol.HopInterval != 0 || protocol.ObfsPassword != "" || protocol.DisableSNI || protocol.ReduceRtt ||
 		protocol.UDPRelayMode != "" || protocol.CongestionController != "" ||
 		protocol.Multiplex != "" || protocol.PaddingScheme != "" || protocol.UpMbps != 0 || protocol.DownMbps != 0 ||
-		protocol.Obfs != "" || protocol.SSRProtocol != "" || protocol.ProtocolParam != "" || protocol.ObfsParam != "" ||
+		protocol.SSRProtocol != "" || protocol.ProtocolParam != "" || protocol.ObfsParam != "" ||
 		protocol.ObfsHost != "" || protocol.ObfsPath != "" || protocol.XhttpMode != "" || protocol.XhttpExtra != "" ||
 		protocol.Encryption != "" || protocol.EncryptionMode != "" || protocol.EncryptionRtt != "" ||
 		protocol.EncryptionTicket != "" || protocol.EncryptionServerPadding != "" ||
@@ -334,6 +344,7 @@ func clearEncryption(protocol *Protocol) {
 func SanitizeProtocolsForNodeDistribution(protocols []Protocol) []Protocol {
 	result := make([]Protocol, 0, len(protocols))
 	for _, protocol := range protocols {
+		upgradeStoredNowhere(&protocol)
 		protocol, err := NormalizeProtocolForStorage(protocol)
 		if err != nil || !protocol.Enable {
 			continue
@@ -463,7 +474,7 @@ func sanitizeRuntimeProtocol(protocol *Protocol) bool {
 		clearTLSClient(protocol)
 		clearReality(protocol)
 		clearNowhereUnsupported(protocol)
-		return protocol.Port > 0 && protocol.Version == 1 && hasTLSCertificate(*protocol) && len(protocol.ALPN) == 1
+		return protocol.Port > 0 && protocol.Version == 3 && hasTLSCertificate(*protocol) && len(protocol.ALPN) == 1 && protocol.ALPN[0] == "nw3"
 	default:
 		return false
 	}
@@ -473,6 +484,7 @@ func sanitizeRuntimeProtocol(protocol *Protocol) bool {
 // of. The model has no Plugin/PluginOptions/Heartbeat/QUICCongestionControl/
 // TrafficPattern/UserHintIsMandatory fields, so those clears are absent.
 func clearNowhereUnsupported(protocol *Protocol) {
+	obfuscation := protocol.Obfs
 	protocol.Mode = ""
 	protocol.Cipher = ""
 	protocol.ServerKey = ""
@@ -492,6 +504,7 @@ func clearNowhereUnsupported(protocol *Protocol) {
 	protocol.EchServerName = ""
 	clearStreamTransport(protocol)
 	clearLegacyObfs(protocol)
+	protocol.Obfs = obfuscation
 	clearQUICControls(protocol)
 	clearEncryption(protocol)
 }

@@ -2,9 +2,8 @@ package user
 
 import (
 	"context"
-	"fmt"
-	"time"
 
+	"github.com/google/uuid"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/uuidx"
@@ -34,9 +33,10 @@ func (l *ResetUserSubscribeTokenLogic) ResetUserSubscribeToken(req *types.ResetU
 		zap.S().Errorf("[ResetUserSubscribeToken] FindOneSubscribe error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneSubscribe error: %v", err.Error())
 	}
-	userSub.Token = uuidx.SubscribeToken(fmt.Sprintf("AdminUpdate:%d", time.Now().UnixMilli()))
-
-	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, userSub)
+	if userSub == nil {
+		return xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
+	err = l.svcCtx.Store.User().RotateSubscribeCredentials(l.ctx, userSub.Id, userSub.UserId, uuidx.SubscribeToken(""), uuid.NewString())
 	if err != nil {
 		zap.S().Errorf("[ResetUserSubscribeToken] UpdateSubscribe error: %v", err.Error())
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "UpdateSubscribe error: %v", err.Error())

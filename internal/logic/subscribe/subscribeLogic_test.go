@@ -1,10 +1,34 @@
 package subscribe
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/perfect-panel/server/internal/model/node"
+	"github.com/perfect-panel/server/internal/model/user"
 )
+
+func TestHeldSubscriptionNeverLooksUpNodes(t *testing.T) {
+	logic := NewSubscribeLogic(context.Background(), nil, RequestMeta{})
+	for _, status := range []uint8{4, 5} {
+		if _, err := logic.getServers(&user.Subscribe{Status: status}, ""); err == nil {
+			t.Fatalf("held status %d can receive nodes", status)
+		}
+	}
+}
+
+func TestUnlimitedExpirySurvivesTimezoneOffset(t *testing.T) {
+	logic := &SubscribeLogic{}
+	for _, expiry := range []time.Time{time.Unix(0, 0), time.Date(1970, 1, 1, 0, 0, 0, 0, time.FixedZone("UTC+8", 8*3600))} {
+		if logic.isSubscriptionExpired(&user.Subscribe{ExpireTime: expiry}) {
+			t.Fatalf("unlimited subscription treated as expired: %v", expiry)
+		}
+	}
+	if !logic.isSubscriptionExpired(&user.Subscribe{ExpireTime: time.Now().Add(-time.Hour)}) {
+		t.Fatal("expired subscription treated as unlimited")
+	}
+}
 
 func boolPtr(v bool) *bool { return &v }
 

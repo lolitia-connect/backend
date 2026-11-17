@@ -9,6 +9,7 @@ import (
 	entuser "github.com/perfect-panel/server/ent/user"
 	entauth "github.com/perfect-panel/server/ent/userauthmethod"
 	entdevice "github.com/perfect-panel/server/ent/userdevice"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/pkg/authmethod"
 	"github.com/redis/go-redis/v9"
 )
@@ -68,7 +69,7 @@ func (m *defaultUserModel) FindOne(ctx context.Context, id int64) (*User, error)
 }
 
 func (m *defaultUserModel) Update(ctx context.Context, data *User) error {
-	_, err := m.FindOne(ctx, data.Id)
+	previous, err := m.FindOne(ctx, data.Id)
 	if err != nil && !ent.IsNotFound(err) {
 		return err
 	}
@@ -77,6 +78,9 @@ func (m *defaultUserModel) Update(ctx context.Context, data *User) error {
 		return err
 	}
 	*data = *entToUser(updated)
+	if previous != nil && ((previous.Enable != nil && *previous.Enable) != (data.Enable != nil && *data.Enable) || previous.DeletedAt != nil || data.DeletedAt != nil) {
+		return node.NewModel(m.db, m.redis).ClearServerAllCache(ctx)
+	}
 	return nil
 }
 
@@ -89,7 +93,10 @@ func (m *defaultUserModel) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 
-	return m.db.User.UpdateOneID(id).SetDeletedAt(time.Now()).Exec(ctx)
+	if err := m.db.User.UpdateOneID(id).SetDeletedAt(time.Now()).Exec(ctx); err != nil {
+		return err
+	}
+	return node.NewModel(m.db, m.redis).ClearServerAllCache(ctx)
 }
 
 func (m *defaultUserModel) Transaction(ctx context.Context, fn func(db *ent.Client) error) error {
@@ -140,4 +147,19 @@ func (m *defaultUserModel) findOne(ctx context.Context, id int64, unscoped bool)
 		data.UserDevices = entDevicesToModels(devices)
 	}
 	return data, nil
+}
+
+func (m *defaultUserModel) UpdatePassword(ctx context.Context, id int64, currentHash, nextHash, algo, salt string) error {
+	affected, err := m.db.User.Update().Where(entuser.ID(id), entuser.Password(currentHash), entuser.DeletedAtIsNil(), entuser.Enable(true)).
+		SetPassword(nextHash).SetAlgo(algo).SetSalt(salt).Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return fmt.Errorf("account or password changed during password update")
+	}
+	if m.redis != nil {
+		return m.redis.Del(ctx, fmt.Sprintf("user:%d", id)).Err()
+	}
+	return nil
 }

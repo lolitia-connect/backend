@@ -72,3 +72,39 @@ func TestPayloadFingerprintDoesNotEmbedThePayload(t *testing.T) {
 		t.Fatalf("fingerprint = %q, want a 64-char digest", got)
 	}
 }
+
+func TestStateCannotCrossFlowsAccountsOrBeReplayed(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+	code, err := Issue(ctx, client, "google", "bind", 7, "https://example.com/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []State{{Purpose: "login"}, {Purpose: "bind", UserID: 8}} {
+		if _, err := Consume(ctx, client, "google", scope.Purpose, scope.UserID, code); err == nil {
+			t.Fatal("state crossed a flow or account")
+		}
+	}
+	if redirect, err := Consume(ctx, client, "google", "bind", 7, code); err != nil || redirect != "https://example.com/callback" {
+		t.Fatalf("consume = %q, %v", redirect, err)
+	}
+	if _, err := Consume(ctx, client, "google", "bind", 7, code); err == nil {
+		t.Fatal("state replay accepted")
+	}
+}
+
+func TestRedirectMustMatchConfiguredOrigin(t *testing.T) {
+	for _, redirect := range []string{"https://evil.example/callback", "//example.com/callback", "javascript:alert(1)", "https://user@example.com/callback", "https://example.com:444/callback"} {
+		if ValidateRedirect(redirect, "https://example.com") == nil {
+			t.Fatalf("untrusted redirect accepted: %s", redirect)
+		}
+	}
+	if ValidateRedirect("https://example.com/callback", "") == nil {
+		t.Fatal("redirect accepted without a configured site")
+	}
+	if err := ValidateRedirect("https://example.com/callback", "https://example.com"); err != nil {
+		t.Fatal(err)
+	}
+}

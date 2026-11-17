@@ -2,12 +2,12 @@ package user
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -45,27 +45,14 @@ func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequ
 		return errors.Wrapf(xerr.NewErrCode(xerr.TelephoneError), "Invalid phone number")
 	}
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.Register, phoneNumber)
-	code, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-	if err != nil {
-		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
+	if err := usersession.ConsumeCode(l.ctx, l.svcCtx.Redis, cacheKey, req.Code); err != nil {
+		return err
 	}
-	var payload CacheKeyPayload
-	err = json.Unmarshal([]byte(code), &payload)
-	if err != nil {
-		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	if payload.Code != req.Code {
-		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	l.svcCtx.Redis.Del(l.ctx, cacheKey)
-
-	m, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", req.Mobile)
+	m, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
 	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
-	if m != nil && m.Id > 0 {
+	if m != nil && m.UserId != u.Id {
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "mobile already bind")
 	}
 
@@ -73,11 +60,16 @@ func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequ
 	if err != nil && !ent.IsNotFound(err) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindUserAuthMethodByOpenID error")
 	}
-	if ent.IsNotFound(err) {
+	if method != nil && method.AuthIdentifier != phoneNumber {
+		if err := verifyCurrentIdentity(l.ctx, l.svcCtx, u, req.Password, req.CurrentCode, false); err != nil {
+			return err
+		}
+	}
+	if method == nil {
 		method = &user.AuthMethods{
 			UserId:         u.Id,
 			AuthType:       "mobile",
-			AuthIdentifier: req.Mobile,
+			AuthIdentifier: phoneNumber,
 			Verified:       true,
 		}
 		if err := l.svcCtx.Store.User().InsertUserAuthMethods(l.ctx, method); err != nil {
@@ -85,10 +77,11 @@ func (l *UpdateBindMobileLogic) UpdateBindMobile(req *types.UpdateBindMobileRequ
 		}
 	} else {
 		method.Verified = true
-		method.AuthIdentifier = req.Mobile
+		method.AuthIdentifier = phoneNumber
 		if err := l.svcCtx.Store.User().UpdateUserAuthMethods(l.ctx, method); err != nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "UpdateUserAuthMethods error")
 		}
 	}
-	return nil
+	_, err = usersession.Rotate(l.ctx, l.svcCtx.Redis, u.Id)
+	return err
 }

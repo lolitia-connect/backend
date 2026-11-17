@@ -132,6 +132,7 @@ func ParseEventPayload(payload string) EventPayload {
 type EventModel interface {
 	Insert(ctx context.Context, event *Event) error
 	FindOne(ctx context.Context, id int64) (*Event, error)
+	PaidAt(ctx context.Context, orderNo string) (time.Time, error)
 	// ListAfter returns up to limit events of one order with id > afterId, in
 	// ascending id order, for stream replay.
 	ListAfter(ctx context.Context, orderNo string, afterId int64, limit int) ([]*Event, error)

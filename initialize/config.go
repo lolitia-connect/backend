@@ -6,9 +6,13 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
-	"log"
+	"net"
 	"net/http"
+	"net/mail"
 	"os"
+	"strings"
+	"sync"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/perfect-panel/server/initialize/migrate"
@@ -26,16 +30,50 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-var initStatus = make(chan bool)
-var configPath string
+type setupState struct {
+	path        string
+	status      chan bool
+	mu          sync.Mutex
+	completed   bool
+	connect     func(orm.Config) (*sql.DB, string, error)
+	tables      func(*sql.DB, string) ([]string, error)
+	migrate     func(orm.Mysql) error
+	createAdmin func(context.Context, string, string, *sql.DB, string) error
+}
 
-func Config(path string) (chan bool, *http.Server) {
-	// Set the configuration file path
-	configPath = path
+func newSetupState(path string) *setupState {
+	return &setupState{
+		path:   path,
+		status: make(chan bool, 1),
+		connect: func(settings orm.Config) (*sql.DB, string, error) {
+			return orm.OpenSQL(orm.Mysql{Config: settings})
+		},
+		tables: listDatabaseTables,
+		migrate: func(database orm.Mysql) error {
+			migration := migrate.Migrate(database.Driver(), database.MigrationDsn())
+			defer migration.Close()
+			err := migration.Up()
+			if errors.Is(err, migrate.NoChange) {
+				return nil
+			}
+			return err
+		},
+		createAdmin: func(ctx context.Context, email, password string, database *sql.DB, driver string) error {
+			return migrate.CreateAdminUser(ctx, email, password, orm.NewEntClient(database, driver))
+		},
+	}
+}
+
+func Config(path string) (<-chan bool, *http.Server, error) {
+	var settings config.File
+	if err := conf.Load(path, &settings); err != nil {
+		return nil, nil, err
+	}
+	state := newSetupState(path)
 	// Create a new Hertz-compatible instance.
 	r := hertzx.Default()
 	// get server port
-	port := 8080
+	port := settings.Port
 	host := "127.0.0.1"
 
 	// check gateway mode
@@ -43,21 +81,19 @@ func Config(path string) (chan bool, *http.Server) {
 		// get free port
 		freePort, err := report.ModulePort()
 		if err != nil {
-			zap.S().Errorf("get module port error: %s", err.Error())
-			panic(err)
+			return nil, nil, err
 		}
 		port = freePort
 		// register module
 		err = report.RegisterModule(port)
 		if err != nil {
-			zap.S().Errorf("register module error: %s", err.Error())
-			panic(err)
+			return nil, nil, err
 		}
 		zap.S().Infof("module registered on port %d", port)
 	}
 	// Create a new HTTP server
 	server := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", host, port),
+		Addr:    net.JoinHostPort(host, fmt.Sprint(port)),
 		Handler: r,
 	}
 	// Load templates
@@ -65,7 +101,7 @@ func Config(path string) (chan bool, *http.Server) {
 	r.SetHTMLTemplate(tmpl)
 
 	r.GET("/init", handleInit)
-	r.POST("/init/config", handleInitConfig)
+	r.POST("/init/config", state.handleInitConfig)
 	r.POST("/init/database/test", HandleDatabaseTest)
 	r.POST("/init/mysql/test", HandleMySQLTest)
 	r.POST("/init/redis/test", HandleRedisTest)
@@ -74,24 +110,42 @@ func Config(path string) (chan bool, *http.Server) {
 		c.Redirect(http.StatusFound, "/init")
 	})
 
-	go func(server *http.Server) {
-		// Start the server
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("listen: %s\n", err)
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("setup listener: %w", err)
+	}
+	server.Addr = listener.Addr().String()
+	zap.S().Infof("setup wizard at http://%s/init; use an SSH tunnel for remote access", server.Addr)
+	go func() {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			zap.S().Errorf("setup listener failed: %v", err)
+			select {
+			case state.status <- false:
+			default:
+			}
 		}
-	}(server)
+	}()
 
-	return initStatus, server
+	return state.status, server, nil
 }
 
 func handleInit(c *hertzx.Context) {
 	c.HTML(http.StatusOK, "index.html", nil)
 }
-func handleInitConfig(c *hertzx.Context) {
+func (state *setupState) handleInitConfig(c *hertzx.Context) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.completed {
+		c.JSON(http.StatusConflict, hertzx.H{"code": 409, "msg": "Installation already completed"})
+		return
+	}
 	// Load configuration file
 
 	var cfg config.File
-	conf.MustLoad(configPath, &cfg)
+	if err := conf.Load(state.path, &cfg); err != nil {
+		c.JSON(http.StatusInternalServerError, hertzx.H{"code": 500, "msg": "Configuration initialization failed"})
+		return
+	}
 	var request struct {
 		AdminEmail    string `json:"adminEmail"`
 		AdminPassword string `json:"adminPassword"`
@@ -116,6 +170,11 @@ func handleInitConfig(c *hertzx.Context) {
 		c.Abort()
 		return
 	}
+	request.AdminEmail = strings.ToLower(strings.TrimSpace(request.AdminEmail))
+	if err := validateSetupAdministrator(request.AdminEmail, request.AdminPassword); err != nil {
+		c.JSON(http.StatusBadRequest, hertzx.H{"code": 400, "msg": err.Error()})
+		return
+	}
 	cfg.Debug = false
 	// jwt secret
 	cfg.JwtAuth.AccessSecret = uuid.New().String()
@@ -134,6 +193,8 @@ func handleInitConfig(c *hertzx.Context) {
 	// redis
 	cfg.Redis.Host = fmt.Sprintf("%s:%s", request.RedisHost, request.RedisPort)
 	cfg.Redis.Pass = request.RedisPassword
+	cfg.Administrator.Email = request.AdminEmail
+	cfg.Administrator.Password = ""
 
 	// save config
 	fileData, err := yaml.Marshal(cfg)
@@ -149,7 +210,7 @@ func handleInitConfig(c *hertzx.Context) {
 
 	// create database connection
 	dbClient := orm.Mysql{Config: dbConfig}
-	db, _, err := orm.OpenSQL(dbClient)
+	db, driver, err := state.connect(dbConfig)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, hertzx.H{
 			"code": 500,
@@ -159,13 +220,32 @@ func handleInitConfig(c *hertzx.Context) {
 		c.Abort()
 		return
 	}
-	defer db.Close()
+	if db != nil {
+		defer db.Close()
+	}
+	tables, err := state.tables(db, driver)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, hertzx.H{"code": 500, "msg": "Database table check failed"})
+		return
+	}
+	if len(tables) != 0 {
+		c.JSON(http.StatusBadRequest, hertzx.H{"code": 400, "msg": "The database contains existing data. Please clear it before proceeding with the installation."})
+		return
+	}
+	if err := os.WriteFile(state.path, fileData, 0600); err != nil {
+		c.JSON(http.StatusInternalServerError, hertzx.H{"code": 500, "msg": "Configuration initialization failed"})
+		return
+	}
+	if err := os.Chmod(state.path, 0600); err != nil {
+		c.JSON(http.StatusInternalServerError, hertzx.H{"code": 500, "msg": "Configuration initialization failed"})
+		return
+	}
 	// migrate database
-	if err = migrate.Migrate(dbClient.Driver(), dbClient.MigrationDsn()).Up(); err != nil {
+	if err = state.migrate(dbClient); err != nil {
 		zap.S().Errorf("[Init Database] Migrate failed: %v", err.Error())
-		c.JSON(http.StatusOK, hertzx.H{
+		c.JSON(http.StatusInternalServerError, hertzx.H{
 			"code": 500,
-			"msg":  "Database migration failed",
+			"msg":  "Database migration failed. Configuration was saved; fix the database and restart to resume installation. A new administrator password will be printed once on successful bootstrap.",
 			"data": nil,
 		})
 		c.Abort()
@@ -173,22 +253,11 @@ func handleInitConfig(c *hertzx.Context) {
 	}
 
 	// create admin user
-	if err = migrate.CreateAdminUser(context.Background(), request.AdminEmail, request.AdminPassword, orm.NewEntClient(db, dbClient.Driver())); err != nil {
+	if err = state.createAdmin(c.Request.Context(), request.AdminEmail, request.AdminPassword, db, driver); err != nil {
 		zap.S().Errorf("[Init Database] Create admin user failed: %v", err.Error())
-		c.JSON(http.StatusOK, hertzx.H{
-			"code": 500,
-			"msg":  "Admin user creation failed",
-			"data": nil,
-		})
-		c.Abort()
-		return
-	}
-
-	// write to file
-	if err = os.WriteFile(configPath, fileData, 0644); err != nil {
 		c.JSON(http.StatusInternalServerError, hertzx.H{
 			"code": 500,
-			"msg":  "Configuration initialization failed",
+			"msg":  "Admin user creation failed. Configuration was saved; restart to resume installation. A new administrator password will be printed once on successful bootstrap.",
 			"data": nil,
 		})
 		c.Abort()
@@ -200,7 +269,22 @@ func handleInitConfig(c *hertzx.Context) {
 		"msg":    "Configuration initialized",
 		"status": true,
 	})
-	initStatus <- true
+	state.completed = true
+	select {
+	case state.status <- true:
+	default:
+	}
+}
+
+func validateSetupAdministrator(email, password string) error {
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Address != email {
+		return fmt.Errorf("a valid administrator email is required")
+	}
+	if utf8.RuneCountInString(password) < 8 {
+		return fmt.Errorf("administrator password must contain at least eight characters")
+	}
+	return nil
 }
 
 func HandleMySQLTest(c *hertzx.Context) {

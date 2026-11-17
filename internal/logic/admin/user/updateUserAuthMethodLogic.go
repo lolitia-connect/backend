@@ -33,6 +33,7 @@ func (l *UpdateUserAuthMethodLogic) UpdateUserAuthMethod(req *types.UpdateUserAu
 	}
 	method.AuthType = req.AuthType
 	method.AuthIdentifier = req.AuthIdentifier
+	method.Verified = true
 	if err = l.svcCtx.Store.User().UpdateUserAuthMethods(l.ctx, method); err != nil {
 		l.Logger.Errorw("Update user auth method error", zap.Any("error", err.Error()), zap.Any("userId", req.UserId), zap.Any("authType", req.AuthType))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update user auth method error: %v", err.Error())

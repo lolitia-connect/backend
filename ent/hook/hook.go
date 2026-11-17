@@ -237,6 +237,42 @@ func (f SubscribeGroupFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Val
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SubscribeGroupMutation", m)
 }
 
+// The SubscriptionEntitlementFunc type is an adapter to allow the use of ordinary
+// function as SubscriptionEntitlement mutator.
+type SubscriptionEntitlementFunc func(context.Context, *ent.SubscriptionEntitlementMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SubscriptionEntitlementFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SubscriptionEntitlementMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SubscriptionEntitlementMutation", m)
+}
+
+// The SubscriptionEntitlementRevisionFunc type is an adapter to allow the use of ordinary
+// function as SubscriptionEntitlementRevision mutator.
+type SubscriptionEntitlementRevisionFunc func(context.Context, *ent.SubscriptionEntitlementRevisionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SubscriptionEntitlementRevisionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SubscriptionEntitlementRevisionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SubscriptionEntitlementRevisionMutation", m)
+}
+
+// The SubscriptionPeriodFunc type is an adapter to allow the use of ordinary
+// function as SubscriptionPeriod mutator.
+type SubscriptionPeriodFunc func(context.Context, *ent.SubscriptionPeriodMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f SubscriptionPeriodFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.SubscriptionPeriodMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.SubscriptionPeriodMutation", m)
+}
+
 // The SystemFunc type is an adapter to allow the use of ordinary
 // function as System mutator.
 type SystemFunc func(context.Context, *ent.SystemMutation) (ent.Value, error)
@@ -295,6 +331,18 @@ func (f TicketFollowFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TicketFollowMutation", m)
+}
+
+// The TrafficBatchFunc type is an adapter to allow the use of ordinary
+// function as TrafficBatch mutator.
+type TrafficBatchFunc func(context.Context, *ent.TrafficBatchMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f TrafficBatchFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.TrafficBatchMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.TrafficBatchMutation", m)
 }
 
 // The TrafficLogFunc type is an adapter to allow the use of ordinary

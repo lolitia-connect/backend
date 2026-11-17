@@ -13,6 +13,15 @@ const (
 	TypeQuota
 )
 
+const (
+	StatusPending int8 = iota
+	StatusInProgress
+	StatusCompleted
+	StatusFailed
+	StatusCancelled
+	StatusEnqueueFailed
+)
+
 type Task struct {
 	Id        int64
 	Type      int8
@@ -22,6 +31,8 @@ type Task struct {
 	Errors    string
 	Total     uint64
 	Current   uint64
+	DailyDate string
+	DailySent uint64
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -49,6 +60,8 @@ type EmailScope struct {
 	Scheduled         int64    `json:"scheduled"`  // scheduled time (unix timestamp)
 	Interval          uint8    `json:"interval"`   // interval in seconds
 	Limit             uint64   `json:"limit"`      // daily send limit
+	DailySent         uint64   `json:"daily_sent,omitempty"`
+	DailyDate         string   `json:"daily_date,omitempty"`
 }
 
 func (s *EmailScope) Marshal() ([]byte, error) {

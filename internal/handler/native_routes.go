@@ -4,6 +4,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app/server"
 	pluginHandler "github.com/perfect-panel/server/internal/handler/admin/plugin"
 	edgeHandler "github.com/perfect-panel/server/internal/handler/edge"
+	deviceHandler "github.com/perfect-panel/server/internal/handler/public/user/ws"
 	serverHandler "github.com/perfect-panel/server/internal/handler/server"
 	"github.com/perfect-panel/server/internal/middleware"
 	"github.com/perfect-panel/server/internal/svc"
@@ -11,6 +12,7 @@ import (
 )
 
 func RegisterNativeHandlers(router *server.Hertz, serverCtx *svc.ServiceContext) {
+	router.GET("/v1/app/ws/:userid/:identifier", hertzx.Wrap(middleware.AuthMiddleware(serverCtx)), hertzx.Wrap(deviceHandler.DeviceWsConnectHandler(serverCtx)))
 	subscribePath := serverCtx.Config.Subscribe.SubscribePath
 	if subscribePath == "" {
 		subscribePath = "/v1/subscribe/config"
@@ -32,6 +34,8 @@ func RegisterNativeHandlers(router *server.Hertz, serverCtx *svc.ServiceContext)
 	serverGroup.POST("/push", serverHandler.ServerPushUserTrafficHandler(serverCtx))
 	serverGroup.POST("/status", serverHandler.ServerPushStatusHandler(serverCtx))
 	serverGroup.GET("/user", serverHandler.GetServerUserListHandler(serverCtx))
+	serverGroup.GET("/alivelist", serverHandler.GetServerAliveListHandler(serverCtx))
+	serverGroup.POST("/device", serverHandler.ClaimServerDeviceHandler(serverCtx))
 
 	router.GET("/v2/server/:server_id", serverHandler.QueryServerProtocolConfigHandler(serverCtx))
 

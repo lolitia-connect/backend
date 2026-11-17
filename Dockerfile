@@ -1,5 +1,5 @@
 # Use a smaller base image for the build stage
-FROM golang:alpine AS builder
+FROM golang:1.27.4-alpine AS builder
 
 LABEL stage=gobuilder
 
@@ -37,6 +37,16 @@ WORKDIR /app
 
 COPY --from=builder /app/ppanel /app/ppanel
 COPY --from=builder /build/config.yaml.example /app/config.yaml.example
+
+RUN mkdir -p /app/logs /app/cache && \
+    touch /app/config.yaml && \
+    chown -R 65532:65532 /app/logs /app/cache /app/config.yaml && \
+    chmod 0600 /app/config.yaml
+
+USER 65532:65532
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["/app/ppanel", "healthcheck", "--config", "/app/config.yaml"]
 
 # Expose the port (optional)
 EXPOSE 8080

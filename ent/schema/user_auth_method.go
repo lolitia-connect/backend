@@ -7,6 +7,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // UserAuthMethod holds the schema definition for the user_auth_methods table.
@@ -30,4 +31,8 @@ func (UserAuthMethod) Fields() []ent.Field {
 		field.Time("created_at").StorageKey("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").StorageKey("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
+}
+
+func (UserAuthMethod) Indexes() []ent.Index {
+	return []ent.Index{index.Fields("auth_type", "auth_identifier").Unique().StorageKey("idx_auth_type_identifier")}
 }

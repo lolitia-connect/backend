@@ -3,7 +3,10 @@ package user
 import (
 	"context"
 
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/predicate"
+	entuser "github.com/perfect-panel/server/ent/user"
 	entauth "github.com/perfect-panel/server/ent/userauthmethod"
 )
 
@@ -99,10 +102,15 @@ func (m *defaultUserModel) UpsertUserAuthMethod(ctx context.Context, data *AuthM
 		return err
 	}
 	current.AuthIdentifier = data.AuthIdentifier
+	current.Verified = data.Verified
 	return m.UpdateUserAuthMethods(ctx, current)
 }
 
 func (m *defaultUserModel) FindUserAuthMethodByUserId(ctx context.Context, method string, userId int64) (*AuthMethods, error) {
-	item, err := m.db.UserAuthMethod.Query().Where(entauth.AuthType(method), entauth.UserID(userId)).First(ctx)
+	item, err := m.db.UserAuthMethod.Query().Where(entauth.AuthType(method), entauth.UserID(userId), predicate.UserAuthMethod(func(selector *entsql.Selector) {
+		owner := entsql.Table(entuser.Table)
+		selector.Join(owner).On(selector.C(entauth.FieldUserID), owner.C(entuser.FieldID))
+		selector.Where(entsql.IsNull(owner.C(entuser.FieldDeletedAt)))
+	})).First(ctx)
 	return entToAuthMethod(item), err
 }

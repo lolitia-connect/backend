@@ -1,0 +1,3 @@
+ALTER TABLE "task"
+    ADD COLUMN "daily_date" VARCHAR(10) NOT NULL DEFAULT '',
+    ADD COLUMN "daily_sent" BIGINT NOT NULL DEFAULT 0;

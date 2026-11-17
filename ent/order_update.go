@@ -230,6 +230,20 @@ func (_u *OrderUpdate) AddCouponDiscount(v int64) *OrderUpdate {
 	return _u
 }
 
+// SetCouponReserved sets the "coupon_reserved" field.
+func (_u *OrderUpdate) SetCouponReserved(v bool) *OrderUpdate {
+	_u.mutation.SetCouponReserved(v)
+	return _u
+}
+
+// SetNillableCouponReserved sets the "coupon_reserved" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableCouponReserved(v *bool) *OrderUpdate {
+	if v != nil {
+		_u.SetCouponReserved(*v)
+	}
+	return _u
+}
+
 // SetPaymentID sets the "payment_id" field.
 func (_u *OrderUpdate) SetPaymentID(v int64) *OrderUpdate {
 	_u.mutation.ResetPaymentID()
@@ -348,6 +362,82 @@ func (_u *OrderUpdate) AddCommission(v int64) *OrderUpdate {
 	return _u
 }
 
+// SetCommissionRefererID sets the "commission_referer_id" field.
+func (_u *OrderUpdate) SetCommissionRefererID(v int64) *OrderUpdate {
+	_u.mutation.ResetCommissionRefererID()
+	_u.mutation.SetCommissionRefererID(v)
+	return _u
+}
+
+// SetNillableCommissionRefererID sets the "commission_referer_id" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableCommissionRefererID(v *int64) *OrderUpdate {
+	if v != nil {
+		_u.SetCommissionRefererID(*v)
+	}
+	return _u
+}
+
+// AddCommissionRefererID adds value to the "commission_referer_id" field.
+func (_u *OrderUpdate) AddCommissionRefererID(v int64) *OrderUpdate {
+	_u.mutation.AddCommissionRefererID(v)
+	return _u
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (_u *OrderUpdate) SetPaymentAmount(v int64) *OrderUpdate {
+	_u.mutation.ResetPaymentAmount()
+	_u.mutation.SetPaymentAmount(v)
+	return _u
+}
+
+// SetNillablePaymentAmount sets the "payment_amount" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillablePaymentAmount(v *int64) *OrderUpdate {
+	if v != nil {
+		_u.SetPaymentAmount(*v)
+	}
+	return _u
+}
+
+// AddPaymentAmount adds value to the "payment_amount" field.
+func (_u *OrderUpdate) AddPaymentAmount(v int64) *OrderUpdate {
+	_u.mutation.AddPaymentAmount(v)
+	return _u
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (_u *OrderUpdate) SetPaymentCurrency(v string) *OrderUpdate {
+	_u.mutation.SetPaymentCurrency(v)
+	return _u
+}
+
+// SetNillablePaymentCurrency sets the "payment_currency" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillablePaymentCurrency(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetPaymentCurrency(*v)
+	}
+	return _u
+}
+
+// SetPaymentSession sets the "payment_session" field.
+func (_u *OrderUpdate) SetPaymentSession(v string) *OrderUpdate {
+	_u.mutation.SetPaymentSession(v)
+	return _u
+}
+
+// SetNillablePaymentSession sets the "payment_session" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillablePaymentSession(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetPaymentSession(*v)
+	}
+	return _u
+}
+
+// ClearPaymentSession clears the value of the "payment_session" field.
+func (_u *OrderUpdate) ClearPaymentSession() *OrderUpdate {
+	_u.mutation.ClearPaymentSession()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *OrderUpdate) SetStatus(v uint8) *OrderUpdate {
 	_u.mutation.ResetStatus()
@@ -450,6 +540,34 @@ func (_u *OrderUpdate) ClearGuestCheckoutTokenHash() *OrderUpdate {
 	return _u
 }
 
+// SetGuestAuthType sets the "guest_auth_type" field.
+func (_u *OrderUpdate) SetGuestAuthType(v string) *OrderUpdate {
+	_u.mutation.SetGuestAuthType(v)
+	return _u
+}
+
+// SetNillableGuestAuthType sets the "guest_auth_type" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableGuestAuthType(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetGuestAuthType(*v)
+	}
+	return _u
+}
+
+// SetGuestIdentifier sets the "guest_identifier" field.
+func (_u *OrderUpdate) SetGuestIdentifier(v string) *OrderUpdate {
+	_u.mutation.SetGuestIdentifier(v)
+	return _u
+}
+
+// SetNillableGuestIdentifier sets the "guest_identifier" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableGuestIdentifier(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetGuestIdentifier(*v)
+	}
+	return _u
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_u *OrderUpdate) SetSubscribeID(v int64) *OrderUpdate {
 	_u.mutation.ResetSubscribeID()
@@ -488,6 +606,27 @@ func (_u *OrderUpdate) SetNillableSubscribeToken(v *string) *OrderUpdate {
 // ClearSubscribeToken clears the value of the "subscribe_token" field.
 func (_u *OrderUpdate) ClearSubscribeToken() *OrderUpdate {
 	_u.mutation.ClearSubscribeToken()
+	return _u
+}
+
+// SetUserSubscribeID sets the "user_subscribe_id" field.
+func (_u *OrderUpdate) SetUserSubscribeID(v int64) *OrderUpdate {
+	_u.mutation.ResetUserSubscribeID()
+	_u.mutation.SetUserSubscribeID(v)
+	return _u
+}
+
+// SetNillableUserSubscribeID sets the "user_subscribe_id" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableUserSubscribeID(v *int64) *OrderUpdate {
+	if v != nil {
+		_u.SetUserSubscribeID(*v)
+	}
+	return _u
+}
+
+// AddUserSubscribeID adds value to the "user_subscribe_id" field.
+func (_u *OrderUpdate) AddUserSubscribeID(v int64) *OrderUpdate {
+	_u.mutation.AddUserSubscribeID(v)
 	return _u
 }
 
@@ -574,6 +713,11 @@ func (_u *OrderUpdate) check() error {
 			return &ValidationError{Name: "trade_no", err: fmt.Errorf(`ent: validator failed for field "Order.trade_no": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentCurrency(); ok {
+		if err := order.PaymentCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "payment_currency", err: fmt.Errorf(`ent: validator failed for field "Order.payment_currency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.IdempotencyKey(); ok {
 		if err := order.IdempotencyKeyValidator(v); err != nil {
 			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_key": %w`, err)}
@@ -587,6 +731,16 @@ func (_u *OrderUpdate) check() error {
 	if v, ok := _u.mutation.GuestCheckoutTokenHash(); ok {
 		if err := order.GuestCheckoutTokenHashValidator(v); err != nil {
 			return &ValidationError{Name: "guest_checkout_token_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_checkout_token_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuestAuthType(); ok {
+		if err := order.GuestAuthTypeValidator(v); err != nil {
+			return &ValidationError{Name: "guest_auth_type", err: fmt.Errorf(`ent: validator failed for field "Order.guest_auth_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuestIdentifier(); ok {
+		if err := order.GuestIdentifierValidator(v); err != nil {
+			return &ValidationError{Name: "guest_identifier", err: fmt.Errorf(`ent: validator failed for field "Order.guest_identifier": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.SubscribeToken(); ok {
@@ -666,6 +820,9 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedCouponDiscount(); ok {
 		_spec.AddField(order.FieldCouponDiscount, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.CouponReserved(); ok {
+		_spec.SetField(order.FieldCouponReserved, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.PaymentID(); ok {
 		_spec.SetField(order.FieldPaymentID, field.TypeInt64, value)
 	}
@@ -699,6 +856,27 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedCommission(); ok {
 		_spec.AddField(order.FieldCommission, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.CommissionRefererID(); ok {
+		_spec.SetField(order.FieldCommissionRefererID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCommissionRefererID(); ok {
+		_spec.AddField(order.FieldCommissionRefererID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.PaymentAmount(); ok {
+		_spec.SetField(order.FieldPaymentAmount, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPaymentAmount(); ok {
+		_spec.AddField(order.FieldPaymentAmount, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.PaymentCurrency(); ok {
+		_spec.SetField(order.FieldPaymentCurrency, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PaymentSession(); ok {
+		_spec.SetField(order.FieldPaymentSession, field.TypeString, value)
+	}
+	if _u.mutation.PaymentSessionCleared() {
+		_spec.ClearField(order.FieldPaymentSession, field.TypeString)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(order.FieldStatus, field.TypeUint8, value)
 	}
@@ -729,6 +907,12 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.GuestCheckoutTokenHashCleared() {
 		_spec.ClearField(order.FieldGuestCheckoutTokenHash, field.TypeString)
 	}
+	if value, ok := _u.mutation.GuestAuthType(); ok {
+		_spec.SetField(order.FieldGuestAuthType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GuestIdentifier(); ok {
+		_spec.SetField(order.FieldGuestIdentifier, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)
 	}
@@ -740,6 +924,12 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.SubscribeTokenCleared() {
 		_spec.ClearField(order.FieldSubscribeToken, field.TypeString)
+	}
+	if value, ok := _u.mutation.UserSubscribeID(); ok {
+		_spec.SetField(order.FieldUserSubscribeID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedUserSubscribeID(); ok {
+		_spec.AddField(order.FieldUserSubscribeID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.IsNew(); ok {
 		_spec.SetField(order.FieldIsNew, field.TypeBool, value)
@@ -969,6 +1159,20 @@ func (_u *OrderUpdateOne) AddCouponDiscount(v int64) *OrderUpdateOne {
 	return _u
 }
 
+// SetCouponReserved sets the "coupon_reserved" field.
+func (_u *OrderUpdateOne) SetCouponReserved(v bool) *OrderUpdateOne {
+	_u.mutation.SetCouponReserved(v)
+	return _u
+}
+
+// SetNillableCouponReserved sets the "coupon_reserved" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableCouponReserved(v *bool) *OrderUpdateOne {
+	if v != nil {
+		_u.SetCouponReserved(*v)
+	}
+	return _u
+}
+
 // SetPaymentID sets the "payment_id" field.
 func (_u *OrderUpdateOne) SetPaymentID(v int64) *OrderUpdateOne {
 	_u.mutation.ResetPaymentID()
@@ -1087,6 +1291,82 @@ func (_u *OrderUpdateOne) AddCommission(v int64) *OrderUpdateOne {
 	return _u
 }
 
+// SetCommissionRefererID sets the "commission_referer_id" field.
+func (_u *OrderUpdateOne) SetCommissionRefererID(v int64) *OrderUpdateOne {
+	_u.mutation.ResetCommissionRefererID()
+	_u.mutation.SetCommissionRefererID(v)
+	return _u
+}
+
+// SetNillableCommissionRefererID sets the "commission_referer_id" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableCommissionRefererID(v *int64) *OrderUpdateOne {
+	if v != nil {
+		_u.SetCommissionRefererID(*v)
+	}
+	return _u
+}
+
+// AddCommissionRefererID adds value to the "commission_referer_id" field.
+func (_u *OrderUpdateOne) AddCommissionRefererID(v int64) *OrderUpdateOne {
+	_u.mutation.AddCommissionRefererID(v)
+	return _u
+}
+
+// SetPaymentAmount sets the "payment_amount" field.
+func (_u *OrderUpdateOne) SetPaymentAmount(v int64) *OrderUpdateOne {
+	_u.mutation.ResetPaymentAmount()
+	_u.mutation.SetPaymentAmount(v)
+	return _u
+}
+
+// SetNillablePaymentAmount sets the "payment_amount" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillablePaymentAmount(v *int64) *OrderUpdateOne {
+	if v != nil {
+		_u.SetPaymentAmount(*v)
+	}
+	return _u
+}
+
+// AddPaymentAmount adds value to the "payment_amount" field.
+func (_u *OrderUpdateOne) AddPaymentAmount(v int64) *OrderUpdateOne {
+	_u.mutation.AddPaymentAmount(v)
+	return _u
+}
+
+// SetPaymentCurrency sets the "payment_currency" field.
+func (_u *OrderUpdateOne) SetPaymentCurrency(v string) *OrderUpdateOne {
+	_u.mutation.SetPaymentCurrency(v)
+	return _u
+}
+
+// SetNillablePaymentCurrency sets the "payment_currency" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillablePaymentCurrency(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetPaymentCurrency(*v)
+	}
+	return _u
+}
+
+// SetPaymentSession sets the "payment_session" field.
+func (_u *OrderUpdateOne) SetPaymentSession(v string) *OrderUpdateOne {
+	_u.mutation.SetPaymentSession(v)
+	return _u
+}
+
+// SetNillablePaymentSession sets the "payment_session" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillablePaymentSession(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetPaymentSession(*v)
+	}
+	return _u
+}
+
+// ClearPaymentSession clears the value of the "payment_session" field.
+func (_u *OrderUpdateOne) ClearPaymentSession() *OrderUpdateOne {
+	_u.mutation.ClearPaymentSession()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *OrderUpdateOne) SetStatus(v uint8) *OrderUpdateOne {
 	_u.mutation.ResetStatus()
@@ -1189,6 +1469,34 @@ func (_u *OrderUpdateOne) ClearGuestCheckoutTokenHash() *OrderUpdateOne {
 	return _u
 }
 
+// SetGuestAuthType sets the "guest_auth_type" field.
+func (_u *OrderUpdateOne) SetGuestAuthType(v string) *OrderUpdateOne {
+	_u.mutation.SetGuestAuthType(v)
+	return _u
+}
+
+// SetNillableGuestAuthType sets the "guest_auth_type" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableGuestAuthType(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetGuestAuthType(*v)
+	}
+	return _u
+}
+
+// SetGuestIdentifier sets the "guest_identifier" field.
+func (_u *OrderUpdateOne) SetGuestIdentifier(v string) *OrderUpdateOne {
+	_u.mutation.SetGuestIdentifier(v)
+	return _u
+}
+
+// SetNillableGuestIdentifier sets the "guest_identifier" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableGuestIdentifier(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetGuestIdentifier(*v)
+	}
+	return _u
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_u *OrderUpdateOne) SetSubscribeID(v int64) *OrderUpdateOne {
 	_u.mutation.ResetSubscribeID()
@@ -1227,6 +1535,27 @@ func (_u *OrderUpdateOne) SetNillableSubscribeToken(v *string) *OrderUpdateOne {
 // ClearSubscribeToken clears the value of the "subscribe_token" field.
 func (_u *OrderUpdateOne) ClearSubscribeToken() *OrderUpdateOne {
 	_u.mutation.ClearSubscribeToken()
+	return _u
+}
+
+// SetUserSubscribeID sets the "user_subscribe_id" field.
+func (_u *OrderUpdateOne) SetUserSubscribeID(v int64) *OrderUpdateOne {
+	_u.mutation.ResetUserSubscribeID()
+	_u.mutation.SetUserSubscribeID(v)
+	return _u
+}
+
+// SetNillableUserSubscribeID sets the "user_subscribe_id" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableUserSubscribeID(v *int64) *OrderUpdateOne {
+	if v != nil {
+		_u.SetUserSubscribeID(*v)
+	}
+	return _u
+}
+
+// AddUserSubscribeID adds value to the "user_subscribe_id" field.
+func (_u *OrderUpdateOne) AddUserSubscribeID(v int64) *OrderUpdateOne {
+	_u.mutation.AddUserSubscribeID(v)
 	return _u
 }
 
@@ -1326,6 +1655,11 @@ func (_u *OrderUpdateOne) check() error {
 			return &ValidationError{Name: "trade_no", err: fmt.Errorf(`ent: validator failed for field "Order.trade_no": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.PaymentCurrency(); ok {
+		if err := order.PaymentCurrencyValidator(v); err != nil {
+			return &ValidationError{Name: "payment_currency", err: fmt.Errorf(`ent: validator failed for field "Order.payment_currency": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.IdempotencyKey(); ok {
 		if err := order.IdempotencyKeyValidator(v); err != nil {
 			return &ValidationError{Name: "idempotency_key", err: fmt.Errorf(`ent: validator failed for field "Order.idempotency_key": %w`, err)}
@@ -1339,6 +1673,16 @@ func (_u *OrderUpdateOne) check() error {
 	if v, ok := _u.mutation.GuestCheckoutTokenHash(); ok {
 		if err := order.GuestCheckoutTokenHashValidator(v); err != nil {
 			return &ValidationError{Name: "guest_checkout_token_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_checkout_token_hash": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuestAuthType(); ok {
+		if err := order.GuestAuthTypeValidator(v); err != nil {
+			return &ValidationError{Name: "guest_auth_type", err: fmt.Errorf(`ent: validator failed for field "Order.guest_auth_type": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.GuestIdentifier(); ok {
+		if err := order.GuestIdentifierValidator(v); err != nil {
+			return &ValidationError{Name: "guest_identifier", err: fmt.Errorf(`ent: validator failed for field "Order.guest_identifier": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.SubscribeToken(); ok {
@@ -1435,6 +1779,9 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	if value, ok := _u.mutation.AddedCouponDiscount(); ok {
 		_spec.AddField(order.FieldCouponDiscount, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.CouponReserved(); ok {
+		_spec.SetField(order.FieldCouponReserved, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.PaymentID(); ok {
 		_spec.SetField(order.FieldPaymentID, field.TypeInt64, value)
 	}
@@ -1468,6 +1815,27 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	if value, ok := _u.mutation.AddedCommission(); ok {
 		_spec.AddField(order.FieldCommission, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.CommissionRefererID(); ok {
+		_spec.SetField(order.FieldCommissionRefererID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedCommissionRefererID(); ok {
+		_spec.AddField(order.FieldCommissionRefererID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.PaymentAmount(); ok {
+		_spec.SetField(order.FieldPaymentAmount, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPaymentAmount(); ok {
+		_spec.AddField(order.FieldPaymentAmount, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.PaymentCurrency(); ok {
+		_spec.SetField(order.FieldPaymentCurrency, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.PaymentSession(); ok {
+		_spec.SetField(order.FieldPaymentSession, field.TypeString, value)
+	}
+	if _u.mutation.PaymentSessionCleared() {
+		_spec.ClearField(order.FieldPaymentSession, field.TypeString)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(order.FieldStatus, field.TypeUint8, value)
 	}
@@ -1498,6 +1866,12 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	if _u.mutation.GuestCheckoutTokenHashCleared() {
 		_spec.ClearField(order.FieldGuestCheckoutTokenHash, field.TypeString)
 	}
+	if value, ok := _u.mutation.GuestAuthType(); ok {
+		_spec.SetField(order.FieldGuestAuthType, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GuestIdentifier(); ok {
+		_spec.SetField(order.FieldGuestIdentifier, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)
 	}
@@ -1509,6 +1883,12 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	}
 	if _u.mutation.SubscribeTokenCleared() {
 		_spec.ClearField(order.FieldSubscribeToken, field.TypeString)
+	}
+	if value, ok := _u.mutation.UserSubscribeID(); ok {
+		_spec.SetField(order.FieldUserSubscribeID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedUserSubscribeID(); ok {
+		_spec.AddField(order.FieldUserSubscribeID, field.TypeInt64, value)
 	}
 	if value, ok := _u.mutation.IsNew(); ok {
 		_spec.SetField(order.FieldIsNew, field.TypeBool, value)

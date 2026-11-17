@@ -66,11 +66,7 @@ func (s *Subscribe) Validate() error {
 		return ErrInvalidTraffic
 	}
 
-	if !s.TrafficUnlimited && s.Download+s.Upload > s.Traffic {
-		return fmt.Errorf("download + upload (%d) cannot exceed total traffic (%d)", s.Download+s.Upload, s.Traffic)
-	}
-
-	if !s.ExpireTime.After(s.StartTime) {
+	if !s.noTimeLimit() && !s.ExpireTime.After(s.StartTime) {
 		return ErrInvalidTimeRange
 	}
 
@@ -154,51 +150,107 @@ func CalculateRemainingAmount(sub Subscribe, order Order, now time.Time) (int64,
 		return 0, fmt.Errorf("invalid order: %w", err)
 	}
 
-	if sub.UnitTime == UnitTimeNoLimit && sub.ResetCycle == 0 {
+	if sub.noTimeLimit() {
+		if sub.ResetCycle != ResetCycleNone {
+			return 0, nil
+		}
+		return calculateNoLimitAmount(sub, order)
+	}
+	if order.Amount == 0 || !now.Before(sub.ExpireTime) {
 		return 0, nil
 	}
-
-	unitPrice, err := safeDivide(order.Amount, order.Quantity)
-	if err != nil {
-		return 0, fmt.Errorf("failed to calculate unit price: %w", err)
+	if now.Before(sub.StartTime) {
+		now = sub.StartTime
 	}
-	sub.UnitPrice = unitPrice
+	cycleStart, cycleEnd := currentResetCycle(sub, now)
+	remaining := float64(sub.ExpireTime.Sub(cycleEnd))
+	if cycle := cycleEnd.Sub(cycleStart); cycle > 0 {
+		timeShare := float64(cycleEnd.Sub(now)) / float64(cycle)
+		share := timeShare
+		if !sub.TrafficUnlimited && sub.Traffic > 0 {
+			trafficShare := unusedTrafficShare(sub)
+			share = math.Min(timeShare, trafficShare)
+			if sub.DeductionRatio != 0 {
+				trafficWeight, timeWeight := calculateWeights(sub.DeductionRatio)
+				share = trafficWeight*trafficShare + timeWeight*timeShare
+			}
+		}
+		remaining += float64(cycle) * share
+	}
+	return refundProportion(order.Amount, remaining/float64(sub.ExpireTime.Sub(sub.StartTime))), nil
+}
 
-	// Note: do NOT convert now to a specific timezone here.
-	// MySQL datetime(3) is stored without timezone and read as UTC by Go.
-	// time.Now() runs on the same server, so both use the same implicit timezone.
-	// Converting now to StartTime's timezone would create a mismatch.
+func (s Subscribe) noTimeLimit() bool {
+	return s.UnitTime == UnitTimeNoLimit || s.ExpireTime.Before(time.Date(1971, 1, 1, 0, 0, 0, 0, time.UTC))
+}
 
-	switch sub.UnitTime {
-	case UnitTimeNoLimit:
-		return calculateNoLimitAmount(sub, order)
+func unusedTrafficShare(sub Subscribe) float64 {
+	if sub.Traffic <= 0 || sub.Download >= sub.Traffic {
+		return 0
+	}
+	remaining := sub.Traffic - sub.Download
+	if sub.Upload >= remaining {
+		return 0
+	}
+	return float64(remaining-sub.Upload) / float64(sub.Traffic)
+}
 
+func refundProportion(amount int64, share float64) int64 {
+	if math.IsNaN(share) || share <= 0 {
+		return 0
+	}
+	if share >= 1 {
+		return amount
+	}
+	result := float64(amount) * share
+	if result >= float64(amount) {
+		return amount
+	}
+	return int64(result)
+}
+
+func currentResetCycle(sub Subscribe, now time.Time) (time.Time, time.Time) {
+	start := sub.StartTime.In(now.Location())
+	resetDate := func(year int, month time.Month, day int) time.Time {
+		first := time.Date(year, month, 1, 0, 0, 0, 0, now.Location())
+		return time.Date(first.Year(), first.Month(), min(day, first.AddDate(0, 1, -1).Day()), 0, 0, 0, 0, now.Location())
+	}
+	var from, to time.Time
+	switch sub.ResetCycle {
+	case ResetCycle1st:
+		from = resetDate(now.Year(), now.Month(), 1)
+		to = from.AddDate(0, 1, 0)
+	case ResetCycleMonthly:
+		from = resetDate(now.Year(), now.Month(), start.Day())
+		if from.After(now) {
+			from = resetDate(now.Year(), now.Month()-1, start.Day())
+		}
+		to = resetDate(from.Year(), from.Month()+1, start.Day())
+	case ResetCycleYear:
+		from = resetDate(now.Year(), start.Month(), start.Day())
+		if from.After(now) {
+			from = resetDate(now.Year()-1, start.Month(), start.Day())
+		}
+		to = resetDate(from.Year()+1, start.Month(), start.Day())
 	default:
-		// Year, Month, Day: all use the same formula: unitPrice × (remainingDays / totalDays)
-		return calculateRemainingUnitTimeAmount(sub, now)
+		return sub.StartTime, sub.ExpireTime
 	}
+	if from.Before(sub.StartTime) {
+		from = sub.StartTime
+	}
+	if to.After(sub.ExpireTime) {
+		to = sub.ExpireTime
+	}
+	return from, to
 }
 
 // calculateNoLimitAmount calculates refund amount for unlimited time subscriptions
 // based on unused traffic only
 func calculateNoLimitAmount(sub Subscribe, order Order) (int64, error) {
-	if sub.TrafficUnlimited {
+	if sub.TrafficUnlimited || sub.Traffic == 0 {
 		return 0, nil
 	}
-
-	usedTraffic := sub.Traffic - sub.Download - sub.Upload
-	if usedTraffic < 0 {
-		usedTraffic = 0
-	}
-
-	unitPrice := float64(order.Amount) / float64(sub.Traffic)
-	result := float64(usedTraffic) * unitPrice
-
-	if result > float64(maxInt64) || result < float64(minInt64) {
-		return 0, ErrOverflow
-	}
-
-	return int64(result), nil
+	return refundProportion(order.Amount, unusedTrafficShare(sub)), nil
 }
 
 // calculateRemainingUnitTimeAmount calculates the remaining amount based on

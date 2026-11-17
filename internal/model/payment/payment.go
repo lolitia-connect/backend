@@ -33,6 +33,7 @@ type StripeConfig struct {
 	PublicKey     string `json:"public_key"`
 	SecretKey     string `json:"secret_key"`
 	WebhookSecret string `json:"webhook_secret"`
+	WebhookID     string `json:"webhook_id"`
 	Payment       string `json:"payment"`
 }
 
@@ -95,10 +96,14 @@ func (l *AlipayF2FConfig) Unmarshal(data []byte) error {
 }
 
 type EPayConfig struct {
-	Pid  string `json:"pid"`
-	Url  string `json:"url"`
-	Key  string `json:"key"`
-	Type string `json:"type"`
+	Pid          string `json:"pid"`
+	Url          string `json:"url"`
+	Key          string `json:"key"`
+	Type         string `json:"type"`
+	Version      string `json:"version,omitempty"`
+	CheckoutMode string `json:"checkout_mode,omitempty"`
+	PrivateKey   string `json:"private_key,omitempty"`
+	PublicKey    string `json:"public_key,omitempty"`
 }
 
 func (l *EPayConfig) Marshal() ([]byte, error) {

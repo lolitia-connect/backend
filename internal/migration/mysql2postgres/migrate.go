@@ -7,11 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/lib/pq"
@@ -29,6 +31,7 @@ type Config struct {
 	Yes         bool
 	DryRun      bool
 	BatchSize   int
+	Location    string
 }
 
 type postgresColumn struct {
@@ -46,6 +49,7 @@ type tablePlan struct {
 	Columns      []postgresColumn
 	OrderColumns []string
 	RowCount     int64
+	Location     *time.Location
 }
 
 type foreignKey struct {
@@ -54,7 +58,7 @@ type foreignKey struct {
 }
 
 func DefaultConfig() Config {
-	return Config{Schema: "public", BatchSize: 1000}
+	return Config{Schema: "public", BatchSize: 1000, Location: "Asia/Shanghai"}
 }
 
 func Run(ctx context.Context, args []string) error {
@@ -75,8 +79,12 @@ func Migrate(ctx context.Context, cfg Config) error {
 	if cfg.Truncate && !cfg.Yes && !cfg.DryRun {
 		return errors.New("--truncate is destructive; pass --yes to confirm")
 	}
+	location, err := time.LoadLocation(cfg.Location)
+	if err != nil || cfg.Location == "" || cfg.Location == "Local" {
+		return fmt.Errorf("--location %q must name the panel's IANA AppLocation", cfg.Location)
+	}
 
-	mysqlDB, err := sql.Open("mysql", normalizeMySQLDSN(cfg.MySQLDSN))
+	mysqlDB, err := sql.Open("mysql", normalizeMySQLDSN(cfg.MySQLDSN, location))
 	if err != nil {
 		return fmt.Errorf("open mysql: %w", err)
 	}
@@ -94,7 +102,7 @@ func Migrate(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("ping postgres: %w", err)
 	}
 
-	plans, err := buildPlans(ctx, mysqlDB, postgresDB, cfg)
+	plans, err := buildPlans(ctx, mysqlDB, postgresDB, cfg, location)
 	if err != nil {
 		return err
 	}
@@ -123,7 +131,7 @@ func Migrate(ctx context.Context, cfg Config) error {
 		}
 	}
 
-	if err := resetSequences(ctx, postgresDB, cfg.Schema); err != nil {
+	if err := resetSequences(ctx, postgresDB, cfg.Schema, plans); err != nil {
 		return err
 	}
 	log.Printf("migration completed")
@@ -142,6 +150,7 @@ func ParseFlags(args []string) (Config, error) {
 	fs.BoolVar(&cfg.Yes, "yes", false, "confirm destructive operations")
 	fs.BoolVar(&cfg.DryRun, "dry-run", false, "print plan without copying data")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "rows per progress log")
+	fs.StringVar(&cfg.Location, "location", cfg.Location, "IANA zone of source DATETIME values (panel AppLocation)")
 	fs.SetOutput(os.Stderr)
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
@@ -153,12 +162,15 @@ func ParseFlags(args []string) (Config, error) {
 	return cfg, nil
 }
 
-func normalizeMySQLDSN(dsn string) string {
+func normalizeMySQLDSN(dsn string, locations ...*time.Location) string {
 	cfg, err := mysqlDriver.ParseDSN(dsn)
 	if err != nil {
 		return dsn
 	}
 	cfg.ParseTime = true
+	if !dsnNamesLocation(dsn) && len(locations) > 0 && locations[0] != nil {
+		cfg.Loc = locations[0]
+	}
 	if cfg.Params == nil {
 		cfg.Params = make(map[string]string)
 	}
@@ -168,7 +180,24 @@ func normalizeMySQLDSN(dsn string) string {
 	return cfg.FormatDSN()
 }
 
-func buildPlans(ctx context.Context, mysqlDB, postgresDB *sql.DB, cfg Config) ([]tablePlan, error) {
+func dsnNamesLocation(dsn string) bool {
+	databaseSeparator := strings.LastIndex(dsn, "/")
+	if databaseSeparator < 0 {
+		return false
+	}
+	querySeparator := strings.IndexByte(dsn[databaseSeparator+1:], '?')
+	if querySeparator < 0 {
+		return false
+	}
+	params, err := url.ParseQuery(dsn[databaseSeparator+querySeparator+2:])
+	if err != nil {
+		return false
+	}
+	_, exists := params["loc"]
+	return exists
+}
+
+func buildPlans(ctx context.Context, mysqlDB, postgresDB *sql.DB, cfg Config, location *time.Location) ([]tablePlan, error) {
 	sourceTables, err := listMySQLTables(ctx, mysqlDB)
 	if err != nil {
 		return nil, err
@@ -237,6 +266,7 @@ func buildPlans(ctx context.Context, mysqlDB, postgresDB *sql.DB, cfg Config) ([
 			Columns:      commonCols,
 			OrderColumns: orderColumns,
 			RowCount:     rowCount,
+			Location:     location,
 		})
 	}
 	dependencies, err := listPostgresForeignKeys(ctx, postgresDB, cfg.Schema)
@@ -531,7 +561,7 @@ func copyTable(ctx context.Context, mysqlDB, postgresDB *sql.DB, schema string, 
 		}
 		values := make([]any, len(raw))
 		for i, value := range raw {
-			converted, err := convertValue(value, plan.Columns[i])
+			converted, err := convertValue(value, plan.Columns[i], plan.Location)
 			if err != nil {
 				return fmt.Errorf("convert %s.%s: %w", plan.Name, plan.Columns[i].Name, err)
 			}
@@ -563,15 +593,15 @@ func copyTable(ctx context.Context, mysqlDB, postgresDB *sql.DB, schema string, 
 	return nil
 }
 
-func convertValue(value any, col postgresColumn) (any, error) {
+func convertValue(value any, col postgresColumn, locations ...*time.Location) (any, error) {
 	if value == nil {
 		return nil, nil
 	}
 	switch v := value.(type) {
 	case []byte:
-		return convertString(string(v), col)
+		return convertString(string(v), col, locations...)
 	case string:
-		return convertString(v, col)
+		return convertString(v, col, locations...)
 	case time.Time:
 		if v.IsZero() {
 			return nil, nil
@@ -598,7 +628,7 @@ func convertValue(value any, col postgresColumn) (any, error) {
 	}
 }
 
-func convertString(value string, col postgresColumn) (any, error) {
+func convertString(value string, col postgresColumn, locations ...*time.Location) (any, error) {
 	if isZeroDate(value) {
 		return nil, nil
 	}
@@ -619,7 +649,7 @@ func convertString(value string, col postgresColumn) (any, error) {
 		if value == "" {
 			return nil, nil
 		}
-		t, err := parseTimestamp(value)
+		t, err := parseTimestamp(value, locations...)
 		if err != nil {
 			return value, nil
 		}
@@ -683,7 +713,11 @@ func numericToBool(value any) (bool, error) {
 	}
 }
 
-func parseTimestamp(value string) (time.Time, error) {
+func parseTimestamp(value string, locations ...*time.Location) (time.Time, error) {
+	location := time.UTC
+	if len(locations) > 0 && locations[0] != nil {
+		location = locations[0]
+	}
 	layouts := []string{
 		"2006-01-02 15:04:05.999999999",
 		"2006-01-02 15:04:05.999999",
@@ -693,39 +727,25 @@ func parseTimestamp(value string) (time.Time, error) {
 		"2006-01-02",
 	}
 	for _, layout := range layouts {
-		if t, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+		if t, err := time.ParseInLocation(layout, value, location); err == nil {
 			return t, nil
 		}
 	}
 	return time.Time{}, fmt.Errorf("unsupported timestamp %q", value)
 }
 
-func resetSequences(ctx context.Context, db *sql.DB, schema string) error {
-	rows, err := db.QueryContext(ctx, `
-SELECT table_name, column_name
-FROM information_schema.columns
-WHERE table_schema = $1
-  AND (is_identity = 'YES' OR column_default LIKE 'nextval(%')
-ORDER BY table_name, ordinal_position`, schema)
-	if err != nil {
-		return fmt.Errorf("list postgres sequences: %w", err)
-	}
-	defer rows.Close()
-
+func resetSequences(ctx context.Context, db *sql.DB, schema string, plans []tablePlan) error {
 	type sequenceColumn struct {
 		table  string
 		column string
 	}
 	var columns []sequenceColumn
-	for rows.Next() {
-		var item sequenceColumn
-		if err := rows.Scan(&item.table, &item.column); err != nil {
-			return err
+	for _, plan := range plans {
+		for _, column := range plan.Columns {
+			if column.Identity || (column.Default.Valid && strings.HasPrefix(column.Default.String, "nextval(")) {
+				columns = append(columns, sequenceColumn{table: plan.Name, column: column.Name})
+			}
 		}
-		columns = append(columns, item)
-	}
-	if err := rows.Err(); err != nil {
-		return err
 	}
 
 	for _, item := range columns {

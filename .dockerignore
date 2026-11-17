@@ -1,0 +1,17 @@
+.git
+.github
+.ai
+.claude
+.idea
+.vscode
+config.yaml
+config.dev.yaml
+etc/ppanel.yaml
+bin
+build
+logs
+cache
+test-artifacts
+coverage*
+*.exe
+*.test

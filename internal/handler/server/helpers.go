@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	serverv1 "github.com/perfect-panel/server/api/server/v1"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/result"
@@ -86,6 +87,15 @@ func writeParamError(ctx *app.RequestContext, err error) {
 }
 
 func writeServerReportResult(ctx *app.RequestContext, err error) {
+	if errors.Is(err, node.ErrServerBusy) {
+		ctx.Header("Retry-After", "1")
+		if acceptsProtobuf(ctx) {
+			writeServerProtobuf(ctx, consts.StatusServiceUnavailable, &serverv1.Result{Code: 503, Message: "server user authorization is refreshing"})
+		} else {
+			ctx.JSON(consts.StatusServiceUnavailable, map[string]any{"code": 503, "msg": "server user authorization is refreshing"})
+		}
+		return
+	}
 	if acceptsProtobuf(ctx) {
 		writeServerProtobuf(ctx, consts.StatusOK, serverResult(err))
 		return

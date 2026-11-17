@@ -5,6 +5,7 @@ import (
 
 	"github.com/perfect-panel/server/pkg/constant"
 
+	"github.com/perfect-panel/server/internal/model/ticket"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -30,9 +31,12 @@ func NewUpdateUserTicketStatusLogic(ctx context.Context, svcCtx *svc.ServiceCont
 
 func (l *UpdateUserTicketStatusLogic) UpdateUserTicketStatus(req *types.UpdateUserTicketStatusRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
-	if !ok {
+	if !ok || u == nil {
 		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
+	}
+	if req.Status == nil || *req.Status != ticket.Closed || req.Id <= 0 {
+		return xerr.NewErrCode(xerr.InvalidParams)
 	}
 	err := l.svcCtx.Store.Ticket().UpdateTicketStatus(l.ctx, req.Id, u.Id, *req.Status)
 	if err != nil {

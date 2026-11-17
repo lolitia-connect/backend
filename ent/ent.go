@@ -31,11 +31,15 @@ import (
 	"github.com/perfect-panel/server/ent/subscribe"
 	"github.com/perfect-panel/server/ent/subscribeapplication"
 	"github.com/perfect-panel/server/ent/subscribegroup"
+	"github.com/perfect-panel/server/ent/subscriptionentitlement"
+	"github.com/perfect-panel/server/ent/subscriptionentitlementrevision"
+	"github.com/perfect-panel/server/ent/subscriptionperiod"
 	"github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/ent/task"
 	"github.com/perfect-panel/server/ent/ticket"
 	"github.com/perfect-panel/server/ent/ticketfollow"
+	"github.com/perfect-panel/server/ent/trafficbatch"
 	"github.com/perfect-panel/server/ent/trafficlog"
 	"github.com/perfect-panel/server/ent/user"
 	"github.com/perfect-panel/server/ent/userauthmethod"
@@ -104,38 +108,42 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			ads.Table:                    ads.ValidColumn,
-			announcement.Table:           announcement.ValidColumn,
-			authmethod.Table:             authmethod.ValidColumn,
-			coupon.Table:                 coupon.ValidColumn,
-			document.Table:               document.ValidColumn,
-			grouphistory.Table:           grouphistory.ValidColumn,
-			grouphistorydetail.Table:     grouphistorydetail.ValidColumn,
-			node.Table:                   node.ValidColumn,
-			nodegroup.Table:              nodegroup.ValidColumn,
-			order.Table:                  order.ValidColumn,
-			orderevent.Table:             orderevent.ValidColumn,
-			payment.Table:                payment.ValidColumn,
-			redemptioncode.Table:         redemptioncode.ValidColumn,
-			redemptionrecord.Table:       redemptionrecord.ValidColumn,
-			server.Table:                 server.ValidColumn,
-			serverconfigoverride.Table:   serverconfigoverride.ValidColumn,
-			subscribe.Table:              subscribe.ValidColumn,
-			subscribeapplication.Table:   subscribeapplication.ValidColumn,
-			subscribegroup.Table:         subscribegroup.ValidColumn,
-			system.Table:                 system.ValidColumn,
-			systemlog.Table:              systemlog.ValidColumn,
-			task.Table:                   task.ValidColumn,
-			ticket.Table:                 ticket.ValidColumn,
-			ticketfollow.Table:           ticketfollow.ValidColumn,
-			trafficlog.Table:             trafficlog.ValidColumn,
-			user.Table:                   user.ValidColumn,
-			userauthmethod.Table:         userauthmethod.ValidColumn,
-			userdevice.Table:             userdevice.ValidColumn,
-			userdeviceonlinerecord.Table: userdeviceonlinerecord.ValidColumn,
-			usersubscribe.Table:          usersubscribe.ValidColumn,
-			userwallet.Table:             userwallet.ValidColumn,
-			userwithdrawal.Table:         userwithdrawal.ValidColumn,
+			ads.Table:                             ads.ValidColumn,
+			announcement.Table:                    announcement.ValidColumn,
+			authmethod.Table:                      authmethod.ValidColumn,
+			coupon.Table:                          coupon.ValidColumn,
+			document.Table:                        document.ValidColumn,
+			grouphistory.Table:                    grouphistory.ValidColumn,
+			grouphistorydetail.Table:              grouphistorydetail.ValidColumn,
+			node.Table:                            node.ValidColumn,
+			nodegroup.Table:                       nodegroup.ValidColumn,
+			order.Table:                           order.ValidColumn,
+			orderevent.Table:                      orderevent.ValidColumn,
+			payment.Table:                         payment.ValidColumn,
+			redemptioncode.Table:                  redemptioncode.ValidColumn,
+			redemptionrecord.Table:                redemptionrecord.ValidColumn,
+			server.Table:                          server.ValidColumn,
+			serverconfigoverride.Table:            serverconfigoverride.ValidColumn,
+			subscribe.Table:                       subscribe.ValidColumn,
+			subscribeapplication.Table:            subscribeapplication.ValidColumn,
+			subscribegroup.Table:                  subscribegroup.ValidColumn,
+			subscriptionentitlement.Table:         subscriptionentitlement.ValidColumn,
+			subscriptionentitlementrevision.Table: subscriptionentitlementrevision.ValidColumn,
+			subscriptionperiod.Table:              subscriptionperiod.ValidColumn,
+			system.Table:                          system.ValidColumn,
+			systemlog.Table:                       systemlog.ValidColumn,
+			task.Table:                            task.ValidColumn,
+			ticket.Table:                          ticket.ValidColumn,
+			ticketfollow.Table:                    ticketfollow.ValidColumn,
+			trafficbatch.Table:                    trafficbatch.ValidColumn,
+			trafficlog.Table:                      trafficlog.ValidColumn,
+			user.Table:                            user.ValidColumn,
+			userauthmethod.Table:                  userauthmethod.ValidColumn,
+			userdevice.Table:                      userdevice.ValidColumn,
+			userdeviceonlinerecord.Table:          userdeviceonlinerecord.ValidColumn,
+			usersubscribe.Table:                   usersubscribe.ValidColumn,
+			userwallet.Table:                      userwallet.ValidColumn,
+			userwithdrawal.Table:                  userwithdrawal.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

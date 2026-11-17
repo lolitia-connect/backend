@@ -2,15 +2,22 @@
 
 <div align="center">
 
-[![License](https://img.shields.io/github/license/perfect-panel/server)](LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.21%2B-blue)](https://go.dev/)
-[![Go Report Card](https://goreportcard.com/badge/github.com/perfect-panel/server)](https://goreportcard.com/report/github.com/perfect-panel/server)
+[![License](https://img.shields.io/github/license/lolitia-connect/backend)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.27%2B-blue)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Available-blue)](Dockerfile)
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/perfect-panel/server/release.yml)](.github/workflows/release.yml)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/lolitia-connect/backend/release.yml)](.github/workflows/release.yml)
 
 **PPanel is a pure, professional, and perfect open-source proxy panel tool, designed for learning and practical use.**
 
-[English](README.md) | [中文](README_ZH.md) | [Report Bug](https://github.com/perfect-panel/server/issues/new) | [Request Feature](https://github.com/perfect-panel/server/issues/new)
+[English](README_EN.md) | [中文](README.md) | [Report Bug](https://github.com/lolitia-connect/backend/issues/new) | [Request Feature](https://github.com/lolitia-connect/backend/issues/new)
+
+> **This repository is a fork of [perfect-panel/server](https://github.com/perfect-panel/server)**
+> ([lolitia-connect/backend](https://github.com/lolitia-connect/backend)) that merges upstream release tags
+> periodically (see [`.ai/sync-diffs/`](.ai/sync-diffs/)). Compared with upstream it uses entgo instead of GORM,
+> supports multi-protocol instances keyed `type:id`, ships a WASM plugin system, unlimited traffic
+> (`traffic_unlimited`), Stripe Checkout Sessions and Edge subscribe
+> (see [docs/edge-subscribe.md](docs/edge-subscribe.md)). The configuration file is `config.yaml`
+> (upstream uses `etc/ppanel.yaml`).
 
 </div>
 
@@ -49,16 +56,20 @@ proxy services. Built with Go, it emphasizes performance, security, and scalabil
 
 ### Prerequisites
 
-- **Go**: 1.21 or higher
+- **Go**: 1.27 or higher (`go.mod` requires `go 1.27.4`)
+- **Database**: MySQL 8.0+ / MariaDB or PostgreSQL 16+, plus Redis 6.0+
 - **Docker**: Optional, for containerized deployment
 - **Git**: For cloning the repository
+
+Deploying a release binary instead of building? See the [installation guide](doc/install.md)
+(`script/install.sh`, systemd unit, checksum verification) and the [configuration guide](doc/config.md).
 
 ### Installation from Source
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/perfect-panel/ppanel-server.git
-   cd ppanel-server
+   git clone https://github.com/lolitia-connect/backend.git
+   cd backend
    ```
 
 2. **Install dependencies**:
@@ -66,57 +77,102 @@ proxy services. Built with Go, it emphasizes performance, security, and scalabil
    go mod download
    ```
 
-3. **Generate code**:
-   ```bash
-   chmod +x script/generate.sh
-   ./script/generate.sh
-   ```
-
-4. **Build the project**:
+3. **Build the project** (the binaries land in `bin/`; pick the target of the machine that will run it):
    ```bash
    make linux-amd64
    ```
 
-5. **Run the server**:
+4. **Run the server**:
    ```bash
-  ./ppanel-server-linux-amd64 run --config config.yaml
+  ./bin/ppanel-server-linux-amd64 run --config config.yaml
    ```
+   With an empty configuration file the first start serves the setup wizard on `127.0.0.1` at the configured
+   `Port` (`http://127.0.0.1:8080/init` by default), reachable from the same machine only. On a remote host open
+   an SSH tunnel (`ssh -L 8080:127.0.0.1:8080 user@host`) or set `PPANEL_DB` and `PPANEL_REDIS` for a
+   non-interactive installation; both are described in the
+   [installation guide](doc/install.md#4-first-start).
 
 ### 🐳 Docker Deployment
+
+The image runs as an unprivileged user (uid 65532), listens on port 8080, reads `/app/config.yaml` and reports
+its health through `ppanel healthcheck` (`HEALTHCHECK`). **The first-run setup wizard listens on `127.0.0.1`
+inside the container and cannot be reached through a published port**, so a container deployment provides the
+connections in one of two ways:
+
+- set `PPANEL_DB` and `PPANEL_REDIS`: on the first start the server completes the empty configuration file with
+  them and a generated JWT secret, applies the migrations and creates the first administrator, whose password is
+  printed once in `docker logs`; or
+- mount a pre-filled `config.yaml` ([configuration guide](doc/config.md)).
+
+| Variable | Format | Example |
+|---|---|---|
+| `PPANEL_DB` | MySQL DSN `user:password@tcp(host:port)/dbname`, or a URL: `mysql://…`, `postgres://user:password@host:5432/dbname?sslmode=require` | `ppanel:secret@tcp(db:3306)/ppanel` |
+| `PPANEL_REDIS` | `redis://[:password@]host[:port][/db]` | `redis://:secret@redis:6379/0` |
 
 1. **Build the Docker image**:
    ```bash
    docker buildx build --platform linux/amd64 -t ppanel-server:latest .
    ```
 
-2. **Run the container**:
+2. **Run the container**. The mounted configuration file must exist and be writable by uid 65532 on the first
+   start, when the server completes it:
    ```bash
-   docker run --rm -p 8080:8080 -v $(pwd)/etc:/app/etc ppanel-server:latest
+   touch config.yaml && sudo chown 65532:65532 config.yaml
+   docker run -d --name ppanel-server -p 8080:8080 \
+     -e PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' \
+     -e PPANEL_REDIS='redis://:secret@redis:6379/0' \
+     -v "$(pwd)/config.yaml:/app/config.yaml" \
+     ppanel-server:latest
+   docker logs -f ppanel-server   # prints the first administrator's password once
    ```
 
-3. **Use Docker Compose** (create `docker-compose.yml`):
+3. **Use Docker Compose**. The repository's [`docker-compose.yml`](docker-compose.yml) builds the image,
+   publishes port 8080, mounts `./config.yaml` and checks the container's health:
    ```yaml
-   version: '3.8'
    services:
-     ppanel-server:
-       image: ppanel-server:latest
+     ppanel:
+       container_name: ppanel-server
+       build:
+         context: .
+         dockerfile: Dockerfile
        ports:
          - "8080:8080"
-       volumes:
-         - ./etc:/app/etc
        environment:
-         - TZ=Asia/Shanghai
-   ```
-   Run:
-   ```bash
-   docker-compose up -d
-   ```
+         PPANEL_DB: ${PPANEL_DB:-}
+         PPANEL_REDIS: ${PPANEL_REDIS:-}
+       volumes:
+         - ./config.yaml:/app/config.yaml
+         - ppanel-logs:/app/logs
+         - ppanel-cache:/app/cache
+       healthcheck:
+         test: ["CMD", "/app/ppanel", "healthcheck", "--config", "/app/config.yaml"]
+         interval: 30s
+         timeout: 5s
+         retries: 3
+         start_period: 30s
+       restart: always
 
-4. **Pull from Docker Hub** (after CI/CD publishes):
+   volumes:
+     ppanel-logs:
+     ppanel-cache:
+   ```
+   `./config.yaml` must exist as a **file** before the first `docker compose up` (Docker creates a directory of
+   that name otherwise) and be writable by uid 65532; provide `PPANEL_DB` / `PPANEL_REDIS`, then:
+   ```bash
+   mkdir -p logs cache && touch config.yaml && sudo chown 65532:65532 config.yaml
+   PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' PPANEL_REDIS='redis://:secret@redis:6379/0' docker compose up -d
+   ```
+   Stop the container with `docker stop --time 20` so the graceful shutdown (HTTP first, then the scheduler,
+   the task worker and the trace exporter) can finish.
+
+4. **Pull a published image** (after CI/CD publishes):
    ```bash
    docker pull ppanel/ppanel-server:latest
    docker run --rm -p 8080:8080 ppanel/ppanel-server:latest
    ```
+
+The server answers `GET /healthz` (liveness) and `GET /readyz` (readiness: database and Redis reachable) for
+monitoring and load balancers; see the [configuration guide](doc/config.md#6-health-checks).
 
 ## 📖 API Documentation
 
@@ -133,6 +189,13 @@ The documentation covers all endpoints, request/response formats, and authentica
 | PPanel Web       | Frontend for PPanel        | [GitHub](https://github.com/perfect-panel/frontend) |
 | PPanel User Web  | User interface for PPanel  | [Preview](https://user.ppanel.dev)                    |
 | PPanel Admin Web | Admin interface for PPanel | [Preview](https://admin.ppanel.dev)                   |
+| Upstream server  | What this fork tracks      | [GitHub](https://github.com/perfect-panel/server)   |
+
+## 🔒 Security
+
+Report vulnerabilities privately through
+[GitHub Security Advisories](https://github.com/lolitia-connect/backend/security/advisories/new), not in public
+issues. [SECURITY.md](SECURITY.md) lists this fork's supported versions and what to expect.
 
 ## 🌐 Official Website
 
@@ -146,24 +209,28 @@ Visit [ppanel.dev](https://ppanel.dev/) for more details.
 
 ```
 .
-├── apis/             # API definition files
-├── cmd/              # Application entry point
-├── doc/              # Documentation
+├── cmd/              # Application entry point (run, healthcheck, migrate, version)
+├── doc/              # Documentation (config.md, install.md)
+├── docs/             # Topic documents (e.g. edge-subscribe.md)
 ├── config.yaml.example # Example configuration file
-├── generate/         # Code generation tools
-├── initialize/       # System initialization
+├── ent/              # entgo generated ORM client and schemas
+├── initialize/       # System initialization and database migrations
 ├── internal/         # Internal modules
 │   ├── config/       # Configuration parsing
 │   ├── handler/      # HTTP handlers
 │   ├── middleware/   # HTTP middleware
 │   ├── logic/        # Business logic
 │   ├── model/        # Data models
+│   ├── plugin/       # WASM plugin system
 │   ├── svc/          # Service layer
+│   ├── transport/    # HTTP server and health endpoints
 │   └── types/        # Type definitions
 ├── pkg/              # Utility code
+├── plugins/          # Plugin directory (WASM binaries are not committed)
 ├── queue/            # Queue services
 ├── scheduler/        # Scheduled tasks
-├── script/           # Build scripts
+├── script/           # Installation and CI helper scripts
+├── scripts/          # Performance and maintenance scripts
 ├── go.mod            # Go module definition
 ├── Makefile          # Build automation
 └── Dockerfile        # Docker configuration
@@ -171,19 +238,24 @@ Visit [ppanel.dev](https://ppanel.dev/) for more details.
 
 ## 💻 Development
 
-### Format API Files
-```bash
-goctl api format --dir apis/user.api
-```
+### Adding a new endpoint
 
-### Add a New API
+This branch's HTTP layer is hand-written Hertz handlers (`internal/handler/`); there is no
+go-zero `.api` generation step any more. Upstream removed that toolchain in
+`chore(codegen): remove legacy go-zero generation assets` and this fork now mirrors that. To add
+an endpoint:
 
-1. Create a new API file in `apis/`.
-2. Import it in `apis/ppanel.api`.
-3. Regenerate code:
-   ```bash
-   ./script/generate.sh
-   ```
+1. Add the request/response types under `internal/types/`.
+2. Implement the business logic under `internal/logic/`.
+3. Add the handler under `internal/handler/` and register the route in `internal/handler/routes.go`.
+4. If the frontend needs it, run `bun run api:refresh` from `frontend/` to re-export this
+   repository's routes and types (the contract is derived straight from the Go AST by
+   `frontend/scripts/backend-contract.go`; see the
+   [frontend ledger](../../frontend/.ai/sync-diffs/v1.22.0-to-v1.23.0.md)).
+
+The data layer is entgo: after editing `ent/schema/` run `go generate ./ent`, or
+`go run entgo.io/ent/cmd/ent generate ./ent/schema` directly. Schema changes still land as paired
+hand-written SQL migrations under `initialize/migrate/database/`.
 
 ### Build for Multiple Platforms
 
@@ -196,10 +268,30 @@ make linux-arm64  # Build for specific platform
 
 Supported platforms include:
 
-- Linux: `386`, `amd64`, `arm64`, `armv5-v7`, `mips`, `riscv64`, `loong64`, etc.
-- Windows: `386`, `amd64`, `arm64`, `armv7`
-- macOS: `amd64`, `arm64`
-- FreeBSD: `amd64`, `arm64`
+- Linux: `386`, `amd64`, `arm64` (plus `linux-amd64-v3`, `linux-armv5`, `linux-armv6`, `linux-armv7`)
+- Windows: `386`, `amd64`, `arm64` (plus `windows-amd64-v3`, `windows-armv7`)
+- macOS: `amd64`, `arm64` (plus `darwin-amd64-v3`)
+
+Every binary is static (`CGO_ENABLED=0 -trimpath`), with the version metadata injected by the Makefile into
+`pkg/constant.Version` / `pkg/constant.BuildTime`. The release
+([`.github/workflows/release.yml`](.github/workflows/release.yml)) publishes
+`ppanel-server-<os>-<arch>.tar.gz` (`.zip` for Windows) for those platforms, each with a `.sha256` file.
+
+## 🧩 Fork differences from upstream
+
+| Aspect | This fork | Upstream v1.21.7 |
+|---|---|---|
+| ORM | entgo (`ent/`, `pkg/orm`) | GORM |
+| Node protocol instances | Multi-protocol instances keyed `type:id` | Single protocol reference |
+| Plugins | Built-in WASM plugin system (`internal/plugin`, `Plugin` section) | None |
+| Unlimited traffic | `traffic_unlimited` supported | — |
+| Stripe | Checkout Sessions (`CreateCheckoutSession`) | — |
+| Subscription rendering | Signed Edge subscribe API, see [docs/edge-subscribe.md](docs/edge-subscribe.md) | None |
+| Configuration path | `config.yaml` | `etc/ppanel.yaml` |
+| Configuration sections | Has `Transport`, `Device`, `Plugin`, `EdgeSubscribe`; `MySQL` is a deprecated alias | Has `AppLocation`, `Redis.QueueDB`, `Database.ConnMaxLifetime/ConnMaxIdleTime` |
+| Queue Redis database | Hard-coded to `5` (`queue/queue.go`) | Configurable as `Redis.QueueDB` |
+
+Full details: [configuration guide](doc/config.md).
 
 ## 🤝 Contributing
 

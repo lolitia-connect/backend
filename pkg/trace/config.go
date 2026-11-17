@@ -19,6 +19,7 @@ type Config struct {
 	OtlpHttpPath string `yaml:"OtlpHttpPath"`
 	// OtlpHttpSecure represents the scheme to use for OTLP HTTP transport.
 	OtlpHttpSecure bool `yaml:"OtlpHttpSecure"`
+	OtlpGrpcSecure bool `yaml:"OtlpGrpcSecure"`
 	// Disabled indicates whether StartAgent starts the agent.
 	Disabled bool `yaml:"Disabled"`
 }

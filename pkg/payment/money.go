@@ -2,10 +2,15 @@ package payment
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
 )
+
+func FormatAmount(amount int64) string {
+	return fmt.Sprintf("%d.%02d", amount/100, amount%100)
+}
 
 // ParseAmount converts a non-negative decimal currency amount to its integer
 // minor unit. Financial callback code must not compare parsed float64 values.

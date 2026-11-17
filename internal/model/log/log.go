@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/pkg/requestmeta"
+	"go.uber.org/zap"
 )
 
 // MetadataFromContext extracts request metadata from context.
@@ -39,9 +40,11 @@ const (
 	TypeCommission        Type = 33 // Commission log
 	TypeGift              Type = 34 // Gift log
 	TypeOrderCreated      Type = 35 // Order creation audit log
+	TypeUnmatchedPayment  Type = 36
 	TypeUserTrafficRank   Type = 40 // Top 10 User traffic rank log
 	TypeServerTrafficRank Type = 41 // Top 10 Server traffic rank log
 	TypeTrafficStat       Type = 42 // Daily traffic statistics log
+	TypeAdminAction       Type = 50
 )
 const (
 	ResetSubscribeTypeAuto       uint16 = 231 // Auto reset
@@ -77,6 +80,93 @@ type SystemLog struct {
 	ObjectID  int64
 	Content   string
 	CreatedAt time.Time
+}
+
+// UnmatchedPayment records a payment a gateway confirmed that could not settle
+// its order: the order was already closed or finished, the trade differs from
+// the one bound to it, or the gateway asked for manual review. It is the durable
+// trace an operator refunds from.
+//
+// The request metadata belongs to the record because the entry exists for risk
+// analysis: an administrator has to see where the callback came from.
+type UnmatchedPayment struct {
+	requestmeta.Metadata
+	OrderNo  string `json:"order_no"`
+	TradeNo  string `json:"trade_no"`
+	Platform string `json:"platform"`
+	Amount   int64  `json:"amount"`
+	Currency string `json:"currency"`
+	Reason   string `json:"reason"`
+}
+
+// UnmatchedPaymentFrom returns payment carrying the request metadata of ctx, as
+// recorded by the HTTP middleware. Without a metadata-bearing context the entry
+// is stored as it is, so callers outside a request (tests, internal retries)
+// keep working. The metadata is normalised and the free-text reason bounded, so
+// an attacker-influenced callback cannot grow the row without limit.
+func UnmatchedPaymentFrom(ctx context.Context, payment UnmatchedPayment) UnmatchedPayment {
+	if metadata, ok := requestmeta.From(ctx); ok {
+		payment.Metadata = metadata
+	}
+	payment.Metadata = requestmeta.Normalize(payment.Metadata)
+	payment.Reason = requestmeta.Bound(payment.Reason, 2048)
+	return payment
+}
+
+// DecodeUnmatchedPayment normalises a stored entry after it is unmarshalled, so
+// rows written before the metadata field existed still decode and any
+// out-of-bound value stored by an older writer is clamped on read.
+func (u *UnmatchedPayment) Normalize() {
+	if u == nil {
+		return
+	}
+	u.Metadata = requestmeta.Normalize(u.Metadata)
+	u.Reason = requestmeta.Bound(u.Reason, 2048)
+}
+
+type AdminAction struct {
+	requestmeta.Metadata
+	Action           string `json:"action"`
+	Object           string `json:"object,omitempty"`
+	ObjectID         int64  `json:"object_id,omitempty"`
+	Detail           string `json:"detail,omitempty"`
+	Source           string `json:"source"`
+	TelegramSenderID int64  `json:"telegram_sender_id,omitempty"`
+	Timestamp        int64  `json:"timestamp"`
+}
+
+func NewAdminActionLog(ctx context.Context, action AdminAction) (*SystemLog, error) {
+	if metadata, ok := requestmeta.From(ctx); ok {
+		actor := action.ActorID
+		action.Metadata = metadata
+		if actor != 0 {
+			action.ActorID = actor
+		}
+	}
+	action.Metadata = requestmeta.Normalize(action.Metadata)
+	action.Detail = requestmeta.Bound(action.Detail, 2048)
+	if action.Source == "" {
+		action.Source = "http"
+	}
+	now := time.Now()
+	if action.Timestamp == 0 {
+		action.Timestamp = now.UnixMilli()
+	}
+	content, err := json.Marshal(action)
+	if err != nil {
+		return nil, err
+	}
+	return &SystemLog{Type: TypeAdminAction.Uint8(), Date: now.Format(time.DateOnly), ObjectID: action.ActorID, Content: string(content)}, nil
+}
+
+func RecordAdminAction(ctx context.Context, store Model, action AdminAction) {
+	entry, err := NewAdminActionLog(ctx, action)
+	if err == nil {
+		err = store.Insert(ctx, entry)
+	}
+	if err != nil {
+		zap.S().Errorw("administrator action audit failed", "action", action.Action, "object_id", action.ObjectID)
+	}
 }
 
 // Message represents a message log entry.
@@ -268,6 +358,7 @@ type Commission struct {
 	requestmeta.Metadata
 	Type      uint16 `json:"type"`
 	Amount    int64  `json:"amount"`
+	Balance   int64  `json:"balance"`
 	OrderNo   string `json:"order_no"`
 	Timestamp int64  `json:"timestamp"`
 }

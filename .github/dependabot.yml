@@ -1,0 +1,72 @@
+# Dependabot keeps the Go modules and the SHA-pinned GitHub Actions current.
+#
+# This repository is the fork lolitia-connect/backend of
+# github.com/perfect-panel/server: the module path stays
+# github.com/perfect-panel/server (renaming it would make every upstream sync a
+# tree-wide conflict), while issues, pull requests and security advisories live
+# on the fork. Dependabot therefore opens its updates here, against this fork.
+#
+# Minor and patch module updates arrive as one weekly pull request so the
+# review cost stays low; a major update gets a pull request of its own, since it
+# usually needs code changes. Action pins are bumped together for the same
+# reason. Commit messages follow the repository's conventional-commit rules
+# (.commitlintrc.json).
+#
+# Fork note: the fork periodically merges upstream perfect-panel/server tags
+# (see .ai/sync-diffs/). Dependency bumps that diverge from upstream's go.mod
+# show up as conflicts in that merge; that is expected, and the merge is
+# resolved towards upstream there. Do not batch unrelated majors into one bump.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 10
+    groups:
+      go-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - dependencies
+      - go
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+      - github-actions
+
+  # The image is built from backend/Dockerfile; keep its base images and the
+  # golang toolchain current alongside the module graph.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(docker)"
+    labels:
+      - dependencies
+      - docker

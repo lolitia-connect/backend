@@ -34,5 +34,6 @@ func (l *GetCurrencyConfigLogic) GetCurrencyConfig() (resp *types.CurrencyConfig
 	}
 	resp = &types.CurrencyConfig{}
 	tool.SystemConfigSliceReflectToStruct(configs, resp)
+	resp.AccessKey = maskSecret(resp.AccessKey)
 	return
 }

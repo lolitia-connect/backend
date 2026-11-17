@@ -1,6 +1,7 @@
 package types
 
 const ForthwithTrafficStatistics = "forthwith:traffic:statistics"
+const SchedulerFlushTraffic = "scheduler:traffic:flush"
 
 type UserTraffic struct {
 	SID      int64 `json:"uid"`

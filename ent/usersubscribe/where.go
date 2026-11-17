@@ -69,6 +69,11 @@ func SubscribeID(v int64) predicate.UserSubscribe {
 	return predicate.UserSubscribe(sql.FieldEQ(FieldSubscribeID, v))
 }
 
+// EntitlementSource applies equality check predicate on the "entitlement_source" field. It's identical to EntitlementSourceEQ.
+func EntitlementSource(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldEQ(FieldEntitlementSource, v))
+}
+
 // NodeGroupID applies equality check predicate on the "node_group_id" field. It's identical to NodeGroupIDEQ.
 func NodeGroupID(v int64) predicate.UserSubscribe {
 	return predicate.UserSubscribe(sql.FieldEQ(FieldNodeGroupID, v))
@@ -92,6 +97,11 @@ func ExpireTime(v time.Time) predicate.UserSubscribe {
 // FinishedAt applies equality check predicate on the "finished_at" field. It's identical to FinishedAtEQ.
 func FinishedAt(v time.Time) predicate.UserSubscribe {
 	return predicate.UserSubscribe(sql.FieldEQ(FieldFinishedAt, v))
+}
+
+// TrafficResetAt applies equality check predicate on the "traffic_reset_at" field. It's identical to TrafficResetAtEQ.
+func TrafficResetAt(v time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldEQ(FieldTrafficResetAt, v))
 }
 
 // Traffic applies equality check predicate on the "traffic" field. It's identical to TrafficEQ.
@@ -272,6 +282,71 @@ func SubscribeIDLT(v int64) predicate.UserSubscribe {
 // SubscribeIDLTE applies the LTE predicate on the "subscribe_id" field.
 func SubscribeIDLTE(v int64) predicate.UserSubscribe {
 	return predicate.UserSubscribe(sql.FieldLTE(FieldSubscribeID, v))
+}
+
+// EntitlementSourceEQ applies the EQ predicate on the "entitlement_source" field.
+func EntitlementSourceEQ(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldEQ(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceNEQ applies the NEQ predicate on the "entitlement_source" field.
+func EntitlementSourceNEQ(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldNEQ(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceIn applies the In predicate on the "entitlement_source" field.
+func EntitlementSourceIn(vs ...string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldIn(FieldEntitlementSource, vs...))
+}
+
+// EntitlementSourceNotIn applies the NotIn predicate on the "entitlement_source" field.
+func EntitlementSourceNotIn(vs ...string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldNotIn(FieldEntitlementSource, vs...))
+}
+
+// EntitlementSourceGT applies the GT predicate on the "entitlement_source" field.
+func EntitlementSourceGT(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldGT(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceGTE applies the GTE predicate on the "entitlement_source" field.
+func EntitlementSourceGTE(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldGTE(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceLT applies the LT predicate on the "entitlement_source" field.
+func EntitlementSourceLT(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldLT(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceLTE applies the LTE predicate on the "entitlement_source" field.
+func EntitlementSourceLTE(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldLTE(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceContains applies the Contains predicate on the "entitlement_source" field.
+func EntitlementSourceContains(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldContains(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceHasPrefix applies the HasPrefix predicate on the "entitlement_source" field.
+func EntitlementSourceHasPrefix(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldHasPrefix(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceHasSuffix applies the HasSuffix predicate on the "entitlement_source" field.
+func EntitlementSourceHasSuffix(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldHasSuffix(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceEqualFold applies the EqualFold predicate on the "entitlement_source" field.
+func EntitlementSourceEqualFold(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldEqualFold(FieldEntitlementSource, v))
+}
+
+// EntitlementSourceContainsFold applies the ContainsFold predicate on the "entitlement_source" field.
+func EntitlementSourceContainsFold(v string) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldContainsFold(FieldEntitlementSource, v))
 }
 
 // NodeGroupIDEQ applies the EQ predicate on the "node_group_id" field.
@@ -462,6 +537,56 @@ func FinishedAtIsNil() predicate.UserSubscribe {
 // FinishedAtNotNil applies the NotNil predicate on the "finished_at" field.
 func FinishedAtNotNil() predicate.UserSubscribe {
 	return predicate.UserSubscribe(sql.FieldNotNull(FieldFinishedAt))
+}
+
+// TrafficResetAtEQ applies the EQ predicate on the "traffic_reset_at" field.
+func TrafficResetAtEQ(v time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldEQ(FieldTrafficResetAt, v))
+}
+
+// TrafficResetAtNEQ applies the NEQ predicate on the "traffic_reset_at" field.
+func TrafficResetAtNEQ(v time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldNEQ(FieldTrafficResetAt, v))
+}
+
+// TrafficResetAtIn applies the In predicate on the "traffic_reset_at" field.
+func TrafficResetAtIn(vs ...time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldIn(FieldTrafficResetAt, vs...))
+}
+
+// TrafficResetAtNotIn applies the NotIn predicate on the "traffic_reset_at" field.
+func TrafficResetAtNotIn(vs ...time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldNotIn(FieldTrafficResetAt, vs...))
+}
+
+// TrafficResetAtGT applies the GT predicate on the "traffic_reset_at" field.
+func TrafficResetAtGT(v time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldGT(FieldTrafficResetAt, v))
+}
+
+// TrafficResetAtGTE applies the GTE predicate on the "traffic_reset_at" field.
+func TrafficResetAtGTE(v time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldGTE(FieldTrafficResetAt, v))
+}
+
+// TrafficResetAtLT applies the LT predicate on the "traffic_reset_at" field.
+func TrafficResetAtLT(v time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldLT(FieldTrafficResetAt, v))
+}
+
+// TrafficResetAtLTE applies the LTE predicate on the "traffic_reset_at" field.
+func TrafficResetAtLTE(v time.Time) predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldLTE(FieldTrafficResetAt, v))
+}
+
+// TrafficResetAtIsNil applies the IsNil predicate on the "traffic_reset_at" field.
+func TrafficResetAtIsNil() predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldIsNull(FieldTrafficResetAt))
+}
+
+// TrafficResetAtNotNil applies the NotNil predicate on the "traffic_reset_at" field.
+func TrafficResetAtNotNil() predicate.UserSubscribe {
+	return predicate.UserSubscribe(sql.FieldNotNull(FieldTrafficResetAt))
 }
 
 // TrafficEQ applies the EQ predicate on the "traffic" field.

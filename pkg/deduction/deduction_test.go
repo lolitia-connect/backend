@@ -65,7 +65,7 @@ func TestSubscribe_Validate(t *testing.T) {
 				UnitTime:       UnitTimeMonth,
 				DeductionRatio: 50,
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 		{
 			name: "expire time before start time",
@@ -643,7 +643,7 @@ func TestCalculateRemainingAmount_CrossMonthYear(t *testing.T) {
 			expireTime: time.Date(2026, 7, 1, 10, 0, 0, 0, time.Local),
 			now:        time.Date(2026, 6, 30, 23, 59, 0, 0, time.Local),
 			traffic:    1000, download: 0, upload: 0,
-			wantMin: 0, wantMax: 0, // 不足1天, 截断为0
+			wantMin: 13, wantMax: 13,
 		},
 
 		// === 跨月 ===
@@ -875,10 +875,8 @@ func TestCalculateRemainingAmount_NoLimitWithResetCycle(t *testing.T) {
 		t.Errorf("CalculateRemainingAmount() error = %v", err)
 		return
 	}
-	// NoLimit + ResetCycle!=0: has reset cycle, should calculate based on remaining traffic
-	// remaining traffic = 1000 - 300 - 200 = 500, result = 500/1000 * 1000 = 500
-	if got != 500 {
-		t.Errorf("CalculateRemainingAmount() = %v, want 500", got)
+	if got != 0 {
+		t.Errorf("CalculateRemainingAmount() = %v, want 0", got)
 	}
 }
 
@@ -904,9 +902,50 @@ func TestCalculateRemainingAmount_NoLimitNoResetCycle(t *testing.T) {
 		t.Errorf("CalculateRemainingAmount() error = %v", err)
 		return
 	}
-	// NoLimit + ResetCycle==0: truly unlimited, cannot cancel
-	if got != 0 {
-		t.Errorf("CalculateRemainingAmount() = %v, want 0", got)
+	if got != 500 {
+		t.Errorf("CalculateRemainingAmount() = %v, want 500", got)
+	}
+}
+
+func TestRefundUsesWholePaidTermAndFutureCycles(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name                   string
+		sub                    Subscribe
+		now                    time.Time
+		amount, quantity, want int64
+	}{
+		{"multiple units", Subscribe{StartTime: start, ExpireTime: start.Add(60 * 24 * time.Hour), TrafficUnlimited: true, UnitTime: UnitTimeMonth}, start.Add(30 * 24 * time.Hour), 2000, 2, 1000},
+		{"exhausted current cycle", Subscribe{StartTime: start, ExpireTime: start.AddDate(0, 3, 0), Traffic: 100, Download: 100, UnitTime: UnitTimeMonth, ResetCycle: ResetCycle1st}, start.Add(15 * 24 * time.Hour), 9000, 3, 5900},
+		{"unlimited traffic", Subscribe{StartTime: start, ExpireTime: start.Add(24 * time.Hour), TrafficUnlimited: true, Traffic: 100, Download: math.MaxInt64, UnitTime: UnitTimeDay}, start.Add(12 * time.Hour), 1000, 1, 500},
+		{"overshot quota", Subscribe{StartTime: start, ExpireTime: start.Add(24 * time.Hour), Traffic: 100, Download: math.MaxInt64, Upload: math.MaxInt64, UnitTime: UnitTimeDay}, start.Add(12 * time.Hour), 1000, 1, 0},
+		{"no expiry sentinel", Subscribe{StartTime: start, ExpireTime: time.Unix(0, 0), Traffic: 100, Download: 25, UnitTime: UnitTimeMonth}, start, 1000, 1, 750},
+		{"before start", Subscribe{StartTime: start, ExpireTime: start.Add(24 * time.Hour), TrafficUnlimited: true, UnitTime: UnitTimeDay}, start.Add(-time.Hour), 1000, 1, 1000},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := CalculateRemainingAmount(test.sub, Order{Amount: test.amount, Quantity: test.quantity}, test.now)
+			if err != nil || got != test.want {
+				t.Fatalf("refund = %d, %v; want %d", got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestRefundCalendarClampsMonthEndAndLeapYear(t *testing.T) {
+	for _, test := range []struct {
+		name                 string
+		start, now, from, to time.Time
+		cycle                int64
+	}{
+		{"month end", time.Date(2026, 1, 31, 10, 0, 0, 0, time.UTC), time.Date(2026, 2, 28, 12, 0, 0, 0, time.UTC), time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC), time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC), ResetCycleMonthly},
+		{"leap anniversary", time.Date(2024, 2, 29, 10, 0, 0, 0, time.UTC), time.Date(2025, 3, 1, 0, 0, 0, 0, time.UTC), time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC), time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC), ResetCycleYear},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			from, to := currentResetCycle(Subscribe{StartTime: test.start, ExpireTime: test.start.AddDate(5, 0, 0), ResetCycle: test.cycle}, test.now)
+			if !from.Equal(test.from) || !to.Equal(test.to) {
+				t.Fatalf("cycle = %v -> %v; want %v -> %v", from, to, test.from, test.to)
+			}
+		})
 	}
 }
 

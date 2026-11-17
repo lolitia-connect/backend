@@ -172,6 +172,41 @@ func (_u *TaskUpdate) AddCurrent(v int64) *TaskUpdate {
 	return _u
 }
 
+// SetDailyDate sets the "daily_date" field.
+func (_u *TaskUpdate) SetDailyDate(v string) *TaskUpdate {
+	_u.mutation.SetDailyDate(v)
+	return _u
+}
+
+// SetNillableDailyDate sets the "daily_date" field if the given value is not nil.
+func (_u *TaskUpdate) SetNillableDailyDate(v *string) *TaskUpdate {
+	if v != nil {
+		_u.SetDailyDate(*v)
+	}
+	return _u
+}
+
+// SetDailySent sets the "daily_sent" field.
+func (_u *TaskUpdate) SetDailySent(v uint64) *TaskUpdate {
+	_u.mutation.ResetDailySent()
+	_u.mutation.SetDailySent(v)
+	return _u
+}
+
+// SetNillableDailySent sets the "daily_sent" field if the given value is not nil.
+func (_u *TaskUpdate) SetNillableDailySent(v *uint64) *TaskUpdate {
+	if v != nil {
+		_u.SetDailySent(*v)
+	}
+	return _u
+}
+
+// AddDailySent adds value to the "daily_sent" field.
+func (_u *TaskUpdate) AddDailySent(v int64) *TaskUpdate {
+	_u.mutation.AddDailySent(v)
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *TaskUpdate) SetUpdatedAt(v time.Time) *TaskUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -219,7 +254,20 @@ func (_u *TaskUpdate) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *TaskUpdate) check() error {
+	if v, ok := _u.mutation.DailyDate(); ok {
+		if err := task.DailyDateValidator(v); err != nil {
+			return &ValidationError{Name: "daily_date", err: fmt.Errorf(`ent: validator failed for field "Task.daily_date": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(task.Table, task.Columns, sqlgraph.NewFieldSpec(task.FieldID, field.TypeInt64))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -269,6 +317,15 @@ func (_u *TaskUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedCurrent(); ok {
 		_spec.AddField(task.FieldCurrent, field.TypeUint64, value)
+	}
+	if value, ok := _u.mutation.DailyDate(); ok {
+		_spec.SetField(task.FieldDailyDate, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DailySent(); ok {
+		_spec.SetField(task.FieldDailySent, field.TypeUint64, value)
+	}
+	if value, ok := _u.mutation.AddedDailySent(); ok {
+		_spec.AddField(task.FieldDailySent, field.TypeUint64, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(task.FieldUpdatedAt, field.TypeTime, value)
@@ -437,6 +494,41 @@ func (_u *TaskUpdateOne) AddCurrent(v int64) *TaskUpdateOne {
 	return _u
 }
 
+// SetDailyDate sets the "daily_date" field.
+func (_u *TaskUpdateOne) SetDailyDate(v string) *TaskUpdateOne {
+	_u.mutation.SetDailyDate(v)
+	return _u
+}
+
+// SetNillableDailyDate sets the "daily_date" field if the given value is not nil.
+func (_u *TaskUpdateOne) SetNillableDailyDate(v *string) *TaskUpdateOne {
+	if v != nil {
+		_u.SetDailyDate(*v)
+	}
+	return _u
+}
+
+// SetDailySent sets the "daily_sent" field.
+func (_u *TaskUpdateOne) SetDailySent(v uint64) *TaskUpdateOne {
+	_u.mutation.ResetDailySent()
+	_u.mutation.SetDailySent(v)
+	return _u
+}
+
+// SetNillableDailySent sets the "daily_sent" field if the given value is not nil.
+func (_u *TaskUpdateOne) SetNillableDailySent(v *uint64) *TaskUpdateOne {
+	if v != nil {
+		_u.SetDailySent(*v)
+	}
+	return _u
+}
+
+// AddDailySent adds value to the "daily_sent" field.
+func (_u *TaskUpdateOne) AddDailySent(v int64) *TaskUpdateOne {
+	_u.mutation.AddDailySent(v)
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *TaskUpdateOne) SetUpdatedAt(v time.Time) *TaskUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -497,7 +589,20 @@ func (_u *TaskUpdateOne) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *TaskUpdateOne) check() error {
+	if v, ok := _u.mutation.DailyDate(); ok {
+		if err := task.DailyDateValidator(v); err != nil {
+			return &ValidationError{Name: "daily_date", err: fmt.Errorf(`ent: validator failed for field "Task.daily_date": %w`, err)}
+		}
+	}
+	return nil
+}
+
 func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(task.Table, task.Columns, sqlgraph.NewFieldSpec(task.FieldID, field.TypeInt64))
 	id, ok := _u.mutation.ID()
 	if !ok {
@@ -564,6 +669,15 @@ func (_u *TaskUpdateOne) sqlSave(ctx context.Context) (_node *Task, err error) {
 	}
 	if value, ok := _u.mutation.AddedCurrent(); ok {
 		_spec.AddField(task.FieldCurrent, field.TypeUint64, value)
+	}
+	if value, ok := _u.mutation.DailyDate(); ok {
+		_spec.SetField(task.FieldDailyDate, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DailySent(); ok {
+		_spec.SetField(task.FieldDailySent, field.TypeUint64, value)
+	}
+	if value, ok := _u.mutation.AddedDailySent(); ok {
+		_spec.AddField(task.FieldDailySent, field.TypeUint64, value)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(task.FieldUpdatedAt, field.TypeTime, value)

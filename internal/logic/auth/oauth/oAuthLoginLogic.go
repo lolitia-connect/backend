@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
+	"net/url"
 
 	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/internal/svc"
@@ -13,7 +13,7 @@ import (
 	"github.com/perfect-panel/server/pkg/oauth/github"
 	"github.com/perfect-panel/server/pkg/oauth/google"
 	"github.com/perfect-panel/server/pkg/oauth/telegram"
-	"github.com/perfect-panel/server/pkg/random"
+	"github.com/perfect-panel/server/pkg/oauthstate"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -36,6 +36,11 @@ func NewOAuthLoginLogic(ctx context.Context, svcCtx *svc.ServiceContext) *OAuthL
 }
 
 func (l *OAuthLoginLogic) OAuthLogin(req *types.OAthLoginRequest) (resp *types.OAuthLoginResponse, err error) {
+	if req.Method == "apple" || req.Method == "telegram" {
+		if err := oauthstate.ValidateRedirect(req.Redirect, l.svcCtx.Config.Site.Host); err != nil {
+			return nil, err
+		}
+	}
 	var uri string
 	switch req.Method {
 	case "google":
@@ -48,7 +53,8 @@ func (l *OAuthLoginLogic) OAuthLogin(req *types.OAthLoginRequest) (resp *types.O
 		uri, err = l.github()
 	case "facebook":
 		uri, err = l.facebook()
-
+	default:
+		return nil, xerr.NewErrCode(xerr.InvalidParams)
 	}
 	if err != nil {
 		l.Logger.Errorw("OAuthLogin ", zap.Any("error", err.Error()))
@@ -76,9 +82,7 @@ func (l *OAuthLoginLogic) google(req *types.OAthLoginRequest) (string, error) {
 		RedirectURL:  req.Redirect,
 	})
 	// generate the state code
-	code := random.KeyNew(8, 1)
-	// save the state code
-	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("google:%s", code), req.Redirect, 5*60*time.Second).Err()
+	code, err := oauthstate.Issue(l.ctx, l.svcCtx.Redis, "google", "login", 0, req.Redirect)
 	if err != nil {
 		return "", err
 	}
@@ -101,8 +105,8 @@ func (l *OAuthLoginLogic) facebook() (string, error) {
 		ClientSecret: cfg.ClientSecret,
 		RedirectURL:  cfg.RedirectURL,
 	})
-	code := random.KeyNew(8, 1)
-	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("facebook:%s", code), cfg.RedirectURL, 5*60*time.Second).Err(); err != nil {
+	code, err := oauthstate.Issue(l.ctx, l.svcCtx.Redis, "facebook", "login", 0, cfg.RedirectURL)
+	if err != nil {
 		return "", err
 	}
 	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
@@ -120,13 +124,12 @@ func (l *OAuthLoginLogic) apple(req *types.OAthLoginRequest) (string, error) {
 	}
 	uri := "https://appleid.apple.com/auth/authorize?client_id=%s&redirect_uri=%s&response_type=code&state=%s&scope=name email&response_mode=form_post"
 	// generate the state code
-	code := random.KeyNew(8, 1)
-	// save the state code
-	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("apple:%s", code), req.Redirect, 5*60*time.Second).Err()
+	code, err := oauthstate.Issue(l.ctx, l.svcCtx.Redis, "apple", "login", 0, req.Redirect)
 	if err != nil {
 		l.Logger.Errorw("error save state code to redis: %v", zap.Any("code", code), zap.Any("error", err.Error()))
+		return "", err
 	}
-	return fmt.Sprintf(uri, cfg.ClientId, fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL), code), nil
+	return fmt.Sprintf(uri, url.QueryEscape(cfg.ClientId), url.QueryEscape(fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL)), code), nil
 }
 func (l *OAuthLoginLogic) github() (string, error) {
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "github")
@@ -143,8 +146,8 @@ func (l *OAuthLoginLogic) github() (string, error) {
 		ClientSecret: cfg.ClientSecret,
 		RedirectURL:  cfg.RedirectURL,
 	})
-	code := random.KeyNew(8, 1)
-	if err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("github:%s", code), cfg.RedirectURL, 5*60*time.Second).Err(); err != nil {
+	code, err := oauthstate.Issue(l.ctx, l.svcCtx.Redis, "github", "login", 0, cfg.RedirectURL)
+	if err != nil {
 		return "", err
 	}
 	return client.AuthCodeURL(code, oauth2.AccessTypeOffline), nil
@@ -161,9 +164,7 @@ func (l *OAuthLoginLogic) telegram(req *types.OAthLoginRequest) (string, error) 
 		return "", err
 	}
 	// generate the state code
-	code := random.KeyNew(8, 1)
-	// save the state code
-	err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf("telegram:%s", code), req.Redirect, 5*60*time.Second).Err()
+	code, err := oauthstate.Issue(l.ctx, l.svcCtx.Redis, "telegram", "login", 0, req.Redirect)
 	if err != nil {
 		l.Logger.Errorw("error save state code to redis", zap.Any("code", code), zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "error save state code to redis")

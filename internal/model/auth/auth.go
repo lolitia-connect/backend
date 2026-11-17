@@ -202,12 +202,14 @@ func (l *EmailAuthConfig) Unmarshal(data string) {
 
 // SMTPConfig Email SMTP configuration
 type SMTPConfig struct {
-	Host string `json:"host"`
-	Port int    `json:"port"`
-	User string `json:"user"`
-	Pass string `json:"pass"`
-	From string `json:"from"`
-	SSL  bool   `json:"ssl"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	User               string `json:"user"`
+	Pass               string `json:"pass"`
+	From               string `json:"from"`
+	SSL                bool   `json:"ssl"`
+	ImplicitTLS        bool   `json:"implicit_tls"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify"`
 }
 
 func (l *SMTPConfig) Marshal() string {

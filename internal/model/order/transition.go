@@ -2,6 +2,8 @@ package order
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	entorder "github.com/perfect-panel/server/ent/order"
 )
@@ -45,6 +47,115 @@ func (m *customOrderModel) UpdateOrderStatus(ctx context.Context, orderNo string
 		return err
 	}
 	return m.insertEvent(ctx, data, EventTypeForStatus(status))
+}
+
+func (m *customOrderModel) MarkOrderPaid(ctx context.Context, orderNo, tradeNo string) (bool, error) {
+	if tradeNo == "" {
+		return false, fmt.Errorf("payment trade number is required")
+	}
+	affected, err := m.db.Order.Update().
+		Where(entorder.OrderNo(orderNo), entorder.Status(StatusPending),
+			entorder.Or(entorder.TradeNoIsNil(), entorder.TradeNo(""), entorder.TradeNo(tradeNo))).
+		SetTradeNo(tradeNo).
+		SetStatus(StatusPaid).
+		AddStateVersion(1).
+		Save(ctx)
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	data, err := m.FindOneByOrderNo(ctx, orderNo)
+	if err != nil {
+		return false, err
+	}
+	if err := m.insertEvent(ctx, data, EventOrderPaymentPaid); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (m *customOrderModel) ClosePendingOrder(ctx context.Context, orderNo string) (bool, error) {
+	affected, err := m.db.Order.Update().
+		Where(entorder.OrderNo(orderNo), entorder.Status(StatusPending)).
+		SetStatus(StatusClosed).
+		SetCouponReserved(false).
+		AddStateVersion(1).
+		Save(ctx)
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	data, err := m.FindOneByOrderNo(ctx, orderNo)
+	if err != nil {
+		return false, err
+	}
+	if err := m.insertEvent(ctx, data, EventOrderClosed); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (m *customOrderModel) ClosePaidOrder(ctx context.Context, orderNo string) (bool, error) {
+	affected, err := m.db.Order.Update().Where(entorder.OrderNo(orderNo), entorder.Status(StatusPaid)).
+		SetStatus(StatusClosed).SetCouponReserved(false).AddStateVersion(1).Save(ctx)
+	if err != nil || affected == 0 {
+		return false, err
+	}
+	data, err := m.FindOneByOrderNo(ctx, orderNo)
+	if err != nil {
+		return false, err
+	}
+	if err := m.insertEvent(ctx, data, EventOrderClosed); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (m *customOrderModel) SetPaymentExpectation(ctx context.Context, orderNo string, amount int64, currency string) (bool, error) {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if amount <= 0 || currency == "" {
+		return false, fmt.Errorf("invalid payment expectation")
+	}
+	affected, err := m.db.Order.Update().
+		Where(entorder.OrderNo(orderNo), entorder.Status(StatusPending), entorder.PaymentCurrency("")).
+		SetPaymentAmount(amount).SetPaymentCurrency(currency).Save(ctx)
+	return affected == 1, err
+}
+
+func (m *customOrderModel) BeginPaymentSession(ctx context.Context, orderNo, session string) (bool, error) {
+	if strings.TrimSpace(session) == "" {
+		return false, fmt.Errorf("payment session is required")
+	}
+	affected, err := m.db.Order.Update().
+		Where(entorder.OrderNo(orderNo), entorder.Status(StatusPending),
+			entorder.Or(entorder.TradeNoIsNil(), entorder.TradeNo("")),
+			entorder.Or(entorder.PaymentSessionIsNil(), entorder.PaymentSession(""))).
+		SetPaymentSession(session).Save(ctx)
+	return affected == 1, err
+}
+
+func (m *customOrderModel) CompletePaymentSession(ctx context.Context, orderNo, expectedSession, tradeNo, session string) (bool, error) {
+	if expectedSession == "" || strings.TrimSpace(tradeNo) == "" || len(tradeNo) > 255 || strings.TrimSpace(session) == "" {
+		return false, fmt.Errorf("invalid payment session completion")
+	}
+	affected, err := m.db.Order.Update().
+		Where(entorder.OrderNo(orderNo), entorder.Status(StatusPending), entorder.PaymentSession(expectedSession),
+			entorder.Or(entorder.TradeNoIsNil(), entorder.TradeNo(""), entorder.TradeNo(tradeNo))).
+		SetTradeNo(tradeNo).SetPaymentSession(session).Save(ctx)
+	return affected == 1, err
+}
+
+func (m *customOrderModel) ClaimPaymentSession(ctx context.Context, orderNo, tradeNo, session string) (bool, error) {
+	if tradeNo == "" {
+		return false, fmt.Errorf("payment trade number is required")
+	}
+	affected, err := m.db.Order.Update().
+		Where(entorder.OrderNo(orderNo), entorder.Status(StatusPending),
+			entorder.Or(entorder.TradeNoIsNil(), entorder.TradeNo(""), entorder.TradeNo(tradeNo))).
+		SetTradeNo(tradeNo).SetPaymentSession(session).Save(ctx)
+	return affected == 1, err
+}
+
+func (m *customOrderModel) SetCommission(ctx context.Context, id, amount, refererID int64) error {
+	return m.db.Order.UpdateOneID(id).SetCommission(amount).SetCommissionRefererID(refererID).Exec(ctx)
 }
 
 // FinishOrder completes a paid order after its activation has been committed.

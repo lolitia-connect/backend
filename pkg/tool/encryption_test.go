@@ -2,6 +2,7 @@ package tool
 
 import (
 	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -115,6 +116,15 @@ func TestVerifyPassWord_Argon2idRejectsOutOfRangeParams(t *testing.T) {
 	manyIters := "$argon2id$v=19$m=19456,t=1000,p=1$c2FsdHNhbHRzYWx0$a2V5a2V5a2V5a2V5"
 	if VerifyPassWord("password", manyIters) {
 		t.Fatal("hash with out-of-range iterations must not verify")
+	}
+	oversized := base64.RawStdEncoding.EncodeToString(make([]byte, 65))
+	for _, hash := range []string{
+		"$argon2id$v=19$m=19456,t=2,p=1$" + oversized + "$a2V5",
+		"$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$" + oversized,
+	} {
+		if VerifyPassWord("password", hash) {
+			t.Fatal("oversized salt or key was accepted")
+		}
 	}
 }
 

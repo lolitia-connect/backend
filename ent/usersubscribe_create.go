@@ -38,6 +38,20 @@ func (_c *UserSubscribeCreate) SetSubscribeID(v int64) *UserSubscribeCreate {
 	return _c
 }
 
+// SetEntitlementSource sets the "entitlement_source" field.
+func (_c *UserSubscribeCreate) SetEntitlementSource(v string) *UserSubscribeCreate {
+	_c.mutation.SetEntitlementSource(v)
+	return _c
+}
+
+// SetNillableEntitlementSource sets the "entitlement_source" field if the given value is not nil.
+func (_c *UserSubscribeCreate) SetNillableEntitlementSource(v *string) *UserSubscribeCreate {
+	if v != nil {
+		_c.SetEntitlementSource(*v)
+	}
+	return _c
+}
+
 // SetNodeGroupID sets the "node_group_id" field.
 func (_c *UserSubscribeCreate) SetNodeGroupID(v int64) *UserSubscribeCreate {
 	_c.mutation.SetNodeGroupID(v)
@@ -104,6 +118,20 @@ func (_c *UserSubscribeCreate) SetFinishedAt(v time.Time) *UserSubscribeCreate {
 func (_c *UserSubscribeCreate) SetNillableFinishedAt(v *time.Time) *UserSubscribeCreate {
 	if v != nil {
 		_c.SetFinishedAt(*v)
+	}
+	return _c
+}
+
+// SetTrafficResetAt sets the "traffic_reset_at" field.
+func (_c *UserSubscribeCreate) SetTrafficResetAt(v time.Time) *UserSubscribeCreate {
+	_c.mutation.SetTrafficResetAt(v)
+	return _c
+}
+
+// SetNillableTrafficResetAt sets the "traffic_reset_at" field if the given value is not nil.
+func (_c *UserSubscribeCreate) SetNillableTrafficResetAt(v *time.Time) *UserSubscribeCreate {
+	if v != nil {
+		_c.SetTrafficResetAt(*v)
 	}
 	return _c
 }
@@ -317,6 +345,10 @@ func (_c *UserSubscribeCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *UserSubscribeCreate) defaults() {
+	if _, ok := _c.mutation.EntitlementSource(); !ok {
+		v := usersubscribe.DefaultEntitlementSource
+		_c.mutation.SetEntitlementSource(v)
+	}
 	if _, ok := _c.mutation.NodeGroupID(); !ok {
 		v := usersubscribe.DefaultNodeGroupID
 		_c.mutation.SetNodeGroupID(v)
@@ -389,6 +421,14 @@ func (_c *UserSubscribeCreate) check() error {
 	}
 	if _, ok := _c.mutation.SubscribeID(); !ok {
 		return &ValidationError{Name: "subscribe_id", err: errors.New(`ent: missing required field "UserSubscribe.subscribe_id"`)}
+	}
+	if _, ok := _c.mutation.EntitlementSource(); !ok {
+		return &ValidationError{Name: "entitlement_source", err: errors.New(`ent: missing required field "UserSubscribe.entitlement_source"`)}
+	}
+	if v, ok := _c.mutation.EntitlementSource(); ok {
+		if err := usersubscribe.EntitlementSourceValidator(v); err != nil {
+			return &ValidationError{Name: "entitlement_source", err: fmt.Errorf(`ent: validator failed for field "UserSubscribe.entitlement_source": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.NodeGroupID(); !ok {
 		return &ValidationError{Name: "node_group_id", err: errors.New(`ent: missing required field "UserSubscribe.node_group_id"`)}
@@ -494,6 +534,10 @@ func (_c *UserSubscribeCreate) createSpec() (*UserSubscribe, *sqlgraph.CreateSpe
 		_spec.SetField(usersubscribe.FieldSubscribeID, field.TypeInt64, value)
 		_node.SubscribeID = value
 	}
+	if value, ok := _c.mutation.EntitlementSource(); ok {
+		_spec.SetField(usersubscribe.FieldEntitlementSource, field.TypeString, value)
+		_node.EntitlementSource = value
+	}
 	if value, ok := _c.mutation.NodeGroupID(); ok {
 		_spec.SetField(usersubscribe.FieldNodeGroupID, field.TypeInt64, value)
 		_node.NodeGroupID = value
@@ -513,6 +557,10 @@ func (_c *UserSubscribeCreate) createSpec() (*UserSubscribe, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.FinishedAt(); ok {
 		_spec.SetField(usersubscribe.FieldFinishedAt, field.TypeTime, value)
 		_node.FinishedAt = &value
+	}
+	if value, ok := _c.mutation.TrafficResetAt(); ok {
+		_spec.SetField(usersubscribe.FieldTrafficResetAt, field.TypeTime, value)
+		_node.TrafficResetAt = &value
 	}
 	if value, ok := _c.mutation.Traffic(); ok {
 		_spec.SetField(usersubscribe.FieldTraffic, field.TypeInt64, value)

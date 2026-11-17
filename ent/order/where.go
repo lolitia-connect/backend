@@ -104,6 +104,11 @@ func CouponDiscount(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldCouponDiscount, v))
 }
 
+// CouponReserved applies equality check predicate on the "coupon_reserved" field. It's identical to CouponReservedEQ.
+func CouponReserved(v bool) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldCouponReserved, v))
+}
+
 // PaymentID applies equality check predicate on the "payment_id" field. It's identical to PaymentIDEQ.
 func PaymentID(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldPaymentID, v))
@@ -134,6 +139,26 @@ func Commission(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldCommission, v))
 }
 
+// CommissionRefererID applies equality check predicate on the "commission_referer_id" field. It's identical to CommissionRefererIDEQ.
+func CommissionRefererID(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldCommissionRefererID, v))
+}
+
+// PaymentAmount applies equality check predicate on the "payment_amount" field. It's identical to PaymentAmountEQ.
+func PaymentAmount(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldPaymentAmount, v))
+}
+
+// PaymentCurrency applies equality check predicate on the "payment_currency" field. It's identical to PaymentCurrencyEQ.
+func PaymentCurrency(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldPaymentCurrency, v))
+}
+
+// PaymentSession applies equality check predicate on the "payment_session" field. It's identical to PaymentSessionEQ.
+func PaymentSession(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldPaymentSession, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v uint8) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldStatus, v))
@@ -159,6 +184,16 @@ func GuestCheckoutTokenHash(v string) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldGuestCheckoutTokenHash, v))
 }
 
+// GuestAuthType applies equality check predicate on the "guest_auth_type" field. It's identical to GuestAuthTypeEQ.
+func GuestAuthType(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestAuthType, v))
+}
+
+// GuestIdentifier applies equality check predicate on the "guest_identifier" field. It's identical to GuestIdentifierEQ.
+func GuestIdentifier(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestIdentifier, v))
+}
+
 // SubscribeID applies equality check predicate on the "subscribe_id" field. It's identical to SubscribeIDEQ.
 func SubscribeID(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldSubscribeID, v))
@@ -167,6 +202,11 @@ func SubscribeID(v int64) predicate.Order {
 // SubscribeToken applies equality check predicate on the "subscribe_token" field. It's identical to SubscribeTokenEQ.
 func SubscribeToken(v string) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldSubscribeToken, v))
+}
+
+// UserSubscribeID applies equality check predicate on the "user_subscribe_id" field. It's identical to UserSubscribeIDEQ.
+func UserSubscribeID(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldUserSubscribeID, v))
 }
 
 // IsNew applies equality check predicate on the "is_new" field. It's identical to IsNewEQ.
@@ -644,6 +684,16 @@ func CouponDiscountLTE(v int64) predicate.Order {
 	return predicate.Order(sql.FieldLTE(FieldCouponDiscount, v))
 }
 
+// CouponReservedEQ applies the EQ predicate on the "coupon_reserved" field.
+func CouponReservedEQ(v bool) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldCouponReserved, v))
+}
+
+// CouponReservedNEQ applies the NEQ predicate on the "coupon_reserved" field.
+func CouponReservedNEQ(v bool) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldCouponReserved, v))
+}
+
 // PaymentIDEQ applies the EQ predicate on the "payment_id" field.
 func PaymentIDEQ(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldPaymentID, v))
@@ -942,6 +992,226 @@ func CommissionLT(v int64) predicate.Order {
 // CommissionLTE applies the LTE predicate on the "commission" field.
 func CommissionLTE(v int64) predicate.Order {
 	return predicate.Order(sql.FieldLTE(FieldCommission, v))
+}
+
+// CommissionRefererIDEQ applies the EQ predicate on the "commission_referer_id" field.
+func CommissionRefererIDEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldCommissionRefererID, v))
+}
+
+// CommissionRefererIDNEQ applies the NEQ predicate on the "commission_referer_id" field.
+func CommissionRefererIDNEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldCommissionRefererID, v))
+}
+
+// CommissionRefererIDIn applies the In predicate on the "commission_referer_id" field.
+func CommissionRefererIDIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldCommissionRefererID, vs...))
+}
+
+// CommissionRefererIDNotIn applies the NotIn predicate on the "commission_referer_id" field.
+func CommissionRefererIDNotIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldCommissionRefererID, vs...))
+}
+
+// CommissionRefererIDGT applies the GT predicate on the "commission_referer_id" field.
+func CommissionRefererIDGT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldCommissionRefererID, v))
+}
+
+// CommissionRefererIDGTE applies the GTE predicate on the "commission_referer_id" field.
+func CommissionRefererIDGTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldCommissionRefererID, v))
+}
+
+// CommissionRefererIDLT applies the LT predicate on the "commission_referer_id" field.
+func CommissionRefererIDLT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldCommissionRefererID, v))
+}
+
+// CommissionRefererIDLTE applies the LTE predicate on the "commission_referer_id" field.
+func CommissionRefererIDLTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldCommissionRefererID, v))
+}
+
+// PaymentAmountEQ applies the EQ predicate on the "payment_amount" field.
+func PaymentAmountEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldPaymentAmount, v))
+}
+
+// PaymentAmountNEQ applies the NEQ predicate on the "payment_amount" field.
+func PaymentAmountNEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldPaymentAmount, v))
+}
+
+// PaymentAmountIn applies the In predicate on the "payment_amount" field.
+func PaymentAmountIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldPaymentAmount, vs...))
+}
+
+// PaymentAmountNotIn applies the NotIn predicate on the "payment_amount" field.
+func PaymentAmountNotIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldPaymentAmount, vs...))
+}
+
+// PaymentAmountGT applies the GT predicate on the "payment_amount" field.
+func PaymentAmountGT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldPaymentAmount, v))
+}
+
+// PaymentAmountGTE applies the GTE predicate on the "payment_amount" field.
+func PaymentAmountGTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldPaymentAmount, v))
+}
+
+// PaymentAmountLT applies the LT predicate on the "payment_amount" field.
+func PaymentAmountLT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldPaymentAmount, v))
+}
+
+// PaymentAmountLTE applies the LTE predicate on the "payment_amount" field.
+func PaymentAmountLTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldPaymentAmount, v))
+}
+
+// PaymentCurrencyEQ applies the EQ predicate on the "payment_currency" field.
+func PaymentCurrencyEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyNEQ applies the NEQ predicate on the "payment_currency" field.
+func PaymentCurrencyNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyIn applies the In predicate on the "payment_currency" field.
+func PaymentCurrencyIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldPaymentCurrency, vs...))
+}
+
+// PaymentCurrencyNotIn applies the NotIn predicate on the "payment_currency" field.
+func PaymentCurrencyNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldPaymentCurrency, vs...))
+}
+
+// PaymentCurrencyGT applies the GT predicate on the "payment_currency" field.
+func PaymentCurrencyGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyGTE applies the GTE predicate on the "payment_currency" field.
+func PaymentCurrencyGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyLT applies the LT predicate on the "payment_currency" field.
+func PaymentCurrencyLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyLTE applies the LTE predicate on the "payment_currency" field.
+func PaymentCurrencyLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyContains applies the Contains predicate on the "payment_currency" field.
+func PaymentCurrencyContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyHasPrefix applies the HasPrefix predicate on the "payment_currency" field.
+func PaymentCurrencyHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyHasSuffix applies the HasSuffix predicate on the "payment_currency" field.
+func PaymentCurrencyHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyEqualFold applies the EqualFold predicate on the "payment_currency" field.
+func PaymentCurrencyEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldPaymentCurrency, v))
+}
+
+// PaymentCurrencyContainsFold applies the ContainsFold predicate on the "payment_currency" field.
+func PaymentCurrencyContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldPaymentCurrency, v))
+}
+
+// PaymentSessionEQ applies the EQ predicate on the "payment_session" field.
+func PaymentSessionEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldPaymentSession, v))
+}
+
+// PaymentSessionNEQ applies the NEQ predicate on the "payment_session" field.
+func PaymentSessionNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldPaymentSession, v))
+}
+
+// PaymentSessionIn applies the In predicate on the "payment_session" field.
+func PaymentSessionIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldPaymentSession, vs...))
+}
+
+// PaymentSessionNotIn applies the NotIn predicate on the "payment_session" field.
+func PaymentSessionNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldPaymentSession, vs...))
+}
+
+// PaymentSessionGT applies the GT predicate on the "payment_session" field.
+func PaymentSessionGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldPaymentSession, v))
+}
+
+// PaymentSessionGTE applies the GTE predicate on the "payment_session" field.
+func PaymentSessionGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldPaymentSession, v))
+}
+
+// PaymentSessionLT applies the LT predicate on the "payment_session" field.
+func PaymentSessionLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldPaymentSession, v))
+}
+
+// PaymentSessionLTE applies the LTE predicate on the "payment_session" field.
+func PaymentSessionLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldPaymentSession, v))
+}
+
+// PaymentSessionContains applies the Contains predicate on the "payment_session" field.
+func PaymentSessionContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldPaymentSession, v))
+}
+
+// PaymentSessionHasPrefix applies the HasPrefix predicate on the "payment_session" field.
+func PaymentSessionHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldPaymentSession, v))
+}
+
+// PaymentSessionHasSuffix applies the HasSuffix predicate on the "payment_session" field.
+func PaymentSessionHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldPaymentSession, v))
+}
+
+// PaymentSessionIsNil applies the IsNil predicate on the "payment_session" field.
+func PaymentSessionIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldPaymentSession))
+}
+
+// PaymentSessionNotNil applies the NotNil predicate on the "payment_session" field.
+func PaymentSessionNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldPaymentSession))
+}
+
+// PaymentSessionEqualFold applies the EqualFold predicate on the "payment_session" field.
+func PaymentSessionEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldPaymentSession, v))
+}
+
+// PaymentSessionContainsFold applies the ContainsFold predicate on the "payment_session" field.
+func PaymentSessionContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldPaymentSession, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.
@@ -1249,6 +1519,136 @@ func GuestCheckoutTokenHashContainsFold(v string) predicate.Order {
 	return predicate.Order(sql.FieldContainsFold(FieldGuestCheckoutTokenHash, v))
 }
 
+// GuestAuthTypeEQ applies the EQ predicate on the "guest_auth_type" field.
+func GuestAuthTypeEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeNEQ applies the NEQ predicate on the "guest_auth_type" field.
+func GuestAuthTypeNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeIn applies the In predicate on the "guest_auth_type" field.
+func GuestAuthTypeIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldGuestAuthType, vs...))
+}
+
+// GuestAuthTypeNotIn applies the NotIn predicate on the "guest_auth_type" field.
+func GuestAuthTypeNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldGuestAuthType, vs...))
+}
+
+// GuestAuthTypeGT applies the GT predicate on the "guest_auth_type" field.
+func GuestAuthTypeGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeGTE applies the GTE predicate on the "guest_auth_type" field.
+func GuestAuthTypeGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeLT applies the LT predicate on the "guest_auth_type" field.
+func GuestAuthTypeLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeLTE applies the LTE predicate on the "guest_auth_type" field.
+func GuestAuthTypeLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeContains applies the Contains predicate on the "guest_auth_type" field.
+func GuestAuthTypeContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeHasPrefix applies the HasPrefix predicate on the "guest_auth_type" field.
+func GuestAuthTypeHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeHasSuffix applies the HasSuffix predicate on the "guest_auth_type" field.
+func GuestAuthTypeHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeEqualFold applies the EqualFold predicate on the "guest_auth_type" field.
+func GuestAuthTypeEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldGuestAuthType, v))
+}
+
+// GuestAuthTypeContainsFold applies the ContainsFold predicate on the "guest_auth_type" field.
+func GuestAuthTypeContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldGuestAuthType, v))
+}
+
+// GuestIdentifierEQ applies the EQ predicate on the "guest_identifier" field.
+func GuestIdentifierEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierNEQ applies the NEQ predicate on the "guest_identifier" field.
+func GuestIdentifierNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierIn applies the In predicate on the "guest_identifier" field.
+func GuestIdentifierIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldGuestIdentifier, vs...))
+}
+
+// GuestIdentifierNotIn applies the NotIn predicate on the "guest_identifier" field.
+func GuestIdentifierNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldGuestIdentifier, vs...))
+}
+
+// GuestIdentifierGT applies the GT predicate on the "guest_identifier" field.
+func GuestIdentifierGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierGTE applies the GTE predicate on the "guest_identifier" field.
+func GuestIdentifierGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierLT applies the LT predicate on the "guest_identifier" field.
+func GuestIdentifierLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierLTE applies the LTE predicate on the "guest_identifier" field.
+func GuestIdentifierLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierContains applies the Contains predicate on the "guest_identifier" field.
+func GuestIdentifierContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierHasPrefix applies the HasPrefix predicate on the "guest_identifier" field.
+func GuestIdentifierHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierHasSuffix applies the HasSuffix predicate on the "guest_identifier" field.
+func GuestIdentifierHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierEqualFold applies the EqualFold predicate on the "guest_identifier" field.
+func GuestIdentifierEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldGuestIdentifier, v))
+}
+
+// GuestIdentifierContainsFold applies the ContainsFold predicate on the "guest_identifier" field.
+func GuestIdentifierContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldGuestIdentifier, v))
+}
+
 // SubscribeIDEQ applies the EQ predicate on the "subscribe_id" field.
 func SubscribeIDEQ(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldSubscribeID, v))
@@ -1362,6 +1762,46 @@ func SubscribeTokenEqualFold(v string) predicate.Order {
 // SubscribeTokenContainsFold applies the ContainsFold predicate on the "subscribe_token" field.
 func SubscribeTokenContainsFold(v string) predicate.Order {
 	return predicate.Order(sql.FieldContainsFold(FieldSubscribeToken, v))
+}
+
+// UserSubscribeIDEQ applies the EQ predicate on the "user_subscribe_id" field.
+func UserSubscribeIDEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldUserSubscribeID, v))
+}
+
+// UserSubscribeIDNEQ applies the NEQ predicate on the "user_subscribe_id" field.
+func UserSubscribeIDNEQ(v int64) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldUserSubscribeID, v))
+}
+
+// UserSubscribeIDIn applies the In predicate on the "user_subscribe_id" field.
+func UserSubscribeIDIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldUserSubscribeID, vs...))
+}
+
+// UserSubscribeIDNotIn applies the NotIn predicate on the "user_subscribe_id" field.
+func UserSubscribeIDNotIn(vs ...int64) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldUserSubscribeID, vs...))
+}
+
+// UserSubscribeIDGT applies the GT predicate on the "user_subscribe_id" field.
+func UserSubscribeIDGT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldUserSubscribeID, v))
+}
+
+// UserSubscribeIDGTE applies the GTE predicate on the "user_subscribe_id" field.
+func UserSubscribeIDGTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldUserSubscribeID, v))
+}
+
+// UserSubscribeIDLT applies the LT predicate on the "user_subscribe_id" field.
+func UserSubscribeIDLT(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldUserSubscribeID, v))
+}
+
+// UserSubscribeIDLTE applies the LTE predicate on the "user_subscribe_id" field.
+func UserSubscribeIDLTE(v int64) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldUserSubscribeID, v))
 }
 
 // IsNewEQ applies the EQ predicate on the "is_new" field.

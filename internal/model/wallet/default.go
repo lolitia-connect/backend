@@ -3,12 +3,47 @@ package wallet
 import (
 	"context"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
+	entuser "github.com/perfect-panel/server/ent/user"
 	entwallet "github.com/perfect-panel/server/ent/userwallet"
 )
 
 type defaultWalletModel struct {
 	db *ent.Client
+}
+
+// FindOneForUpdate opens the user row and then the wallet row with write locks,
+// in that order, so every commission/balance movement in the process serialises
+// on the same pair of rows. SQLite has no `SELECT ... FOR UPDATE`, so the
+// clause is omitted there (the dialect the tests run on); MySQL and PostgreSQL,
+// the supported production engines, always take the locks.
+func (m *defaultWalletModel) FindOneForUpdate(ctx context.Context, userId int64) (*Wallet, error) {
+	userQuery := m.db.User.Query().Where(entuser.ID(userId))
+	if m.locking() {
+		userQuery = userQuery.Where(func(selector *entsql.Selector) { selector.ForUpdate() })
+	}
+	if _, err := userQuery.Only(ctx); err != nil {
+		return nil, err
+	}
+
+	walletQuery := m.db.UserWallet.Query().Where(entwallet.UserID(userId))
+	if m.locking() {
+		walletQuery = walletQuery.Where(func(selector *entsql.Selector) { selector.ForUpdate() })
+	}
+	row, err := walletQuery.Only(ctx)
+	if ent.IsNotFound(err) {
+		return &Wallet{UserId: userId}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return entToWallet(row), nil
+}
+
+func (m *defaultWalletModel) locking() bool {
+	return m.db.Driver().Dialect() != dialect.SQLite
 }
 
 func (m *defaultWalletModel) FindOne(ctx context.Context, userId int64) (*Wallet, error) {

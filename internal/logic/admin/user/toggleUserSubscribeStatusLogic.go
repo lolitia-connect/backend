@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 
+	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -32,7 +33,14 @@ func (l *ToggleUserSubscribeStatusLogic) ToggleUserSubscribeStatus(req *types.To
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), " FindOneSubscribe error: %v", err.Error())
 	}
 
-	switch userSub.Status {
+	if userSub == nil {
+		return xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
+	if userSub.EntitlementSource != "" {
+		return user.ErrProviderManaged
+	}
+	previous := userSub.Status
+	switch previous {
 	case 1: // active
 		userSub.Status = 5 // set status to stopped
 	case 5: // stopped
@@ -42,10 +50,13 @@ func (l *ToggleUserSubscribeStatusLogic) ToggleUserSubscribeStatus(req *types.To
 		return errors.Wrapf(xerr.NewErrCodeMsg(xerr.ERROR, "invalid subscribe status"), "invalid user subscribe status: %d", userSub.Status)
 	}
 
-	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, userSub)
+	changed, err := l.svcCtx.Store.User().CompareSubscribeStatus(l.ctx, userSub.Id, previous, userSub.Status)
 	if err != nil {
 		l.Logger.Errorw("UpdateSubscribe error", zap.Any("error", err.Error()), zap.Any("userSubscribeId", req.UserSubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), " UpdateSubscribe error: %v", err.Error())
+	}
+	if !changed {
+		return errors.New("subscription status changed; refresh and retry")
 	}
 
 	// Clear subscribe cache

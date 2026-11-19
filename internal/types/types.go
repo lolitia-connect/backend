@@ -3410,6 +3410,8 @@ type ServerInfo struct {
 }
 
 type ServerNodeProtocol struct {
+	Id    string  `json:"id"`
+	Name  string  `json:"name"`
 	Type  string  `json:"type"`
 	Ratio float64 `json:"ratio"`
 }

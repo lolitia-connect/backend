@@ -60,6 +60,8 @@ func (l *GetServerNodeListLogic) GetServerNodeList() (resp *types.GetServerNodeL
 				ratio = 1
 			}
 			protocolList = append(protocolList, types.ServerNodeProtocol{
+				Id:    p.Id,
+				Name:  p.Name,
 				Type:  p.Type,
 				Ratio: ratio,
 			})

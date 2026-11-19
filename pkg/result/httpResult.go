@@ -46,6 +46,12 @@ func BuildParamErrorResult(err error) HTTPResult {
 
 // HttpResult HTTP Result
 func HttpResult(ctx *hertzx.Context, resp interface{}, err error) {
+	if err != nil {
+		// Attach the error to the context so LoggerMiddleware records it.
+		// Without this the handler returns a business error in the body while
+		// the request is logged as a plain success with no error information.
+		_ = ctx.Error(err)
+	}
 	result := BuildHTTPResult(resp, err)
 	ctx.JSON(result.StatusCode, result.Body)
 }

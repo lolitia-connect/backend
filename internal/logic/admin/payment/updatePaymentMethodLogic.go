@@ -51,6 +51,7 @@ func (l *UpdatePaymentMethodLogic) UpdatePaymentMethod(req *types.UpdatePaymentM
 		return nil, errors.New("payment platform cannot be changed")
 	}
 	previousPlatform, previousConfig := method.Platform, method.Config
+	previousDomain := method.Domain
 	previousEnabled := method.Enable
 	config, err := parsePaymentPlatformConfig(payment.ParsePlatform(req.Platform), req.Config)
 	if err != nil {
@@ -80,15 +81,21 @@ func (l *UpdatePaymentMethodLogic) UpdatePaymentMethod(req *types.UpdatePaymentM
 		if nextStripe.SecretKey == "" {
 			nextStripe.SecretKey = previousStripe.SecretKey
 		}
-		if nextStripe.SecretKey == previousStripe.SecretKey && previousStripe.WebhookSecret != "" {
+		// Resolve the webhook callback URL for both the old and new configuration.
+		// The Stripe endpoint must be refreshed not only when the secret key
+		// changes but also when the resolved notify URL changes (e.g. the notify
+		// domain was edited). Otherwise Stripe keeps delivering to the stale URL
+		// and the checkout.session.completed callback never arrives.
+		previousCallback, _ := payment.NotifyURL(previousDomain, l.svcCtx.Config.Site.Host, "Stripe", method.Token, report.IsGatewayMode())
+		nextCallback, err := payment.NotifyURL(method.Domain, l.svcCtx.Config.Site.Host, "Stripe", method.Token, report.IsGatewayMode())
+		if err != nil {
+			return nil, err
+		}
+		if nextStripe.SecretKey == previousStripe.SecretKey && previousStripe.WebhookSecret != "" && previousCallback == nextCallback {
 			nextStripe.WebhookSecret, nextStripe.WebhookID = previousStripe.WebhookSecret, previousStripe.WebhookID
 		} else {
-			callback, err := payment.NotifyURL(method.Domain, l.svcCtx.Config.Site.Host, "Stripe", method.Token, report.IsGatewayMode())
-			if err != nil {
-				return nil, err
-			}
 			newWebhook = stripe.NewClient(stripe.Config{SecretKey: nextStripe.SecretKey})
-			endpoint, err := newWebhook.CreateWebhookEndpoint(callback)
+			endpoint, err := newWebhook.CreateWebhookEndpoint(nextCallback)
 			if err != nil {
 				return nil, err
 			}

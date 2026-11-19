@@ -1,11 +1,14 @@
 package result
 
 import (
+	"context"
 	stderrors "errors"
 	"net/http"
 	"reflect"
 	"testing"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 )
@@ -86,5 +89,33 @@ func TestBuildParamErrorResult(t *testing.T) {
 	}
 	if body.Msg != "bad param" {
 		t.Fatalf("expected param message, got %q", body.Msg)
+	}
+}
+
+// HttpResult must attach a returned error to the request context so the logger
+// middleware can record it. Without this the request is logged as a success and
+// the backend error never shows up anywhere.
+func TestHttpResultAttachesError(t *testing.T) {
+	c := hertzx.NewContext(context.Background(), app.NewContext(0))
+
+	err := errors.Wrap(xerr.NewErrCode(xerr.InvalidParams), "wrapped")
+	HttpResult(c, nil, err)
+
+	last := c.Errors.Last()
+	if last == nil {
+		t.Fatalf("expected the error to be attached to the context")
+	}
+	if last.Err != err {
+		t.Fatalf("expected the original error to be attached, got %v", last.Err)
+	}
+}
+
+func TestHttpResultSuccessAttachesNoError(t *testing.T) {
+	c := hertzx.NewContext(context.Background(), app.NewContext(0))
+
+	HttpResult(c, map[string]string{"status": "ok"}, nil)
+
+	if c.Errors.Last() != nil {
+		t.Fatalf("did not expect an error on success, got %v", c.Errors.Last())
 	}
 }

@@ -91,6 +91,10 @@ func init() {
 		PaymentMethodNotFound: "Payment method not found",
 		OrderStatusError:      "Order status error",
 		InsufficientOfPeriod:  "Insufficient number of period",
+		ExistAvailableTraffic: "There is still available traffic",
+
+		// Withdrawal error
+		WithdrawalAlreadyReviewed: "The withdrawal request has already been reviewed",
 	}
 
 }

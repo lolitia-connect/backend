@@ -40,6 +40,14 @@ func (m *defaultEventModel) FindOne(ctx context.Context, id int64) (*Event, erro
 	return entToEvent(data), err
 }
 
+func (m *defaultEventModel) PaidAt(ctx context.Context, orderNo string) (time.Time, error) {
+	event, err := m.db.OrderEvent.Query().Where(entorderevent.OrderNo(orderNo), entorderevent.EventType(EventOrderPaymentPaid)).Order(entorderevent.ByID()).First(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return event.CreatedAt, nil
+}
+
 func (m *defaultEventModel) ListAfter(ctx context.Context, orderNo string, afterId int64, limit int) ([]*Event, error) {
 	list, err := m.db.OrderEvent.Query().
 		Where(

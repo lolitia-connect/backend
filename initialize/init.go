@@ -2,6 +2,7 @@ package initialize
 
 import (
 	"github.com/perfect-panel/server/internal/svc"
+	"go.uber.org/zap"
 )
 
 func StartInitSystemConfig(svc *svc.ServiceContext) {
@@ -18,7 +19,9 @@ func StartInitSystemConfig(svc *svc.ServiceContext) {
 	Mobile(svc)
 	Currency(svc)
 	if !svc.Config.Debug {
-		Telegram(svc)
+		if err := Telegram(svc); err != nil {
+			zap.S().Errorw("Telegram initialization failed", "error", err)
+		}
 	}
 
 }

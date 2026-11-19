@@ -34,6 +34,7 @@ func (l *CreateUserAuthMethodLogic) CreateUserAuthMethod(req *types.CreateUserAu
 			UserId:         req.UserId,
 			AuthType:       req.AuthType,
 			AuthIdentifier: req.AuthIdentifier,
+			Verified:       true,
 		})
 	})
 	if err != nil {

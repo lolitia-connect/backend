@@ -85,9 +85,11 @@ func (m *defaultPaymentModel) FindOne(ctx context.Context, id int64) (*Payment, 
 }
 
 func (m *defaultPaymentModel) Update(ctx context.Context, data *Payment) error {
+	if data == nil || data.Enable == nil {
+		return fmt.Errorf("payment enable flag is required")
+	}
 	updated, err := m.db.Payment.UpdateOneID(data.Id).
 		SetName(data.Name).
-		SetPlatform(data.Platform).
 		SetIcon(data.Icon).
 		SetDomain(data.Domain).
 		SetConfig(data.Config).
@@ -97,7 +99,6 @@ func (m *defaultPaymentModel) Update(ctx context.Context, data *Payment) error {
 		SetFeeAmount(data.FeeAmount).
 		SetSort(data.Sort).
 		SetEnable(value(data.Enable)).
-		SetToken(data.Token).
 		SetCurrencyUnit(data.CurrencyUnit).
 		SetExchangeRate(data.ExchangeRate).
 		SetBillDesc(data.BillDesc).

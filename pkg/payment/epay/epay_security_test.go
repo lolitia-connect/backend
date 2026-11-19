@@ -93,6 +93,34 @@ func TestCreatePayUrlBuildsSignedSubmitRedirect(t *testing.T) {
 	}
 }
 
+func TestCreatePayURLPreservesMinorUnits(t *testing.T) {
+	client := NewClient("1001", "https://pay.example", "secret", "alipay")
+	for _, amount := range []int64{1, 29, 58, 1999, 100001} {
+		redirect, err := client.CreatePayUrl(Order{OrderNo: "order", AmountMinor: amount})
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := url.Parse(redirect)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := ParseMoney(parsed.Query().Get("money"))
+		if err != nil || actual != amount {
+			t.Fatalf("payment amount %d became %d (%v)", amount, actual, err)
+		}
+	}
+}
+
+func TestQueryOrderRejectsOmittedStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(`{"code":1,"pid":"1001","money":"10.00"}`))
+	}))
+	defer server.Close()
+	if _, err := NewClient("1001", server.URL, "secret", "alipay").QueryOrder("order"); err == nil {
+		t.Fatal("missing status was treated as unpaid")
+	}
+}
+
 func TestQueryOrderReturnsAuthoritativeGatewayFields(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Path; got != "/gateway/api.php" {
@@ -242,5 +270,30 @@ func TestQueryOrderDoesNotTreatOtherHTTPFailuresAsUnsupported(t *testing.T) {
 	client := NewClient("1001", server.URL, "secret", "alipay")
 	if _, err := client.QueryOrder("order-1"); errors.Is(err, ErrQueryNotSupported) {
 		t.Fatal("only a 404 response may be treated as an unsupported query API")
+	}
+}
+
+func TestRelativeEndpointsPreserveDeploymentPaths(t *testing.T) {
+	for _, test := range []struct{ configured, domain, resolved, browser string }{
+		{"/pay", "https://panel.example", "https://panel.example/pay", "/pay/submit.php?pid=1001"},
+		{"/pay", "https://panel.example/prefix/", "https://panel.example/prefix/pay", "/prefix/pay/submit.php?pid=1001"},
+		{"//pay.example/shop", "", "https://pay.example/shop", "//pay.example/shop/submit.php?pid=1001"},
+		{"https://pay.example/shop", "", "https://pay.example/shop", "https://pay.example/shop/submit.php?pid=1001"},
+	} {
+		resolved, err := ResolveEndpoint(test.configured, test.domain)
+		if err != nil || resolved != test.resolved {
+			t.Fatalf("resolve %q = %q, %v", test.configured, resolved, err)
+		}
+		if actual := BrowserURL(test.configured, resolved+"/submit.php?pid=1001"); actual != test.browser {
+			t.Fatalf("browser URL = %q, want %q", actual, test.browser)
+		}
+	}
+	for _, configured := range []string{"/pay/../other", "/pay//other", "/pay/%2e%2e/other", "/pay?key=secret", "/pay#fragment", "https://user:secret@pay.example", "https://pay.example/?"} {
+		if _, err := ResolveEndpoint(configured, "https://panel.example"); err == nil {
+			t.Fatalf("unsafe endpoint accepted: %q", configured)
+		}
+	}
+	if _, err := ResolveEndpoint("/pay", ""); err == nil {
+		t.Fatal("relative endpoint accepted without a configured domain")
 	}
 }

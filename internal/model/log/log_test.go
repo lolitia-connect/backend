@@ -1,8 +1,16 @@
 package log
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"testing"
+
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/enttest"
+	_ "modernc.org/sqlite"
 )
 
 func TestTypeOrderCreatedValue(t *testing.T) {
@@ -78,5 +86,22 @@ func TestOrderCreatedUnmarshalRejectsGarbage(t *testing.T) {
 	var decoded OrderCreated
 	if err := decoded.Unmarshal([]byte("not-json")); err == nil {
 		t.Fatal("expected error for non-JSON content")
+	}
+}
+
+func TestJSONLogFiltersMatchExactIDs(t *testing.T) {
+	database, err := sql.Open("sqlite", "file:log-exact-ids?mode=memory&cache=shared&_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := enttest.NewClient(t, enttest.WithOptions(ent.Driver(entsql.OpenDB(dialect.SQLite, database))))
+	defer client.Close()
+	ctx := context.Background()
+	for _, content := range []string{`{"user_subscribe_id":12,"user_id":7}`, `{"user_subscribe_id":120,"user_id":7}`, `{"user_subscribe_id":12,"user_id":8}`} {
+		client.SystemLog.Create().SetType(TypeSubscribe.Uint8()).SetContent(content).SaveX(ctx)
+	}
+	rows, total, err := NewModel(client).FilterSystemLog(ctx, &FilterParams{Type: TypeSubscribe.Uint8(), ContentInt64: map[string]int64{"user_subscribe_id": 12, "user_id": 7}})
+	if err != nil || total != 1 || len(rows) != 1 {
+		t.Fatalf("exact log filter = %+v, %d, %v", rows, total, err)
 	}
 }

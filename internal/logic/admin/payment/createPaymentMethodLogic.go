@@ -3,15 +3,16 @@ package payment
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	paymentModel "github.com/perfect-panel/server/internal/model/payment"
+	"github.com/perfect-panel/server/internal/report"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	exchangeRateAPI "github.com/perfect-panel/server/pkg/exchangeRate"
 	"github.com/perfect-panel/server/pkg/payment"
+	"github.com/perfect-panel/server/pkg/payment/epay"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
 	"github.com/perfect-panel/server/pkg/random"
 	"github.com/perfect-panel/server/pkg/tool"
@@ -40,7 +41,15 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 		l.Logger.Errorw("unsupported payment platform", zap.Any("mark", req.Platform))
 		return nil, errors.Wrapf(xerr.NewErrCodeMsg(400, "UNSUPPORTED_PAYMENT_PLATFORM"), "unsupported payment platform: %s", req.Platform)
 	}
-	config := parsePaymentPlatformConfig(l.ctx, payment.ParsePlatform(req.Platform), req.Config)
+	config, err := parsePaymentPlatformConfig(payment.ParsePlatform(req.Platform), req.Config)
+	if err != nil {
+		return nil, err
+	}
+	if payment.ParsePlatform(req.Platform) == payment.EPay {
+		if err := validateEPayConfig(config, req.Domain); err != nil {
+			return nil, err
+		}
+	}
 
 	// Auto-calculate exchange rate if CurrencyUnit is set and differs from system currency
 	exchangeRate := req.ExchangeRate
@@ -76,8 +85,10 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 		ExchangeRate: exchangeRate,
 		BillDesc:     req.BillDesc,
 	}
+	var createdWebhookID string
+	var webhookClient *stripe.Client
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		if req.Platform == "Stripe" {
+		if payment.ParsePlatform(req.Platform) == payment.Stripe {
 			var cfg paymentModel.StripeConfig
 			if err = cfg.Unmarshal([]byte(paymentMethod.Config)); err != nil {
 				l.Logger.Errorf("[CreatePaymentMethod] unmarshal stripe config error: %s", err.Error())
@@ -93,13 +104,18 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 				SecretKey: cfg.SecretKey,
 				PublicKey: cfg.PublicKey,
 			})
-			url := fmt.Sprintf("%s/v1/notify/Stripe/%s", strings.TrimSuffix(req.Domain, "/"), paymentMethod.Token)
+			url, err := payment.NotifyURL(req.Domain, l.svcCtx.Config.Site.Host, "Stripe", paymentMethod.Token, report.IsGatewayMode())
+			if err != nil {
+				return err
+			}
 			endpoint, err := client.CreateWebhookEndpoint(url)
 			if err != nil {
 				l.Logger.Errorw("[CreatePaymentMethod] create stripe webhook endpoint error", zap.Any("error", err.Error()))
 				return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "create stripe webhook endpoint error: %s", err.Error())
 			}
 			cfg.WebhookSecret = endpoint.Secret
+			cfg.WebhookID = endpoint.ID
+			createdWebhookID, webhookClient = endpoint.ID, client
 			content, _ := cfg.Marshal()
 			paymentMethod.Config = string(content)
 		}
@@ -109,6 +125,9 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 		return nil
 	})
 	if err != nil {
+		if createdWebhookID != "" {
+			_ = webhookClient.DeleteWebhookEndpoint(context.WithoutCancel(l.ctx), createdWebhookID)
+		}
 		return nil, err
 	}
 
@@ -120,28 +139,25 @@ func (l *CreatePaymentMethodLogic) CreatePaymentMethod(req *types.CreatePaymentM
 	return
 }
 
-func parsePaymentPlatformConfig(ctx context.Context, platform payment.Platform, config interface{}) string {
+func parsePaymentPlatformConfig(platform payment.Platform, config interface{}) (string, error) {
 	data, err := json.Marshal(config)
 	if err != nil {
-		zap.S().Errorw("marshal config error", zap.Any("platform", platform), zap.Any("config", config), zap.Any("error", err.Error()))
-		return ""
+		return "", errors.New("invalid payment configuration")
 	}
 
 	// 通用处理函数
 	handleConfig := func(name string, target interface {
 		Unmarshal([]byte) error
 		Marshal() ([]byte, error)
-	}) string {
+	}) (string, error) {
 		if err = target.Unmarshal(data); err != nil {
-			zap.S().Errorw("parse "+name+" config error", zap.Any("config", string(data)), zap.Any("error", err.Error()))
-			return ""
+			return "", errors.New("invalid " + name + " configuration")
 		}
 		content, err := target.Marshal()
 		if err != nil {
-			zap.S().Errorw("marshal "+name+" config error", zap.Any("error", err.Error()))
-			return ""
+			return "", errors.New("invalid " + name + " configuration")
 		}
-		return string(content)
+		return string(content), nil
 	}
 
 	switch platform {
@@ -158,6 +174,15 @@ func parsePaymentPlatformConfig(ctx context.Context, platform payment.Platform, 
 	case payment.Cryptomus:
 		return handleConfig("Cryptomus", &paymentModel.CryptomusConfig{})
 	default:
-		return ""
+		return "", errors.New("unsupported payment platform")
 	}
+}
+
+func validateEPayConfig(encoded, domain string) error {
+	var config paymentModel.EPayConfig
+	if err := config.Unmarshal([]byte(encoded)); err != nil {
+		return errors.New("invalid EPay configuration")
+	}
+	_, err := epay.Open(epay.GatewayConfig{Version: config.Version, CheckoutMode: config.CheckoutMode, Endpoint: config.Url, Domain: domain, MerchantID: config.Pid, Key: config.Key, PrivateKey: config.PrivateKey, PublicKey: config.PublicKey, PaymentType: config.Type})
+	return err
 }

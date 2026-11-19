@@ -3,6 +3,7 @@ package ticket
 import (
 	"context"
 
+	modellog "github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/ticket"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -33,20 +34,15 @@ func (l *CreateTicketFollowLogic) CreateTicketFollow(req *types.CreateTicketFoll
 		l.Logger.Errorw("[CreateTicketFollow] FindOne error", zap.Any("error", err.Error()), zap.Any("ticketId", req.TicketId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find ticket failed: %v", err.Error())
 	}
-	err = l.svcCtx.Store.Ticket().InsertTicketFollow(l.ctx, &ticket.Follow{
+	err = l.svcCtx.Store.Ticket().Reply(l.ctx, &ticket.Follow{
 		TicketId: req.TicketId,
 		From:     req.From,
 		Type:     req.Type,
 		Content:  req.Content,
-	})
+	}, 0)
 	if err != nil {
-		l.Logger.Errorw("[CreateTicketFollow] Database insert error", zap.Any("error", err.Error()), zap.Any("request", req))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create ticket follow failed: %v", err.Error())
+		return err
 	}
-	err = l.svcCtx.Store.Ticket().UpdateTicketStatus(l.ctx, req.TicketId, 0, ticket.Waiting)
-	if err != nil {
-		l.Logger.Errorw("[CreateTicketFollow] Database update error", zap.Any("error", err.Error()), zap.Any("status", ticket.Waiting))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update ticket status failed: %v", err.Error())
-	}
+	modellog.RecordAdminAction(l.ctx, l.svcCtx.Store.Log(), modellog.AdminAction{Action: "ticket.reply", Object: "ticket", ObjectID: req.TicketId})
 	return
 }

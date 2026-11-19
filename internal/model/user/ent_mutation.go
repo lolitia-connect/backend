@@ -50,6 +50,7 @@ func subscribeCreate(c *ent.UserSubscribeCreate, data *Subscribe) *ent.UserSubsc
 	return c.SetUserID(data.UserId).
 		SetOrderID(data.OrderId).
 		SetSubscribeID(data.SubscribeId).
+		SetEntitlementSource(data.EntitlementSource).
 		SetNodeGroupID(data.NodeGroupId).
 		SetNillableGroupLocked(data.GroupLocked).
 		SetStartTime(data.StartTime).
@@ -71,6 +72,7 @@ func subscribeUpdate(u *ent.UserSubscribeUpdateOne, data *Subscribe) *ent.UserSu
 	return u.SetUserID(data.UserId).
 		SetOrderID(data.OrderId).
 		SetSubscribeID(data.SubscribeId).
+		SetEntitlementSource(data.EntitlementSource).
 		SetNodeGroupID(data.NodeGroupId).
 		SetNillableGroupLocked(data.GroupLocked).
 		SetStartTime(data.StartTime).

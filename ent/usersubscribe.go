@@ -23,6 +23,8 @@ type UserSubscribe struct {
 	OrderID int64 `json:"order_id,omitempty"`
 	// SubscribeID holds the value of the "subscribe_id" field.
 	SubscribeID int64 `json:"subscribe_id,omitempty"`
+	// EntitlementSource holds the value of the "entitlement_source" field.
+	EntitlementSource string `json:"entitlement_source,omitempty"`
 	// NodeGroupID holds the value of the "node_group_id" field.
 	NodeGroupID int64 `json:"node_group_id,omitempty"`
 	// GroupLocked holds the value of the "group_locked" field.
@@ -33,6 +35,8 @@ type UserSubscribe struct {
 	ExpireTime time.Time `json:"expire_time,omitempty"`
 	// FinishedAt holds the value of the "finished_at" field.
 	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	// TrafficResetAt holds the value of the "traffic_reset_at" field.
+	TrafficResetAt *time.Time `json:"traffic_reset_at,omitempty"`
 	// Traffic holds the value of the "traffic" field.
 	Traffic int64 `json:"traffic,omitempty"`
 	// TrafficUnlimited holds the value of the "traffic_unlimited" field.
@@ -69,9 +73,9 @@ func (*UserSubscribe) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case usersubscribe.FieldID, usersubscribe.FieldUserID, usersubscribe.FieldOrderID, usersubscribe.FieldSubscribeID, usersubscribe.FieldNodeGroupID, usersubscribe.FieldTraffic, usersubscribe.FieldDownload, usersubscribe.FieldUpload, usersubscribe.FieldExpiredDownload, usersubscribe.FieldExpiredUpload, usersubscribe.FieldStatus:
 			values[i] = new(sql.NullInt64)
-		case usersubscribe.FieldToken, usersubscribe.FieldUUID, usersubscribe.FieldNote:
+		case usersubscribe.FieldEntitlementSource, usersubscribe.FieldToken, usersubscribe.FieldUUID, usersubscribe.FieldNote:
 			values[i] = new(sql.NullString)
-		case usersubscribe.FieldStartTime, usersubscribe.FieldExpireTime, usersubscribe.FieldFinishedAt, usersubscribe.FieldCreatedAt, usersubscribe.FieldUpdatedAt:
+		case usersubscribe.FieldStartTime, usersubscribe.FieldExpireTime, usersubscribe.FieldFinishedAt, usersubscribe.FieldTrafficResetAt, usersubscribe.FieldCreatedAt, usersubscribe.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -112,6 +116,12 @@ func (_m *UserSubscribe) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.SubscribeID = value.Int64
 			}
+		case usersubscribe.FieldEntitlementSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field entitlement_source", values[i])
+			} else if value.Valid {
+				_m.EntitlementSource = value.String
+			}
 		case usersubscribe.FieldNodeGroupID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field node_group_id", values[i])
@@ -142,6 +152,13 @@ func (_m *UserSubscribe) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.FinishedAt = new(time.Time)
 				*_m.FinishedAt = value.Time
+			}
+		case usersubscribe.FieldTrafficResetAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field traffic_reset_at", values[i])
+			} else if value.Valid {
+				_m.TrafficResetAt = new(time.Time)
+				*_m.TrafficResetAt = value.Time
 			}
 		case usersubscribe.FieldTraffic:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -260,6 +277,9 @@ func (_m *UserSubscribe) String() string {
 	builder.WriteString("subscribe_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SubscribeID))
 	builder.WriteString(", ")
+	builder.WriteString("entitlement_source=")
+	builder.WriteString(_m.EntitlementSource)
+	builder.WriteString(", ")
 	builder.WriteString("node_group_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.NodeGroupID))
 	builder.WriteString(", ")
@@ -274,6 +294,11 @@ func (_m *UserSubscribe) String() string {
 	builder.WriteString(", ")
 	if v := _m.FinishedAt; v != nil {
 		builder.WriteString("finished_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.TrafficResetAt; v != nil {
+		builder.WriteString("traffic_reset_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")

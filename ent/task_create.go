@@ -110,6 +110,34 @@ func (_c *TaskCreate) SetNillableCurrent(v *uint64) *TaskCreate {
 	return _c
 }
 
+// SetDailyDate sets the "daily_date" field.
+func (_c *TaskCreate) SetDailyDate(v string) *TaskCreate {
+	_c.mutation.SetDailyDate(v)
+	return _c
+}
+
+// SetNillableDailyDate sets the "daily_date" field if the given value is not nil.
+func (_c *TaskCreate) SetNillableDailyDate(v *string) *TaskCreate {
+	if v != nil {
+		_c.SetDailyDate(*v)
+	}
+	return _c
+}
+
+// SetDailySent sets the "daily_sent" field.
+func (_c *TaskCreate) SetDailySent(v uint64) *TaskCreate {
+	_c.mutation.SetDailySent(v)
+	return _c
+}
+
+// SetNillableDailySent sets the "daily_sent" field if the given value is not nil.
+func (_c *TaskCreate) SetNillableDailySent(v *uint64) *TaskCreate {
+	if v != nil {
+		_c.SetDailySent(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *TaskCreate) SetCreatedAt(v time.Time) *TaskCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -191,6 +219,14 @@ func (_c *TaskCreate) defaults() {
 		v := task.DefaultCurrent
 		_c.mutation.SetCurrent(v)
 	}
+	if _, ok := _c.mutation.DailyDate(); !ok {
+		v := task.DefaultDailyDate
+		_c.mutation.SetDailyDate(v)
+	}
+	if _, ok := _c.mutation.DailySent(); !ok {
+		v := task.DefaultDailySent
+		_c.mutation.SetDailySent(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := task.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -214,6 +250,17 @@ func (_c *TaskCreate) check() error {
 	}
 	if _, ok := _c.mutation.Current(); !ok {
 		return &ValidationError{Name: "current", err: errors.New(`ent: missing required field "Task.current"`)}
+	}
+	if _, ok := _c.mutation.DailyDate(); !ok {
+		return &ValidationError{Name: "daily_date", err: errors.New(`ent: missing required field "Task.daily_date"`)}
+	}
+	if v, ok := _c.mutation.DailyDate(); ok {
+		if err := task.DailyDateValidator(v); err != nil {
+			return &ValidationError{Name: "daily_date", err: fmt.Errorf(`ent: validator failed for field "Task.daily_date": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.DailySent(); !ok {
+		return &ValidationError{Name: "daily_sent", err: errors.New(`ent: missing required field "Task.daily_sent"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Task.created_at"`)}
@@ -280,6 +327,14 @@ func (_c *TaskCreate) createSpec() (*Task, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Current(); ok {
 		_spec.SetField(task.FieldCurrent, field.TypeUint64, value)
 		_node.Current = value
+	}
+	if value, ok := _c.mutation.DailyDate(); ok {
+		_spec.SetField(task.FieldDailyDate, field.TypeString, value)
+		_node.DailyDate = value
+	}
+	if value, ok := _c.mutation.DailySent(); ok {
+		_spec.SetField(task.FieldDailySent, field.TypeUint64, value)
+		_node.DailySent = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(task.FieldCreatedAt, field.TypeTime, value)

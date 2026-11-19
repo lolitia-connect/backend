@@ -51,6 +51,12 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 		l.Logger.Errorw("[ResetTraffic] Database query error", zap.Any("error", err.Error()), zap.Any("UserSubscribeID", req.UserSubscribeID))
 		return nil, errors.Wrapf(err, "find user subscribe error: %v", err.Error())
 	}
+	if userSubscribe == nil || userSubscribe.UserId != u.Id {
+		return nil, xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	if userSubscribe.EntitlementSource != "" {
+		return nil, user.ErrProviderManaged
+	}
 	if userSubscribe.Subscribe == nil {
 		l.Logger.Errorw("[ResetTraffic] subscribe not found", zap.Any("UserSubscribeID", req.UserSubscribeID))
 		return nil, errors.New("subscribe not found")
@@ -83,20 +89,21 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 	}
 	// create order
 	orderInfo := order.Order{
-		Id:             0,
-		ParentId:       userSubscribe.OrderId,
-		UserId:         u.Id,
-		OrderNo:        tool.GenerateTradeNo(),
-		Type:           3,
-		Price:          userSubscribe.Subscribe.Replacement,
-		Amount:         amount + feeAmount,
-		GiftAmount:     deductionAmount,
-		FeeAmount:      feeAmount,
-		PaymentId:      payment.Id,
-		Method:         payment.Platform,
-		Status:         1,
-		SubscribeId:    userSubscribe.SubscribeId,
-		SubscribeToken: userSubscribe.Token,
+		Id:              0,
+		ParentId:        userSubscribe.OrderId,
+		UserId:          u.Id,
+		OrderNo:         tool.GenerateTradeNo(),
+		Type:            3,
+		Price:           userSubscribe.Subscribe.Replacement,
+		Amount:          amount + feeAmount,
+		GiftAmount:      deductionAmount,
+		FeeAmount:       feeAmount,
+		PaymentId:       payment.Id,
+		Method:          payment.Platform,
+		Status:          1,
+		SubscribeId:     userSubscribe.SubscribeId,
+		SubscribeToken:  userSubscribe.Token,
+		UserSubscribeId: userSubscribe.Id,
 	}
 	orderflow.ApplyIdempotency(l.ctx, &orderInfo)
 	// Database transaction
@@ -104,7 +111,7 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 		// Reserve gift credit from a wallet read inside the transaction so a
 		// concurrent order cannot spend the same balance.
 		if orderInfo.GiftAmount > 0 {
-			fresh, err := txStore.Wallet().FindOne(l.ctx, u.Id)
+			fresh, err := txStore.Wallet().FindOneForUpdate(l.ctx, u.Id)
 			if err != nil {
 				return err
 			}
@@ -156,7 +163,7 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 	if err != nil {
 		l.Logger.Errorw("[ResetTraffic] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
-	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
+	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(25))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
 		l.Logger.Errorw("[ResetTraffic] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", task))

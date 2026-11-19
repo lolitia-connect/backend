@@ -27,7 +27,7 @@ func NewQueryIPLocationLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Q
 }
 
 func (l *QueryIPLocationLogic) QueryIPLocation(req *types.QueryIPLocationRequest) (resp *types.QueryIPLocationResponse, err error) {
-	if l.svcCtx.GeoIP == nil {
+	if l.svcCtx.GeoIP == nil || l.svcCtx.GeoIP.DB == nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), " GeoIP database not configured")
 	}
 

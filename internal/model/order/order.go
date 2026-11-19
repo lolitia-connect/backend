@@ -14,25 +14,30 @@ const (
 )
 
 type Order struct {
-	Id             int64
-	ParentId       int64
-	UserId         int64
-	OrderNo        string
-	Type           uint8
-	Quantity       int64
-	Price          int64
-	Amount         int64
-	GiftAmount     int64
-	Discount       int64
-	Coupon         string
-	CouponDiscount int64
-	Commission     int64
-	PaymentId      int64
-	Method         string
-	FeeAmount      int64
-	TradeNo        string
-	Status         uint8
-	StateVersion   int64
+	Id                  int64
+	ParentId            int64
+	UserId              int64
+	OrderNo             string
+	Type                uint8
+	Quantity            int64
+	Price               int64
+	Amount              int64
+	GiftAmount          int64
+	Discount            int64
+	Coupon              string
+	CouponDiscount      int64
+	CouponReserved      bool
+	Commission          int64
+	CommissionRefererId int64
+	PaymentAmount       int64
+	PaymentCurrency     string
+	PaymentSession      string
+	PaymentId           int64
+	Method              string
+	FeeAmount           int64
+	TradeNo             string
+	Status              uint8
+	StateVersion        int64
 
 	// IdempotencyKey and IdempotencyHash are V2-only. V1 and historical orders
 	// leave both empty; the unique index tolerates repeated NULLs.
@@ -43,8 +48,11 @@ type Order struct {
 	// capability. Only guest orders set it, so an empty value means "this order
 	// can only be authorized as its owner's account".
 	GuestCheckoutTokenHash string
+	GuestAuthType          string
+	GuestIdentifier        string
 	SubscribeId            int64
 	SubscribeToken         string
+	UserSubscribeId        int64
 	IsNew                  bool
 	CreatedAt              time.Time
 	UpdatedAt              time.Time

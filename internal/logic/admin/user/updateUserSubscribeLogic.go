@@ -33,6 +33,13 @@ func (l *UpdateUserSubscribeLogic) UpdateUserSubscribe(req *types.UpdateUserSubs
 		l.Logger.Errorw("FindOneUserSubscribe failed:", zap.Any("error", err.Error()), zap.Any("userSubscribeId", req.UserSubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe failed: %v", err.Error())
 	}
+	if userSub == nil {
+		return xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
+	if userSub.EntitlementSource != "" {
+		return user.ErrProviderManaged
+	}
+	previous := userSub.Status
 	expiredAt := time.UnixMilli(req.ExpiredAt)
 	if req.ExpiredAt != 0 && time.Since(expiredAt).Minutes() > 0 {
 		userSub.Status = 3
@@ -40,22 +47,16 @@ func (l *UpdateUserSubscribeLogic) UpdateUserSubscribe(req *types.UpdateUserSubs
 		userSub.Status = 1
 	}
 
-	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, &user.Subscribe{
+	err = l.svcCtx.Store.User().UpdateSubscribeSettings(l.ctx, &user.Subscribe{
 		Id:               userSub.Id,
-		UserId:           userSub.UserId,
-		OrderId:          userSub.OrderId,
 		SubscribeId:      req.SubscribeId,
-		StartTime:        userSub.StartTime,
 		ExpireTime:       time.UnixMilli(req.ExpiredAt),
 		Traffic:          req.Traffic,
 		TrafficUnlimited: req.TrafficUnlimited,
 		Download:         req.Download,
 		Upload:           req.Upload,
-		Token:            userSub.Token,
-		UUID:             userSub.UUID,
 		Status:           userSub.Status,
-		NodeGroupId:      userSub.NodeGroupId,
-	})
+	}, previous)
 
 	if err != nil {
 		l.Logger.Errorw("UpdateSubscribe failed:", zap.Any("error", err.Error()))
@@ -65,6 +66,11 @@ func (l *UpdateUserSubscribeLogic) UpdateUserSubscribe(req *types.UpdateUserSubs
 	if err = l.svcCtx.Store.Subscribe().ClearCache(l.ctx, userSub.SubscribeId); err != nil {
 		l.Logger.Errorw("failed to clear subscribe cache", zap.Any("error", err.Error()), zap.Any("subscribeId", userSub.SubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "failed to clear subscribe cache: %v", err.Error())
+	}
+	if req.SubscribeId != userSub.SubscribeId {
+		if err := l.svcCtx.Store.Subscribe().ClearCache(l.ctx, req.SubscribeId); err != nil {
+			return err
+		}
 	}
 
 	if err = l.svcCtx.Store.Node().ClearServerAllCache(l.ctx); err != nil {

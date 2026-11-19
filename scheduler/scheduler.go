@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -12,19 +13,38 @@ import (
 )
 
 type Service struct {
-	svc    *svc.ServiceContext
-	server *asynq.Scheduler
+	svc     *svc.ServiceContext
+	server  *asynq.Scheduler
+	mu      sync.Mutex
+	stopped bool
+	done    chan struct{}
 }
 
 func NewService(svc *svc.ServiceContext) *Service {
 	return &Service{
 		svc:    svc,
 		server: initService(svc),
+		done:   make(chan struct{}),
 	}
 }
 
 func (m *Service) Start() {
+	if err := m.Run(); err != nil {
+		panic(err)
+	}
+}
+
+func (m *Service) Run() error {
+	m.mu.Lock()
+	if m.stopped {
+		m.mu.Unlock()
+		return nil
+	}
 	zap.S().Infof("start scheduler service")
+	if _, err := m.server.Register("@every 30s", asynq.NewTask(types.SchedulerFlushTraffic, nil), asynq.MaxRetry(3)); err != nil {
+		m.mu.Unlock()
+		return err
+	}
 	// schedule check subscription task: every 60 seconds
 	checkTask := asynq.NewTask(types.SchedulerCheckSubscription, nil)
 	if _, err := m.server.Register("@every 60s", checkTask); err != nil {
@@ -73,14 +93,25 @@ func (m *Service) Start() {
 		zap.S().Errorf("register cleanup order events task failed: %s", err.Error())
 	}
 
-	if err := m.server.Run(); err != nil {
-		zap.S().Errorf("run scheduler failed: %s", err.Error())
+	err := m.server.Start()
+	m.mu.Unlock()
+	if err != nil {
+		return err
 	}
+	<-m.done
+	return nil
 }
 
 func (m *Service) Stop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.stopped {
+		return
+	}
+	m.stopped = true
 	zap.S().Info("stop scheduler service")
 	m.server.Shutdown()
+	close(m.done)
 }
 
 func initService(svc *svc.ServiceContext) *asynq.Scheduler {

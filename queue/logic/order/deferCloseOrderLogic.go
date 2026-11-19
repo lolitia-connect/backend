@@ -3,6 +3,7 @@ package orderLogic
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -30,18 +31,12 @@ func (l *DeferCloseOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task
 			zap.Any("error", err.Error()),
 			zap.Any("payload", string(task.Payload())),
 		)
-		return nil
+		return fmt.Errorf("invalid close-order payload: %w: %v", asynq.SkipRetry, err)
 	}
-
-	err := order.NewCloseOrderLogic(ctx, l.svc).CloseOrder(&internal.CloseOrderRequest{
+	if payload.OrderNo == "" {
+		return fmt.Errorf("close-order number is empty: %w", asynq.SkipRetry)
+	}
+	return order.NewCloseOrderLogic(ctx, l.svc).ExpireOrder(&internal.CloseOrderRequest{
 		OrderNo: payload.OrderNo,
 	})
-	count, ok := asynq.GetRetryCount(ctx)
-	if !ok {
-		return nil
-	}
-	if err != nil && count < 3 {
-		return err
-	}
-	return nil
 }

@@ -50,6 +50,12 @@ type Tx struct {
 	SubscribeApplication *SubscribeApplicationClient
 	// SubscribeGroup is the client for interacting with the SubscribeGroup builders.
 	SubscribeGroup *SubscribeGroupClient
+	// SubscriptionEntitlement is the client for interacting with the SubscriptionEntitlement builders.
+	SubscriptionEntitlement *SubscriptionEntitlementClient
+	// SubscriptionEntitlementRevision is the client for interacting with the SubscriptionEntitlementRevision builders.
+	SubscriptionEntitlementRevision *SubscriptionEntitlementRevisionClient
+	// SubscriptionPeriod is the client for interacting with the SubscriptionPeriod builders.
+	SubscriptionPeriod *SubscriptionPeriodClient
 	// System is the client for interacting with the System builders.
 	System *SystemClient
 	// SystemLog is the client for interacting with the SystemLog builders.
@@ -60,6 +66,8 @@ type Tx struct {
 	Ticket *TicketClient
 	// TicketFollow is the client for interacting with the TicketFollow builders.
 	TicketFollow *TicketFollowClient
+	// TrafficBatch is the client for interacting with the TrafficBatch builders.
+	TrafficBatch *TrafficBatchClient
 	// TrafficLog is the client for interacting with the TrafficLog builders.
 	TrafficLog *TrafficLogClient
 	// User is the client for interacting with the User builders.
@@ -226,11 +234,15 @@ func (tx *Tx) init() {
 	tx.Subscribe = NewSubscribeClient(tx.config)
 	tx.SubscribeApplication = NewSubscribeApplicationClient(tx.config)
 	tx.SubscribeGroup = NewSubscribeGroupClient(tx.config)
+	tx.SubscriptionEntitlement = NewSubscriptionEntitlementClient(tx.config)
+	tx.SubscriptionEntitlementRevision = NewSubscriptionEntitlementRevisionClient(tx.config)
+	tx.SubscriptionPeriod = NewSubscriptionPeriodClient(tx.config)
 	tx.System = NewSystemClient(tx.config)
 	tx.SystemLog = NewSystemLogClient(tx.config)
 	tx.Task = NewTaskClient(tx.config)
 	tx.Ticket = NewTicketClient(tx.config)
 	tx.TicketFollow = NewTicketFollowClient(tx.config)
+	tx.TrafficBatch = NewTrafficBatchClient(tx.config)
 	tx.TrafficLog = NewTrafficLogClient(tx.config)
 	tx.User = NewUserClient(tx.config)
 	tx.UserAuthMethod = NewUserAuthMethodClient(tx.config)

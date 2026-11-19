@@ -57,6 +57,9 @@ type googleRequest struct {
 }
 
 func (l *BindOAuthCallbackLogic) BindOAuthCallback(req *types.BindOAuthCallbackRequest) error {
+	if _, ok := req.Callback.(map[string]interface{}); !ok {
+		return xerr.NewErrCode(xerr.InvalidParams)
+	}
 	_, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {
 		zap.S().Error("current user is not found in context")
@@ -97,7 +100,7 @@ func (l *BindOAuthCallbackLogic) google(req *types.BindOAuthCallbackRequest) err
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CloneMapToStruct failed")
 	}
 	// validate the state code
-	redirect, err := l.svcCtx.Redis.Get(l.ctx, fmt.Sprintf("google:%s", request.State)).Result()
+	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "google", "bind", u.Id, request.State)
 	if err != nil {
 		l.Logger.Errorw("error get google state code: %v", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get google state code failed")
@@ -163,7 +166,7 @@ func (l *BindOAuthCallbackLogic) github(req *types.BindOAuthCallbackRequest) err
 		l.Logger.Errorw("error CloneMapToStruct: %v", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CloneMapToStruct failed")
 	}
-	redirect, err := l.svcCtx.Redis.Get(l.ctx, fmt.Sprintf("github:%s", request.State)).Result()
+	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "github", "bind", u.Id, request.State)
 	if err != nil {
 		l.Logger.Errorw("error get github state code: %v", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get github state code failed")
@@ -225,7 +228,7 @@ func (l *BindOAuthCallbackLogic) facebook(req *types.BindOAuthCallbackRequest) e
 		l.Logger.Errorw("error CloneMapToStruct: %v", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "CloneMapToStruct failed")
 	}
-	redirect, err := l.svcCtx.Redis.Get(l.ctx, fmt.Sprintf("facebook:%s", request.State)).Result()
+	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "facebook", "bind", u.Id, request.State)
 	if err != nil {
 		l.Logger.Errorw("error get facebook state code: %v", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get facebook state code failed")
@@ -276,8 +279,13 @@ func (l *BindOAuthCallbackLogic) facebook(req *types.BindOAuthCallbackRequest) e
 }
 
 func (l *BindOAuthCallbackLogic) apple(req *types.BindOAuthCallbackRequest) error {
-	// validate the state code
-	_, err := l.svcCtx.Redis.Get(l.ctx, fmt.Sprintf("apple:%s", req.Callback.(map[string]interface{})["state"])).Result()
+	account := l.ctx.Value(constant.CtxKeyUser).(*user.User)
+	state, _ := req.Callback.(map[string]interface{})["state"].(string)
+	code, _ := req.Callback.(map[string]interface{})["code"].(string)
+	if code == "" {
+		return xerr.NewErrCode(xerr.InvalidParams)
+	}
+	_, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "apple", "bind", account.Id, state)
 	if err != nil {
 		l.Logger.Errorw("[BindOAuthCallbackLogic] Get State code error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get apple state code failed: %v", err.Error())
@@ -306,7 +314,7 @@ func (l *BindOAuthCallbackLogic) apple(req *types.BindOAuthCallbackRequest) erro
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "new apple client failed: %v", err.Error())
 	}
 	// verify web token
-	resp, err := client.VerifyWebToken(l.ctx, req.Callback.(map[string]interface{})["code"].(string))
+	resp, err := client.VerifyWebToken(l.ctx, code)
 	if err != nil {
 		l.Logger.Errorw("[BindOAuthCallbackLogic] VerifyWebToken error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "verify web token failed: %v", err.Error())
@@ -412,6 +420,7 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 		time.Now(), telegramBindRetryGrace, telegramBindAuthExpire*time.Second)
 	if claimErr != nil {
 		l.Logger.Errorw("telegram bind replay check unavailable", zap.Any("error", claimErr.Error()))
+		return claimErr
 	} else if !allowed {
 		l.Logger.Errorw("telegram bind callback replayed")
 		return errors.Wrap(xerr.NewErrCode(xerr.ERROR), "telegram callback has already been used")
@@ -436,7 +445,7 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 		l.Logger.Errorw("find telegram user auth method by platform failed", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find telegram user auth method failed")
 	}
-	if existingByPlatform.Id > 0 {
+	if existingByPlatform != nil && existingByPlatform.Id > 0 {
 		if existingByPlatform.AuthIdentifier == telegramUserID {
 			return nil
 		}

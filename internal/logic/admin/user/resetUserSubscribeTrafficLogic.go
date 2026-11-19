@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 
+	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -31,10 +32,13 @@ func (l *ResetUserSubscribeTrafficLogic) ResetUserSubscribeTraffic(req *types.Re
 		l.Logger.Errorw("FindOneSubscribe error", zap.Any("error", err.Error()), zap.Any("userSubscribeId", req.UserSubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), " FindOneSubscribe error: %v", err.Error())
 	}
-	userSub.Download = 0
-	userSub.Upload = 0
-
-	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, userSub)
+	if userSub == nil {
+		return xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
+	if userSub.EntitlementSource != "" {
+		return user.ErrProviderManaged
+	}
+	err = l.svcCtx.Store.User().ResetSubscribeCounters(l.ctx, userSub.Id)
 	if err != nil {
 		l.Logger.Errorw("UpdateSubscribe error", zap.Any("error", err.Error()), zap.Any("userSubscribeId", req.UserSubscribeId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), " UpdateSubscribe error: %v", err.Error())

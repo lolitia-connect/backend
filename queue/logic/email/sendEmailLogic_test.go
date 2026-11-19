@@ -37,3 +37,20 @@ func TestRenderEmailTemplateRejectsMalformedBody(t *testing.T) {
 		t.Fatalf("renderEmailTemplate = %q, err=%v", out, err)
 	}
 }
+
+func TestVerificationEmailPurposeCannotPanic(t *testing.T) {
+	for _, content := range []map[string]interface{}{nil, {}, {"Type": "1"}, {"Type": float64(256)}, {"Type": 1.5}} {
+		if normalizeVerificationType(content) == nil {
+			t.Fatalf("malformed verification purpose accepted: %v", content)
+		}
+	}
+	for _, purpose := range []float64{1, 2} {
+		content := map[string]interface{}{"Type": purpose}
+		if err := normalizeVerificationType(content); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := renderEmailTemplate("verify", "{{if eq .Type 1}}register{{else}}security{{end}}", content); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

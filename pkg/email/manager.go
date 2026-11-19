@@ -2,8 +2,8 @@ package email
 
 import (
 	"context"
+	"errors"
 	"sync"
-	"time"
 
 	"github.com/perfect-panel/server/internal/model/task"
 	"go.uber.org/zap"
@@ -12,7 +12,6 @@ import (
 var (
 	Manager *WorkerManager // 全局调度器实例
 	once    sync.Once      // 确保 Scheduler 只被初始化一次
-	limit   sync.RWMutex   // 控制并发限制
 )
 
 type WorkerManager struct {
@@ -21,55 +20,55 @@ type WorkerManager struct {
 	mutex   sync.RWMutex                 // 读写互斥锁，确保线程安全
 	workers map[int64]*Worker            // 存储所有 Worker 实例
 	cancels map[int64]context.CancelFunc // 存储每个 Worker 的取消函数
+	gate    chan struct{}
 }
 
 func NewWorkerManager(tasks task.Model, sender Sender) *WorkerManager {
-	if Manager != nil {
-		return Manager
-	}
 	once.Do(func() {
 		Manager = &WorkerManager{
 			tasks:   tasks,
 			workers: make(map[int64]*Worker),
 			cancels: make(map[int64]context.CancelFunc),
 			sender:  sender,
+			gate:    make(chan struct{}, 1),
 		}
 	})
-	// 设置定时检查任务
-	go func() {
-		for {
-			// 每隔5分钟检查一次
-			select {
-			case <-time.After(1 * time.Minute):
-				checkWorker()
-				continue
-			}
-		}
-	}()
 	return Manager
 }
 
 // AddWorker 添加一个新的 Worker 实例
 func (m *WorkerManager) AddWorker(id int64) {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	if _, exists := m.workers[id]; !exists {
-		ctx, cancel := context.WithCancel(context.Background())
-		worker := NewWorker(ctx, id, m.tasks, m.sender)
-		m.workers[id] = worker
-		m.cancels[id] = cancel
-		go worker.Start()
-		zap.S().Info("Batch Send Email",
-			zap.Any("message", "Added new worker"),
-			zap.Any("task_id", id),
-		)
-	} else {
-		zap.S().Info("Batch Send Email",
-			zap.Any("message", "Worker already exists"),
-			zap.Any("task_id", id),
-		)
-	}
+	go func() {
+		if err := m.RunWorker(context.Background(), id, m.tasks, m.sender); err != nil {
+			zap.S().Errorw("Batch Send Email", "task_id", id, "error", err)
+		}
+	}()
+}
 
+func (m *WorkerManager) RunWorker(ctx context.Context, id int64, tasks task.Model, sender Sender, options ...WorkerOption) error {
+	select {
+	case m.gate <- struct{}{}:
+		defer func() { <-m.gate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	worker := NewWorker(workerCtx, id, tasks, sender, options...)
+	m.mutex.Lock()
+	if _, exists := m.workers[id]; exists {
+		m.mutex.Unlock()
+		return errors.New("email campaign worker is already running")
+	}
+	m.workers[id], m.cancels[id] = worker, cancel
+	m.mutex.Unlock()
+	defer func() {
+		m.mutex.Lock()
+		delete(m.workers, id)
+		delete(m.cancels, id)
+		m.mutex.Unlock()
+	}()
+	return worker.Start()
 }
 
 // GetWorker 获取指定任务的 Worker 实例
@@ -92,10 +91,8 @@ func (m *WorkerManager) RemoveWorker(id int64) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	if _, exists := m.workers[id]; exists {
-		delete(m.workers, id)
 		if cancelFunc, ok := m.cancels[id]; ok {
 			cancelFunc() // 调用取消函数
-			delete(m.cancels, id)
 		}
 		zap.S().Info("Batch Send Email",
 			zap.Any("message", "Removed worker"),
@@ -107,28 +104,4 @@ func (m *WorkerManager) RemoveWorker(id int64) {
 			zap.Any("task_id", id),
 		)
 	}
-}
-
-func checkWorker() {
-	if Manager == nil {
-		// 如果 Manager 未初始化，直接返回
-		return
-	}
-	Manager.mutex.Lock()
-	defer Manager.mutex.Unlock()
-	for id, worker := range Manager.workers {
-		if worker.IsRunning() == 2 {
-			// 如果Worker已完成，移除它
-			delete(Manager.workers, id)
-			if cancelFunc, ok := Manager.cancels[id]; ok {
-				cancelFunc() // 调用取消函数
-				delete(Manager.cancels, id)
-			}
-			zap.S().Info("Batch Send Email",
-				zap.Any("message", "Removed completed worker"),
-				zap.Any("task_id", id),
-			)
-		}
-	}
-
 }

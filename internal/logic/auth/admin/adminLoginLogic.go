@@ -13,9 +13,9 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -91,8 +91,19 @@ func (l *AdminLoginLogic) AdminLogin(req *types.UserLoginRequest) (resp *types.L
 	}
 
 	// Verify password
-	if !tool.MultiPasswordVerify(userInfo.Algo, userInfo.Salt, req.Password, userInfo.Password) {
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserPasswordError), "user password")
+	if userInfo.Enable == nil || !*userInfo.Enable {
+		return nil, xerr.NewErrCode(xerr.UserDisabled)
+	}
+	sessionEpoch, err := usersession.AcquireEpoch(l.ctx, l.svcCtx.Redis, userInfo.Id)
+	if err != nil {
+		return nil, err
+	}
+	userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
+	if err != nil || userInfo == nil || userInfo.DeletedAt != nil || userInfo.IsAdmin == nil || !*userInfo.IsAdmin {
+		return nil, xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	if err := usersession.VerifyPassword(l.ctx, l.svcCtx.Redis, userInfo.Id, userInfo.Algo, userInfo.Salt, req.Password, userInfo.Password); err != nil {
+		return nil, err
 	}
 
 	// Bind device to user if identifier is provided
@@ -113,14 +124,10 @@ func (l *AdminLoginLogic) AdminLogin(req *types.UserLoginRequest) (resp *types.L
 	// Generate session id
 	sessionId := uuidx.NewUUID().String()
 	// Generate token
-	token, err := jwt.NewJwtToken(
+	token, err := usersession.Issue(l.ctx, l.svcCtx.Redis,
 		l.svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
 		l.svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userInfo.Id),
-		jwt.WithOption("SessionId", sessionId),
-		jwt.WithOption("identifier", req.Identifier),
-		jwt.WithOption("CtxLoginType", req.LoginType),
+		userInfo.Id, sessionId, req.LoginType, sessionEpoch, req.Identifier,
 	)
 	if err != nil {
 		l.Logger.Error("[AdminLogin] token generate error", zap.Any("error", err.Error()))

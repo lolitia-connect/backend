@@ -2,9 +2,11 @@ package log
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	"github.com/perfect-panel/server/internal/config"
+	modellog "github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -30,6 +32,9 @@ func NewUpdateLogSettingLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 }
 
 func (l *UpdateLogSettingLogic) UpdateLogSetting(req *types.LogSetting) error {
+	if req == nil || req.AutoClear == nil || req.ClearDays < 7 {
+		return xerr.NewErrCode(xerr.InvalidParams)
+	}
 	v := reflect.ValueOf(*req)
 	// Get the reflection type of the structure
 	t := v.Type()
@@ -44,7 +49,11 @@ func (l *UpdateLogSettingLogic) UpdateLogSetting(req *types.LogSetting) error {
 				return err
 			}
 		}
-		return nil
+		entry, err := modellog.NewAdminActionLog(l.ctx, modellog.AdminAction{Action: "settings.log", Object: "log", Detail: fmt.Sprintf("auto_clear=%t,clear_days=%d", *req.AutoClear, req.ClearDays)})
+		if err != nil {
+			return err
+		}
+		return store.Log().Insert(l.ctx, entry)
 	})
 	if err != nil {
 		l.Logger.Errorw("[UpdateLogSetting] update log setting error", zap.Any("error", err.Error()))

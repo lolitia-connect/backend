@@ -89,6 +89,16 @@ func Current(v uint64) predicate.Task {
 	return predicate.Task(sql.FieldEQ(FieldCurrent, v))
 }
 
+// DailyDate applies equality check predicate on the "daily_date" field. It's identical to DailyDateEQ.
+func DailyDate(v string) predicate.Task {
+	return predicate.Task(sql.FieldEQ(FieldDailyDate, v))
+}
+
+// DailySent applies equality check predicate on the "daily_sent" field. It's identical to DailySentEQ.
+func DailySent(v uint64) predicate.Task {
+	return predicate.Task(sql.FieldEQ(FieldDailySent, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Task {
 	return predicate.Task(sql.FieldEQ(FieldCreatedAt, v))
@@ -482,6 +492,111 @@ func CurrentLT(v uint64) predicate.Task {
 // CurrentLTE applies the LTE predicate on the "current" field.
 func CurrentLTE(v uint64) predicate.Task {
 	return predicate.Task(sql.FieldLTE(FieldCurrent, v))
+}
+
+// DailyDateEQ applies the EQ predicate on the "daily_date" field.
+func DailyDateEQ(v string) predicate.Task {
+	return predicate.Task(sql.FieldEQ(FieldDailyDate, v))
+}
+
+// DailyDateNEQ applies the NEQ predicate on the "daily_date" field.
+func DailyDateNEQ(v string) predicate.Task {
+	return predicate.Task(sql.FieldNEQ(FieldDailyDate, v))
+}
+
+// DailyDateIn applies the In predicate on the "daily_date" field.
+func DailyDateIn(vs ...string) predicate.Task {
+	return predicate.Task(sql.FieldIn(FieldDailyDate, vs...))
+}
+
+// DailyDateNotIn applies the NotIn predicate on the "daily_date" field.
+func DailyDateNotIn(vs ...string) predicate.Task {
+	return predicate.Task(sql.FieldNotIn(FieldDailyDate, vs...))
+}
+
+// DailyDateGT applies the GT predicate on the "daily_date" field.
+func DailyDateGT(v string) predicate.Task {
+	return predicate.Task(sql.FieldGT(FieldDailyDate, v))
+}
+
+// DailyDateGTE applies the GTE predicate on the "daily_date" field.
+func DailyDateGTE(v string) predicate.Task {
+	return predicate.Task(sql.FieldGTE(FieldDailyDate, v))
+}
+
+// DailyDateLT applies the LT predicate on the "daily_date" field.
+func DailyDateLT(v string) predicate.Task {
+	return predicate.Task(sql.FieldLT(FieldDailyDate, v))
+}
+
+// DailyDateLTE applies the LTE predicate on the "daily_date" field.
+func DailyDateLTE(v string) predicate.Task {
+	return predicate.Task(sql.FieldLTE(FieldDailyDate, v))
+}
+
+// DailyDateContains applies the Contains predicate on the "daily_date" field.
+func DailyDateContains(v string) predicate.Task {
+	return predicate.Task(sql.FieldContains(FieldDailyDate, v))
+}
+
+// DailyDateHasPrefix applies the HasPrefix predicate on the "daily_date" field.
+func DailyDateHasPrefix(v string) predicate.Task {
+	return predicate.Task(sql.FieldHasPrefix(FieldDailyDate, v))
+}
+
+// DailyDateHasSuffix applies the HasSuffix predicate on the "daily_date" field.
+func DailyDateHasSuffix(v string) predicate.Task {
+	return predicate.Task(sql.FieldHasSuffix(FieldDailyDate, v))
+}
+
+// DailyDateEqualFold applies the EqualFold predicate on the "daily_date" field.
+func DailyDateEqualFold(v string) predicate.Task {
+	return predicate.Task(sql.FieldEqualFold(FieldDailyDate, v))
+}
+
+// DailyDateContainsFold applies the ContainsFold predicate on the "daily_date" field.
+func DailyDateContainsFold(v string) predicate.Task {
+	return predicate.Task(sql.FieldContainsFold(FieldDailyDate, v))
+}
+
+// DailySentEQ applies the EQ predicate on the "daily_sent" field.
+func DailySentEQ(v uint64) predicate.Task {
+	return predicate.Task(sql.FieldEQ(FieldDailySent, v))
+}
+
+// DailySentNEQ applies the NEQ predicate on the "daily_sent" field.
+func DailySentNEQ(v uint64) predicate.Task {
+	return predicate.Task(sql.FieldNEQ(FieldDailySent, v))
+}
+
+// DailySentIn applies the In predicate on the "daily_sent" field.
+func DailySentIn(vs ...uint64) predicate.Task {
+	return predicate.Task(sql.FieldIn(FieldDailySent, vs...))
+}
+
+// DailySentNotIn applies the NotIn predicate on the "daily_sent" field.
+func DailySentNotIn(vs ...uint64) predicate.Task {
+	return predicate.Task(sql.FieldNotIn(FieldDailySent, vs...))
+}
+
+// DailySentGT applies the GT predicate on the "daily_sent" field.
+func DailySentGT(v uint64) predicate.Task {
+	return predicate.Task(sql.FieldGT(FieldDailySent, v))
+}
+
+// DailySentGTE applies the GTE predicate on the "daily_sent" field.
+func DailySentGTE(v uint64) predicate.Task {
+	return predicate.Task(sql.FieldGTE(FieldDailySent, v))
+}
+
+// DailySentLT applies the LT predicate on the "daily_sent" field.
+func DailySentLT(v uint64) predicate.Task {
+	return predicate.Task(sql.FieldLT(FieldDailySent, v))
+}
+
+// DailySentLTE applies the LTE predicate on the "daily_sent" field.
+func DailySentLTE(v uint64) predicate.Task {
+	return predicate.Task(sql.FieldLTE(FieldDailySent, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

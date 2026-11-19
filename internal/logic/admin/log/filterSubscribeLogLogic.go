@@ -2,7 +2,6 @@ package log
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
@@ -39,7 +38,7 @@ func (l *FilterSubscribeLogLogic) FilterSubscribeLog(req *types.FilterSubscribeL
 	}
 
 	if req.UserSubscribeId != 0 {
-		params.Search = `"user_subscribe_id":` + strconv.FormatInt(req.UserSubscribeId, 10)
+		params.ContentInt64 = map[string]int64{"user_subscribe_id": req.UserSubscribeId}
 	}
 
 	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, params)

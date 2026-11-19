@@ -11,12 +11,11 @@ import (
 
 	"github.com/perfect-panel/server/pkg/tool"
 
-	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/jwt"
-	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -53,7 +52,7 @@ func (l *QueryPurchaseOrderLogic) QueryPurchaseOrder(req *types.QueryPurchaseOrd
 	// Handle temporary orders if applicable
 	var token string
 	if orderInfo.Status == 2 || orderInfo.Status == 5 {
-		if token, err = l.handleTemporaryOrder(orderInfo); err != nil {
+		if token, err = l.handleTemporaryOrder(orderInfo, req.CheckoutToken); err != nil {
 			return nil, err
 		}
 	}
@@ -86,15 +85,19 @@ func (l *QueryPurchaseOrderLogic) QueryPurchaseOrder(req *types.QueryPurchaseOrd
 // mint a session token.
 func (l *QueryPurchaseOrderLogic) authorizePurchaseOrder(orderInfo *order.Order, req *types.QueryPurchaseOrderRequest) error {
 	if orderInfo.UserId != 0 {
-		if currentUser, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User); ok && currentUser.Id == orderInfo.UserId {
+		if currentUser, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User); ok && currentUser != nil && currentUser.Id == orderInfo.UserId {
 			return nil
 		}
 	}
-	if req.CheckoutToken == "" {
+	return l.authorizeGuestCapability(orderInfo, req.CheckoutToken)
+}
+
+func (l *QueryPurchaseOrderLogic) authorizeGuestCapability(orderInfo *order.Order, checkoutToken string) error {
+	if checkoutToken == "" {
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is required")
 	}
 	if orderInfo.GuestCheckoutTokenHash != "" {
-		if subtle.ConstantTimeCompare([]byte(orderInfo.GuestCheckoutTokenHash), []byte(constant.CheckoutTokenHash(req.CheckoutToken))) != 1 {
+		if subtle.ConstantTimeCompare([]byte(orderInfo.GuestCheckoutTokenHash), []byte(constant.CheckoutTokenHash(checkoutToken))) != 1 {
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is invalid")
 		}
 		return nil
@@ -111,50 +114,63 @@ func (l *QueryPurchaseOrderLogic) authorizePurchaseOrder(orderInfo *order.Order,
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is invalid")
 	}
 	if tempOrder.OrderNo != orderInfo.OrderNo || tempOrder.CheckoutToken == "" ||
-		subtle.ConstantTimeCompare([]byte(tempOrder.CheckoutToken), []byte(req.CheckoutToken)) != 1 {
+		subtle.ConstantTimeCompare([]byte(tempOrder.CheckoutToken), []byte(checkoutToken)) != 1 {
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "guest checkout token is invalid")
 	}
 	return nil
 }
 
 // handleTemporaryOrder processes temporary order-related operations
-func (l *QueryPurchaseOrderLogic) handleTemporaryOrder(orderInfo *order.Order) (string, error) {
+func (l *QueryPurchaseOrderLogic) handleTemporaryOrder(orderInfo *order.Order, checkoutToken string) (string, error) {
+	if checkoutToken == "" {
+		return "", nil
+	}
+	if err := l.authorizeGuestCapability(orderInfo, checkoutToken); err != nil {
+		return "", err
+	}
 	if orderInfo.UserId == 0 {
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.OrderStatusError), "guest account is not ready")
 	}
 
 	// Generate session token
-	return l.generateSessionToken(orderInfo.UserId)
-}
-
-// generateSessionToken creates a session token and stores it in Redis
-func (l *QueryPurchaseOrderLogic) generateSessionToken(userId int64) (string, error) {
-	return IssuePurchaseSession(l.ctx, l.svcCtx, userId)
+	sessionOrder := *orderInfo
+	if sessionOrder.GuestCheckoutTokenHash == "" {
+		sessionOrder.GuestCheckoutTokenHash = constant.CheckoutTokenHash(checkoutToken)
+	}
+	return IssuePurchaseSession(l.ctx, l.svcCtx, &sessionOrder)
 }
 
 // IssuePurchaseSession creates the normal authenticated session issued after a
 // guest purchase completes. Both this package's status endpoint and the V2
 // capability-exchange endpoint use this helper so their token and Redis session
 // semantics cannot drift.
-func IssuePurchaseSession(ctx context.Context, svcCtx *svc.ServiceContext, userId int64) (string, error) {
-	sessionId := uuidx.NewUUID().String()
-	token, err := jwt.NewJwtToken(
-		svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
-		svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userId),
-		jwt.WithOption("SessionId", sessionId),
-	)
+func IssuePurchaseSession(ctx context.Context, svcCtx *svc.ServiceContext, info *order.Order) (string, error) {
+	if info == nil || info.UserId <= 0 || info.GuestCheckoutTokenHash == "" || (info.Status != order.StatusPaid && info.Status != order.StatusFinished) {
+		return "", xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	epoch, err := usersession.AcquireEpoch(ctx, svcCtx.Redis, info.UserId)
 	if err != nil {
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Token generation error")
+		return "", err
 	}
-
-	cacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
-	if err := svcCtx.Redis.Set(ctx, cacheKey, userId, time.Duration(svcCtx.Config.JwtAuth.AccessExpire)*time.Second).Err(); err != nil {
-		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Session storage error")
+	paidAt, err := svcCtx.Store.OrderEvent().PaidAt(ctx, info.OrderNo)
+	if ent.IsNotFound(err) && info.StateVersion == 0 {
+		paidAt, err = info.UpdatedAt, nil
 	}
-
-	return token, nil
+	if err != nil {
+		return "", err
+	}
+	if paidAt.IsZero() || time.Since(paidAt) > time.Hour || paidAt.After(time.Now().Add(time.Minute)) {
+		return "", xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	revoked, err := usersession.RevokedSince(ctx, svcCtx.Redis, info.UserId, paidAt)
+	if err != nil || revoked {
+		return "", xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	account, err := svcCtx.Store.User().FindOne(ctx, info.UserId)
+	if err != nil || account == nil || account.DeletedAt != nil || account.Enable == nil || !*account.Enable {
+		return "", xerr.NewErrCode(xerr.UserDisabled)
+	}
+	return usersession.Issue(ctx, svcCtx.Redis, svcCtx.Config.JwtAuth.AccessSecret, svcCtx.Config.JwtAuth.AccessExpire, info.UserId, "", "guest", epoch, "")
 }
 
 // fetchOrderDetails retrieves subscription and payment details

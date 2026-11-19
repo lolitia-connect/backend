@@ -3,6 +3,7 @@ package initialize
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,24 +45,36 @@ func swapTelegramPoller(start func(ctx context.Context)) {
 // Telegram (re)initialises the bot from the stored configuration. On failure
 // it returns without touching the running state, so a transient error during
 // re-initialisation leaves the previous bot working instead of none at all.
-func Telegram(svc *svc.ServiceContext) {
+func Telegram(svc *svc.ServiceContext) error {
 
 	method, err := svc.Store.Auth().FindOneByMethod(context.Background(), "telegram")
 	if err != nil {
 		zap.S().Errorf("[Init Telegram Config] Get Telegram Config Error: %s", err.Error())
-		return
+		return err
+	}
+	if method == nil {
+		return fmt.Errorf("telegram authentication method not found")
+	}
+	if method.Enabled == nil || !*method.Enabled {
+		swapTelegramPoller(nil)
+		svc.Config.Telegram = config.Telegram{}
+		svc.TelegramBot = nil
+		zap.S().Debug("[Init Telegram Config] Telegram is disabled")
+		return nil
 	}
 	tgConfig := new(auth.TelegramAuthConfig)
 	if err = tgConfig.Unmarshal(method.Config); err != nil {
 		zap.S().Errorf("[Init Telegram Config] Unmarshal Telegram Config Error: %s", err.Error())
-		return
+		return err
 	}
 
 	if tgConfig.BotToken == "" {
 		// The bot is deliberately unconfigured: stop a leftover poller.
 		swapTelegramPoller(nil)
+		svc.Config.Telegram = config.Telegram{}
+		svc.TelegramBot = nil
 		zap.S().Debug("[Init Telegram Config] Telegram Token is empty")
-		return
+		return nil
 	}
 
 	bot, err := tgbot.New(tgConfig.BotToken,
@@ -88,7 +101,7 @@ func Telegram(svc *svc.ServiceContext) {
 	)
 	if err != nil {
 		zap.S().Error("[Init Telegram Config] New Bot API Error: ", zap.Any("error", err.Error()))
-		return
+		return err
 	}
 
 	// This runs synchronously inside startup and the admin settings request,
@@ -98,7 +111,7 @@ func Telegram(svc *svc.ServiceContext) {
 	cancelGetMe()
 	if err != nil {
 		zap.S().Error("[Init Telegram Config] Get Bot Info Error: ", zap.Any("error", err.Error()))
-		return
+		return err
 	}
 
 	newConfig := config.Telegram{
@@ -112,20 +125,23 @@ func Telegram(svc *svc.ServiceContext) {
 
 	// Pick mode: prefer webhook, fall back to long-polling when no domain or in debug.
 	useWebhook := tgConfig.WebHookDomain != "" && !svc.Config.Debug
+	setupCtx, cancelSetup := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelSetup()
 	if useWebhook {
 		// Webhook mode: register the URL with Telegram. The secret travels in
 		// the X-Telegram-Bot-Api-Secret-Token header, never in the URL. The
 		// config is published only after Telegram accepted the registration,
 		// so a failure here cannot leave the handler expecting a secret
 		// Telegram does not send yet.
-		webhookURL := fmt.Sprintf("%s/v1/telegram/webhook", tgConfig.WebHookDomain)
-		if _, err = bot.SetWebhook(context.Background(), &tgbot.SetWebhookParams{
+		webhookURL := strings.TrimRight(tgConfig.WebHookDomain, "/") + "/v1/telegram/webhook"
+		if _, err = bot.SetWebhook(setupCtx, &tgbot.SetWebhookParams{
 			URL:            webhookURL,
 			SecretToken:    telegramsecret.Derive(tgConfig.BotToken),
 			AllowedUpdates: []string{models.AllowedUpdateMessage},
+			MaxConnections: 1,
 		}); err != nil {
 			zap.S().Errorf("[Init Telegram Config] Request Webhook Error: %s", err.Error())
-			return
+			return err
 		}
 		swapTelegramPoller(nil)
 		svc.Config.Telegram = newConfig
@@ -134,8 +150,9 @@ func Telegram(svc *svc.ServiceContext) {
 	} else {
 		// Long-polling mode. A leftover webhook registration blocks
 		// getUpdates, so drop it first.
-		if _, err = bot.DeleteWebhook(context.Background(), &tgbot.DeleteWebhookParams{}); err != nil {
+		if _, err = bot.DeleteWebhook(setupCtx, &tgbot.DeleteWebhookParams{}); err != nil {
 			zap.S().Errorf("[Init Telegram Config] Delete Webhook Error: %s", err.Error())
+			return err
 		}
 		// Publish the client and config before any update can arrive: the
 		// update handlers reach the bot through svc.TelegramBot.
@@ -150,4 +167,5 @@ func Telegram(svc *svc.ServiceContext) {
 	}
 
 	zap.S().Info("[Init Telegram Config] Telegram init success")
+	return nil
 }

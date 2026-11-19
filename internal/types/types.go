@@ -348,20 +348,21 @@ type CreateNodeRequest struct {
 }
 
 type CreateOrderRequest struct {
-	UserId         int64  `json:"user_id,string" validate:"required"`
-	Type           uint8  `json:"type" validate:"required"`
-	Quantity       int64  `json:"quantity,omitempty" validate:"omitempty,lte=1000"`
-	Price          int64  `json:"price" validate:"required,gte=0,lte=2000000000"`
-	Amount         int64  `json:"amount" validate:"required,gte=0,lte=2147483647"`
-	Discount       int64  `json:"discount,omitempty" validate:"omitempty,gte=0,lte=2000000000"`
-	Coupon         string `json:"coupon,omitempty"`
-	CouponDiscount int64  `json:"coupon_discount,omitempty" validate:"omitempty,gte=0,lte=2000000000"`
-	Commission     int64  `json:"commission" validate:"gte=0,lte=2000000000"`
-	FeeAmount      int64  `json:"fee_amount" validate:"required,gte=0,lte=2000000000"`
-	PaymentId      int64  `json:"payment_id,string" validate:"required"`
-	TradeNo        string `json:"trade_no,omitempty"`
-	Status         uint8  `json:"status,omitempty"`
-	SubscribeId    int64  `json:"subscribe_id,omitempty,string"`
+	UserId          int64  `json:"user_id,string" validate:"required"`
+	Type            uint8  `json:"type" validate:"required"`
+	Quantity        int64  `json:"quantity,omitempty" validate:"omitempty,lte=1000"`
+	Price           int64  `json:"price" validate:"required,gte=0,lte=2000000000"`
+	Amount          int64  `json:"amount" validate:"required,gte=0,lte=2147483647"`
+	Discount        int64  `json:"discount,omitempty" validate:"omitempty,gte=0,lte=2000000000"`
+	Coupon          string `json:"coupon,omitempty"`
+	CouponDiscount  int64  `json:"coupon_discount,omitempty" validate:"omitempty,gte=0,lte=2000000000"`
+	Commission      int64  `json:"commission" validate:"gte=0,lte=2000000000"`
+	FeeAmount       int64  `json:"fee_amount" validate:"required,gte=0,lte=2000000000"`
+	PaymentId       int64  `json:"payment_id,string" validate:"required"`
+	TradeNo         string `json:"trade_no,omitempty"`
+	Status          uint8  `json:"status,omitempty"`
+	SubscribeId     int64  `json:"subscribe_id,omitempty,string"`
+	UserSubscribeId int64  `json:"user_subscribe_id,omitempty,string"`
 }
 
 type CreatePaymentMethodRequest struct {
@@ -457,10 +458,10 @@ type CreateSubscribeRequest struct {
 }
 
 type CreateTicketFollowRequest struct {
-	TicketId int64  `json:"ticket_id,string" validate:"required"`
-	From     string `json:"from" validate:"required"`
-	Type     uint8  `json:"type" validate:"required"`
-	Content  string `json:"content" validate:"required"`
+	TicketId int64  `json:"ticket_id,string" validate:"required,gt=0"`
+	From     string `json:"from" validate:"required,max=255"`
+	Type     uint8  `json:"type" validate:"required,oneof=1 2"`
+	Content  string `json:"content" validate:"required,max=65535"`
 }
 
 type CreateUserAuthMethodRequest struct {
@@ -495,15 +496,15 @@ type CreateUserSubscribeRequest struct {
 }
 
 type CreateUserTicketFollowRequest struct {
-	TicketId int64  `json:"ticket_id,string"`
-	From     string `json:"from"`
-	Type     uint8  `json:"type"`
-	Content  string `json:"content"`
+	TicketId int64  `json:"ticket_id,string" validate:"required,gt=0"`
+	From     string `json:"from" validate:"max=255"`
+	Type     uint8  `json:"type" validate:"oneof=0 1 2"`
+	Content  string `json:"content" validate:"required,max=65535"`
 }
 
 type CreateUserTicketRequest struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	Title       string `json:"title" validate:"required,max=255"`
+	Description string `json:"description" validate:"max=10000"`
 }
 
 type Currency struct {
@@ -1105,6 +1106,21 @@ type GetServerUserListRequest struct {
 
 type GetServerUserListResponse struct {
 	Users []ServerUser `json:"users"`
+}
+
+type GetServerAliveListResponse struct {
+	Alive map[int64]int64 `json:"alive"`
+}
+
+type ClaimServerDeviceRequest struct {
+	ServerCommon
+	SID int64  `json:"uid" validate:"gt=0"`
+	IP  string `json:"ip" validate:"required"`
+}
+
+type ClaimServerDeviceResponse struct {
+	Allowed    bool  `json:"allowed"`
+	TTLSeconds int64 `json:"ttl_seconds"`
 }
 
 type GetStatResponse struct {
@@ -2789,13 +2805,18 @@ type UpdateAuthMethodConfigRequest struct {
 }
 
 type UpdateBindEmailRequest struct {
-	Email string `json:"email" validate:"required"`
+	Email       string `json:"email" validate:"required"`
+	Code        string `json:"code" validate:"required"`
+	Password    string `json:"password,optional"`
+	CurrentCode string `json:"current_code,optional"`
 }
 
 type UpdateBindMobileRequest struct {
-	AreaCode string `json:"area_code" validate:"required"`
-	Mobile   string `json:"mobile" validate:"required"`
-	Code     string `json:"code" validate:"required"`
+	AreaCode    string `json:"area_code" validate:"required"`
+	Mobile      string `json:"mobile" validate:"required"`
+	Code        string `json:"code" validate:"required"`
+	Password    string `json:"password,optional"`
+	CurrentCode string `json:"current_code,optional"`
 }
 
 type UpdateCouponRequest struct {
@@ -2994,7 +3015,9 @@ type UpdateUserNotifySettingRequest struct {
 }
 
 type UpdateUserPasswordRequest struct {
-	Password string `json:"password" validate:"required"`
+	Password    string `json:"password" validate:"required"`
+	OldPassword string `json:"old_password,optional"`
+	CurrentCode string `json:"current_code,optional"`
 }
 
 type UpdateUserRulesRequest struct {
@@ -3394,6 +3417,35 @@ type WithdrawalLog struct {
 	Reason    string `json:"reason,omitempty"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
+}
+
+// Withdrawal statuses, matching the `withdrawals.status` column.
+const (
+	WithdrawalStatusPending  uint8 = 0
+	WithdrawalStatusApproved uint8 = 1
+	WithdrawalStatusRejected uint8 = 2
+)
+
+type GetWithdrawalListRequest struct {
+	Page   int    `form:"page"`
+	Size   int    `form:"size"`
+	Status *uint8 `form:"status,optional" validate:"omitempty,oneof=0 1 2"`
+	UserId *int64 `form:"user_id,optional"`
+}
+
+type GetWithdrawalListResponse struct {
+	List  []WithdrawalLog `json:"list"`
+	Total int64           `json:"total"`
+}
+
+// ReviewWithdrawalRequest carries an administrator's decision on a pending
+// withdrawal. Id is a string on the wire (the frontend sends the id as a JSON
+// string) and must be decoded as such, which is why it is not `int64` with a
+// plain json tag.
+type ReviewWithdrawalRequest struct {
+	Id     int64  `json:"id,string" validate:"required"`
+	Status uint8  `json:"status" validate:"required,oneof=1 2"`
+	Reason string `json:"reason,optional" validate:"omitempty,max=500"`
 }
 
 type ServerInfo struct {

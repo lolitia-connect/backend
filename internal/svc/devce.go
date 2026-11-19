@@ -16,7 +16,7 @@ import (
 
 func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 	ctx := context.Background()
-	manager := device.NewDeviceManager(30, 30)
+	manager := device.NewDeviceManager(30, 30, srv.Config.AllowedOrigins)
 
 	//设备离线处理
 	manager.OnDeviceOffline = func(userID int64, deviceID, session string, createAt time.Time) {
@@ -102,7 +102,7 @@ func NewDeviceManager(srv *ServiceContext) *device.DeviceManager {
 	}
 
 	manager.OnMessage = func(userID int64, deviceID, session string, message string) {
-		zap.S().Infof("userid: %d ,device_number: %s,session: %s, message: %v", userID, deviceID, session, message)
+		zap.S().Debugw("device message received", "user_id", userID, "device_id", deviceID, "bytes", len(message))
 	}
 	return manager
 }

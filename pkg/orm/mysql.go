@@ -57,24 +57,28 @@ func (m Mysql) Dsn() string {
 }
 
 func (m Mysql) MigrationDsn() string {
-	return m.Dsn()
+	if m.Driver() != DriverMySQL {
+		return m.Dsn()
+	}
+	return url.QueryEscape(m.Config.Username) + ":" + url.QueryEscape(m.Config.Password) + "@tcp(" + m.Config.Addr + ")/" + m.Config.Dbname + "?" + m.mysqlQuery()
 }
 
 func (m Mysql) mysqlDsn() string {
+	return m.Config.Username + ":" + m.Config.Password + "@tcp(" + m.Config.Addr + ")/" + m.Config.Dbname + "?" + m.mysqlQuery()
+}
+
+func (m Mysql) mysqlQuery() string {
 	query := m.Config.Config
 	if query == "" {
 		query = DefaultMySQLConfig
 	}
-	return m.Config.Username + ":" + m.Config.Password + "@tcp(" + m.Config.Addr + ")/" + m.Config.Dbname + "?" + query
+	return query
 }
 
 func (m Mysql) postgresDsn() string {
 	query := m.Config.Config
 	if query == "" || query == DefaultMySQLConfig {
 		query = DefaultPostgresConfig
-	}
-	if decoded, err := url.QueryUnescape(query); err == nil {
-		query = decoded
 	}
 	u := url.URL{
 		Scheme: DriverPostgres,
@@ -84,7 +88,15 @@ func (m Mysql) postgresDsn() string {
 	if m.Config.Username != "" {
 		u.User = url.UserPassword(m.Config.Username, m.Config.Password)
 	}
-	u.RawQuery = query
+	params, err := url.ParseQuery(query)
+	if err != nil {
+		u.RawQuery = query
+		return u.String()
+	}
+	if params.Get("TimeZone") == "" && params.Get("timezone") == "" && params.Get("time_zone") == "" {
+		params.Set("TimeZone", "Asia/Shanghai")
+	}
+	u.RawQuery = params.Encode()
 	return u.String()
 }
 

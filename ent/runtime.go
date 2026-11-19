@@ -25,11 +25,15 @@ import (
 	"github.com/perfect-panel/server/ent/subscribe"
 	"github.com/perfect-panel/server/ent/subscribeapplication"
 	"github.com/perfect-panel/server/ent/subscribegroup"
+	"github.com/perfect-panel/server/ent/subscriptionentitlement"
+	"github.com/perfect-panel/server/ent/subscriptionentitlementrevision"
+	"github.com/perfect-panel/server/ent/subscriptionperiod"
 	"github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/ent/task"
 	"github.com/perfect-panel/server/ent/ticket"
 	"github.com/perfect-panel/server/ent/ticketfollow"
+	"github.com/perfect-panel/server/ent/trafficbatch"
 	"github.com/perfect-panel/server/ent/trafficlog"
 	"github.com/perfect-panel/server/ent/user"
 	"github.com/perfect-panel/server/ent/userauthmethod"
@@ -406,70 +410,104 @@ func init() {
 	orderDescCouponDiscount := orderFields[10].Descriptor()
 	// order.DefaultCouponDiscount holds the default value on creation for the coupon_discount field.
 	order.DefaultCouponDiscount = orderDescCouponDiscount.Default.(int64)
+	// orderDescCouponReserved is the schema descriptor for coupon_reserved field.
+	orderDescCouponReserved := orderFields[11].Descriptor()
+	// order.DefaultCouponReserved holds the default value on creation for the coupon_reserved field.
+	order.DefaultCouponReserved = orderDescCouponReserved.Default.(bool)
 	// orderDescPaymentID is the schema descriptor for payment_id field.
-	orderDescPaymentID := orderFields[11].Descriptor()
+	orderDescPaymentID := orderFields[12].Descriptor()
 	// order.DefaultPaymentID holds the default value on creation for the payment_id field.
 	order.DefaultPaymentID = orderDescPaymentID.Default.(int64)
 	// orderDescMethod is the schema descriptor for method field.
-	orderDescMethod := orderFields[12].Descriptor()
+	orderDescMethod := orderFields[13].Descriptor()
 	// order.DefaultMethod holds the default value on creation for the method field.
 	order.DefaultMethod = orderDescMethod.Default.(string)
 	// order.MethodValidator is a validator for the "method" field. It is called by the builders before save.
 	order.MethodValidator = orderDescMethod.Validators[0].(func(string) error)
 	// orderDescFeeAmount is the schema descriptor for fee_amount field.
-	orderDescFeeAmount := orderFields[13].Descriptor()
+	orderDescFeeAmount := orderFields[14].Descriptor()
 	// order.DefaultFeeAmount holds the default value on creation for the fee_amount field.
 	order.DefaultFeeAmount = orderDescFeeAmount.Default.(int64)
 	// orderDescTradeNo is the schema descriptor for trade_no field.
-	orderDescTradeNo := orderFields[14].Descriptor()
+	orderDescTradeNo := orderFields[15].Descriptor()
 	// order.TradeNoValidator is a validator for the "trade_no" field. It is called by the builders before save.
 	order.TradeNoValidator = orderDescTradeNo.Validators[0].(func(string) error)
 	// orderDescGiftAmount is the schema descriptor for gift_amount field.
-	orderDescGiftAmount := orderFields[15].Descriptor()
+	orderDescGiftAmount := orderFields[16].Descriptor()
 	// order.DefaultGiftAmount holds the default value on creation for the gift_amount field.
 	order.DefaultGiftAmount = orderDescGiftAmount.Default.(int64)
 	// orderDescCommission is the schema descriptor for commission field.
-	orderDescCommission := orderFields[16].Descriptor()
+	orderDescCommission := orderFields[17].Descriptor()
 	// order.DefaultCommission holds the default value on creation for the commission field.
 	order.DefaultCommission = orderDescCommission.Default.(int64)
+	// orderDescCommissionRefererID is the schema descriptor for commission_referer_id field.
+	orderDescCommissionRefererID := orderFields[18].Descriptor()
+	// order.DefaultCommissionRefererID holds the default value on creation for the commission_referer_id field.
+	order.DefaultCommissionRefererID = orderDescCommissionRefererID.Default.(int64)
+	// orderDescPaymentAmount is the schema descriptor for payment_amount field.
+	orderDescPaymentAmount := orderFields[19].Descriptor()
+	// order.DefaultPaymentAmount holds the default value on creation for the payment_amount field.
+	order.DefaultPaymentAmount = orderDescPaymentAmount.Default.(int64)
+	// orderDescPaymentCurrency is the schema descriptor for payment_currency field.
+	orderDescPaymentCurrency := orderFields[20].Descriptor()
+	// order.DefaultPaymentCurrency holds the default value on creation for the payment_currency field.
+	order.DefaultPaymentCurrency = orderDescPaymentCurrency.Default.(string)
+	// order.PaymentCurrencyValidator is a validator for the "payment_currency" field. It is called by the builders before save.
+	order.PaymentCurrencyValidator = orderDescPaymentCurrency.Validators[0].(func(string) error)
 	// orderDescStatus is the schema descriptor for status field.
-	orderDescStatus := orderFields[17].Descriptor()
+	orderDescStatus := orderFields[22].Descriptor()
 	// order.DefaultStatus holds the default value on creation for the status field.
 	order.DefaultStatus = orderDescStatus.Default.(uint8)
 	// orderDescStateVersion is the schema descriptor for state_version field.
-	orderDescStateVersion := orderFields[18].Descriptor()
+	orderDescStateVersion := orderFields[23].Descriptor()
 	// order.DefaultStateVersion holds the default value on creation for the state_version field.
 	order.DefaultStateVersion = orderDescStateVersion.Default.(int64)
 	// orderDescIdempotencyKey is the schema descriptor for idempotency_key field.
-	orderDescIdempotencyKey := orderFields[19].Descriptor()
+	orderDescIdempotencyKey := orderFields[24].Descriptor()
 	// order.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
 	order.IdempotencyKeyValidator = orderDescIdempotencyKey.Validators[0].(func(string) error)
 	// orderDescIdempotencyHash is the schema descriptor for idempotency_hash field.
-	orderDescIdempotencyHash := orderFields[20].Descriptor()
+	orderDescIdempotencyHash := orderFields[25].Descriptor()
 	// order.IdempotencyHashValidator is a validator for the "idempotency_hash" field. It is called by the builders before save.
 	order.IdempotencyHashValidator = orderDescIdempotencyHash.Validators[0].(func(string) error)
 	// orderDescGuestCheckoutTokenHash is the schema descriptor for guest_checkout_token_hash field.
-	orderDescGuestCheckoutTokenHash := orderFields[21].Descriptor()
+	orderDescGuestCheckoutTokenHash := orderFields[26].Descriptor()
 	// order.GuestCheckoutTokenHashValidator is a validator for the "guest_checkout_token_hash" field. It is called by the builders before save.
 	order.GuestCheckoutTokenHashValidator = orderDescGuestCheckoutTokenHash.Validators[0].(func(string) error)
+	// orderDescGuestAuthType is the schema descriptor for guest_auth_type field.
+	orderDescGuestAuthType := orderFields[27].Descriptor()
+	// order.DefaultGuestAuthType holds the default value on creation for the guest_auth_type field.
+	order.DefaultGuestAuthType = orderDescGuestAuthType.Default.(string)
+	// order.GuestAuthTypeValidator is a validator for the "guest_auth_type" field. It is called by the builders before save.
+	order.GuestAuthTypeValidator = orderDescGuestAuthType.Validators[0].(func(string) error)
+	// orderDescGuestIdentifier is the schema descriptor for guest_identifier field.
+	orderDescGuestIdentifier := orderFields[28].Descriptor()
+	// order.DefaultGuestIdentifier holds the default value on creation for the guest_identifier field.
+	order.DefaultGuestIdentifier = orderDescGuestIdentifier.Default.(string)
+	// order.GuestIdentifierValidator is a validator for the "guest_identifier" field. It is called by the builders before save.
+	order.GuestIdentifierValidator = orderDescGuestIdentifier.Validators[0].(func(string) error)
 	// orderDescSubscribeID is the schema descriptor for subscribe_id field.
-	orderDescSubscribeID := orderFields[22].Descriptor()
+	orderDescSubscribeID := orderFields[29].Descriptor()
 	// order.DefaultSubscribeID holds the default value on creation for the subscribe_id field.
 	order.DefaultSubscribeID = orderDescSubscribeID.Default.(int64)
 	// orderDescSubscribeToken is the schema descriptor for subscribe_token field.
-	orderDescSubscribeToken := orderFields[23].Descriptor()
+	orderDescSubscribeToken := orderFields[30].Descriptor()
 	// order.SubscribeTokenValidator is a validator for the "subscribe_token" field. It is called by the builders before save.
 	order.SubscribeTokenValidator = orderDescSubscribeToken.Validators[0].(func(string) error)
+	// orderDescUserSubscribeID is the schema descriptor for user_subscribe_id field.
+	orderDescUserSubscribeID := orderFields[31].Descriptor()
+	// order.DefaultUserSubscribeID holds the default value on creation for the user_subscribe_id field.
+	order.DefaultUserSubscribeID = orderDescUserSubscribeID.Default.(int64)
 	// orderDescIsNew is the schema descriptor for is_new field.
-	orderDescIsNew := orderFields[24].Descriptor()
+	orderDescIsNew := orderFields[32].Descriptor()
 	// order.DefaultIsNew holds the default value on creation for the is_new field.
 	order.DefaultIsNew = orderDescIsNew.Default.(bool)
 	// orderDescCreatedAt is the schema descriptor for created_at field.
-	orderDescCreatedAt := orderFields[25].Descriptor()
+	orderDescCreatedAt := orderFields[33].Descriptor()
 	// order.DefaultCreatedAt holds the default value on creation for the created_at field.
 	order.DefaultCreatedAt = orderDescCreatedAt.Default.(func() time.Time)
 	// orderDescUpdatedAt is the schema descriptor for updated_at field.
-	orderDescUpdatedAt := orderFields[26].Descriptor()
+	orderDescUpdatedAt := orderFields[34].Descriptor()
 	// order.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	order.DefaultUpdatedAt = orderDescUpdatedAt.Default.(func() time.Time)
 	// order.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -856,6 +894,98 @@ func init() {
 	subscribegroup.DefaultUpdatedAt = subscribegroupDescUpdatedAt.Default.(func() time.Time)
 	// subscribegroup.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	subscribegroup.UpdateDefaultUpdatedAt = subscribegroupDescUpdatedAt.UpdateDefault.(func() time.Time)
+	subscriptionentitlementFields := schema.SubscriptionEntitlement{}.Fields()
+	_ = subscriptionentitlementFields
+	// subscriptionentitlementDescSource is the schema descriptor for source field.
+	subscriptionentitlementDescSource := subscriptionentitlementFields[1].Descriptor()
+	// subscriptionentitlement.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	subscriptionentitlement.SourceValidator = subscriptionentitlementDescSource.Validators[0].(func(string) error)
+	// subscriptionentitlementDescScope is the schema descriptor for scope field.
+	subscriptionentitlementDescScope := subscriptionentitlementFields[2].Descriptor()
+	// subscriptionentitlement.ScopeValidator is a validator for the "scope" field. It is called by the builders before save.
+	subscriptionentitlement.ScopeValidator = subscriptionentitlementDescScope.Validators[0].(func(string) error)
+	// subscriptionentitlementDescSubscriptionKey is the schema descriptor for subscription_key field.
+	subscriptionentitlementDescSubscriptionKey := subscriptionentitlementFields[3].Descriptor()
+	// subscriptionentitlement.SubscriptionKeyValidator is a validator for the "subscription_key" field. It is called by the builders before save.
+	subscriptionentitlement.SubscriptionKeyValidator = subscriptionentitlementDescSubscriptionKey.Validators[0].(func(string) error)
+	// subscriptionentitlementDescFingerprint is the schema descriptor for fingerprint field.
+	subscriptionentitlementDescFingerprint := subscriptionentitlementFields[7].Descriptor()
+	// subscriptionentitlement.FingerprintValidator is a validator for the "fingerprint" field. It is called by the builders before save.
+	subscriptionentitlement.FingerprintValidator = subscriptionentitlementDescFingerprint.Validators[0].(func(string) error)
+	// subscriptionentitlementDescPeriodID is the schema descriptor for period_id field.
+	subscriptionentitlementDescPeriodID := subscriptionentitlementFields[8].Descriptor()
+	// subscriptionentitlement.PeriodIDValidator is a validator for the "period_id" field. It is called by the builders before save.
+	subscriptionentitlement.PeriodIDValidator = subscriptionentitlementDescPeriodID.Validators[0].(func(string) error)
+	// subscriptionentitlementDescMode is the schema descriptor for mode field.
+	subscriptionentitlementDescMode := subscriptionentitlementFields[9].Descriptor()
+	// subscriptionentitlement.ModeValidator is a validator for the "mode" field. It is called by the builders before save.
+	subscriptionentitlement.ModeValidator = subscriptionentitlementDescMode.Validators[0].(func(string) error)
+	// subscriptionentitlementDescStatus is the schema descriptor for status field.
+	subscriptionentitlementDescStatus := subscriptionentitlementFields[10].Descriptor()
+	// subscriptionentitlement.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	subscriptionentitlement.StatusValidator = subscriptionentitlementDescStatus.Validators[0].(func(string) error)
+	// subscriptionentitlementDescAutoRenew is the schema descriptor for auto_renew field.
+	subscriptionentitlementDescAutoRenew := subscriptionentitlementFields[11].Descriptor()
+	// subscriptionentitlement.DefaultAutoRenew holds the default value on creation for the auto_renew field.
+	subscriptionentitlement.DefaultAutoRenew = subscriptionentitlementDescAutoRenew.Default.(bool)
+	// subscriptionentitlementDescUpdatedAt is the schema descriptor for updated_at field.
+	subscriptionentitlementDescUpdatedAt := subscriptionentitlementFields[14].Descriptor()
+	// subscriptionentitlement.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	subscriptionentitlement.DefaultUpdatedAt = subscriptionentitlementDescUpdatedAt.Default.(func() time.Time)
+	// subscriptionentitlement.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	subscriptionentitlement.UpdateDefaultUpdatedAt = subscriptionentitlementDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// subscriptionentitlementDescID is the schema descriptor for id field.
+	subscriptionentitlementDescID := subscriptionentitlementFields[0].Descriptor()
+	// subscriptionentitlement.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	subscriptionentitlement.IDValidator = subscriptionentitlementDescID.Validators[0].(func(string) error)
+	subscriptionentitlementrevisionFields := schema.SubscriptionEntitlementRevision{}.Fields()
+	_ = subscriptionentitlementrevisionFields
+	// subscriptionentitlementrevisionDescEntitlementID is the schema descriptor for entitlement_id field.
+	subscriptionentitlementrevisionDescEntitlementID := subscriptionentitlementrevisionFields[1].Descriptor()
+	// subscriptionentitlementrevision.EntitlementIDValidator is a validator for the "entitlement_id" field. It is called by the builders before save.
+	subscriptionentitlementrevision.EntitlementIDValidator = subscriptionentitlementrevisionDescEntitlementID.Validators[0].(func(string) error)
+	// subscriptionentitlementrevisionDescCreatedAt is the schema descriptor for created_at field.
+	subscriptionentitlementrevisionDescCreatedAt := subscriptionentitlementrevisionFields[3].Descriptor()
+	// subscriptionentitlementrevision.DefaultCreatedAt holds the default value on creation for the created_at field.
+	subscriptionentitlementrevision.DefaultCreatedAt = subscriptionentitlementrevisionDescCreatedAt.Default.(func() time.Time)
+	// subscriptionentitlementrevisionDescID is the schema descriptor for id field.
+	subscriptionentitlementrevisionDescID := subscriptionentitlementrevisionFields[0].Descriptor()
+	// subscriptionentitlementrevision.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	subscriptionentitlementrevision.IDValidator = subscriptionentitlementrevisionDescID.Validators[0].(func(string) error)
+	subscriptionperiodFields := schema.SubscriptionPeriod{}.Fields()
+	_ = subscriptionperiodFields
+	// subscriptionperiodDescEntitlementID is the schema descriptor for entitlement_id field.
+	subscriptionperiodDescEntitlementID := subscriptionperiodFields[1].Descriptor()
+	// subscriptionperiod.EntitlementIDValidator is a validator for the "entitlement_id" field. It is called by the builders before save.
+	subscriptionperiod.EntitlementIDValidator = subscriptionperiodDescEntitlementID.Validators[0].(func(string) error)
+	// subscriptionperiodDescTransactionKey is the schema descriptor for transaction_key field.
+	subscriptionperiodDescTransactionKey := subscriptionperiodFields[2].Descriptor()
+	// subscriptionperiod.TransactionKeyValidator is a validator for the "transaction_key" field. It is called by the builders before save.
+	subscriptionperiod.TransactionKeyValidator = subscriptionperiodDescTransactionKey.Validators[0].(func(string) error)
+	// subscriptionperiodDescBillingInterval is the schema descriptor for billing_interval field.
+	subscriptionperiodDescBillingInterval := subscriptionperiodFields[6].Descriptor()
+	// subscriptionperiod.DefaultBillingInterval holds the default value on creation for the billing_interval field.
+	subscriptionperiod.DefaultBillingInterval = subscriptionperiodDescBillingInterval.Default.(string)
+	// subscriptionperiod.BillingIntervalValidator is a validator for the "billing_interval" field. It is called by the builders before save.
+	subscriptionperiod.BillingIntervalValidator = subscriptionperiodDescBillingInterval.Validators[0].(func(string) error)
+	// subscriptionperiodDescTrafficReset is the schema descriptor for traffic_reset field.
+	subscriptionperiodDescTrafficReset := subscriptionperiodFields[10].Descriptor()
+	// subscriptionperiod.DefaultTrafficReset holds the default value on creation for the traffic_reset field.
+	subscriptionperiod.DefaultTrafficReset = subscriptionperiodDescTrafficReset.Default.(bool)
+	// subscriptionperiodDescCreatedAt is the schema descriptor for created_at field.
+	subscriptionperiodDescCreatedAt := subscriptionperiodFields[11].Descriptor()
+	// subscriptionperiod.DefaultCreatedAt holds the default value on creation for the created_at field.
+	subscriptionperiod.DefaultCreatedAt = subscriptionperiodDescCreatedAt.Default.(func() time.Time)
+	// subscriptionperiodDescUpdatedAt is the schema descriptor for updated_at field.
+	subscriptionperiodDescUpdatedAt := subscriptionperiodFields[12].Descriptor()
+	// subscriptionperiod.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	subscriptionperiod.DefaultUpdatedAt = subscriptionperiodDescUpdatedAt.Default.(func() time.Time)
+	// subscriptionperiod.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	subscriptionperiod.UpdateDefaultUpdatedAt = subscriptionperiodDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// subscriptionperiodDescID is the schema descriptor for id field.
+	subscriptionperiodDescID := subscriptionperiodFields[0].Descriptor()
+	// subscriptionperiod.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	subscriptionperiod.IDValidator = subscriptionperiodDescID.Validators[0].(func(string) error)
 	systemFields := schema.System{}.Fields()
 	_ = systemFields
 	// systemDescCategory is the schema descriptor for category field.
@@ -908,12 +1038,22 @@ func init() {
 	taskDescCurrent := taskFields[7].Descriptor()
 	// task.DefaultCurrent holds the default value on creation for the current field.
 	task.DefaultCurrent = taskDescCurrent.Default.(uint64)
+	// taskDescDailyDate is the schema descriptor for daily_date field.
+	taskDescDailyDate := taskFields[8].Descriptor()
+	// task.DefaultDailyDate holds the default value on creation for the daily_date field.
+	task.DefaultDailyDate = taskDescDailyDate.Default.(string)
+	// task.DailyDateValidator is a validator for the "daily_date" field. It is called by the builders before save.
+	task.DailyDateValidator = taskDescDailyDate.Validators[0].(func(string) error)
+	// taskDescDailySent is the schema descriptor for daily_sent field.
+	taskDescDailySent := taskFields[9].Descriptor()
+	// task.DefaultDailySent holds the default value on creation for the daily_sent field.
+	task.DefaultDailySent = taskDescDailySent.Default.(uint64)
 	// taskDescCreatedAt is the schema descriptor for created_at field.
-	taskDescCreatedAt := taskFields[8].Descriptor()
+	taskDescCreatedAt := taskFields[10].Descriptor()
 	// task.DefaultCreatedAt holds the default value on creation for the created_at field.
 	task.DefaultCreatedAt = taskDescCreatedAt.Default.(func() time.Time)
 	// taskDescUpdatedAt is the schema descriptor for updated_at field.
-	taskDescUpdatedAt := taskFields[9].Descriptor()
+	taskDescUpdatedAt := taskFields[11].Descriptor()
 	// task.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	task.DefaultUpdatedAt = taskDescUpdatedAt.Default.(func() time.Time)
 	// task.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -960,6 +1100,16 @@ func init() {
 	ticketfollowDescCreatedAt := ticketfollowFields[5].Descriptor()
 	// ticketfollow.DefaultCreatedAt holds the default value on creation for the created_at field.
 	ticketfollow.DefaultCreatedAt = ticketfollowDescCreatedAt.Default.(func() time.Time)
+	trafficbatchFields := schema.TrafficBatch{}.Fields()
+	_ = trafficbatchFields
+	// trafficbatchDescCreatedAt is the schema descriptor for created_at field.
+	trafficbatchDescCreatedAt := trafficbatchFields[1].Descriptor()
+	// trafficbatch.DefaultCreatedAt holds the default value on creation for the created_at field.
+	trafficbatch.DefaultCreatedAt = trafficbatchDescCreatedAt.Default.(func() time.Time)
+	// trafficbatchDescID is the schema descriptor for id field.
+	trafficbatchDescID := trafficbatchFields[0].Descriptor()
+	// trafficbatch.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	trafficbatch.IDValidator = trafficbatchDescID.Validators[0].(func(string) error)
 	trafficlogFields := schema.TrafficLog{}.Fields()
 	_ = trafficlogFields
 	// trafficlogDescDownload is the schema descriptor for download field.
@@ -1122,70 +1272,76 @@ func init() {
 	userdeviceonlinerecord.DefaultCreatedAt = userdeviceonlinerecordDescCreatedAt.Default.(func() time.Time)
 	usersubscribeFields := schema.UserSubscribe{}.Fields()
 	_ = usersubscribeFields
+	// usersubscribeDescEntitlementSource is the schema descriptor for entitlement_source field.
+	usersubscribeDescEntitlementSource := usersubscribeFields[4].Descriptor()
+	// usersubscribe.DefaultEntitlementSource holds the default value on creation for the entitlement_source field.
+	usersubscribe.DefaultEntitlementSource = usersubscribeDescEntitlementSource.Default.(string)
+	// usersubscribe.EntitlementSourceValidator is a validator for the "entitlement_source" field. It is called by the builders before save.
+	usersubscribe.EntitlementSourceValidator = usersubscribeDescEntitlementSource.Validators[0].(func(string) error)
 	// usersubscribeDescNodeGroupID is the schema descriptor for node_group_id field.
-	usersubscribeDescNodeGroupID := usersubscribeFields[4].Descriptor()
+	usersubscribeDescNodeGroupID := usersubscribeFields[5].Descriptor()
 	// usersubscribe.DefaultNodeGroupID holds the default value on creation for the node_group_id field.
 	usersubscribe.DefaultNodeGroupID = usersubscribeDescNodeGroupID.Default.(int64)
 	// usersubscribeDescGroupLocked is the schema descriptor for group_locked field.
-	usersubscribeDescGroupLocked := usersubscribeFields[5].Descriptor()
+	usersubscribeDescGroupLocked := usersubscribeFields[6].Descriptor()
 	// usersubscribe.DefaultGroupLocked holds the default value on creation for the group_locked field.
 	usersubscribe.DefaultGroupLocked = usersubscribeDescGroupLocked.Default.(bool)
 	// usersubscribeDescStartTime is the schema descriptor for start_time field.
-	usersubscribeDescStartTime := usersubscribeFields[6].Descriptor()
+	usersubscribeDescStartTime := usersubscribeFields[7].Descriptor()
 	// usersubscribe.DefaultStartTime holds the default value on creation for the start_time field.
 	usersubscribe.DefaultStartTime = usersubscribeDescStartTime.Default.(func() time.Time)
 	// usersubscribeDescTraffic is the schema descriptor for traffic field.
-	usersubscribeDescTraffic := usersubscribeFields[9].Descriptor()
+	usersubscribeDescTraffic := usersubscribeFields[11].Descriptor()
 	// usersubscribe.DefaultTraffic holds the default value on creation for the traffic field.
 	usersubscribe.DefaultTraffic = usersubscribeDescTraffic.Default.(int64)
 	// usersubscribeDescTrafficUnlimited is the schema descriptor for traffic_unlimited field.
-	usersubscribeDescTrafficUnlimited := usersubscribeFields[10].Descriptor()
+	usersubscribeDescTrafficUnlimited := usersubscribeFields[12].Descriptor()
 	// usersubscribe.DefaultTrafficUnlimited holds the default value on creation for the traffic_unlimited field.
 	usersubscribe.DefaultTrafficUnlimited = usersubscribeDescTrafficUnlimited.Default.(bool)
 	// usersubscribeDescDownload is the schema descriptor for download field.
-	usersubscribeDescDownload := usersubscribeFields[11].Descriptor()
+	usersubscribeDescDownload := usersubscribeFields[13].Descriptor()
 	// usersubscribe.DefaultDownload holds the default value on creation for the download field.
 	usersubscribe.DefaultDownload = usersubscribeDescDownload.Default.(int64)
 	// usersubscribeDescUpload is the schema descriptor for upload field.
-	usersubscribeDescUpload := usersubscribeFields[12].Descriptor()
+	usersubscribeDescUpload := usersubscribeFields[14].Descriptor()
 	// usersubscribe.DefaultUpload holds the default value on creation for the upload field.
 	usersubscribe.DefaultUpload = usersubscribeDescUpload.Default.(int64)
 	// usersubscribeDescExpiredDownload is the schema descriptor for expired_download field.
-	usersubscribeDescExpiredDownload := usersubscribeFields[13].Descriptor()
+	usersubscribeDescExpiredDownload := usersubscribeFields[15].Descriptor()
 	// usersubscribe.DefaultExpiredDownload holds the default value on creation for the expired_download field.
 	usersubscribe.DefaultExpiredDownload = usersubscribeDescExpiredDownload.Default.(int64)
 	// usersubscribeDescExpiredUpload is the schema descriptor for expired_upload field.
-	usersubscribeDescExpiredUpload := usersubscribeFields[14].Descriptor()
+	usersubscribeDescExpiredUpload := usersubscribeFields[16].Descriptor()
 	// usersubscribe.DefaultExpiredUpload holds the default value on creation for the expired_upload field.
 	usersubscribe.DefaultExpiredUpload = usersubscribeDescExpiredUpload.Default.(int64)
 	// usersubscribeDescToken is the schema descriptor for token field.
-	usersubscribeDescToken := usersubscribeFields[15].Descriptor()
+	usersubscribeDescToken := usersubscribeFields[17].Descriptor()
 	// usersubscribe.DefaultToken holds the default value on creation for the token field.
 	usersubscribe.DefaultToken = usersubscribeDescToken.Default.(string)
 	// usersubscribe.TokenValidator is a validator for the "token" field. It is called by the builders before save.
 	usersubscribe.TokenValidator = usersubscribeDescToken.Validators[0].(func(string) error)
 	// usersubscribeDescUUID is the schema descriptor for uuid field.
-	usersubscribeDescUUID := usersubscribeFields[16].Descriptor()
+	usersubscribeDescUUID := usersubscribeFields[18].Descriptor()
 	// usersubscribe.DefaultUUID holds the default value on creation for the uuid field.
 	usersubscribe.DefaultUUID = usersubscribeDescUUID.Default.(string)
 	// usersubscribe.UUIDValidator is a validator for the "uuid" field. It is called by the builders before save.
 	usersubscribe.UUIDValidator = usersubscribeDescUUID.Validators[0].(func(string) error)
 	// usersubscribeDescStatus is the schema descriptor for status field.
-	usersubscribeDescStatus := usersubscribeFields[17].Descriptor()
+	usersubscribeDescStatus := usersubscribeFields[19].Descriptor()
 	// usersubscribe.DefaultStatus holds the default value on creation for the status field.
 	usersubscribe.DefaultStatus = usersubscribeDescStatus.Default.(uint8)
 	// usersubscribeDescNote is the schema descriptor for note field.
-	usersubscribeDescNote := usersubscribeFields[18].Descriptor()
+	usersubscribeDescNote := usersubscribeFields[20].Descriptor()
 	// usersubscribe.DefaultNote holds the default value on creation for the note field.
 	usersubscribe.DefaultNote = usersubscribeDescNote.Default.(string)
 	// usersubscribe.NoteValidator is a validator for the "note" field. It is called by the builders before save.
 	usersubscribe.NoteValidator = usersubscribeDescNote.Validators[0].(func(string) error)
 	// usersubscribeDescCreatedAt is the schema descriptor for created_at field.
-	usersubscribeDescCreatedAt := usersubscribeFields[19].Descriptor()
+	usersubscribeDescCreatedAt := usersubscribeFields[21].Descriptor()
 	// usersubscribe.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usersubscribe.DefaultCreatedAt = usersubscribeDescCreatedAt.Default.(func() time.Time)
 	// usersubscribeDescUpdatedAt is the schema descriptor for updated_at field.
-	usersubscribeDescUpdatedAt := usersubscribeFields[20].Descriptor()
+	usersubscribeDescUpdatedAt := usersubscribeFields[22].Descriptor()
 	// usersubscribe.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	usersubscribe.DefaultUpdatedAt = usersubscribeDescUpdatedAt.Default.(func() time.Time)
 	// usersubscribe.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

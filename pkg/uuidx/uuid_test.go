@@ -112,3 +112,19 @@ func TestSubscribeMarkCode(t *testing.T) {
 	code := SubscribeToken(orderNo)
 	fmt.Println(code)
 }
+
+func TestNodeCredentialsUseRandomUUIDsAndTokens(t *testing.T) {
+	seen := make(map[string]bool)
+	for count := 0; count < 100; count++ {
+		id := NewRandomUUID()
+		if id.Version() != 4 || id == uuid.Nil || seen[id.String()] {
+			t.Fatal("node credential is not a unique random UUIDv4")
+		}
+		seen[id.String()] = true
+		token := SubscribeToken("same-order")
+		if len(token) != 32 || seen[token] {
+			t.Fatal("subscription token is predictable or repeated")
+		}
+		seen[token] = true
+	}
+}

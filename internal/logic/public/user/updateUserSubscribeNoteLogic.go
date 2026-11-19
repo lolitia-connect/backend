@@ -8,7 +8,6 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -31,7 +30,7 @@ func NewUpdateUserSubscribeNoteLogic(ctx context.Context, svcCtx *svc.ServiceCon
 
 func (l *UpdateUserSubscribeNoteLogic) UpdateUserSubscribeNote(req *types.UpdateUserSubscribeNoteRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
-	if !ok {
+	if !ok || u == nil {
 		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
@@ -42,16 +41,12 @@ func (l *UpdateUserSubscribeNoteLogic) UpdateUserSubscribeNote(req *types.Update
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe failed: %v", err.Error())
 	}
 
-	if userSub.UserId != u.Id {
+	if userSub == nil || userSub.UserId != u.Id {
 		l.Logger.Errorw("UserSubscribeId does not belong to the current user")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "UserSubscribeId does not belong to the current user")
 	}
 
-	userSub.Note = req.Note
-	var newSub user.Subscribe
-	tool.DeepCopy(&newSub, userSub)
-
-	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, &newSub)
+	err = l.svcCtx.Store.User().UpdateSubscribeNote(l.ctx, userSub.Id, u.Id, req.Note)
 	if err != nil {
 		l.Logger.Errorw("UpdateSubscribe failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "UpdateSubscribe failed: %v", err.Error())

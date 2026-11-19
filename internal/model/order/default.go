@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 	entorder "github.com/perfect-panel/server/ent/order"
 	"github.com/redis/go-redis/v9"
@@ -20,6 +22,7 @@ type (
 		Insert(ctx context.Context, data *Order) error
 		FindOne(ctx context.Context, id int64) (*Order, error)
 		FindOneByOrderNo(ctx context.Context, orderNo string) (*Order, error)
+		FindOneByOrderNoForUpdate(ctx context.Context, orderNo string) (*Order, error)
 		FindOneByIdempotencyKey(ctx context.Context, key string) (*Order, error)
 		Update(ctx context.Context, data *Order) error
 		Delete(ctx context.Context, id int64) error
@@ -68,6 +71,23 @@ func (m *defaultOrderModel) FindOne(ctx context.Context, id int64) (*Order, erro
 
 func (m *defaultOrderModel) FindOneByOrderNo(ctx context.Context, orderNo string) (*Order, error) {
 	data, err := m.db.Order.Query().Where(entorder.OrderNo(orderNo)).First(ctx)
+	return entToOrder(data), err
+}
+
+// FindOneByOrderNoForUpdate reads an order under a row lock so two settle/close
+// paths cannot interleave.
+//
+// SQLite has no `SELECT ... FOR UPDATE`, so the clause is omitted there (the
+// dialect the tests run on); MySQL and PostgreSQL, the supported production
+// engines, always take the lock.
+func (m *defaultOrderModel) FindOneByOrderNoForUpdate(ctx context.Context, orderNo string) (*Order, error) {
+	query := m.db.Order.Query().Where(entorder.OrderNo(orderNo))
+	if m.db.Driver().Dialect() != dialect.SQLite {
+		query = query.Where(func(selector *entsql.Selector) {
+			selector.ForUpdate()
+		})
+	}
+	data, err := query.Only(ctx)
 	return entToOrder(data), err
 }
 

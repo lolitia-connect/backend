@@ -14,9 +14,9 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/captcha"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
@@ -102,10 +102,21 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 		return nil, err
 	}
 
+	sessionEpoch, err := usersession.AcquireEpoch(l.ctx, l.svcCtx.Redis, userInfo.Id)
+	if err != nil {
+		return nil, err
+	}
+	userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
+	if err != nil || userInfo == nil {
+		return nil, xerr.NewErrCode(xerr.InvalidAccess)
+	}
+	if userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {
+		return nil, xerr.NewErrCode(xerr.UserDisabled)
+	}
 	if req.TelephoneCode == "" {
 		// Verify password
-		if !tool.MultiPasswordVerify(userInfo.Algo, userInfo.Salt, req.Password, userInfo.Password) {
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserPasswordError), "user password")
+		if err := usersession.VerifyPassword(l.ctx, l.svcCtx.Redis, userInfo.Id, userInfo.Algo, userInfo.Salt, req.Password, userInfo.Password); err != nil {
+			return nil, err
 		}
 		upgradePasswordAfterLogin(l.ctx, l.svcCtx, l.Logger, userInfo, req.Password)
 	} else {
@@ -151,14 +162,10 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 	// Generate session id
 	sessionId := uuidx.NewUUID().String()
 	// Generate token
-	token, err := jwt.NewJwtToken(
+	token, err := usersession.Issue(l.ctx, l.svcCtx.Redis,
 		l.svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
 		l.svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userInfo.Id),
-		jwt.WithOption("SessionId", sessionId),
-		jwt.WithOption("identifier", req.Identifier),
-		jwt.WithOption("CtxLoginType", req.LoginType),
+		userInfo.Id, sessionId, req.LoginType, sessionEpoch, req.Identifier,
 	)
 	if err != nil {
 		l.Logger.Error("[UserLogin] token generate error", zap.Any("error", err.Error()))

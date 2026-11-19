@@ -2,12 +2,12 @@ package oauth
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/url"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/oauthstate"
 	"go.uber.org/zap"
 )
 
@@ -28,13 +28,24 @@ func NewAppleLoginCallbackLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 
 func (l *AppleLoginCallbackLogic) AppleLoginCallback(req *types.AppleLoginCallbackRequest, r *http.Request, w http.ResponseWriter) error {
 	// validate the state code
-	result, err := l.svcCtx.Redis.Get(l.ctx, fmt.Sprintf("apple:%s", req.State)).Result()
+	state, err := oauthstate.Read(l.ctx, l.svcCtx.Redis, "apple", req.State)
 	if err != nil {
 		l.Logger.Errorw("get apple state code from redis failed", zap.Any("error", err.Error()), zap.Any("code", req.State))
 		http.Redirect(w, r, l.svcCtx.Config.Site.Host, http.StatusTemporaryRedirect)
 		return nil
 	}
-	http.Redirect(w, r, fmt.Sprintf("%s?method=apple&code=%s&state=%s", result, req.Code, req.State), http.StatusFound)
-	l.Logger.Infow("redirect to apple login page", zap.Any("url", fmt.Sprintf("%s?method=apple&code=%s&state=%s", result, url.QueryEscape(req.Code), req.State)))
+	if err := oauthstate.ValidateRedirect(state.Redirect, l.svcCtx.Config.Site.Host); err != nil {
+		return err
+	}
+	redirect, err := url.Parse(state.Redirect)
+	if err != nil {
+		return err
+	}
+	query := redirect.Query()
+	query.Set("method", "apple")
+	query.Set("code", req.Code)
+	query.Set("state", req.State)
+	redirect.RawQuery = query.Encode()
+	http.Redirect(w, r, redirect.String(), http.StatusFound)
 	return nil
 }

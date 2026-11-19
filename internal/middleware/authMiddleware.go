@@ -7,9 +7,11 @@ import (
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/jwt"
+	"github.com/perfect-panel/server/pkg/requestmeta"
 	"github.com/perfect-panel/server/pkg/result"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -58,17 +60,14 @@ func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token str
 
 	claims, err := jwt.ParseJwtToken(token, jwtConfig.AccessSecret)
 	if err != nil {
-		zap.S().Debug("[AuthMiddleware] ParseJwtToken", zap.Any("error", err.Error()), zap.Any("token", token))
+		zap.S().Debug("[AuthMiddleware] ParseJwtToken", zap.Any("error", err.Error()))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.ErrorTokenExpire), "Token Invalid")
 	}
 
-	loginType := ""
-	if claims["LoginType"] != nil {
-		loginType = claims["LoginType"].(string)
+	userId, sessionId, loginType, err := jwt.SessionClaims(claims)
+	if err != nil {
+		return ctx, xerr.NewErrCode(xerr.InvalidAccess)
 	}
-
-	userId := int64(claims["UserId"].(float64))
-	sessionId := claims["SessionId"].(string)
 	sessionIdCacheKey := fmt.Sprintf("%v:%v", config.SessionIdKey, sessionId)
 	value, err := svc.Redis.Get(ctx, sessionIdCacheKey).Result()
 	if err != nil {
@@ -80,6 +79,9 @@ func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token str
 		zap.S().Debug("[AuthMiddleware] Invalid Access", zap.Any("userId", userId), zap.Any("sessionId", sessionId))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
+	if err := usersession.Check(ctx, svc.Redis, userId, claims); err != nil {
+		return ctx, xerr.NewErrCode(xerr.InvalidAccess)
+	}
 
 	userInfo, err := svc.Store.User().FindOne(ctx, userId)
 	if err != nil {
@@ -88,12 +90,12 @@ func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token str
 	}
 
 	// Check if user is enabled
-	if !*userInfo.Enable {
+	if userInfo == nil || userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.UserDisabled), "User Disabled")
 	}
 
 	paths := strings.Split(path, "/")
-	if tool.StringSliceContains(paths, "admin") && !*userInfo.IsAdmin {
+	if tool.StringSliceContains(paths, "admin") && (userInfo.IsAdmin == nil || !*userInfo.IsAdmin) {
 		zap.S().Debug("[AuthMiddleware] Not Admin User", zap.Any("userId", userId), zap.Any("sessionId", sessionId))
 		return ctx, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
@@ -101,5 +103,5 @@ func AuthenticateRequest(ctx context.Context, svc *svc.ServiceContext, token str
 	ctx = context.WithValue(ctx, constant.CtxLoginType, loginType)
 	ctx = context.WithValue(ctx, constant.CtxKeyUser, userInfo)
 	ctx = context.WithValue(ctx, constant.CtxKeySessionID, sessionId)
-	return ctx, nil
+	return requestmeta.WithActor(ctx, userId), nil
 }

@@ -3,8 +3,10 @@ package order
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/hibiken/asynq"
+	publicorder "github.com/perfect-panel/server/internal/logic/public/order"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
@@ -36,6 +38,12 @@ func (l *UpdateOrderStatusLogic) UpdateOrderStatus(req *types.UpdateOrderStatusR
 	if err != nil {
 		l.Logger.Errorw("[UpdateOrderStatus] FindOne error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOne error: %v", err.Error())
+	}
+	if req.Status == 3 {
+		return publicorder.NewCloseOrderLogic(l.ctx, l.svcCtx).CloseOrder(&types.CloseOrderRequest{OrderNo: info.OrderNo})
+	}
+	if req.Status != 2 || info.Status != 1 {
+		return fmt.Errorf("only a pending order can be marked paid")
 	}
 
 	if req.PaymentId != 0 {

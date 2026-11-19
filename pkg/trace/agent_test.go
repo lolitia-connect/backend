@@ -1,11 +1,19 @@
 package trace
 
 import (
+	"context"
+	"net"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	collector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 func TestStartAgent(t *testing.T) {
@@ -102,4 +110,43 @@ func TestStartAgent(t *testing.T) {
 	_, ok = agents[endpoint72]
 	assert.False(t, ok)
 	_ = endpoint71
+}
+
+type traceCollector struct {
+	collector.UnimplementedTraceServiceServer
+	received atomic.Int32
+}
+
+func (server *traceCollector) Export(context.Context, *collector.ExportTraceServiceRequest) (*collector.ExportTraceServiceResponse, error) {
+	server.received.Add(1)
+	return &collector.ExportTraceServiceResponse{}, nil
+}
+
+func TestGrpcExporterTLSDoesNotDowngrade(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer()
+	receiver := &traceCollector{}
+	collector.RegisterTraceServiceServer(server, receiver)
+	go func() { _ = server.Serve(listener) }()
+	defer server.Stop()
+	span := tracetest.SpanStub{Name: "probe"}.Snapshot()
+	for _, secure := range []bool{false, true} {
+		exporter, err := createExporter(Config{Batcher: kindOtlpGrpc, Endpoint: listener.Addr().String(), OtlpGrpcSecure: secure})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		err = exporter.ExportSpans(ctx, []sdktrace.ReadOnlySpan{span})
+		cancel()
+		_ = exporter.Shutdown(context.Background())
+		if (err != nil) != secure {
+			t.Fatalf("secure=%t export error=%v", secure, err)
+		}
+	}
+	if receiver.received.Load() != 1 {
+		t.Fatal("TLS exporter sent plaintext or default exporter did not deliver")
+	}
 }

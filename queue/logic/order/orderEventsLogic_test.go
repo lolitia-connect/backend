@@ -32,6 +32,10 @@ func (f *fakeEventModel) Insert(context.Context, *orderModel.Event) error { retu
 
 func (f *fakeEventModel) FindOne(context.Context, int64) (*orderModel.Event, error) { return nil, nil }
 
+func (f *fakeEventModel) PaidAt(context.Context, string) (time.Time, error) {
+	return time.Time{}, errors.New("payment event unavailable")
+}
+
 func (f *fakeEventModel) ListAfter(context.Context, string, int64, int) ([]*orderModel.Event, error) {
 	return nil, nil
 }

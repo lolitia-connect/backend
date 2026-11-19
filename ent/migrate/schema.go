@@ -211,18 +211,27 @@ var (
 		{Name: "discount", Type: field.TypeInt64, Default: 0},
 		{Name: "coupon", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "coupon_discount", Type: field.TypeInt64, Default: 0},
+		{Name: "coupon_reserved", Type: field.TypeBool, Default: false},
 		{Name: "payment_id", Type: field.TypeInt64, Default: 0},
 		{Name: "method", Type: field.TypeString, Size: 255, Default: ""},
 		{Name: "fee_amount", Type: field.TypeInt64, Default: 0},
 		{Name: "trade_no", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "gift_amount", Type: field.TypeInt64, Default: 0},
 		{Name: "commission", Type: field.TypeInt64, Default: 0},
+		{Name: "commission_referer_id", Type: field.TypeInt64, Default: 0},
+		{Name: "payment_amount", Type: field.TypeInt64, Default: 0},
+		{Name: "payment_currency", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "payment_session", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "status", Type: field.TypeUint8, Default: 1},
 		{Name: "state_version", Type: field.TypeInt64, Default: 0},
 		{Name: "idempotency_key", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "idempotency_hash", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "guest_checkout_token_hash", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "guest_auth_type", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "guest_identifier", Type: field.TypeString, Size: 255, Default: ""},
 		{Name: "subscribe_id", Type: field.TypeInt64, Default: 0},
 		{Name: "subscribe_token", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "user_subscribe_id", Type: field.TypeInt64, Default: 0},
 		{Name: "is_new", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -232,6 +241,13 @@ var (
 		Name:       "order",
 		Columns:    OrderColumns,
 		PrimaryKey: []*schema.Column{OrderColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "order_guest_auth_type_guest_identifier_coupon_status",
+				Unique:  false,
+				Columns: []*schema.Column{OrderColumns[27], OrderColumns[28], OrderColumns[9], OrderColumns[22]},
+			},
+		},
 	}
 	// OrderEventColumns holds the columns for the "order_event" table.
 	OrderEventColumns = []*schema.Column{
@@ -449,6 +465,72 @@ var (
 		Columns:    SubscribeGroupColumns,
 		PrimaryKey: []*schema.Column{SubscribeGroupColumns[0]},
 	}
+	// SubscriptionEntitlementColumns holds the columns for the "subscription_entitlement" table.
+	SubscriptionEntitlementColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Size: 64},
+		{Name: "source", Type: field.TypeString, Size: 32},
+		{Name: "scope", Type: field.TypeString, Size: 255},
+		{Name: "subscription_key", Type: field.TypeString, Size: 255},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "user_subscribe_id", Type: field.TypeInt64},
+		{Name: "revision", Type: field.TypeInt64},
+		{Name: "fingerprint", Type: field.TypeString, Size: 64},
+		{Name: "period_id", Type: field.TypeString, Size: 64},
+		{Name: "mode", Type: field.TypeString, Size: 32},
+		{Name: "status", Type: field.TypeString, Size: 32},
+		{Name: "auto_renew", Type: field.TypeBool, Default: false},
+		{Name: "grace_until", Type: field.TypeTime, Nullable: true},
+		{Name: "revoked_at", Type: field.TypeTime, Nullable: true},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SubscriptionEntitlementTable holds the schema information for the "subscription_entitlement" table.
+	SubscriptionEntitlementTable = &schema.Table{
+		Name:       "subscription_entitlement",
+		Columns:    SubscriptionEntitlementColumns,
+		PrimaryKey: []*schema.Column{SubscriptionEntitlementColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "subscriptionentitlement_user_subscribe_id",
+				Unique:  true,
+				Columns: []*schema.Column{SubscriptionEntitlementColumns[5]},
+			},
+		},
+	}
+	// SubscriptionEntitlementRevisionColumns holds the columns for the "subscription_entitlement_revision" table.
+	SubscriptionEntitlementRevisionColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Size: 96},
+		{Name: "entitlement_id", Type: field.TypeString, Size: 64},
+		{Name: "payload", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// SubscriptionEntitlementRevisionTable holds the schema information for the "subscription_entitlement_revision" table.
+	SubscriptionEntitlementRevisionTable = &schema.Table{
+		Name:       "subscription_entitlement_revision",
+		Columns:    SubscriptionEntitlementRevisionColumns,
+		PrimaryKey: []*schema.Column{SubscriptionEntitlementRevisionColumns[0]},
+	}
+	// SubscriptionPeriodColumns holds the columns for the "subscription_period" table.
+	SubscriptionPeriodColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Size: 64},
+		{Name: "entitlement_id", Type: field.TypeString, Size: 64},
+		{Name: "transaction_key", Type: field.TypeString, Size: 255},
+		{Name: "user_subscribe_id", Type: field.TypeInt64},
+		{Name: "order_id", Type: field.TypeInt64},
+		{Name: "plan_id", Type: field.TypeInt64},
+		{Name: "billing_interval", Type: field.TypeString, Size: 16, Default: ""},
+		{Name: "traffic_limit", Type: field.TypeInt64},
+		{Name: "start_at", Type: field.TypeTime},
+		{Name: "end_at", Type: field.TypeTime},
+		{Name: "traffic_reset", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// SubscriptionPeriodTable holds the schema information for the "subscription_period" table.
+	SubscriptionPeriodTable = &schema.Table{
+		Name:       "subscription_period",
+		Columns:    SubscriptionPeriodColumns,
+		PrimaryKey: []*schema.Column{SubscriptionPeriodColumns[0]},
+	}
 	// SystemColumns holds the columns for the "system" table.
 	SystemColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -515,6 +597,8 @@ var (
 		{Name: "errors", Type: field.TypeString, Nullable: true},
 		{Name: "total", Type: field.TypeUint64, Default: 0},
 		{Name: "current", Type: field.TypeUint64, Default: 0},
+		{Name: "daily_date", Type: field.TypeString, Size: 10, Default: ""},
+		{Name: "daily_sent", Type: field.TypeUint64, Default: 0},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -554,6 +638,17 @@ var (
 		Name:       "ticket_follow",
 		Columns:    TicketFollowColumns,
 		PrimaryKey: []*schema.Column{TicketFollowColumns[0]},
+	}
+	// TrafficBatchColumns holds the columns for the "traffic_batch" table.
+	TrafficBatchColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Size: 96},
+		{Name: "created_at", Type: field.TypeTime},
+	}
+	// TrafficBatchTable holds the schema information for the "traffic_batch" table.
+	TrafficBatchTable = &schema.Table{
+		Name:       "traffic_batch",
+		Columns:    TrafficBatchColumns,
+		PrimaryKey: []*schema.Column{TrafficBatchColumns[0]},
 	}
 	// TrafficLogColumns holds the columns for the "traffic_log" table.
 	TrafficLogColumns = []*schema.Column{
@@ -614,6 +709,13 @@ var (
 		Name:       "user_auth_methods",
 		Columns:    UserAuthMethodsColumns,
 		PrimaryKey: []*schema.Column{UserAuthMethodsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_auth_type_identifier",
+				Unique:  true,
+				Columns: []*schema.Column{UserAuthMethodsColumns[2], UserAuthMethodsColumns[3]},
+			},
+		},
 	}
 	// UserDeviceColumns holds the columns for the "user_device" table.
 	UserDeviceColumns = []*schema.Column{
@@ -657,11 +759,13 @@ var (
 		{Name: "user_id", Type: field.TypeInt64},
 		{Name: "order_id", Type: field.TypeInt64},
 		{Name: "subscribe_id", Type: field.TypeInt64},
+		{Name: "entitlement_source", Type: field.TypeString, Size: 32, Default: ""},
 		{Name: "node_group_id", Type: field.TypeInt64, Default: 0},
 		{Name: "group_locked", Type: field.TypeBool, Default: false},
 		{Name: "start_time", Type: field.TypeTime},
 		{Name: "expire_time", Type: field.TypeTime, Nullable: true},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
+		{Name: "traffic_reset_at", Type: field.TypeTime, Nullable: true},
 		{Name: "traffic", Type: field.TypeInt64, Default: 0},
 		{Name: "traffic_unlimited", Type: field.TypeBool, Default: false},
 		{Name: "download", Type: field.TypeInt64, Default: 0},
@@ -697,8 +801,8 @@ var (
 		Columns:    UserWalletColumns,
 		PrimaryKey: []*schema.Column{UserWalletColumns[0]},
 	}
-	// UserWithdrawalColumns holds the columns for the "user_withdrawal" table.
-	UserWithdrawalColumns = []*schema.Column{
+	// WithdrawalsColumns holds the columns for the "withdrawals" table.
+	WithdrawalsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
 		{Name: "user_id", Type: field.TypeInt64},
 		{Name: "amount", Type: field.TypeInt64},
@@ -708,11 +812,18 @@ var (
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
-	// UserWithdrawalTable holds the schema information for the "user_withdrawal" table.
-	UserWithdrawalTable = &schema.Table{
-		Name:       "user_withdrawal",
-		Columns:    UserWithdrawalColumns,
-		PrimaryKey: []*schema.Column{UserWithdrawalColumns[0]},
+	// WithdrawalsTable holds the schema information for the "withdrawals" table.
+	WithdrawalsTable = &schema.Table{
+		Name:       "withdrawals",
+		Columns:    WithdrawalsColumns,
+		PrimaryKey: []*schema.Column{WithdrawalsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userwithdrawal_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{WithdrawalsColumns[1]},
+			},
+		},
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
@@ -735,11 +846,15 @@ var (
 		SubscribeTable,
 		SubscribeApplicationTable,
 		SubscribeGroupTable,
+		SubscriptionEntitlementTable,
+		SubscriptionEntitlementRevisionTable,
+		SubscriptionPeriodTable,
 		SystemTable,
 		SystemLogsTable,
 		TaskTable,
 		TicketTable,
 		TicketFollowTable,
+		TrafficBatchTable,
 		TrafficLogTable,
 		UserTable,
 		UserAuthMethodsTable,
@@ -747,7 +862,7 @@ var (
 		UserDeviceOnlineRecordTable,
 		UserSubscribeTable,
 		UserWalletTable,
-		UserWithdrawalTable,
+		WithdrawalsTable,
 	}
 )
 
@@ -809,6 +924,15 @@ func init() {
 	SubscribeGroupTable.Annotation = &entsql.Annotation{
 		Table: "subscribe_group",
 	}
+	SubscriptionEntitlementTable.Annotation = &entsql.Annotation{
+		Table: "subscription_entitlement",
+	}
+	SubscriptionEntitlementRevisionTable.Annotation = &entsql.Annotation{
+		Table: "subscription_entitlement_revision",
+	}
+	SubscriptionPeriodTable.Annotation = &entsql.Annotation{
+		Table: "subscription_period",
+	}
 	SystemTable.Annotation = &entsql.Annotation{
 		Table: "system",
 	}
@@ -823,6 +947,9 @@ func init() {
 	}
 	TicketFollowTable.Annotation = &entsql.Annotation{
 		Table: "ticket_follow",
+	}
+	TrafficBatchTable.Annotation = &entsql.Annotation{
+		Table: "traffic_batch",
 	}
 	TrafficLogTable.Annotation = &entsql.Annotation{
 		Table: "traffic_log",
@@ -845,7 +972,7 @@ func init() {
 	UserWalletTable.Annotation = &entsql.Annotation{
 		Table: "user_wallet",
 	}
-	UserWithdrawalTable.Annotation = &entsql.Annotation{
-		Table: "user_withdrawal",
+	WithdrawalsTable.Annotation = &entsql.Annotation{
+		Table: "withdrawals",
 	}
 }

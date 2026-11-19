@@ -116,7 +116,7 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 	if err != nil {
 		l.Logger.Errorw("[Recharge] Marshal payload error", zap.Any("error", err.Error()), zap.Any("payload", payload))
 	}
-	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(3))
+	task := asynq.NewTask(queue.DeferCloseOrder, val, asynq.MaxRetry(25))
 	taskInfo, err := l.svcCtx.Queue.Enqueue(task, asynq.ProcessIn(CloseOrderTimeMinutes*time.Minute))
 	if err != nil {
 		l.Logger.Errorw("[Recharge] Enqueue task error", zap.Any("error", err.Error()), zap.Any("task", task))

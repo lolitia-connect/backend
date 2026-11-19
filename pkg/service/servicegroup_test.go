@@ -1,13 +1,57 @@
 package service
 
 import (
+	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/perfect-panel/server/pkg/proc"
 
 	"github.com/stretchr/testify/assert"
 )
+
+type failedService struct {
+	failure error
+}
+
+func (s failedService) Start()     {}
+func (s failedService) Stop()      {}
+func (s failedService) Run() error { return s.failure }
+
+func TestGroupReturnsFailureAndStopsPeers(t *testing.T) {
+	failure := errors.New("listener unavailable")
+	group := NewServiceGroup()
+	stopped := make(chan struct{})
+	group.Add(WithStop(func() { close(stopped) }))
+	group.Add(failedService{failure: failure})
+	result := make(chan error, 1)
+	go func() { result <- group.Run() }()
+	select {
+	case err := <-result:
+		if !errors.Is(err, failure) {
+			t.Fatalf("failure = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("service group did not propagate startup failure")
+	}
+	select {
+	case <-stopped:
+	default:
+		t.Fatal("peer service was not stopped")
+	}
+	group.Stop()
+}
+
+func TestGroupStopsPeersAfterStartupPanic(t *testing.T) {
+	group := NewServiceGroup()
+	stopped := false
+	group.Add(WithStop(func() { stopped = true }))
+	group.Add(WithStart(func() { panic("migration failed") }))
+	if err := group.Run(); err == nil || !stopped {
+		t.Fatalf("startup panic did not stop services: %v, stopped=%v", err, stopped)
+	}
+}
 
 var (
 	number = 1

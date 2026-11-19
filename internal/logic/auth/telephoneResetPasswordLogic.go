@@ -12,8 +12,8 @@ import (
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/constant"
-	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
@@ -91,13 +91,16 @@ func (l *TelephoneResetPasswordLogic) TelephoneResetPassword(req *types.Telephon
 	}
 
 	// Generate password
-	pwd := tool.EncodePassWord(req.Password)
-	userInfo.Password = pwd
-	userInfo.Algo = tool.PasswordAlgoArgon2id
-	userInfo.Salt = ""
-	err = l.svcCtx.Store.User().Update(l.ctx, userInfo)
+	if userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {
+		return nil, xerr.NewErrCode(xerr.UserDisabled)
+	}
+	err = l.svcCtx.Store.User().UpdatePassword(l.ctx, userInfo.Id, userInfo.Password, tool.EncodePassWord(req.Password), tool.PasswordAlgoArgon2id, "")
 	if err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "update user password failed: %v", err.Error())
+	}
+	sessionEpoch, err := usersession.Rotate(l.ctx, l.svcCtx.Redis, userInfo.Id)
+	if err != nil {
+		return nil, err
 	}
 
 	// Bind device to user if identifier is provided
@@ -118,14 +121,10 @@ func (l *TelephoneResetPasswordLogic) TelephoneResetPassword(req *types.Telephon
 	// Generate session id
 	sessionId := uuidx.NewUUID().String()
 	// Generate token
-	token, err := jwt.NewJwtToken(
+	token, err := usersession.Issue(l.ctx, l.svcCtx.Redis,
 		l.svcCtx.Config.JwtAuth.AccessSecret,
-		time.Now().Unix(),
 		l.svcCtx.Config.JwtAuth.AccessExpire,
-		jwt.WithOption("UserId", userInfo.Id),
-		jwt.WithOption("SessionId", sessionId),
-		jwt.WithOption("identifier", req.Identifier),
-		jwt.WithOption("CtxLoginType", req.LoginType),
+		userInfo.Id, sessionId, req.LoginType, sessionEpoch, req.Identifier,
 	)
 	if err != nil {
 		l.Logger.Errorw("[UserLogin] token generate error", zap.Any("error", err.Error()))

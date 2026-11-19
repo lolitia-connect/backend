@@ -151,3 +151,24 @@ func TestClient_Build(t *testing.T) {
 	t.Logf("[测试] 输出: %s", buf)
 
 }
+
+func TestClientBuildProtocolCredentials(t *testing.T) {
+	credential := "AABBCCDD-EEFF-4012-8345-6789ABCDEF01"
+	client := &Client{
+		ClientTemplate: `{{range .Proxies}}{{.Type}}={{.Password}};{{end}}`,
+		Proxies:        []Proxy{{Type: "nowhere"}, {Type: "vless"}, {Type: "trojan"}},
+		UserInfo:       User{Password: credential},
+	}
+	output, err := client.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "nowhere=aabbccddeeff401283456789abcdef01;vless=" + credential + ";trojan=" + credential + ";"
+	if string(output) != want {
+		t.Fatalf("credentials = %s, want %s", output, want)
+	}
+	client.UserInfo.Password = "invalid"
+	if _, err := client.Build(); err == nil {
+		t.Fatal("invalid NW3 key accepted")
+	}
+}

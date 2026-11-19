@@ -2,9 +2,6 @@ package user
 
 import (
 	"context"
-	"time"
-
-	"github.com/perfect-panel/server/internal/model/order"
 
 	"github.com/perfect-panel/server/pkg/constant"
 
@@ -12,7 +9,6 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
@@ -36,7 +32,7 @@ func NewResetUserSubscribeTokenLogic(ctx context.Context, svcCtx *svc.ServiceCon
 
 func (l *ResetUserSubscribeTokenLogic) ResetUserSubscribeToken(req *types.ResetUserSubscribeTokenRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
-	if !ok {
+	if !ok || u == nil {
 		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
@@ -45,30 +41,12 @@ func (l *ResetUserSubscribeTokenLogic) ResetUserSubscribeToken(req *types.ResetU
 		l.Logger.Errorw("FindOneUserSubscribe failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneUserSubscribe failed: %v", err.Error())
 	}
-	if userSub.UserId != u.Id {
+	if userSub == nil || userSub.UserId != u.Id {
 		l.Logger.Errorw("UserSubscribeId does not belong to the current user")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "UserSubscribeId does not belong to the current user")
 	}
 
-	var orderDetails *order.Details
-	// find order
-	if userSub.OrderId != 0 {
-		orderDetails, err = l.svcCtx.Store.Order().FindOneDetails(l.ctx, userSub.OrderId)
-		if err != nil {
-			l.Logger.Errorw("FindOneDetails failed:", zap.Any("error", err.Error()))
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneDetails failed: %v", err.Error())
-		}
-	} else {
-		// if order id is 0, this a admin create user subscribe
-		orderDetails = &order.Details{}
-	}
-
-	userSub.Token = uuidx.SubscribeToken(orderDetails.OrderNo + time.Now().Format("20060102150405.000"))
-	userSub.UUID = uuid.New().String()
-	var newSub user.Subscribe
-	tool.DeepCopy(&newSub, userSub)
-
-	err = l.svcCtx.Store.User().UpdateSubscribe(l.ctx, &newSub)
+	err = l.svcCtx.Store.User().RotateSubscribeCredentials(l.ctx, userSub.Id, u.Id, uuidx.SubscribeToken(""), uuid.NewString())
 	if err != nil {
 		l.Logger.Errorw("UpdateSubscribe failed:", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "UpdateSubscribe failed: %v", err.Error())

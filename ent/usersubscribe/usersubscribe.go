@@ -19,6 +19,8 @@ const (
 	FieldOrderID = "order_id"
 	// FieldSubscribeID holds the string denoting the subscribe_id field in the database.
 	FieldSubscribeID = "subscribe_id"
+	// FieldEntitlementSource holds the string denoting the entitlement_source field in the database.
+	FieldEntitlementSource = "entitlement_source"
 	// FieldNodeGroupID holds the string denoting the node_group_id field in the database.
 	FieldNodeGroupID = "node_group_id"
 	// FieldGroupLocked holds the string denoting the group_locked field in the database.
@@ -29,6 +31,8 @@ const (
 	FieldExpireTime = "expire_time"
 	// FieldFinishedAt holds the string denoting the finished_at field in the database.
 	FieldFinishedAt = "finished_at"
+	// FieldTrafficResetAt holds the string denoting the traffic_reset_at field in the database.
+	FieldTrafficResetAt = "traffic_reset_at"
 	// FieldTraffic holds the string denoting the traffic field in the database.
 	FieldTraffic = "traffic"
 	// FieldTrafficUnlimited holds the string denoting the traffic_unlimited field in the database.
@@ -63,11 +67,13 @@ var Columns = []string{
 	FieldUserID,
 	FieldOrderID,
 	FieldSubscribeID,
+	FieldEntitlementSource,
 	FieldNodeGroupID,
 	FieldGroupLocked,
 	FieldStartTime,
 	FieldExpireTime,
 	FieldFinishedAt,
+	FieldTrafficResetAt,
 	FieldTraffic,
 	FieldTrafficUnlimited,
 	FieldDownload,
@@ -93,6 +99,10 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultEntitlementSource holds the default value on creation for the "entitlement_source" field.
+	DefaultEntitlementSource string
+	// EntitlementSourceValidator is a validator for the "entitlement_source" field. It is called by the builders before save.
+	EntitlementSourceValidator func(string) error
 	// DefaultNodeGroupID holds the default value on creation for the "node_group_id" field.
 	DefaultNodeGroupID int64
 	// DefaultGroupLocked holds the default value on creation for the "group_locked" field.
@@ -156,6 +166,11 @@ func BySubscribeID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscribeID, opts...).ToFunc()
 }
 
+// ByEntitlementSource orders the results by the entitlement_source field.
+func ByEntitlementSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldEntitlementSource, opts...).ToFunc()
+}
+
 // ByNodeGroupID orders the results by the node_group_id field.
 func ByNodeGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNodeGroupID, opts...).ToFunc()
@@ -179,6 +194,11 @@ func ByExpireTime(opts ...sql.OrderTermOption) OrderOption {
 // ByFinishedAt orders the results by the finished_at field.
 func ByFinishedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFinishedAt, opts...).ToFunc()
+}
+
+// ByTrafficResetAt orders the results by the traffic_reset_at field.
+func ByTrafficResetAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTrafficResetAt, opts...).ToFunc()
 }
 
 // ByTraffic orders the results by the traffic field.

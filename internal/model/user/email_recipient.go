@@ -36,6 +36,7 @@ func (m *customUserModel) emailRecipientQuery(filter *EmailRecipientFilter) *ent
 	query := m.db.UserAuthMethod.Query().Where(entauth.AuthType("email"), predicate.UserAuthMethod(func(s *entsql.Selector) {
 		userTable := entsql.Table(entuser.Table)
 		s.Join(userTable).On(s.C(entauth.FieldUserID), userTable.C(entuser.FieldID))
+		s.Where(entsql.IsNull(userTable.C(entuser.FieldDeletedAt)))
 		if filter.RegisterStartTime != 0 {
 			s.Where(entsql.GTE(userTable.C(entuser.FieldCreatedAt), time.UnixMilli(filter.RegisterStartTime)))
 		}

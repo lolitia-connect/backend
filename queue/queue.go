@@ -6,33 +6,60 @@ import (
 	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/queue/handler"
 	"go.uber.org/zap"
+	"sync"
 )
 
 type Service struct {
-	svc    *svc.ServiceContext
-	server *asynq.Server
+	svc     *svc.ServiceContext
+	server  *asynq.Server
+	mu      sync.Mutex
+	stopped bool
+	done    chan struct{}
 }
 
 func NewService(svc *svc.ServiceContext) *Service {
 	return &Service{
 		svc:    svc,
 		server: initService(svc),
+		done:   make(chan struct{}),
 	}
 }
 
 func (m *Service) Start() {
+	if err := m.Run(); err != nil {
+		panic(err)
+	}
+}
+
+func (m *Service) Run() error {
+	m.mu.Lock()
+	if m.stopped {
+		m.mu.Unlock()
+		return nil
+	}
 	zap.S().Infof("start consumer service")
 	mux := asynq.NewServeMux()
 	// register tasks
 	handler.RegisterHandlers(mux, m.svc)
-	if err := m.server.Run(mux); err != nil {
-		zap.L().Error("consumer service error", zap.Any("error", err.Error()))
+	err := m.server.Start(mux)
+	m.mu.Unlock()
+	if err != nil {
+		return err
 	}
+	<-m.done
+	return nil
 }
 
 func (m *Service) Stop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.stopped {
+		return
+	}
+	m.stopped = true
 	zap.S().Info("stop consumer service")
-	m.server.Stop()
+	m.server.Shutdown()
+	close(m.done)
 }
 
 func initService(svc *svc.ServiceContext) *asynq.Server {

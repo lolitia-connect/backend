@@ -21,24 +21,20 @@ JOIN (
     FROM (
         SELECT s.id,
                jt.ord,
-               jt.protocol,
+               JSON_EXTRACT(s.`protocols`, CONCAT('$[', jt.ord - 1, ']')) AS protocol,
                ROW_NUMBER() OVER (
-                   PARTITION BY s.id, JSON_UNQUOTE(JSON_EXTRACT(jt.protocol, '$.type'))
+                   PARTITION BY s.id, JSON_UNQUOTE(JSON_EXTRACT(s.`protocols`, CONCAT('$[', jt.ord - 1, '].type')))
                    ORDER BY jt.ord
                ) AS protocol_index
-        FROM (
-            SELECT id, `protocols`
-            FROM `servers`
-            WHERE `protocols` IS NOT NULL
-              AND `protocols` <> ''
-              AND JSON_VALID(`protocols`)
-              AND LEFT(TRIM(`protocols`), 1) = '['
-        ) s
+        FROM `servers` s
         JOIN JSON_TABLE(
-            s.`protocols`,
+            CASE
+                WHEN JSON_VALID(s.`protocols`) AND LEFT(TRIM(s.`protocols`), 1) = '['
+                    THEN s.`protocols`
+                ELSE '[]'
+            END,
             '$[*]' COLUMNS (
-                ord FOR ORDINALITY,
-                protocol JSON PATH '$'
+                ord FOR ORDINALITY
             )
         ) jt
     ) d

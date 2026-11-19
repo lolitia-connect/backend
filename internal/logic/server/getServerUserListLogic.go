@@ -20,11 +20,13 @@ import (
 )
 
 type GetServerUserListLogic struct {
-	Logger   *zap.SugaredLogger
-	ctx      context.Context
-	svcCtx   *svc.ServiceContext
-	request  RequestMeta
-	response ResponseMeta
+	Logger     *zap.SugaredLogger
+	ctx        context.Context
+	svcCtx     *svc.ServiceContext
+	request    RequestMeta
+	response   ResponseMeta
+	generation string
+	expiresAt  time.Time
 }
 
 // NewGetServerUserListLogic Get user list
@@ -44,9 +46,10 @@ func (l *GetServerUserListLogic) ResponseMeta() ResponseMeta {
 
 func placeholderServerUser(serverID int64, protocol, secret string) types.ServerUser {
 	name := fmt.Sprintf("ppanel:server-user-placeholder:%d:%s:%s", serverID, strings.TrimSpace(protocol), secret)
+	credential, _ := node.ProtocolCredential(protocol, uuidx.NewDeterministicUUID(name).String())
 	return types.ServerUser{
 		Id:   1,
-		UUID: uuidx.NewDeterministicUUID(name).String(),
+		UUID: credential,
 	}
 }
 
@@ -99,17 +102,73 @@ func (l *GetServerUserListLogic) queryMatchedSubscribes(nodeIds []int64, nodeTag
 }
 
 func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListRequest) (resp *types.GetServerUserListResponse, err error) {
+	key := fmt.Sprintf("%s%d:%s:%s", node.ServerUserListCacheKey, req.ServerId, req.Protocol, req.ProtocolId)
+	result, err := l.svcCtx.NodeUserIndexes().LoadUserList(l.ctx, key, func(ctx context.Context) (any, error) {
+		loader := NewGetServerUserListLogic(ctx, l.svcCtx, RequestMeta{})
+		response, err := loader.loadServerUserList(req)
+		if err != nil {
+			return nil, err
+		}
+		return &serverUserListSnapshot{response: response, generation: loader.generation, expiresAt: loader.expiresAt}, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	snapshot := result.(*serverUserListSnapshot)
+	l.generation, l.expiresAt = snapshot.generation, snapshot.expiresAt
+	current, err := node.ServerCacheGeneration(l.ctx, l.svcCtx.Redis, req.ServerId)
+	if err != nil {
+		return nil, err
+	}
+	if current != l.generation || !time.Now().Before(l.expiresAt) {
+		return nil, node.ErrServerBusy
+	}
+	payload, err := json.Marshal(snapshot.response)
+	if err != nil {
+		return nil, err
+	}
+	etag := tool.GenerateETag(payload)
+	l.response.SetHeader("ETag", etag)
+	if l.request.IfNoneMatch == etag {
+		return nil, xerr.StatusNotModified
+	}
+	return snapshot.response, nil
+}
+
+type serverUserListSnapshot struct {
+	response   *types.GetServerUserListResponse
+	generation string
+	expiresAt  time.Time
+}
+
+func (l *GetServerUserListLogic) loadServerUserList(req *types.GetServerUserListRequest) (resp *types.GetServerUserListResponse, err error) {
+	l.generation, err = node.ServerCacheGeneration(l.ctx, l.svcCtx.Redis, req.ServerId)
+	if err != nil {
+		return nil, err
+	}
 	cacheKey := fmt.Sprintf("%s%d:%s:%s", node.ServerUserListCacheKey, req.ServerId, req.Protocol, req.ProtocolId)
-	cache, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-	if cache != "" {
-		etag := tool.GenerateETag([]byte(cache))
+	started := time.Now()
+	cache, lifetime, err := node.ReadServerCache(l.ctx, l.svcCtx.Redis, cacheKey, l.generation)
+	if err != nil {
+		return nil, err
+	}
+	l.expiresAt = started.Add(lifetime)
+	if len(cache) > 0 {
+		current, err := node.ServerCacheGeneration(l.ctx, l.svcCtx.Redis, req.ServerId)
+		if err != nil {
+			return nil, err
+		}
+		if current != l.generation {
+			return nil, node.ErrServerBusy
+		}
+		etag := tool.GenerateETag(cache)
 		resp = &types.GetServerUserListResponse{}
 		//  Check If-None-Match header
 		if match := l.request.IfNoneMatch; match == etag {
 			return nil, xerr.StatusNotModified
 		}
 		l.response.SetHeader("ETag", etag)
-		err = json.Unmarshal([]byte(cache), resp)
+		err = json.Unmarshal(cache, resp)
 		if err != nil {
 			l.Logger.Errorw("[ServerUserListCacheKey] json unmarshal error", zap.Any("error", err.Error()))
 			return nil, err
@@ -120,6 +179,10 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	if err != nil {
 		return nil, err
 	}
+	if server == nil {
+		return nil, fmt.Errorf("server not found")
+	}
+	l.expiresAt = time.Now().Add(node.ServerCacheTTL)
 
 	_, nodes, err := l.svcCtx.Store.Node().FilterNodeList(l.ctx, &node.FilterNodeParams{
 		Page:       1,
@@ -135,12 +198,7 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 
 	if len(nodes) == 0 {
 		return &types.GetServerUserListResponse{
-			Users: []types.ServerUser{
-				{
-					Id:   1,
-					UUID: uuidx.NewUUID().String(),
-				},
-			},
+			Users: []types.ServerUser{placeholderServerUser(req.ServerId, req.Protocol, l.svcCtx.Config.Node.NodeSecret)},
 		}, nil
 	}
 
@@ -206,9 +264,6 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	}
 	users := make([]types.ServerUser, 0)
 	for _, sub := range subs {
-		if err := l.svcCtx.Store.User().ActivatePendingSubscribesBySubscribeId(l.ctx, sub.Id); err != nil {
-			return nil, err
-		}
 		data, err := l.svcCtx.Store.User().FindUsersSubscribeBySubscribeId(l.ctx, sub.Id)
 		if err != nil {
 			return nil, err
@@ -240,6 +295,16 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 		}
 		users = append(users, expiredUsers...)
 	}
+	users, err = l.withEnabledOwners(users)
+	if err != nil {
+		return nil, err
+	}
+	for index := range users {
+		users[index].UUID, err = node.ProtocolCredential(req.Protocol, users[index].UUID)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if len(users) == 0 {
 		users = append(users, placeholderServerUser(req.ServerId, req.Protocol, l.svcCtx.Config.Node.NodeSecret))
@@ -250,15 +315,59 @@ func (l *GetServerUserListLogic) GetServerUserList(req *types.GetServerUserListR
 	val, _ := json.Marshal(resp)
 	etag := tool.GenerateETag(val)
 	l.response.SetHeader("ETag", etag)
-	err = l.svcCtx.Redis.Set(l.ctx, cacheKey, string(val), node.ServerCacheTTL).Err()
+	published, err := node.PublishServerCache(l.ctx, l.svcCtx.Redis, req.ServerId, cacheKey, val, l.generation)
 	if err != nil {
-		l.Logger.Errorw("[ServerUserListCacheKey] redis set error", zap.Any("error", err.Error()))
+		return nil, err
+	}
+	if !published {
+		return nil, node.ErrServerBusy
 	}
 	//  Check If-None-Match header
 	if match := l.request.IfNoneMatch; match == etag {
 		return nil, xerr.StatusNotModified
 	}
 	return resp, nil
+}
+
+func (l *GetServerUserListLogic) withEnabledOwners(users []types.ServerUser) ([]types.ServerUser, error) {
+	result := make([]types.ServerUser, 0, len(users))
+	for offset := 0; offset < len(users); offset += 500 {
+		batch := users[offset:min(offset+500, len(users))]
+		ids := make([]int64, 0, len(batch))
+		for _, entry := range batch {
+			ids = append(ids, entry.Id)
+		}
+		subscriptions, err := l.svcCtx.Store.User().FindSubscribesByIds(l.ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		ownerIDs := make([]int64, 0, len(subscriptions))
+		byID := make(map[int64]*user.Subscribe, len(subscriptions))
+		for _, subscription := range subscriptions {
+			if subscription == nil {
+				continue
+			}
+			ownerIDs = append(ownerIDs, subscription.UserId)
+			byID[subscription.Id] = subscription
+		}
+		owners, err := l.svcCtx.Store.User().FindUsersByIds(l.ctx, ownerIDs)
+		if err != nil {
+			return nil, err
+		}
+		enabled := make(map[int64]bool, len(owners))
+		for _, owner := range owners {
+			if owner != nil {
+				enabled[owner.Id] = owner.DeletedAt == nil && owner.Enable != nil && *owner.Enable
+			}
+		}
+		for _, entry := range batch {
+			subscription := byID[entry.Id]
+			if subscription != nil && subscription.Status < 4 && enabled[subscription.UserId] && entry.UUID == subscription.UUID {
+				result = append(result, entry)
+			}
+		}
+	}
+	return result, nil
 }
 
 func (l *GetServerUserListLogic) shouldIncludeServerUser(userSub *user.Subscribe, serverNodeGroupIds []int64) bool {

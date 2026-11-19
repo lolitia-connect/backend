@@ -2,15 +2,42 @@ package order
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/perfect-panel/server/internal/config"
 	modelOrder "github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
+	"github.com/perfect-panel/server/pkg/requestmeta"
+	"github.com/perfect-panel/server/pkg/xerr"
+	"github.com/redis/go-redis/v9"
 )
+
+type providerCheckoutUsers struct{ user.Model }
+
+func (*providerCheckoutUsers) FindOneUserSubscribe(context.Context, int64) (*user.SubscribeDetails, error) {
+	return &user.SubscribeDetails{Id: 3, UserId: 7, Status: 1, EntitlementSource: "apple"}, nil
+}
+
+type providerCheckoutStore struct{ repository.Store }
+
+func (providerCheckoutStore) User() user.Model { return &providerCheckoutUsers{} }
+
+func TestProviderCheckoutRejectsLocalRenewalAndReset(t *testing.T) {
+	ctx := context.WithValue(context.Background(), constant.CtxKeyUser, &user.User{Id: 7})
+	service := &svc.ServiceContext{Store: providerCheckoutStore{}}
+	if _, err := NewRenewalLogic(ctx, service).Renewal(&types.RenewalOrderRequest{UserSubscribeID: 3, Quantity: 1}); !errors.Is(err, user.ErrProviderManaged) {
+		t.Fatalf("provider renewal error = %v", err)
+	}
+	if _, err := NewResetTrafficLogic(ctx, service).ResetTraffic(&types.ResetTrafficOrderRequest{UserSubscribeID: 3}); !errors.Is(err, user.ErrProviderManaged) {
+		t.Fatalf("provider reset error = %v", err)
+	}
+}
 
 func testV2Logic(secret string) *V2OrderLogic {
 	return NewV2OrderLogic(context.Background(), &svc.ServiceContext{
@@ -245,5 +272,46 @@ func TestV2OrderStatusNamesEveryStoredStatus(t *testing.T) {
 		if got := v2OrderStatus(status); got != want {
 			t.Fatalf("v2OrderStatus(%d) = %q, want %q", status, got, want)
 		}
+	}
+}
+
+func TestGuestReplayLimitsBeforeFingerprintComparison(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	logic := NewV2OrderLogic(requestmeta.With(context.Background(), requestmeta.New("203.0.113.9", "test")), &svc.ServiceContext{Redis: client})
+	current := &modelOrder.Order{IdempotencyHash: "original"}
+	for attempt := 0; attempt < 10; attempt++ {
+		if _, err := logic.replayCreate(current, &types.V2CreateOrderRequest{}, "key", "wrong"); err != ErrIdempotencyKeyReused {
+			t.Fatalf("attempt %d: %v", attempt, err)
+		}
+	}
+	if _, err := logic.replayCreate(current, &types.V2CreateOrderRequest{}, "key", "wrong"); err == nil || err == ErrIdempotencyKeyReused {
+		t.Fatal("guest fingerprint oracle was not limited")
+	}
+	client.Close()
+	if err := logic.limitGuestReplay("another-key"); err == nil {
+		t.Fatal("Redis failure allowed a guest replay")
+	}
+}
+
+func TestGuestReplayIPQuotaAndSignedInOwnership(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	logic := NewV2OrderLogic(context.Background(), &svc.ServiceContext{Redis: client})
+	for attempt := 0; attempt < 60; attempt++ {
+		if err := logic.limitGuestReplay(string(rune(1000 + attempt))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := logic.limitGuestReplay("last"); err == nil {
+		t.Fatal("rotating keys bypassed the client IP quota")
+	}
+	signedIn := signedInV2Logic("secret", 7)
+	_, err := signedIn.replayCreate(&modelOrder.Order{UserId: 8, IdempotencyHash: "original"}, &types.V2CreateOrderRequest{}, "key", "wrong")
+	var coded *xerr.CodeError
+	if !errors.As(err, &coded) || coded.GetErrCode() != xerr.InvalidAccess {
+		t.Fatalf("foreign account reached fingerprint comparison: %v", err)
 	}
 }

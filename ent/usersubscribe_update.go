@@ -91,6 +91,20 @@ func (_u *UserSubscribeUpdate) AddSubscribeID(v int64) *UserSubscribeUpdate {
 	return _u
 }
 
+// SetEntitlementSource sets the "entitlement_source" field.
+func (_u *UserSubscribeUpdate) SetEntitlementSource(v string) *UserSubscribeUpdate {
+	_u.mutation.SetEntitlementSource(v)
+	return _u
+}
+
+// SetNillableEntitlementSource sets the "entitlement_source" field if the given value is not nil.
+func (_u *UserSubscribeUpdate) SetNillableEntitlementSource(v *string) *UserSubscribeUpdate {
+	if v != nil {
+		_u.SetEntitlementSource(*v)
+	}
+	return _u
+}
+
 // SetNodeGroupID sets the "node_group_id" field.
 func (_u *UserSubscribeUpdate) SetNodeGroupID(v int64) *UserSubscribeUpdate {
 	_u.mutation.ResetNodeGroupID()
@@ -177,6 +191,26 @@ func (_u *UserSubscribeUpdate) SetNillableFinishedAt(v *time.Time) *UserSubscrib
 // ClearFinishedAt clears the value of the "finished_at" field.
 func (_u *UserSubscribeUpdate) ClearFinishedAt() *UserSubscribeUpdate {
 	_u.mutation.ClearFinishedAt()
+	return _u
+}
+
+// SetTrafficResetAt sets the "traffic_reset_at" field.
+func (_u *UserSubscribeUpdate) SetTrafficResetAt(v time.Time) *UserSubscribeUpdate {
+	_u.mutation.SetTrafficResetAt(v)
+	return _u
+}
+
+// SetNillableTrafficResetAt sets the "traffic_reset_at" field if the given value is not nil.
+func (_u *UserSubscribeUpdate) SetNillableTrafficResetAt(v *time.Time) *UserSubscribeUpdate {
+	if v != nil {
+		_u.SetTrafficResetAt(*v)
+	}
+	return _u
+}
+
+// ClearTrafficResetAt clears the value of the "traffic_reset_at" field.
+func (_u *UserSubscribeUpdate) ClearTrafficResetAt() *UserSubscribeUpdate {
+	_u.mutation.ClearTrafficResetAt()
 	return _u
 }
 
@@ -411,6 +445,11 @@ func (_u *UserSubscribeUpdate) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UserSubscribeUpdate) check() error {
+	if v, ok := _u.mutation.EntitlementSource(); ok {
+		if err := usersubscribe.EntitlementSourceValidator(v); err != nil {
+			return &ValidationError{Name: "entitlement_source", err: fmt.Errorf(`ent: validator failed for field "UserSubscribe.entitlement_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Token(); ok {
 		if err := usersubscribe.TokenValidator(v); err != nil {
 			return &ValidationError{Name: "token", err: fmt.Errorf(`ent: validator failed for field "UserSubscribe.token": %w`, err)}
@@ -459,6 +498,9 @@ func (_u *UserSubscribeUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.AddedSubscribeID(); ok {
 		_spec.AddField(usersubscribe.FieldSubscribeID, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.EntitlementSource(); ok {
+		_spec.SetField(usersubscribe.FieldEntitlementSource, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.NodeGroupID(); ok {
 		_spec.SetField(usersubscribe.FieldNodeGroupID, field.TypeInt64, value)
 	}
@@ -482,6 +524,12 @@ func (_u *UserSubscribeUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.FinishedAtCleared() {
 		_spec.ClearField(usersubscribe.FieldFinishedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.TrafficResetAt(); ok {
+		_spec.SetField(usersubscribe.FieldTrafficResetAt, field.TypeTime, value)
+	}
+	if _u.mutation.TrafficResetAtCleared() {
+		_spec.ClearField(usersubscribe.FieldTrafficResetAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Traffic(); ok {
 		_spec.SetField(usersubscribe.FieldTraffic, field.TypeInt64, value)
@@ -617,6 +665,20 @@ func (_u *UserSubscribeUpdateOne) AddSubscribeID(v int64) *UserSubscribeUpdateOn
 	return _u
 }
 
+// SetEntitlementSource sets the "entitlement_source" field.
+func (_u *UserSubscribeUpdateOne) SetEntitlementSource(v string) *UserSubscribeUpdateOne {
+	_u.mutation.SetEntitlementSource(v)
+	return _u
+}
+
+// SetNillableEntitlementSource sets the "entitlement_source" field if the given value is not nil.
+func (_u *UserSubscribeUpdateOne) SetNillableEntitlementSource(v *string) *UserSubscribeUpdateOne {
+	if v != nil {
+		_u.SetEntitlementSource(*v)
+	}
+	return _u
+}
+
 // SetNodeGroupID sets the "node_group_id" field.
 func (_u *UserSubscribeUpdateOne) SetNodeGroupID(v int64) *UserSubscribeUpdateOne {
 	_u.mutation.ResetNodeGroupID()
@@ -703,6 +765,26 @@ func (_u *UserSubscribeUpdateOne) SetNillableFinishedAt(v *time.Time) *UserSubsc
 // ClearFinishedAt clears the value of the "finished_at" field.
 func (_u *UserSubscribeUpdateOne) ClearFinishedAt() *UserSubscribeUpdateOne {
 	_u.mutation.ClearFinishedAt()
+	return _u
+}
+
+// SetTrafficResetAt sets the "traffic_reset_at" field.
+func (_u *UserSubscribeUpdateOne) SetTrafficResetAt(v time.Time) *UserSubscribeUpdateOne {
+	_u.mutation.SetTrafficResetAt(v)
+	return _u
+}
+
+// SetNillableTrafficResetAt sets the "traffic_reset_at" field if the given value is not nil.
+func (_u *UserSubscribeUpdateOne) SetNillableTrafficResetAt(v *time.Time) *UserSubscribeUpdateOne {
+	if v != nil {
+		_u.SetTrafficResetAt(*v)
+	}
+	return _u
+}
+
+// ClearTrafficResetAt clears the value of the "traffic_reset_at" field.
+func (_u *UserSubscribeUpdateOne) ClearTrafficResetAt() *UserSubscribeUpdateOne {
+	_u.mutation.ClearTrafficResetAt()
 	return _u
 }
 
@@ -950,6 +1032,11 @@ func (_u *UserSubscribeUpdateOne) defaults() {
 
 // check runs all checks and user-defined validators on the builder.
 func (_u *UserSubscribeUpdateOne) check() error {
+	if v, ok := _u.mutation.EntitlementSource(); ok {
+		if err := usersubscribe.EntitlementSourceValidator(v); err != nil {
+			return &ValidationError{Name: "entitlement_source", err: fmt.Errorf(`ent: validator failed for field "UserSubscribe.entitlement_source": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Token(); ok {
 		if err := usersubscribe.TokenValidator(v); err != nil {
 			return &ValidationError{Name: "token", err: fmt.Errorf(`ent: validator failed for field "UserSubscribe.token": %w`, err)}
@@ -1015,6 +1102,9 @@ func (_u *UserSubscribeUpdateOne) sqlSave(ctx context.Context) (_node *UserSubsc
 	if value, ok := _u.mutation.AddedSubscribeID(); ok {
 		_spec.AddField(usersubscribe.FieldSubscribeID, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.EntitlementSource(); ok {
+		_spec.SetField(usersubscribe.FieldEntitlementSource, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.NodeGroupID(); ok {
 		_spec.SetField(usersubscribe.FieldNodeGroupID, field.TypeInt64, value)
 	}
@@ -1038,6 +1128,12 @@ func (_u *UserSubscribeUpdateOne) sqlSave(ctx context.Context) (_node *UserSubsc
 	}
 	if _u.mutation.FinishedAtCleared() {
 		_spec.ClearField(usersubscribe.FieldFinishedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.TrafficResetAt(); ok {
+		_spec.SetField(usersubscribe.FieldTrafficResetAt, field.TypeTime, value)
+	}
+	if _u.mutation.TrafficResetAtCleared() {
+		_spec.ClearField(usersubscribe.FieldTrafficResetAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Traffic(); ok {
 		_spec.SetField(usersubscribe.FieldTraffic, field.TypeInt64, value)

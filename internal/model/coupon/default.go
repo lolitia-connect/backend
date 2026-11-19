@@ -2,6 +2,7 @@ package coupon
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/perfect-panel/server/ent"
 	entcoupon "github.com/perfect-panel/server/ent/coupon"
@@ -78,6 +79,9 @@ func (m *defaultCouponModel) FindOneByCode(ctx context.Context, code string) (*C
 }
 
 func (m *defaultCouponModel) Update(ctx context.Context, data *Coupon) error {
+	if data == nil || data.Enable == nil {
+		return fmt.Errorf("coupon enable flag is required")
+	}
 	updated, err := m.db.Coupon.UpdateOneID(data.Id).
 		SetName(data.Name).
 		SetCode(data.Code).
@@ -88,7 +92,6 @@ func (m *defaultCouponModel) Update(ctx context.Context, data *Coupon) error {
 		SetExpireTime(data.ExpireTime).
 		SetUserLimit(data.UserLimit).
 		SetSubscribe(data.Subscribe).
-		SetUsedCount(data.UsedCount).
 		SetEnable(value(data.Enable)).
 		Save(ctx)
 	if err != nil {

@@ -37,6 +37,8 @@ type Order struct {
 	Coupon *string `json:"coupon,omitempty"`
 	// CouponDiscount holds the value of the "coupon_discount" field.
 	CouponDiscount int64 `json:"coupon_discount,omitempty"`
+	// CouponReserved holds the value of the "coupon_reserved" field.
+	CouponReserved bool `json:"coupon_reserved,omitempty"`
 	// PaymentID holds the value of the "payment_id" field.
 	PaymentID int64 `json:"payment_id,omitempty"`
 	// Method holds the value of the "method" field.
@@ -49,6 +51,14 @@ type Order struct {
 	GiftAmount int64 `json:"gift_amount,omitempty"`
 	// Commission holds the value of the "commission" field.
 	Commission int64 `json:"commission,omitempty"`
+	// CommissionRefererID holds the value of the "commission_referer_id" field.
+	CommissionRefererID int64 `json:"commission_referer_id,omitempty"`
+	// PaymentAmount holds the value of the "payment_amount" field.
+	PaymentAmount int64 `json:"payment_amount,omitempty"`
+	// PaymentCurrency holds the value of the "payment_currency" field.
+	PaymentCurrency string `json:"payment_currency,omitempty"`
+	// PaymentSession holds the value of the "payment_session" field.
+	PaymentSession *string `json:"payment_session,omitempty"`
 	// Status holds the value of the "status" field.
 	Status uint8 `json:"status,omitempty"`
 	// StateVersion holds the value of the "state_version" field.
@@ -59,10 +69,16 @@ type Order struct {
 	IdempotencyHash *string `json:"idempotency_hash,omitempty"`
 	// GuestCheckoutTokenHash holds the value of the "guest_checkout_token_hash" field.
 	GuestCheckoutTokenHash *string `json:"guest_checkout_token_hash,omitempty"`
+	// GuestAuthType holds the value of the "guest_auth_type" field.
+	GuestAuthType string `json:"guest_auth_type,omitempty"`
+	// GuestIdentifier holds the value of the "guest_identifier" field.
+	GuestIdentifier string `json:"guest_identifier,omitempty"`
 	// SubscribeID holds the value of the "subscribe_id" field.
 	SubscribeID int64 `json:"subscribe_id,omitempty"`
 	// SubscribeToken holds the value of the "subscribe_token" field.
 	SubscribeToken *string `json:"subscribe_token,omitempty"`
+	// UserSubscribeID holds the value of the "user_subscribe_id" field.
+	UserSubscribeID int64 `json:"user_subscribe_id,omitempty"`
 	// IsNew holds the value of the "is_new" field.
 	IsNew bool `json:"is_new,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -77,11 +93,11 @@ func (*Order) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case order.FieldIsNew:
+		case order.FieldCouponReserved, order.FieldIsNew:
 			values[i] = new(sql.NullBool)
-		case order.FieldID, order.FieldParentID, order.FieldUserID, order.FieldType, order.FieldQuantity, order.FieldPrice, order.FieldAmount, order.FieldDiscount, order.FieldCouponDiscount, order.FieldPaymentID, order.FieldFeeAmount, order.FieldGiftAmount, order.FieldCommission, order.FieldStatus, order.FieldStateVersion, order.FieldSubscribeID:
+		case order.FieldID, order.FieldParentID, order.FieldUserID, order.FieldType, order.FieldQuantity, order.FieldPrice, order.FieldAmount, order.FieldDiscount, order.FieldCouponDiscount, order.FieldPaymentID, order.FieldFeeAmount, order.FieldGiftAmount, order.FieldCommission, order.FieldCommissionRefererID, order.FieldPaymentAmount, order.FieldStatus, order.FieldStateVersion, order.FieldSubscribeID, order.FieldUserSubscribeID:
 			values[i] = new(sql.NullInt64)
-		case order.FieldOrderNo, order.FieldCoupon, order.FieldMethod, order.FieldTradeNo, order.FieldIdempotencyKey, order.FieldIdempotencyHash, order.FieldGuestCheckoutTokenHash, order.FieldSubscribeToken:
+		case order.FieldOrderNo, order.FieldCoupon, order.FieldMethod, order.FieldTradeNo, order.FieldPaymentCurrency, order.FieldPaymentSession, order.FieldIdempotencyKey, order.FieldIdempotencyHash, order.FieldGuestCheckoutTokenHash, order.FieldGuestAuthType, order.FieldGuestIdentifier, order.FieldSubscribeToken:
 			values[i] = new(sql.NullString)
 		case order.FieldCreatedAt, order.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -167,6 +183,12 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CouponDiscount = value.Int64
 			}
+		case order.FieldCouponReserved:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field coupon_reserved", values[i])
+			} else if value.Valid {
+				_m.CouponReserved = value.Bool
+			}
 		case order.FieldPaymentID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field payment_id", values[i])
@@ -204,6 +226,31 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Commission = value.Int64
 			}
+		case order.FieldCommissionRefererID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field commission_referer_id", values[i])
+			} else if value.Valid {
+				_m.CommissionRefererID = value.Int64
+			}
+		case order.FieldPaymentAmount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field payment_amount", values[i])
+			} else if value.Valid {
+				_m.PaymentAmount = value.Int64
+			}
+		case order.FieldPaymentCurrency:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field payment_currency", values[i])
+			} else if value.Valid {
+				_m.PaymentCurrency = value.String
+			}
+		case order.FieldPaymentSession:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field payment_session", values[i])
+			} else if value.Valid {
+				_m.PaymentSession = new(string)
+				*_m.PaymentSession = value.String
+			}
 		case order.FieldStatus:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
@@ -237,6 +284,18 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 				_m.GuestCheckoutTokenHash = new(string)
 				*_m.GuestCheckoutTokenHash = value.String
 			}
+		case order.FieldGuestAuthType:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guest_auth_type", values[i])
+			} else if value.Valid {
+				_m.GuestAuthType = value.String
+			}
+		case order.FieldGuestIdentifier:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guest_identifier", values[i])
+			} else if value.Valid {
+				_m.GuestIdentifier = value.String
+			}
 		case order.FieldSubscribeID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field subscribe_id", values[i])
@@ -249,6 +308,12 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.SubscribeToken = new(string)
 				*_m.SubscribeToken = value.String
+			}
+		case order.FieldUserSubscribeID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field user_subscribe_id", values[i])
+			} else if value.Valid {
+				_m.UserSubscribeID = value.Int64
 			}
 		case order.FieldIsNew:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -336,6 +401,9 @@ func (_m *Order) String() string {
 	builder.WriteString("coupon_discount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CouponDiscount))
 	builder.WriteString(", ")
+	builder.WriteString("coupon_reserved=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CouponReserved))
+	builder.WriteString(", ")
 	builder.WriteString("payment_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.PaymentID))
 	builder.WriteString(", ")
@@ -355,6 +423,20 @@ func (_m *Order) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("commission=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Commission))
+	builder.WriteString(", ")
+	builder.WriteString("commission_referer_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CommissionRefererID))
+	builder.WriteString(", ")
+	builder.WriteString("payment_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.PaymentAmount))
+	builder.WriteString(", ")
+	builder.WriteString("payment_currency=")
+	builder.WriteString(_m.PaymentCurrency)
+	builder.WriteString(", ")
+	if v := _m.PaymentSession; v != nil {
+		builder.WriteString("payment_session=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Status))
@@ -377,6 +459,12 @@ func (_m *Order) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	builder.WriteString("guest_auth_type=")
+	builder.WriteString(_m.GuestAuthType)
+	builder.WriteString(", ")
+	builder.WriteString("guest_identifier=")
+	builder.WriteString(_m.GuestIdentifier)
+	builder.WriteString(", ")
 	builder.WriteString("subscribe_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SubscribeID))
 	builder.WriteString(", ")
@@ -384,6 +472,9 @@ func (_m *Order) String() string {
 		builder.WriteString("subscribe_token=")
 		builder.WriteString(*v)
 	}
+	builder.WriteString(", ")
+	builder.WriteString("user_subscribe_id=")
+	builder.WriteString(fmt.Sprintf("%v", _m.UserSubscribeID))
 	builder.WriteString(", ")
 	builder.WriteString("is_new=")
 	builder.WriteString(fmt.Sprintf("%v", _m.IsNew))

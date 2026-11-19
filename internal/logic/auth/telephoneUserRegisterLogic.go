@@ -121,13 +121,6 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		Password:          pwd,
 		Algo:              tool.PasswordAlgoArgon2id,
 		OnlyFirstPurchase: &l.svcCtx.Config.Invite.OnlyFirstPurchase,
-		AuthMethods: []user.AuthMethods{
-			{
-				AuthType:       "mobile",
-				AuthIdentifier: phoneNumber,
-				Verified:       true,
-			},
-		},
 	}
 	if referer != nil {
 		userInfo.RefererId = referer.Id
@@ -135,6 +128,11 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
 		// Save user information
 		if err := store.User().Insert(l.ctx, userInfo); err != nil {
+			return err
+		}
+		if err := store.User().InsertUserAuthMethods(l.ctx, &user.AuthMethods{
+			UserId: userInfo.Id, AuthType: "mobile", AuthIdentifier: phoneNumber, Verified: true,
+		}); err != nil {
 			return err
 		}
 		// Generate ReferCode

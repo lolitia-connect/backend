@@ -29,19 +29,36 @@ func NewFilterTrafficLogDetailsLogic(ctx context.Context, svcCtx *svc.ServiceCon
 
 func (l *FilterTrafficLogDetailsLogic) FilterTrafficLogDetails(req *types.FilterTrafficLogDetailsRequest) (resp *types.FilterTrafficLogDetailsResponse, err error) {
 	var start, end time.Time
-	if req.Date != "" {
-		day, err := time.ParseInLocation("2006-01-02", req.Date, time.Local)
+	if req.StartDate != "" || req.EndDate != "" {
+		if req.StartDate != "" {
+			start, err = time.ParseInLocation(time.DateOnly, req.StartDate, time.Local)
+			if err != nil {
+				return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "invalid start date: %v", err)
+			}
+		}
+		if req.EndDate != "" {
+			end, err = time.ParseInLocation(time.DateOnly, req.EndDate, time.Local)
+			if err != nil {
+				return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "invalid end date: %v", err)
+			}
+			if !start.IsZero() && end.Before(start) {
+				return nil, xerr.NewErrCode(xerr.InvalidParams)
+			}
+			end = end.AddDate(0, 0, 1)
+		}
+	} else if req.Date != "" {
+		day, err := time.ParseInLocation(time.DateOnly, req.Date, time.Local)
 		if err != nil {
 			l.Logger.Errorw("[FilterTrafficLogDetails] Date Parse Error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), " date parse error: %s", err.Error())
 		}
 		start = day
-		end = day.Add(24 * time.Hour)
+		end = day.AddDate(0, 0, 1)
 	} else {
 		// query today
 		now := time.Now()
 		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		end = start.Add(24 * time.Hour)
+		end = start.AddDate(0, 0, 1)
 	}
 	data, total, err := l.svcCtx.Store.TrafficLog().QueryTrafficLogDetails(l.ctx, &traffic.TrafficLogDetailsFilter{
 		ServerId:    req.ServerId,

@@ -12,7 +12,10 @@ import (
 func GetOrderListHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 	return func(c *hertzx.Context) {
 		var req types.GetOrderListRequest
-		_ = c.ShouldBind(&req)
+		if err := c.ShouldBind(&req); err != nil {
+			result.ParamErrorResult(c, err)
+			return
+		}
 		validateErr := svcCtx.Validate(&req)
 		if validateErr != nil {
 			result.ParamErrorResult(c, validateErr)

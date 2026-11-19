@@ -147,8 +147,11 @@ func (m *customTrafficModel) QueryTrafficLogDetails(ctx context.Context, filter 
 	if filter.ServerId != 0 {
 		predicates = append(predicates, enttrafficlog.ServerID(filter.ServerId))
 	}
-	if !filter.Start.IsZero() && !filter.End.IsZero() {
-		predicates = append(predicates, timeRange(filter.Start, filter.End))
+	if !filter.Start.IsZero() {
+		predicates = append(predicates, enttrafficlog.TimestampGTE(filter.Start))
+	}
+	if !filter.End.IsZero() {
+		predicates = append(predicates, enttrafficlog.TimestampLT(filter.End))
 	}
 	if filter.UserId != 0 {
 		predicates = append(predicates, enttrafficlog.UserID(filter.UserId))

@@ -12,7 +12,10 @@ import (
 func UserLoginHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 	return func(c *hertzx.Context) {
 		var req types.UserLoginRequest
-		_ = c.ShouldBind(&req)
+		if err := c.ShouldBind(&req); err != nil {
+			result.ParamErrorResult(c, err)
+			return
+		}
 		// get client ip
 		req.IP = c.ClientIP()
 		req.UserAgent = c.Request.UserAgent()

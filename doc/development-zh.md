@@ -53,6 +53,25 @@
 `go run entgo.io/ent/cmd/ent generate ./ent/schema`。数据库结构变更仍以
 `initialize/migrate/database/` 下成对的手写 SQL 迁移为准。
 
+### 请求解析与更新约定
+
+- Handler 必须检查 `ShouldBind` / `ShouldBindJSON` / `ShouldBindQuery` 的返回错误，失败时调用
+  `result.ParamErrorResult` 并立即返回，不能用未完成解析的零值继续查询或更新。
+  参数错误沿用 HTTP 200 响应包中的业务码 `400`。
+- GET/HEAD 从查询参数绑定，即使请求带有 `Content-Type: application/json`；写入请求继续按内容类型解析，
+  显式的 `false` 和 `0` 不应丢失。
+- 账号、登录方式及初始钱包应在同一事务中创建。ent 的用户 `Insert` 不会自动保存 `AuthMethods`，
+  必须显式调用 `InsertUserAuthMethods`；手机号统一使用 E.164 格式。
+  `/v1/auth/register/telephone` 复用手机号注册流程，并由 Handler 提供实际客户端 IP 和 User-Agent。
+- 更新认证方式时以 `method` 查找原记录；只切换 `enabled` 不应重置现有配置或修改记录 ID。
+  非对象配置和邮件/手机配置中的错误字段类型应在保存前拒绝。
+- 用户规则接口传入空数组会清空规则，省略该字段则保留原规则。管理端用户订阅列表遵循分页参数；订阅访问日志按用户、订阅和日志类型筛选，
+  从日志内容还原 IP、User-Agent 和订阅信息。
+- 流量日志的 `start_date` / `end_date` 为包含首尾日期的范围，优先于单日 `date`；允许仅指定一端。
+  今日聚合与历史日志使用同一日期筛选，合并分页返回完整总数，超出最后一页返回空列表。
+  流量明细使用本地日历日边界 `[开始日零点, 结束日次日零点)`，未提供日期时仍默认查询今日。
+  单个用户订阅流量接口的 `start_time` / `end_time` 使用 Unix 毫秒时间戳，包含开始时刻、不包含结束时刻。
+
 ### 多平台构建
 
 使用 `Makefile` 构建多种平台（如 Linux、Windows、macOS）：

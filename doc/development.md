@@ -54,6 +54,30 @@ The data layer is entgo: after editing `ent/schema/` run `go generate ./ent`, or
 `go run entgo.io/ent/cmd/ent generate ./ent/schema` directly. Schema changes still land as paired
 hand-written SQL migrations under `initialize/migrate/database/`.
 
+### Request parsing and update semantics
+
+- Handlers must check errors from `ShouldBind`, `ShouldBindJSON`, and `ShouldBindQuery`, call
+  `result.ParamErrorResult`, and return before business logic. Never process the partial zero values
+  of an invalid request. Parameter errors retain the existing HTTP 200 envelope with business code `400`.
+- GET/HEAD bind query parameters even with `Content-Type: application/json`; write requests still
+  follow their content type. Explicit `false` and `0` values must survive binding.
+- Create accounts, login identities, and opening wallets in one transaction. The ent user `Insert`
+  does not persist `AuthMethods` automatically: call `InsertUserAuthMethods` explicitly, using E.164
+  phone identifiers. `/v1/auth/register/telephone` uses the phone registration flow, with the actual
+  client IP and User-Agent supplied by its handler.
+- Authentication configuration updates resolve the existing record by `method`. Toggling `enabled`
+  must not reset saved configuration or replace the row ID. Reject non-object configurations and
+  invalid email/mobile field types before saving.
+- An explicit empty user-rules array clears the rules; omitting it keeps the existing rules.
+  Admin user subscriptions respect pagination. Subscription access logs filter by user, subscription,
+  and log type and decode IP, User-Agent, and subscription metadata from their content.
+- Traffic logs accept inclusive `start_date` / `end_date` ranges, including open-ended ranges, taking
+  precedence over a single `date`. Live and archived rows share the filter and combined pagination
+  reports the full total, with an empty list beyond the last page. Traffic details use local calendar
+  boundaries `[start midnight, midnight after end)`; without dates they still default to today.
+  The per-user subscription traffic endpoint accepts Unix-millisecond `start_time` / `end_time`
+  bounds, including the start and excluding the end.
+
 ### Build for Multiple Platforms
 
 Use the `Makefile` to build for various platforms (e.g., Linux, Windows, macOS):

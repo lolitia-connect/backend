@@ -34,18 +34,18 @@ func (l *UpdateUserRulesLogic) UpdateUserRules(req *types.UpdateUserRulesRequest
 		zap.S().Error("current user is not found in context")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
-	if len(req.Rules) > 0 {
-		bytes, err := json.Marshal(req.Rules)
-		if err != nil {
-			l.Logger.Errorf("UpdateUserRulesLogic json marshal rules error: %v", err)
-			return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "json marshal rules failed: %v", err.Error())
-		}
-		u.Rules = string(bytes)
-		err = l.svcCtx.Store.User().Update(l.ctx, u)
-		if err != nil {
-			l.Logger.Errorf("UpdateUserRulesLogic UpdateUserRules error: %v", err)
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update user rules failed: %v", err.Error())
-		}
+	if req.Rules == nil {
+		return nil
+	}
+	bytes, err := json.Marshal(req.Rules)
+	if err != nil {
+		l.Logger.Errorf("UpdateUserRulesLogic json marshal rules error: %v", err)
+		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "json marshal rules failed: %v", err.Error())
+	}
+	u.Rules = string(bytes)
+	if err := l.svcCtx.Store.User().Update(l.ctx, u); err != nil {
+		l.Logger.Errorf("UpdateUserRulesLogic UpdateUserRules error: %v", err)
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update user rules failed: %v", err.Error())
 	}
 	return nil
 }

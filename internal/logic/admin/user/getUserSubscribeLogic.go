@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"sort"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -38,7 +39,18 @@ func (l *GetUserSubscribeLogic) GetUserSubscribe(req *types.GetUserSubscribeList
 		Total: int64(len(data)),
 	}
 
-	for _, item := range data {
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.Size <= 0 {
+		req.Size = 10
+	}
+	if req.Page-1 > len(data)/req.Size {
+		return resp, nil
+	}
+	sort.Slice(data, func(i, j int) bool { return data[i].Id < data[j].Id })
+	start := (req.Page - 1) * req.Size
+	for _, item := range data[start:min(start+req.Size, len(data))] {
 		var sub types.UserSubscribe
 		tool.DeepCopy(&sub, item)
 		sub.Short, _ = tool.FixedUniqueString(item.Token, 8, "")

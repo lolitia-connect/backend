@@ -49,7 +49,8 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 		contentFilters["subscribe_id"] = req.UserSubscribeId
 	}
 
-	if req.Date == today || req.Date == "" {
+	dateFilter := &log.FilterParams{Data: req.Date, StartDate: req.StartDate, EndDate: req.EndDate}
+	if trafficDateIncluded(dateFilter, today) {
 		now := time.Now()
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 		end := start.AddDate(0, 0, 1)
@@ -88,6 +89,9 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 			Size:         max(need, 1),
 			Offset:       &historyOffset,
 			Type:         log.TypeSubscribeTraffic.Uint8(),
+			Data:         req.Date,
+			StartDate:    req.StartDate,
+			EndDate:      req.EndDate,
 			ContentInt64: contentFilters,
 		})
 
@@ -127,6 +131,8 @@ func (l *FilterUserSubscribeTrafficLogLogic) FilterUserSubscribeTrafficLog(req *
 		Size:         req.Size,
 		Type:         log.TypeSubscribeTraffic.Uint8(),
 		Data:         req.Date,
+		StartDate:    req.StartDate,
+		EndDate:      req.EndDate,
 		ContentInt64: contentFilters,
 	})
 	if err != nil {

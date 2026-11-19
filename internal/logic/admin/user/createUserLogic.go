@@ -2,15 +2,16 @@ package user
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/model/wallet"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/phone"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -51,14 +52,20 @@ func (l *CreateUserLogic) CreateUser(req *types.CreateUserRequest) error {
 	var ams []user.AuthMethods
 
 	if req.TelephoneAreaCode != "" && req.Telephone != "" {
-		phone := fmt.Sprintf("%s-%s", req.TelephoneAreaCode, req.Telephone)
-		_, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phone)
+		phoneNumber, err := phone.FormatToE164(req.TelephoneAreaCode, req.Telephone)
+		if err != nil {
+			return errors.Wrap(xerr.NewErrCode(xerr.TelephoneError), "invalid telephone number")
+		}
+		_, err = l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)
 		if err == nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.TelephoneExist), "telephone exist")
 		}
+		if !ent.IsNotFound(err) {
+			return errors.Wrap(xerr.NewErrCode(xerr.DatabaseQueryError), "query telephone identity failed")
+		}
 		ams = append(ams, user.AuthMethods{
 			AuthType:       "mobile",
-			AuthIdentifier: phone,
+			AuthIdentifier: phoneNumber,
 		})
 	}
 	if req.Email != "" {
@@ -66,13 +73,14 @@ func (l *CreateUserLogic) CreateUser(req *types.CreateUserRequest) error {
 		if err == nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.EmailExist), "email exist")
 		}
+		if !ent.IsNotFound(err) {
+			return errors.Wrap(xerr.NewErrCode(xerr.DatabaseQueryError), "query email identity failed")
+		}
 		ams = append(ams, user.AuthMethods{
 			AuthType:       "email",
 			AuthIdentifier: req.Email,
 		})
 	}
-
-	newUser.AuthMethods = ams
 
 	// todo: get product id and duration
 	if req.RefererUser != "" {
@@ -87,21 +95,23 @@ func (l *CreateUserLogic) CreateUser(req *types.CreateUserRequest) error {
 		newUser.RefererId = u.Id
 	}
 
-	err := l.svcCtx.Store.User().Insert(l.ctx, newUser)
-	if err != nil {
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert user failed: %v", err.Error())
-	}
-	// The admin console can seed an opening balance; the money lives in the
-	// billing-owned wallet now, so it is created alongside the identity row.
-	if req.Balance != 0 || req.GiftAmount != 0 || req.Commission != 0 {
-		if err := l.svcCtx.Store.Wallet().Insert(l.ctx, &wallet.Wallet{
-			UserId:     newUser.Id,
-			Balance:    req.Balance,
-			GiftAmount: req.GiftAmount,
-			Commission: req.Commission,
-		}); err != nil {
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert user wallet failed: %v", err.Error())
+	return l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		if err := store.User().Insert(l.ctx, newUser); err != nil {
+			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert user failed: %v", err.Error())
 		}
-	}
-	return nil
+		for _, method := range ams {
+			method.UserId = newUser.Id
+			if err := store.User().InsertUserAuthMethods(l.ctx, &method); err != nil {
+				return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert login method failed: %v", err)
+			}
+		}
+		if req.Balance != 0 || req.GiftAmount != 0 || req.Commission != 0 {
+			if err := store.Wallet().Insert(l.ctx, &wallet.Wallet{
+				UserId: newUser.Id, Balance: req.Balance, GiftAmount: req.GiftAmount, Commission: req.Commission,
+			}); err != nil {
+				return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "insert user wallet failed: %v", err.Error())
+			}
+		}
+		return nil
+	})
 }

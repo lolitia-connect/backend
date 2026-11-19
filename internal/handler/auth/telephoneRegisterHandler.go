@@ -12,13 +12,18 @@ import (
 func TelephoneRegisterHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 	return func(c *hertzx.Context) {
 		var req types.TelephoneRegisterRequest
-		_ = c.ShouldBind(&req)
+		if err := c.ShouldBind(&req); err != nil {
+			result.ParamErrorResult(c, err)
+			return
+		}
 		validateErr := svcCtx.Validate(&req)
 		if validateErr != nil {
 			result.ParamErrorResult(c, validateErr)
 			return
 		}
 
+		req.IP = c.ClientIP()
+		req.UserAgent = c.Request.UserAgent()
 		l := auth.NewTelephoneRegisterLogic(c.Request.Context(), svcCtx)
 		resp, err := l.TelephoneRegister(&req)
 		result.HttpResult(c, resp, err)

@@ -38,34 +38,43 @@ func (l *UpdateAuthMethodConfigLogic) UpdateAuthMethodConfig(req *types.UpdateAu
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find one by method failed: %v", err.Error())
 	}
 
-	tool.DeepCopy(method, req)
+	if req.Enabled != nil {
+		method.Enabled = req.Enabled
+	}
 	if req.Config != nil {
-		_, exist := req.Config.(map[string]interface{})
-		if !exist {
-			req.Config = initializePlatformConfig(req.Method).(string)
+		if _, ok := req.Config.(map[string]interface{}); !ok {
+			return nil, errors.Wrap(xerr.NewErrCode(xerr.InvalidParams), "config must be an object")
+		}
+		config := req.Config
+		configs, err := json.Marshal(config)
+		if err != nil {
+			return nil, errors.Wrap(xerr.NewErrCode(xerr.InvalidParams), "invalid config")
 		}
 		if req.Method == "email" {
-			configs, _ := json.Marshal(req.Config)
 			emailConfig := new(auth.EmailAuthConfig)
-			emailConfig.Unmarshal(string(configs))
-			req.Config = emailConfig
+			if err := json.Unmarshal(configs, emailConfig); err != nil {
+				return nil, errors.Wrap(xerr.NewErrCode(xerr.InvalidParams), "invalid email config")
+			}
+			config = emailConfig
 		}
-
 		if req.Method == "mobile" {
-			configs, _ := json.Marshal(req.Config)
 			mobileConfig := new(auth.MobileAuthConfig)
-			mobileConfig.Unmarshal(string(configs))
-			req.Config = mobileConfig
+			if err := json.Unmarshal(configs, mobileConfig); err != nil {
+				return nil, errors.Wrap(xerr.NewErrCode(xerr.InvalidParams), "invalid mobile config")
+			}
+			config = mobileConfig
 		}
-
-		bytes, err := json.Marshal(req.Config)
+		bytes, err := json.Marshal(config)
 		if err != nil {
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "marshal config failed: %v", err.Error())
 		}
 		method.Config = string(bytes)
-	} else {
-		// initialize platform config
-		method.Config = initializePlatformConfig(req.Method).(string)
+	} else if method.Config == "" {
+		config, ok := initializePlatformConfig(req.Method).(string)
+		if !ok {
+			return nil, errors.Wrap(xerr.NewErrCode(xerr.InvalidParams), "unsupported auth method")
+		}
+		method.Config = config
 	}
 	err = l.svcCtx.Store.Auth().Update(l.ctx, method)
 	if err != nil {

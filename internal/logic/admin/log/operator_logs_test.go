@@ -62,6 +62,101 @@ func TestTrafficLogPaginationAcrossCurrentAndHistory(t *testing.T) {
 	}
 }
 
+func TestServerTrafficPaginationAcrossCurrentAndHistory(t *testing.T) {
+	service, client := operatorLogFixture(t)
+	ctx := context.Background()
+	client.TrafficLog.Create().SetServerID(1).SetUserID(7).SetSubscribeID(12).SetUpload(9).SaveX(ctx)
+	client.TrafficLog.Create().SetServerID(2).SetUserID(8).SetSubscribeID(120).SetUpload(99).SaveX(ctx)
+	for _, item := range []struct{ server, upload int64 }{{1, 1}, {2, 99}, {1, 2}} {
+		client.SystemLog.Create().SetType(modellog.TypeServerTraffic.Uint8()).SetObjectID(item.server).
+			SetDate(time.Now().AddDate(0, 0, -1).Format(time.DateOnly)).SetContent(fmt.Sprintf(`{"upload":%d}`, item.upload)).SaveX(ctx)
+	}
+	for _, check := range []struct {
+		page, size int
+		uploads    []int64
+	}{{1, 2, []int64{9, 2}}, {2, 2, []int64{1}}, {99, 2, nil}, {0, 0, []int64{9, 2, 1}}} {
+		t.Run(fmt.Sprintf("page-%d-size-%d", check.page, check.size), func(t *testing.T) {
+			response, err := NewFilterServerTrafficLogLogic(ctx, service).FilterServerTrafficLog(&types.FilterServerTrafficLogRequest{
+				FilterLogParams: types.FilterLogParams{Page: check.page, Size: check.size}, ServerId: 1,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.Total != 3 || len(response.List) != len(check.uploads) {
+				t.Fatalf("unexpected combined page: %+v", response)
+			}
+			for index, upload := range check.uploads {
+				if response.List[index].Upload != upload || response.List[index].ServerId != 1 {
+					t.Fatalf("page mixed servers or lost history: %+v", response.List)
+				}
+			}
+		})
+	}
+}
+
+func TestTrafficLogDateFiltersApplyToLiveAndArchivedRows(t *testing.T) {
+	service, client := operatorLogFixture(t)
+	ctx := context.Background()
+	now := time.Now()
+	today, yesterday, earlier := now.Format(time.DateOnly), now.AddDate(0, 0, -1).Format(time.DateOnly), now.AddDate(0, 0, -2).Format(time.DateOnly)
+	client.TrafficLog.Create().SetServerID(1).SetUserID(7).SetSubscribeID(12).SetUpload(9).SaveX(ctx)
+	for _, date := range []string{earlier, yesterday} {
+		client.SystemLog.Create().SetType(modellog.TypeServerTraffic.Uint8()).SetObjectID(1).SetDate(date).SetContent(`{"upload":2}`).SaveX(ctx)
+		client.SystemLog.Create().SetType(modellog.TypeSubscribeTraffic.Uint8()).SetDate(date).SetContent(`{"user_id":7,"subscribe_id":12,"upload":2}`).SaveX(ctx)
+	}
+	for _, test := range []struct {
+		name, date, start, end string
+		want                   int64
+	}{
+		{"exact today", today, "", "", 1},
+		{"exact historical", yesterday, "", "", 1},
+		{"historical range", "", yesterday, yesterday, 1},
+		{"range includes today", "", yesterday, today, 2},
+		{"range overrides date", today, yesterday, yesterday, 1},
+		{"open start", "", today, "", 1},
+		{"open end", "", "", earlier, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			filter := types.FilterLogParams{Page: 1, Size: 10, Date: test.date, StartDate: test.start, EndDate: test.end}
+			servers, err := NewFilterServerTrafficLogLogic(ctx, service).FilterServerTrafficLog(&types.FilterServerTrafficLogRequest{FilterLogParams: filter, ServerId: 1})
+			if err != nil || servers.Total != test.want || int64(len(servers.List)) != test.want {
+				t.Errorf("server date filter: response=%+v, err=%v, want=%d", servers, err, test.want)
+			}
+			users, err := NewFilterUserSubscribeTrafficLogLogic(ctx, service).FilterUserSubscribeTrafficLog(&types.FilterSubscribeTrafficRequest{FilterLogParams: filter, UserId: 7, UserSubscribeId: 12})
+			if err != nil || users.Total != test.want || int64(len(users.List)) != test.want {
+				t.Errorf("user date filter: response=%+v, err=%v, want=%d", users, err, test.want)
+			}
+		})
+	}
+}
+
+func TestTrafficDetailsDateRangesIncludeWholeEndDay(t *testing.T) {
+	service, client := operatorLogFixture(t)
+	ctx := context.Background()
+	today := time.Now()
+	day := time.Date(today.Year(), today.Month(), today.Day()-1, 0, 0, 0, 0, time.Local)
+	for _, timestamp := range []time.Time{day.Add(-time.Second), day, day.AddDate(0, 0, 1).Add(-time.Millisecond), day.AddDate(0, 0, 1)} {
+		client.TrafficLog.Create().SetServerID(1).SetUserID(7).SetSubscribeID(12).SetTimestamp(timestamp).SaveX(ctx)
+	}
+	for _, test := range []struct {
+		name, start, end string
+		want             int64
+	}{
+		{"one day", day.Format(time.DateOnly), day.Format(time.DateOnly), 2},
+		{"open start", day.Format(time.DateOnly), "", 3},
+		{"open end", "", day.Format(time.DateOnly), 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := NewFilterTrafficLogDetailsLogic(ctx, service).FilterTrafficLogDetails(&types.FilterTrafficLogDetailsRequest{
+				FilterLogParams: types.FilterLogParams{Page: 1, Size: 10, Date: today.Format(time.DateOnly), StartDate: test.start, EndDate: test.end}, ServerId: 1,
+			})
+			if err != nil || response.Total != test.want || int64(len(response.List)) != test.want {
+				t.Fatalf("detail date filter: response=%+v, err=%v, want=%d", response, err, test.want)
+			}
+		})
+	}
+}
+
 func TestOperatorLogFiltersKeepActorsAndPayersSeparate(t *testing.T) {
 	service, _ := operatorLogFixture(t)
 	ctx := context.Background()

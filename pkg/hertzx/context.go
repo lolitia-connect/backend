@@ -101,6 +101,9 @@ func (c *Context) AbortWithStatus(code int) {
 }
 
 func (c *Context) ShouldBind(obj interface{}) error {
+	if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
+		return c.ShouldBindQuery(obj)
+	}
 	if isJSONRequest(c.Request) {
 		return c.ShouldBindJSON(obj)
 	}

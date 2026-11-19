@@ -23,8 +23,6 @@ func NewTelephoneRegisterLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 	}
 }
 
-func (l *TelephoneRegisterLogic) TelephoneRegister(req *types.TelephoneRegisterRequest) (resp *types.LoginResponse, err error) {
-	// todo: add your logic here and delete this line
-
-	return
+func (l *TelephoneRegisterLogic) TelephoneRegister(req *types.TelephoneRegisterRequest) (*types.LoginResponse, error) {
+	return NewTelephoneUserRegisterLogic(l.ctx, l.svcCtx).TelephoneUserRegister(req)
 }

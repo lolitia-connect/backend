@@ -26,133 +26,78 @@ func NewFilterServerTrafficLogLogic(ctx context.Context, svcCtx *svc.ServiceCont
 		svcCtx: svcCtx,
 	}
 }
-func (l *FilterServerTrafficLogLogic) FilterServerTrafficLog(req *types.FilterServerTrafficLogRequest) (resp *types.FilterServerTrafficLogResponse, err error) {
-	today := time.Now().Format("2006-01-02")
+func (l *FilterServerTrafficLogLogic) FilterServerTrafficLog(req *types.FilterServerTrafficLogRequest) (*types.FilterServerTrafficLogResponse, error) {
+	if req.Size <= 0 {
+		req.Size = 10
+	}
+	if req.Size > 100 {
+		req.Size = 100
+	}
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+
+	now := time.Now()
+	today := now.Format(time.DateOnly)
+	filter := &log.FilterParams{
+		Type:      log.TypeServerTraffic.Uint8(),
+		ObjectID:  req.ServerId,
+		Data:      req.Date,
+		StartDate: req.StartDate,
+		EndDate:   req.EndDate,
+	}
 	var list []types.ServerTrafficLog
-	var total int64
-
-	if req.Date == today || req.Date == "" {
-		now := time.Now()
+	if trafficDateIncluded(filter, today) {
 		start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
-		end := start.Add(24 * time.Hour)
-
-		serverTraffic, err := l.svcCtx.Store.TrafficLog().QueryServerTrafficRanking(l.ctx, start, end)
+		serverTraffic, err := l.svcCtx.Store.TrafficLog().QueryServerTrafficRanking(l.ctx, start, start.AddDate(0, 0, 1))
 		if err != nil {
-			l.Logger.Errorw("[FilterServerTrafficLog] Query Database Error", zap.Any("error", err.Error()))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "today traffic query error: %s", err.Error())
 		}
-
-		for _, v := range serverTraffic {
-			list = append(list, types.ServerTrafficLog{
-				ServerId: v.ServerId,
-				Upload:   v.Upload,
-				Download: v.Download,
-				Total:    v.Total,
-				Date:     today,
-				Details:  true,
-			})
-		}
-
-		todayTotal := len(list)
-
-		startIdx := (req.Page - 1) * req.Size
-		endIdx := startIdx + req.Size
-
-		if startIdx < todayTotal {
-			if endIdx > todayTotal {
-				endIdx = todayTotal
-			}
-			pageData := list[startIdx:endIdx]
-			return &types.FilterServerTrafficLogResponse{
-				List:  pageData,
-				Total: int64(todayTotal),
-			}, nil
-		}
-
-		need := endIdx - todayTotal
-		historyPage := (need + req.Size - 1) / req.Size // 算出需要的历史页数
-		historyData, historyTotal, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-			Page: historyPage,
-			Size: need,
-			Type: log.TypeServerTraffic.Uint8(),
-		})
-		if err != nil {
-			l.Logger.Errorw("[FilterServerTrafficLog] Query History Error", zap.Any("error", err.Error()))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "history query error: %s", err.Error())
-		}
-
-		for _, item := range historyData {
-			var content log.ServerTraffic
-			if err = content.Unmarshal([]byte(item.Content)); err != nil {
-				l.Logger.Errorw("[FilterServerTrafficLog] Unmarshal Error", zap.Any("error", err.Error()), zap.Any("content", item.Content))
+		for _, item := range serverTraffic {
+			if req.ServerId != 0 && item.ServerId != req.ServerId {
 				continue
 			}
-
-			hasDetails := true
-			if l.svcCtx.Config.Log.AutoClear {
-				last := now.AddDate(0, 0, int(-l.svcCtx.Config.Log.ClearDays))
-				dataTime, err := time.Parse(time.DateOnly, item.Date)
-				if err != nil {
-					l.Logger.Errorw("[FilterServerTrafficLog] Parse Date Error", zap.Any("error", err.Error()), zap.Any("date", item.Date))
-				} else {
-					if dataTime.Before(last) {
-						hasDetails = false
-					} else {
-						hasDetails = true
-					}
-				}
-			}
-
 			list = append(list, types.ServerTrafficLog{
-				ServerId: item.ObjectID,
-				Upload:   content.Upload,
-				Download: content.Download,
-				Total:    content.Total,
-				Date:     item.Date,
-				Details:  hasDetails,
+				ServerId: item.ServerId, Upload: item.Upload, Download: item.Download,
+				Total: item.Total, Date: today, Details: true,
 			})
 		}
-
-		// 返回最终分页数据
-		if endIdx > len(list) {
-			endIdx = len(list)
-		}
-		pageData := list[startIdx:endIdx]
-
-		return &types.FilterServerTrafficLogResponse{
-			List:  pageData,
-			Total: int64(todayTotal) + historyTotal,
-		}, nil
 	}
 
-	data, total, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page: req.Page,
-		Size: req.Size,
-		Type: log.TypeServerTraffic.Uint8(),
-	})
+	todayTotal := len(list)
+	startIdx := (req.Page - 1) * req.Size
+	if startIdx < 0 {
+		return nil, xerr.NewErrCode(xerr.InvalidParams)
+	}
+	pageData := make([]types.ServerTrafficLog, 0, req.Size)
+	if startIdx < todayTotal {
+		pageData = append(pageData, list[startIdx:min(startIdx+req.Size, todayTotal)]...)
+	}
+	historyOffset := max(startIdx-todayTotal, 0)
+	need := req.Size - len(pageData)
+	filter.Page, filter.Size, filter.Offset = 1, max(need, 1), &historyOffset
+	historyData, historyTotal, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, filter)
 	if err != nil {
-		l.Logger.Errorw("[FilterServerTrafficLog] Query Database Error", zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "history query error: %s", err.Error())
 	}
-
-	for _, item := range data {
+	for _, item := range historyData {
+		if need == 0 {
+			break
+		}
 		var content log.ServerTraffic
-		if err = content.Unmarshal([]byte(item.Content)); err != nil {
-			l.Logger.Errorw("[FilterServerTrafficLog] Unmarshal Error", zap.Any("error", err.Error()), zap.Any("content", item.Content))
+		if err := content.Unmarshal([]byte(item.Content)); err != nil {
+			l.Logger.Errorw("[FilterServerTrafficLog] Unmarshal Error", zap.Error(err))
 			continue
 		}
-		list = append(list, types.ServerTrafficLog{
-			ServerId: item.ObjectID,
-			Upload:   content.Upload,
-			Download: content.Download,
-			Total:    content.Total,
-			Date:     item.Date,
-			Details:  false,
+		hasDetails := true
+		if l.svcCtx.Config.Log.AutoClear {
+			day, err := time.ParseInLocation(time.DateOnly, item.Date, time.Local)
+			hasDetails = err == nil && !day.Before(now.AddDate(0, 0, -int(l.svcCtx.Config.Log.ClearDays)))
+		}
+		pageData = append(pageData, types.ServerTrafficLog{
+			ServerId: item.ObjectID, Upload: content.Upload, Download: content.Download,
+			Total: content.Total, Date: item.Date, Details: hasDetails,
 		})
 	}
-
-	return &types.FilterServerTrafficLogResponse{
-		List:  list,
-		Total: total,
-	}, nil
+	return &types.FilterServerTrafficLogResponse{List: pageData, Total: int64(todayTotal) + historyTotal}, nil
 }

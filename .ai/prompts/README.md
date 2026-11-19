@@ -6,7 +6,9 @@ Keep READMEs as project entry points, not agent memory. Durable engineering inst
 
 ## 当前必读入口（2026-11-19）
 
-先读 [current-customizations.md](./current-customizations.md) 和 [v1.21.7 后的定制台账](../sync-diffs/v1.21.7-local-2026-11-19.md)。已提交快照为 `dc46571f`；UTC/02170 等工作树改动单列，不能当成已发布行为。普通开发也必须遵守这些约束，不仅是同步上游时。
+先读 [current-customizations.md](./current-customizations.md) 和[主台账第 8 节 B08–B16](../sync-diffs/v1.21.7-local-2026-11-19.md#8-截止后增量至-57973bf2)。最新固定 `57973bf2`：原 `dc46571f` 后新增 2 次提交、259 路径；从同步落点累计 9 次提交（7 非 merge）、277 路径。原 W01 UTC/02170 已随 `a6b11dfe` 提交，仍无真实迁移/回滚/部署验收保证；不要再当成未提交待办。普通开发也必须遵守这些约束，不仅是同步上游时。
+
+[完整增量 Markdown 明细](../sync-diffs/v1.21.7-local-2026-11-19-2220.files.md)覆盖 UTC/本地显示、原 OAuth 头像保留、绑定失败早返回、手机号与身份事务、认证配置、订阅/流量查询、显式清空规则及 README 归档。旧提交/指纹继续保留，核对实际 HEAD/工作树后再接手。
 
 - 日常开发/修复：[current-customizations.md](./current-customizations.md)。
 - 再次同步上游：[sync-upstream.md](./sync-upstream.md)，使用明确目标 tag/SHA，不沿用旧 v1.3.8 示例范围。

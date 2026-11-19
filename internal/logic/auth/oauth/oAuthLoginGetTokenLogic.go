@@ -45,7 +45,6 @@ const (
 	// telegramCallbackRetryGrace lets a client re-submit the same widget
 	// result after a timed-out exchange; beyond it, a repeat is a replay.
 	telegramCallbackRetryGrace = 60 * time.Second
-	TelegramDomain             = "ppanel.com"
 )
 
 type oauthRequest struct {
@@ -88,16 +87,24 @@ func (l *OAuthLoginGetTokenLogic) OAuthLoginGetToken(req *types.OAuthLoginGetTok
 
 	userInfo, err = l.handleOAuthProvider(req, requestID, ip, userAgent)
 	if err != nil {
-		// A brand-new identity under forced invitation is not rejected: the
-		// provider identity has been verified and cached, and the client is
-		// asked to supply an invitation code to finish registration via
-		// /v1/auth/oauth/register. No user record has been written.
-		if inviteErr, ok := err.(*inviteRequiredError); ok {
-			l.Logger.Infow("oauth login requires invite code",
+		// A brand-new identity is not rejected when it only needs more input:
+		// the provider identity has been verified and cached, and the client is
+		// asked to supply an invitation code and/or a real email to finish
+		// registration via /v1/auth/oauth/register. No user record and no
+		// placeholder email have been written.
+		if pending, ok := err.(*oauthRegistrationPending); ok {
+			l.Logger.Infow("oauth login requires additional registration input",
 				zap.Any("request_id", requestID),
 				zap.Any("method", req.Method),
+				zap.Any("invite_required", pending.inviteRequired),
+				zap.Any("email_required", pending.emailRequired),
 			)
-			return &types.LoginResponse{InviteRequired: true, OAuthToken: inviteErr.ticket}, nil
+			return &types.LoginResponse{
+				InviteRequired: pending.inviteRequired,
+				EmailRequired:  pending.emailRequired,
+				EmailVerify:    pending.emailVerify,
+				OAuthToken:     pending.ticket,
+			}, nil
 		}
 		return nil, err
 	}
@@ -186,7 +193,7 @@ func (l *OAuthLoginGetTokenLogic) google(req *types.OAuthLoginGetTokenRequest, r
 		zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
 	)
 
-	return l.findOrRegisterUser(OAuthGoogle, googleUserInfo.OpenID, googleUserInfo.Email, googleUserInfo.Picture, req.Invite, requestID, ip, userAgent)
+	return l.findOrRegisterUser(OAuthGoogle, googleUserInfo.OpenID, googleUserInfo.Email, googleUserInfo.Picture, req.Invite, true, requestID, ip, userAgent)
 }
 
 func (l *OAuthLoginGetTokenLogic) github(req *types.OAuthLoginGetTokenRequest, requestID, ip, userAgent string) (*user.User, error) {
@@ -235,7 +242,7 @@ func (l *OAuthLoginGetTokenLogic) github(req *types.OAuthLoginGetTokenRequest, r
 		zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
 	)
 
-	return l.findOrRegisterUser(OAuthGithub, openID, githubUserInfo.Email, githubUserInfo.Avatar, req.Invite, requestID, ip, userAgent)
+	return l.findOrRegisterUser(OAuthGithub, openID, githubUserInfo.Email, githubUserInfo.Avatar, req.Invite, true, requestID, ip, userAgent)
 }
 
 func (l *OAuthLoginGetTokenLogic) facebook(req *types.OAuthLoginGetTokenRequest, requestID, ip, userAgent string) (*user.User, error) {
@@ -283,7 +290,7 @@ func (l *OAuthLoginGetTokenLogic) facebook(req *types.OAuthLoginGetTokenRequest,
 		zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
 	)
 
-	return l.findOrRegisterUser(OAuthFacebook, facebookUserInfo.OpenID, facebookUserInfo.Email, facebookUserInfo.Picture, req.Invite, requestID, ip, userAgent)
+	return l.findOrRegisterUser(OAuthFacebook, facebookUserInfo.OpenID, facebookUserInfo.Email, facebookUserInfo.Picture, req.Invite, true, requestID, ip, userAgent)
 }
 
 func (l *OAuthLoginGetTokenLogic) apple(req *types.OAuthLoginGetTokenRequest, requestID, ip, userAgent string) (*user.User, error) {
@@ -383,7 +390,7 @@ func (l *OAuthLoginGetTokenLogic) apple(req *types.OAuthLoginGetTokenRequest, re
 		zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
 	)
 
-	return l.findOrRegisterUser(OAuthApple, appleUnique, email, "", req.Invite, requestID, ip, userAgent)
+	return l.findOrRegisterUser(OAuthApple, appleUnique, email, "", req.Invite, true, requestID, ip, userAgent)
 }
 
 func (l *OAuthLoginGetTokenLogic) telegram(req *types.OAuthLoginGetTokenRequest, requestID, ip, userAgent string) (*user.User, error) {
@@ -438,7 +445,11 @@ func (l *OAuthLoginGetTokenLogic) telegram(req *types.OAuthLoginGetTokenRequest,
 	}
 
 	userID := fmt.Sprintf("%v", *callbackData.Id)
-	email := fmt.Sprintf("%v@%s", *callbackData.Id, TelegramDomain)
+	// Telegram never returns an email address. Earlier builds synthesised a
+	// placeholder like "<id>@ppanel.com" and persisted it as a verified email,
+	// which is neither a real mailbox nor actually verified. Leave the email
+	// empty so registration asks the user for a real address instead.
+	email := ""
 	avatar := ""
 	if callbackData.PhotoUrl != nil {
 		avatar = *callbackData.PhotoUrl
@@ -448,11 +459,10 @@ func (l *OAuthLoginGetTokenLogic) telegram(req *types.OAuthLoginGetTokenRequest,
 		zap.Any("request_id", requestID),
 		zap.Any("provider", OAuthTelegram),
 		zap.Any("user_id", userID),
-		zap.Any("email", email),
 		zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
 	)
 
-	return l.findOrRegisterUser(OAuthTelegram, userID, email, avatar, req.Invite, requestID, ip, userAgent)
+	return l.findOrRegisterUser(OAuthTelegram, userID, email, avatar, req.Invite, true, requestID, ip, userAgent)
 }
 
 // claimTelegramCallback enforces single use of a Telegram widget result. A
@@ -480,7 +490,7 @@ func (l *OAuthLoginGetTokenLogic) claimTelegramCallback(payload, requestID strin
 	return nil
 }
 
-func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite, requestID, ip, userAgent string) (*user.User, error) {
+func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite string, emailVerified bool, requestID, ip, userAgent string) (*user.User, error) {
 	startTime := time.Now()
 	l.Logger.Infow("user registration started",
 		zap.Any("request_id", requestID),
@@ -489,11 +499,14 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite
 		zap.Any("openid", openid),
 	)
 
-	// Resolve the invitation before writing anything. When the caller supplied
-	// a code it must be valid; when invitation is forced and no code was
-	// supplied, the verified provider identity is cached under a one-time
-	// ticket and the caller is asked to provide a code. In neither branch is a
-	// user record created until a usable code is in hand.
+	// Resolve everything the panel requires before writing anything. Two
+	// conditions can defer registration:
+	//   * forced invitation with no code supplied yet, and
+	//   * a provider (e.g. Telegram) that returned no email, so a real address
+	//     must be collected from the user.
+	// When either applies, the verified provider identity is cached under a
+	// one-time ticket and the caller is asked for the missing data. No user
+	// record and no placeholder email are written until the data is in hand.
 	var referer *user.User
 	if invite != "" {
 		var err error
@@ -506,7 +519,11 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite
 			)
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InviteCodeError), "invite code is invalid: %v", err)
 		}
-	} else if l.svcCtx.Config.Invite.ForcedInvite {
+	}
+
+	needInvite := invite == "" && l.svcCtx.Config.Invite.ForcedInvite
+	needEmail := email == ""
+	if needInvite || needEmail {
 		ticket, err := cachePendingOAuth(l.ctx, l.svcCtx.Redis, &pendingOAuthIdentity{
 			Method: method,
 			OpenID: openid,
@@ -521,11 +538,18 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite
 			)
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "cache pending oauth registration failed: %v", err)
 		}
-		l.Logger.Infow("registration requires invite code, provider identity cached",
+		l.Logger.Infow("registration requires additional input, provider identity cached",
 			zap.Any("request_id", requestID),
 			zap.Any("auth_method", method),
+			zap.Any("invite_required", needInvite),
+			zap.Any("email_required", needEmail),
 		)
-		return nil, &inviteRequiredError{ticket: ticket}
+		return nil, &oauthRegistrationPending{
+			ticket:         ticket,
+			inviteRequired: needInvite,
+			emailRequired:  needEmail,
+			emailVerify:    needEmail && l.svcCtx.Config.Email.EnableVerify,
+		}
 	}
 
 	var userInfo *user.User
@@ -574,12 +598,16 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "update refer code failed: %v", err)
 		}
 
-		if err := l.createAuthMethod(store, userInfo.Id, method, openid, requestID); err != nil {
+		// The provider identity is always verified by the provider itself.
+		if err := l.createAuthMethod(store, userInfo.Id, method, openid, true, requestID); err != nil {
 			return err
 		}
 
 		if email != "" {
-			if err := l.createAuthMethod(store, userInfo.Id, AuthEmail, email, requestID); err != nil {
+			// The email carries its own verification state: a provider-supplied
+			// address is trusted, while a user-supplied one is only marked
+			// verified once its code has been checked.
+			if err := l.createAuthMethod(store, userInfo.Id, AuthEmail, email, emailVerified, requestID); err != nil {
 				return err
 			}
 		}
@@ -686,19 +714,20 @@ func (l *OAuthLoginGetTokenLogic) checkEmailExists(store repository.Store, email
 	return nil
 }
 
-func (l *OAuthLoginGetTokenLogic) createAuthMethod(store repository.Store, userID int64, authType, identifier, requestID string) error {
+func (l *OAuthLoginGetTokenLogic) createAuthMethod(store repository.Store, userID int64, authType, identifier string, verified bool, requestID string) error {
 	l.Logger.Debugw("creating auth method",
 		zap.Any("request_id", requestID),
 		zap.Any("user_id", userID),
 		zap.Any("auth_type", authType),
 		zap.Any("identifier", identifier),
+		zap.Any("verified", verified),
 	)
 
 	authMethod := &user.AuthMethods{
 		UserId:         userID,
 		AuthType:       authType,
 		AuthIdentifier: identifier,
-		Verified:       true,
+		Verified:       verified,
 	}
 	if err := store.User().InsertUserAuthMethods(l.ctx, authMethod); err != nil {
 		l.Logger.Errorw("failed to create auth method",
@@ -995,7 +1024,7 @@ func (l *OAuthLoginGetTokenLogic) getTelegramConfig(requestID string) (*auth.Tel
 	return &cfg, nil
 }
 
-func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, avatar, invite, requestID, ip, userAgent string) (*user.User, error) {
+func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, avatar, invite string, emailVerified bool, requestID, ip, userAgent string) (*user.User, error) {
 	l.Logger.Debugw("finding or registering user",
 		zap.Any("request_id", requestID),
 		zap.Any("auth_type", authType),
@@ -1012,7 +1041,7 @@ func (l *OAuthLoginGetTokenLogic) findOrRegisterUser(authType, openID, email, av
 				zap.Any("openid", openID),
 				zap.Any("email", email),
 			)
-			return l.register(email, avatar, authType, openID, invite, requestID, ip, userAgent)
+			return l.register(email, avatar, authType, openID, invite, emailVerified, requestID, ip, userAgent)
 		}
 		l.Logger.Errorw("failed to find user auth method by openid",
 			zap.Any("request_id", requestID),

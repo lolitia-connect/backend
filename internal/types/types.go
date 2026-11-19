@@ -1460,6 +1460,16 @@ type LoginResponse struct {
 	// identity cached server-side. It is echoed back to /v1/auth/oauth/register
 	// together with the invitation code to complete registration.
 	OAuthToken string `json:"oauth_token,omitempty"`
+	// EmailRequired is set when an OAuth sign-in resolved a brand-new identity
+	// whose provider did not supply an email address (e.g. Telegram). The
+	// client must collect a real email from the user and finish registration
+	// via OAuthToken instead of treating the response as a completed login. No
+	// placeholder address is ever persisted on the user's behalf.
+	EmailRequired bool `json:"email_required,omitempty"`
+	// EmailVerify reports that the collected email must be proven with a
+	// verification code (the panel has email verification enabled). The client
+	// sends the code back to /v1/auth/oauth/register in the code field.
+	EmailVerify bool `json:"email_verify,omitempty"`
 }
 
 type MessageLog struct {
@@ -1621,12 +1631,20 @@ type OAuthLoginGetTokenRequest struct {
 	Invite   string      `json:"invite,optional"` // optional invitation code collected before the provider round trip
 }
 
-// OAuthRegisterRequest completes an invitation-gated OAuth registration. It
-// carries the one-time ticket returned by /v1/auth/oauth/login/token (when it
-// answered with invite_required) and the invitation code the user supplied.
+// OAuthRegisterRequest completes a deferred OAuth registration. It carries the
+// one-time ticket returned by /v1/auth/oauth/login/token (when it answered with
+// invite_required or email_required) together with whatever the panel still
+// needs: an invitation code and/or a real email address (plus its verification
+// code when email verification is enabled).
 type OAuthRegisterRequest struct {
 	OAuthToken string `json:"oauth_token" validate:"required"`
-	Invite     string `json:"invite" validate:"required"`
+	Invite     string `json:"invite,optional"`
+	// Email is required only when the provider supplied no address; it must be
+	// a real mailbox the user controls, never a server-generated placeholder.
+	Email string `json:"email,optional"`
+	// Code is the email verification code, required when the panel enables
+	// email verification and an email is being collected.
+	Code string `json:"code,optional"`
 }
 
 type OAuthLoginResponse struct {

@@ -4,9 +4,10 @@ This folder stores version-specific upstream sync analysis and dated fork-custom
 
 ## 当前入口（2026-11-19）
 
-- **先读**：[同步 v1.21.7 后的当前自定义改动](./v1.21.7-local-2026-11-19.md)。固定本地同步落点 `34fd88c8` → HEAD `dc46571f`，并单独记录未提交 UTC 改造。
-- [完整提交/逐文件/工作树 Markdown 索引](./v1.21.7-local-2026-11-19.files.md)：逐项说明改动，保留工作树采样指纹；不包含本次文档自身。
-- [当前开发 agent 约束](../prompts/current-customizations.md)与[后续同步流程](../prompts/sync-upstream.md)。
+- **先读**：[当前主台账及第 8 节 B08–B16](./v1.21.7-local-2026-11-19.md#8-截止后增量至-57973bf2)，最新固定 `57973bf2`。新增 UTC/本地显示、头像保护、请求绑定、账号身份事务、认证配置、订阅/流量查询、规则清空与文档归档。
+- [原始提交/逐文件/工作树 Markdown 索引](./v1.21.7-local-2026-11-19.files.md)保留 `34fd88c8..dc46571f` 的 19 个路径和旧 W01 指纹；[22:20 截止后增量明细](./v1.21.7-local-2026-11-19-2220.files.md)列全两次提交的 **259 路径**。累计按 Git 重算为 **9 次提交（7 非 merge）、277 路径**，不能把两表相加。
+- UTC/02170 已在 `a6b11dfe` 提交；旧“未提交”是历史状态，入库不等于数据库已迁移、可安全回滚或已发布。23:06:02 +08:00 采样时编辑前工作树 clean。
+- [当前开发 agent 约束](../prompts/current-customizations.md)与[后续同步流程](../prompts/sync-upstream.md)。长期规则进[开发指南](../../doc/development-zh.md)、部署进[安装指南](../../doc/install-zh.md)，不追加回项目 README。
 - 历史同步：[v1.20.3 → v1.21.7](./v1.20.3-to-v1.21.7.md)、[v1.3.8 → v1.20.3](./v1.3.8-to-v1.20.3.md)。历史待办/验证按当时提交理解，当前行为以新快照和实际代码为准。
 
 ## Structure

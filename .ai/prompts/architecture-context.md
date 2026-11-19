@@ -2,7 +2,7 @@
 
 This document provides context about the architectural differences between the local fork and upstream.
 
-Read [current-customizations.md](./current-customizations.md) and [the dated ledger](../sync-diffs/v1.21.7-local-2026-11-19.md) first. The official comparison here is v1.21.7, not a floating upstream branch. The ledger distinguishes committed OAuth/Stripe/traffic/cron changes from the uncommitted UTC storage migration.
+Read [current-customizations.md](./current-customizations.md) and [the ledger supplement through 57973bf2](../sync-diffs/v1.21.7-local-2026-11-19.md#8-截止后增量至-57973bf2) first. The official comparison here remains v1.21.7, not a floating upstream branch. UTC/02170 and local-date presentation were committed in `a6b11dfe`; the old W01 was a historical worktree snapshot, not today's state. The supplement also protects request binding, account identities, auth-config updates and subscription/traffic query semantics; committed code is not database application or deployment evidence.
 
 ## Overview
 
@@ -38,7 +38,7 @@ Local schema maintenance has two coordinated parts:
 
 Express supported schema changes in ent first, then provide the corresponding SQL upgrade path where deployed tables must change. Complex data moves, indexes and timestamp conversion still require explicit SQL and a rollback decision. Updating only ent schema or running `go generate .\ent` is not sufficient deployment work.
 
-Check both dialect directories and untracked work before choosing a migration number. The 2026-11-19 snapshot has committed migrations through 02169 and a worktree-only 02170; do not overwrite either or copy an upstream migration number blindly. Pin the official target before comparing migration lists.
+Check both dialect directories and untracked work before choosing a migration number. At `57973bf2`, 02170 is already committed (via `a6b11dfe`); do not reuse it, overwrite applied migrations or copy upstream numbering blindly. Its MySQL ±8h rewrites and PostgreSQL column conversions rely on historical data assumptions and need separate isolated-database validation. Pin the official target before comparing migration lists.
 
 **Migration file format**:
 ```
@@ -70,7 +70,7 @@ initialize/migrate/database/mysql/0XXXX_description.down.sql
 
 1. **Nil pointer on NotFound**: entgo returns `(nil, NotFound)` not `(zero_value, nil)`. Always guard with `m != nil`.
 2. **Migration numbering**: Do NOT hardcode version numbers. Always check the latest upstream tag and local migrations to determine the next sequential number.
-3. **Migration completeness**: Keep ent schema/generated code and both dialect SQL upgrade chains in sync. Never assume startup ent auto-migration replaces SQL, and treat UTC/02170 worktree changes as unverified until their actual commit and database evidence are recorded.
+3. **Migration completeness**: Keep ent schema/generated code and both dialect SQL upgrade chains in sync. Never assume startup ent auto-migration replaces SQL. UTC/02170 has a recorded commit, but SQL application, legacy-data correctness and safe rollback remain unverified by this documentation task; see B08 for scope.
 4. **GORM tags**: Upstream uses `gorm:"..."` struct tags. entgo uses schema DSL in `ent/schema/*.go`.
 5. **Repository pattern**: Upstream's `internal/repository/` is a thin wrapper over GORM. Local's `internal/repository/` wraps entgo. Do not mix.
 6. **Module boundaries**: Upstream enforces DDD module boundaries. Local uses flat `internal/logic/` packages. Maintain local structure.

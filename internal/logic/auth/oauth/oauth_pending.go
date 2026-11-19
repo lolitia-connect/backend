@@ -27,15 +27,22 @@ type pendingOAuthIdentity struct {
 	Avatar string `json:"avatar"`
 }
 
-// inviteRequiredError signals that a brand-new OAuth identity cannot be
-// registered until the user supplies an invitation code. It carries the
-// one-time ticket the client echoes back when it submits the code, so the
-// provider round trip does not have to be repeated.
-type inviteRequiredError struct {
-	ticket string
+// oauthRegistrationPending signals that a brand-new OAuth identity cannot be
+// registered yet because the panel still needs input from the user: an
+// invitation code (invitation-only registration) and/or a real email address
+// (the provider supplied none). It carries the one-time ticket the client
+// echoes back when it submits the missing data, so the provider round trip
+// does not have to be repeated. No user record is written while it is pending.
+type oauthRegistrationPending struct {
+	ticket         string
+	inviteRequired bool
+	emailRequired  bool
+	// emailVerify reports that the collected email must be proven with a
+	// verification code before the account is created.
+	emailVerify bool
 }
 
-func (e *inviteRequiredError) Error() string { return "invite code required" }
+func (e *oauthRegistrationPending) Error() string { return "oauth registration pending user input" }
 
 func pendingOAuthKey(ticket string) string {
 	return fmt.Sprintf("%s:%s", config.OAuthPendingRegisterKey, ticket)

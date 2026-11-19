@@ -69,7 +69,7 @@ func (l *DeviceOnlineStatisticsLogic) DeviceOnlineStatistics() (resp *types.GetD
 	onlineDays := make(map[string]types.WeeklyStat)
 	for _, record := range userOnlineRecord {
 		//获取近七天在线情况
-		onlineTime := record.OnlineTime.Format(time.DateOnly)
+		onlineTime := record.OnlineTime.In(time.Local).Format(time.DateOnly)
 		if weeklyStat, ok := onlineDays[onlineTime]; ok {
 			weeklyStat.Hours += float64(record.OnlineSeconds)
 			onlineDays[onlineTime] = weeklyStat
@@ -77,7 +77,7 @@ func (l *DeviceOnlineStatisticsLogic) DeviceOnlineStatistics() (resp *types.GetD
 			onlineDays[onlineTime] = types.WeeklyStat{
 				Hours: float64(record.OnlineSeconds),
 				//根据日期获取周几
-				DayName: record.OnlineTime.Weekday().String(),
+				DayName: record.OnlineTime.In(time.Local).Weekday().String(),
 			}
 		}
 	}

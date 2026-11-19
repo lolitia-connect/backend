@@ -11,8 +11,8 @@ const (
 	DriverPostgres  = "postgres"
 	DriverPostgres2 = "postgresql"
 
-	DefaultMySQLConfig     = "charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
-	DefaultPostgresConfig  = "sslmode=disable&TimeZone=Asia/Shanghai"
+	DefaultMySQLConfig     = "charset=utf8mb4&parseTime=true&loc=UTC"
+	DefaultPostgresConfig  = "sslmode=disable&TimeZone=UTC"
 	DefaultSlowThresholdMs = 1000
 )
 
@@ -22,7 +22,7 @@ type Config struct {
 	Username      string `yaml:"Username"`
 	Password      string `yaml:"Password"`
 	Dbname        string `yaml:"Dbname"`
-	Config        string `yaml:"Config" default:"charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"`
+	Config        string `yaml:"Config" default:"charset=utf8mb4&parseTime=true&loc=UTC"`
 	MaxIdleConns  int    `yaml:"MaxIdleConns" default:"10"`
 	MaxOpenConns  int    `yaml:"MaxOpenConns" default:"10"`
 	SlowThreshold int64  `yaml:"SlowThreshold" default:"1000"`
@@ -72,7 +72,18 @@ func (m Mysql) mysqlQuery() string {
 	if query == "" {
 		query = DefaultMySQLConfig
 	}
-	return query
+	params, err := url.ParseQuery(query)
+	if err != nil {
+		return query
+	}
+	if params.Get("parseTime") == "" {
+		params.Set("parseTime", "true")
+	}
+	// The database stores UTC; pin the driver location so time.Time values
+	// round-trip as UTC regardless of any persisted configuration. The
+	// application presents them in the process-local timezone (time.Local).
+	params.Set("loc", "UTC")
+	return params.Encode()
 }
 
 func (m Mysql) postgresDsn() string {
@@ -93,9 +104,12 @@ func (m Mysql) postgresDsn() string {
 		u.RawQuery = query
 		return u.String()
 	}
-	if params.Get("TimeZone") == "" && params.Get("timezone") == "" && params.Get("time_zone") == "" {
-		params.Set("TimeZone", "Asia/Shanghai")
-	}
+	// The database stores UTC; pin the session TimeZone so timestamps round-trip
+	// as UTC regardless of any persisted configuration. Drop conflicting
+	// lower-case aliases so only a single canonical value remains.
+	params.Del("timezone")
+	params.Del("time_zone")
+	params.Set("TimeZone", "UTC")
 	u.RawQuery = params.Encode()
 	return u.String()
 }

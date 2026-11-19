@@ -155,7 +155,7 @@ func (l *TelegramLogic) traffic(chatID int64) error {
 		}
 		expires := "no expiry"
 		if subscription.ExpireTime.Unix() >= 31536000 {
-			expires = subscription.ExpireTime.Format(time.DateOnly)
+			expires = subscription.ExpireTime.In(time.Local).Format(time.DateOnly)
 		}
 		fmt.Fprintf(&text, "%s (#%d): %.2f / %s; %s\n", name, subscription.Id, float64(subscription.Upload)/(1<<30)+float64(subscription.Download)/(1<<30), limit, expires)
 	}

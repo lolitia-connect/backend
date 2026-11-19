@@ -11,7 +11,7 @@
 - 下文的服务安装还需要：带 systemd 的 Linux，以及 `curl`、`tar`、`sha256sum`。发布包也提供 Windows 与
   macOS 版本，启动方式相同（`ppanel-server run --config config.yaml`）。
 
-配置文件说明见 [config-zh.md](config-zh.md)；容器镜像见 [README](../README.md#-docker-部署)。
+配置文件说明见 [config-zh.md](config-zh.md)；容器部署见本文 [Docker](#docker) 部分。
 
 ## 快速安装（Linux，脚本）
 
@@ -195,11 +195,55 @@ curl -fsS http://127.0.0.1:8080/readyz     # 就绪探针：启动完成、数�
 
 ## Docker
 
-容器镜像见 [README](../README.md#-docker-部署)。简而言之：镜像以 uid 65532 运行，其 `HEALTHCHECK`
-执行 `ppanel healthcheck`；由于安装向导在容器内只监听 `127.0.0.1`，容器部署必须设置 `PPANEL_DB` 与
-`PPANEL_REDIS`，或挂载预先填好的 `config.yaml`。使用仓库的 `docker-compose.yml` 时，首次
-`docker compose up` 之前 `./config.yaml` 必须以文件形式存在（否则 Docker 会创建同名目录），且对
-uid 65532 可写。停止容器请用 `docker stop --time 20`，以便优雅停机完成。
+镜像以非特权用户 uid 65532 运行，监听 8080，读取 `/app/config.yaml`，通过
+`ppanel healthcheck` 报告健康状态。**安装向导仅监听容器内的 `127.0.0.1`，映射端口不能访问它。**
+首次运行必须设置 `PPANEL_DB` 与 `PPANEL_REDIS`，或挂载预先填好的配置文件。
+空配置通过环境变量补全时会生成 JWT 密钥、执行迁移并创建首位管理员，密码在日志中打印一次。
+
+| 变量 | 格式 | 示例 |
+| --- | --- | --- |
+| `PPANEL_DB` | MySQL DSN 或 `mysql://…`、`postgres://…` URL | `ppanel:secret@tcp(db:3306)/ppanel` |
+| `PPANEL_REDIS` | `redis://[:password@]host[:port][/db]` | `redis://:secret@redis:6379/0` |
+
+PostgreSQL 示例：`postgres://ppanel:secret@db:5432/ppanel?sslmode=require`。
+示例凭据仅作占位；准备可达的数据库与 Redis，并使用自己的凭据。完整配置见 [config-zh.md](config-zh.md)。
+以下命令在 Linux 主机的仓库根目录执行。
+
+### 构建并启动
+
+```shell
+docker buildx build --platform linux/amd64 -t ppanel-server:latest .
+touch config.yaml
+sudo chown 65532:65532 config.yaml
+docker run -d --name ppanel-server -p 8080:8080 \
+  -e PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' \
+  -e PPANEL_REDIS='redis://:secret@redis:6379/0' \
+  -v "$(pwd)/config.yaml:/app/config.yaml" \
+  ppanel-server:latest
+docker logs -f ppanel-server
+```
+
+挂载的 `config.yaml` 必须事先以**文件**形式存在，避免 Docker 创建同名目录；首次补全配置时必须对
+uid 65532 可写。也可直接挂载已填好的配置，不再通过环境变量初始化。使用预构建镜像时，应先确认
+发布来源与版本属于所需 fork，并保留相同的配置/环境与持久化设置，不能只运行一个空配置容器。
+
+### Docker Compose
+
+使用仓库的 [docker-compose.yml](../docker-compose.yml)，不要另维护一份重复配置：它构建镜像、
+发布 8080、挂载配置文件，并用命名卷保留日志和缓存；健康检查调用
+`/app/ppanel healthcheck --config /app/config.yaml`（30 秒间隔、5 秒超时、3 次重试、30 秒启动期）。
+
+```shell
+mkdir -p logs cache
+touch config.yaml
+sudo chown 65532:65532 config.yaml
+PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' \
+PPANEL_REDIS='redis://:secret@redis:6379/0' docker compose up -d
+```
+
+也可通过 `.env` 提供变量，或预填配置文件。停止时使用 `docker stop --time 20 ppanel-server`，
+为 HTTP 排空及调度器、任务 worker、链路追踪导出留出时间。
+`GET /healthz` 用于存活探针，`GET /readyz` 检查数据库和 Redis 就绪；见[健康检查说明](config-zh.md#6-健康检查)。
 
 ## NGINX 反向代理
 

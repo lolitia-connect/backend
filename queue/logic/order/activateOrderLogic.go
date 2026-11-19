@@ -779,7 +779,7 @@ func (l *ActivateOrderLogic) updateSubscriptionForRenewal(ctx context.Context, u
 		userSub.ExpireTime = now
 	}
 	today := time.Now().Day()
-	resetDay := userSub.ExpireTime.Day()
+	resetDay := userSub.ExpireTime.In(time.Local).Day()
 	resetTraffic := (sub.RenewalReset != nil && *sub.RenewalReset) || today == resetDay
 
 	// Reset traffic if enabled
@@ -977,7 +977,7 @@ func (l *ActivateOrderLogic) sendRechargeNotifications(ctx context.Context, orde
 		templateData := map[string]string{
 			"OrderAmount":   fmt.Sprintf("%.2f", float64(orderInfo.Price)/100),
 			"PaymentMethod": orderInfo.Method,
-			"Time":          orderInfo.CreatedAt.Format("2006-01-02 15:04:05"),
+			"Time":          orderInfo.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			"Balance":       fmt.Sprintf("%.2f", float64(balance)/100),
 		}
 		if text, err := telegram.RenderMarkdownV2(telegram.RechargeNotify, templateData); err == nil {
@@ -993,7 +993,7 @@ func (l *ActivateOrderLogic) sendRechargeNotifications(ctx context.Context, orde
 		"OrderAmount":   fmt.Sprintf("%.2f", float64(orderInfo.Price)/100),
 		"SubscribeName": "余额充值",
 		"OrderStatus":   "已支付",
-		"OrderTime":     orderInfo.CreatedAt.Format("2006-01-02 15:04:05"),
+		"OrderTime":     orderInfo.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 		"PaymentMethod": orderInfo.Method,
 	}
 	if text, err := telegram.RenderMarkdownV2(telegram.AdminOrderNotify, adminData); err == nil {
@@ -1010,7 +1010,7 @@ func (l *ActivateOrderLogic) buildUserNotificationData(orderInfo *order.Order, s
 	}
 
 	if userSub != nil {
-		data["ExpireTime"] = userSub.ExpireTime.Format("2006-01-02 15:04:05")
+		data["ExpireTime"] = userSub.ExpireTime.In(time.Local).Format("2006-01-02 15:04:05")
 		data["ResetTime"] = time.Now().Format("2006-01-02 15:04:05")
 	}
 
@@ -1031,7 +1031,7 @@ func (l *ActivateOrderLogic) buildAdminNotificationData(orderInfo *order.Order, 
 		"SubscribeName": subscribeName,
 		"OrderAmount":   fmt.Sprintf("%.2f", float64(orderInfo.Price)/100),
 		"OrderStatus":   "已支付",
-		"OrderTime":     orderInfo.CreatedAt.Format("2006-01-02 15:04:05"),
+		"OrderTime":     orderInfo.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 		"PaymentMethod": orderInfo.Method,
 	}
 }

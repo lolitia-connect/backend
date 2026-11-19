@@ -14,8 +14,8 @@ Its releases are published here, and its configuration file is `config.yaml`
   `sha256sum`. The release archives also cover Windows and macOS, where the
   binary is started the same way (`ppanel-server run --config config.yaml`).
 
-The configuration file is described in [config.md](config.md); the container
-image in the [README](../README.md#-docker-部署).
+The configuration file is described in [config.md](config.md); container deployment
+is covered in this guide's [Docker section](#docker).
 
 ## Quick install (Linux, script)
 
@@ -228,14 +228,60 @@ Sign in to the admin panel with the first administrator and change its password.
 
 ## Docker
 
-The [README](../README.md#-docker-部署) covers the container image. In short:
-the image runs as uid 65532, its `HEALTHCHECK` runs `ppanel healthcheck`, and
-because the setup wizard listens on `127.0.0.1` inside the container, a container
-deployment must either set `PPANEL_DB` and `PPANEL_REDIS` or mount a pre-filled
-`config.yaml`. With the repository's `docker-compose.yml`, `./config.yaml` must
-exist as a file before the first `docker compose up` (Docker otherwise creates a
-directory of that name) and be writable by uid 65532. Stop the container with
-`docker stop --time 20` so the graceful shutdown can finish.
+The image runs as unprivileged uid 65532, listens on port 8080, reads `/app/config.yaml`, and reports
+health through `ppanel healthcheck`. **The setup wizard only listens on `127.0.0.1` inside the container;
+publishing a port does not expose it.** Provide `PPANEL_DB` and `PPANEL_REDIS`, or mount a pre-filled
+configuration. Environment-based setup completes an empty file with connection details and a generated
+JWT secret, applies migrations, and creates the first administrator; the password is logged once.
+
+| Variable | Format | Example |
+| --- | --- | --- |
+| `PPANEL_DB` | MySQL DSN or a `mysql://…` / `postgres://…` URL | `ppanel:secret@tcp(db:3306)/ppanel` |
+| `PPANEL_REDIS` | `redis://[:password@]host[:port][/db]` | `redis://:secret@redis:6379/0` |
+
+PostgreSQL example: `postgres://ppanel:secret@db:5432/ppanel?sslmode=require`.
+Credentials are placeholders: use your own credentials and reachable database/Redis services.
+See [config.md](config.md) for complete configuration. Run the following commands at the repository
+root on a Linux host.
+
+### Build and start
+
+```shell
+docker buildx build --platform linux/amd64 -t ppanel-server:latest .
+touch config.yaml
+sudo chown 65532:65532 config.yaml
+docker run -d --name ppanel-server -p 8080:8080 \
+  -e PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' \
+  -e PPANEL_REDIS='redis://:secret@redis:6379/0' \
+  -v "$(pwd)/config.yaml:/app/config.yaml" \
+  ppanel-server:latest
+docker logs -f ppanel-server
+```
+
+Create `config.yaml` as a **file** before mounting it, otherwise Docker creates a directory of that name.
+It must be writable by uid 65532 while first-run setup completes it. A pre-filled file avoids environment-based
+initialization. Before using a prebuilt image, verify its release source/version matches the required fork;
+keep the same configuration, environment and persistence settings rather than starting an unconfigured image.
+
+### Docker Compose
+
+Use the repository's [docker-compose.yml](../docker-compose.yml) instead of maintaining a duplicate:
+it builds the image, publishes port 8080, mounts configuration, and persists logs/cache in named volumes.
+Its health check runs `/app/ppanel healthcheck --config /app/config.yaml` every 30 seconds with a
+5-second timeout, 3 retries, and a 30-second start period.
+
+```shell
+mkdir -p logs cache
+touch config.yaml
+sudo chown 65532:65532 config.yaml
+PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' \
+PPANEL_REDIS='redis://:secret@redis:6379/0' docker compose up -d
+```
+
+Variables can also come from `.env`, or configuration can be pre-filled. Stop with
+`docker stop --time 20 ppanel-server`, allowing HTTP draining, scheduler/task-worker shutdown and trace export.
+Use `GET /healthz` for liveness and `GET /readyz` for database/Redis readiness; see
+[health checks](config.md#6-health-checks).
 
 ## NGINX reverse proxy
 

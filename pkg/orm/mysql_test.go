@@ -26,25 +26,27 @@ func TestMigrationDSNPreservesMySQLCredentials(t *testing.T) {
 }
 
 func TestPostgresDSNAlwaysPinsSessionZone(t *testing.T) {
-	for _, test := range []struct {
-		query string
-		key   string
-		zone  string
-	}{
-		{"sslmode=disable", "TimeZone", "Asia/Shanghai"},
-		{"sslmode=require&TimeZone=UTC", "TimeZone", "UTC"},
-		{"timezone=Europe%2FBerlin", "timezone", "Europe/Berlin"},
-		{"time_zone=America%2FNew_York&application_name=panel%2Bworker", "time_zone", "America/New_York"},
+	for _, query := range []string{
+		"sslmode=disable",
+		"sslmode=require&TimeZone=UTC",
+		"timezone=Europe%2FBerlin",
+		"time_zone=America%2FNew_York&application_name=panel%2Bworker",
 	} {
-		database := Mysql{Config: Config{Driver: DriverPostgres, Addr: "localhost:5432", Dbname: "panel", Config: test.query}}
+		database := Mysql{Config: Config{Driver: DriverPostgres, Addr: "localhost:5432", Dbname: "panel", Config: query}}
 		parsed, err := url.Parse(database.Dsn())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := parsed.Query().Get(test.key); got != test.zone {
-			t.Fatalf("query %q has zone %q, want %q", test.query, got, test.zone)
+		values := parsed.Query()
+		// The database stores UTC, so the session zone is always pinned to UTC
+		// and the lower-case aliases are dropped.
+		if got := values.Get("TimeZone"); got != "UTC" {
+			t.Fatalf("query %q has TimeZone %q, want UTC", query, got)
 		}
-		if strings.Contains(test.query, "application_name") && parsed.Query().Get("application_name") != "panel+worker" {
+		if values.Get("timezone") != "" || values.Get("time_zone") != "" {
+			t.Fatalf("query %q left a conflicting timezone alias", query)
+		}
+		if strings.Contains(query, "application_name") && values.Get("application_name") != "panel+worker" {
 			t.Fatal("PostgreSQL parameters were decoded twice")
 		}
 	}

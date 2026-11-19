@@ -48,7 +48,7 @@ Database:
   Username: ppanel # 数据库用户名 (与创建的用户一致)
   Password: password # 数据库密码 (换成之前生成的随机密码)
   Dbname: ppanel # 数据库名 (与脚本创建的数据库一致)
-  Config: sslmode=disable&TimeZone=Asia/Shanghai # PostgreSQL配置；MySQL使用 charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai
+  Config: sslmode=disable&TimeZone=UTC # 数据库统一以 UTC 存储；PostgreSQL配置；MySQL使用 charset=utf8mb4&parseTime=true&loc=UTC
   MaxIdleConns: 10
   MaxOpenConns: 10
   SlowThreshold: 1000

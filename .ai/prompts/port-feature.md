@@ -1,5 +1,7 @@
 # Port Feature Prompt
 
+> Before using this template, read [current-customizations.md](./current-customizations.md) and [the current ledger](../sync-diffs/v1.21.7-local-2026-11-19.md). The historical example features below are not a backlog: many already exist. Preserve B01–B07 and distinguish W01 worktree changes from committed behavior. Schema work needs ent definitions **and** the embedded MySQL/PostgreSQL SQL upgrade paths; do not assume ent auto-migration. Run focused tests for the changed behavior rather than blindly running both broad example suites. API/type changes also require refreshing/verifying the sibling frontend contract.
+
 You are porting a specific feature from upstream into this fork.
 
 ## Context
@@ -22,7 +24,7 @@ Port the `<FEATURE_NAME>` feature from upstream to local.
    ```bash
    # Read the commits
    git show <COMMIT_HASH>
-   
+
    # Find affected files
    git diff-tree --no-commit-id --name-only -r <COMMIT_HASH>
    ```

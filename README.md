@@ -11,12 +11,10 @@
 
 [中文](README.md) | [English](README_EN.md) | [报告问题](https://github.com/lolitia-connect/backend/issues/new) | [功能请求](https://github.com/lolitia-connect/backend/issues/new)
 
-> **本仓库是 [perfect-panel/server](https://github.com/perfect-panel/server) 的 fork**
-> （[lolitia-connect/backend](https://github.com/lolitia-connect/backend)），会定期合并上游的发布 tag
-> （见 [`.ai/sync-diffs/`](.ai/sync-diffs/)）。与上游相比，本 fork 使用 entgo 而非 GORM、支持多协议实例
-> （以 `type:id` 为键）、内置 WASM 插件系统、无限流量（`traffic_unlimited`）、Stripe Checkout Sessions
-> 与 Edge 订阅（见 [docs/edge-subscribe.md](docs/edge-subscribe.md)）。配置文件为 `config.yaml`
-> （上游为 `etc/ppanel.yaml`）。
+> 本仓库是 [perfect-panel/server](https://github.com/perfect-panel/server) 的
+> [lolitia-connect/backend](https://github.com/lolitia-connect/backend) fork，使用 entgo，
+> 支持多协议实例、WASM 插件、无限流量、Stripe Checkout Sessions 和 Edge 订阅。
+> 开发与兼容边界见[开发指南](doc/development-zh.md)。
 
 </div>
 
@@ -91,82 +89,11 @@ PPanel 服务端是 PPanel 项目的后端组件，为代理服务提供强大�
 
 ### 🐳 Docker 部署
 
-镜像以非特权用户（uid 65532）运行，监听 8080 端口，读取 `/app/config.yaml`，并通过
-`ppanel healthcheck`（`HEALTHCHECK`）报告健康状态。**首次运行的安装向导在容器内只监听
-`127.0.0.1`，无法通过映射的端口访问**，因此容器部署必须用以下两种方式之一提供连接信息：
+使用仓库的 [Dockerfile](Dockerfile) 和 [docker-compose.yml](docker-compose.yml)。
+容器以 uid 65532 运行；首次启动必须提供 `PPANEL_DB` / `PPANEL_REDIS`，或挂载预填的配置文件。
+安装向导仅监听容器内回环地址，不能通过映射端口访问。
 
-- 设置 `PPANEL_DB` 与 `PPANEL_REDIS`：首次启动时服务用它们和生成的 JWT 密钥补全空的配置文件，执行迁移并
-  创建首位管理员，其密码会在 `docker logs` 中打印一次；或
-- 挂载预先填好的 `config.yaml`（见[配置指南](doc/config-zh.md)）。
-
-| 变量 | 格式 | 示例 |
-|---|---|---|
-| `PPANEL_DB` | MySQL DSN `user:password@tcp(host:port)/dbname`，或 URL：`mysql://…`、`postgres://user:password@host:5432/dbname?sslmode=require` | `ppanel:secret@tcp(db:3306)/ppanel` |
-| `PPANEL_REDIS` | `redis://[:password@]host[:port][/db]` | `redis://:secret@redis:6379/0` |
-
-1. **构建 Docker 镜像**：
-   ```bash
-   docker buildx build --platform linux/amd64 -t ppanel-server:latest .
-   ```
-
-2. **运行容器**。挂载的配置文件必须存在，且在首次启动（服务补全配置）时对 uid 65532 可写：
-   ```bash
-   mkdir -p etc && touch config.yaml && sudo chown 65532:65532 config.yaml
-   docker run -d --name ppanel-server -p 8080:8080 \
-     -e PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' \
-     -e PPANEL_REDIS='redis://:secret@redis:6379/0' \
-     -v "$(pwd)/config.yaml:/app/config.yaml" \
-     ppanel-server:latest
-   docker logs -f ppanel-server   # 首位管理员的密码只打印一次
-   ```
-
-3. **使用 Docker Compose**。仓库中的 [`docker-compose.yml`](docker-compose.yml) 构建镜像、发布 8080
-   端口、挂载 `./config.yaml` 并检查容器健康状态：
-   ```yaml
-   services:
-     ppanel:
-       container_name: ppanel-server
-       build:
-         context: .
-         dockerfile: Dockerfile
-       ports:
-         - "8080:8080"
-       environment:
-         PPANEL_DB: ${PPANEL_DB:-}
-         PPANEL_REDIS: ${PPANEL_REDIS:-}
-       volumes:
-         - ./config.yaml:/app/config.yaml
-         - ppanel-logs:/app/logs
-         - ppanel-cache:/app/cache
-       healthcheck:
-         test: ["CMD", "/app/ppanel", "healthcheck", "--config", "/app/config.yaml"]
-         interval: 30s
-         timeout: 5s
-         retries: 3
-         start_period: 30s
-       restart: always
-
-   volumes:
-     ppanel-logs:
-     ppanel-cache:
-   ```
-   首次 `docker compose up` 之前，`./config.yaml` 必须以**文件**形式存在（否则 Docker 会创建同名目录），
-   且对 uid 65532 可写；在 `.env` 或环境中给出 `PPANEL_DB` / `PPANEL_REDIS`，或预先填好文件，然后：
-   ```bash
-   mkdir -p logs cache && touch config.yaml && sudo chown 65532:65532 config.yaml
-   PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' PPANEL_REDIS='redis://:secret@redis:6379/0' docker compose up -d
-   ```
-   停止容器请用 `docker stop --time 20`，为优雅停机（先排空 HTTP，再依次停止调度器、任务 worker 和链路
-   追踪导出）留出时间。
-
-4. **拉取已发布的镜像**（CI/CD 发布后）：
-   ```bash
-   docker pull ppanel/ppanel-server:latest
-   docker run --rm -p 8080:8080 ppanel/ppanel-server:latest
-   ```
-
-服务提供 `GET /healthz`（存活探针）与 `GET /readyz`（就绪探针：数据库与 Redis 可达）供监控和负载均衡
-使用，见[配置指南](doc/config-zh.md#6-健康检查)。
+构建、配置文件权限、启动、健康检查和优雅停机步骤见[安装指南的 Docker 部分](doc/install-zh.md#docker)。
 
 ## 📖 API 文档
 
@@ -198,92 +125,13 @@ PPanel 服务端是 PPanel 项目的后端组件，为代理服务提供强大�
 
 ![Architecture Diagram](./doc/image/architecture-zh.png)
 
-## 📁 目录结构
+## 📚 文档
 
-```
-.
-├── cmd/              # 应用程序入口（run、healthcheck、migrate、version）
-├── doc/              # 文档（config.md、install.md）
-├── docs/             # 专项文档（如 edge-subscribe.md）
-├── config.yaml.example # 配置文件示例
-├── ent/              # entgo 生成的 ORM 客户端与 schema
-├── initialize/       # 系统初始化与数据库迁移
-├── internal/         # 内部模块
-│   ├── config/       # 配置文件解析
-│   ├── handler/      # HTTP 处理程序
-│   ├── middleware/   # HTTP 中间件
-│   ├── logic/        # 业务逻辑
-│   ├── model/        # 数据模型
-│   ├── plugin/       # WASM 插件系统
-│   ├── svc/          # 服务层
-│   ├── transport/    # HTTP 服务器与健康检查端点
-│   └── types/        # 类型定义
-├── pkg/              # 公共工具代码
-├── plugins/          # 插件目录（WASM 二进制不入库）
-├── queue/            # 队列服务
-├── scheduler/        # 定时任务
-├── script/           # 安装脚本与辅助脚本
-├── scripts/          # 性能测试与维护脚本
-├── go.mod            # Go 模块定义
-├── Makefile          # 构建自动化
-└── Dockerfile        # Docker 配置
-```
-
-## 💻 开发
-
-### 添加新接口
-
-本分支的 HTTP 层是手写的 Hertz 处理器（`internal/handler/`），不再有 go-zero 的 `.api`
-生成步骤：上游已在 `chore(codegen): remove legacy go-zero generation assets` 中移除该工具链，
-本分支同步移除。新增接口的步骤是：
-
-1. 在 `internal/types/` 增加请求/响应类型。
-2. 在 `internal/logic/` 实现业务逻辑。
-3. 在 `internal/handler/` 添加处理器，并在 `internal/handler/routes.go` 注册路由。
-4. 若前端需要接入，在 `frontend/` 中运行 `bun run api:refresh` 重新导出本地后端的路由与类型
-   （契约由 `frontend/scripts/backend-contract.go` 从本仓库的 Go AST 直接导出，见
-   [frontend 台账](../../frontend/.ai/sync-diffs/v1.22.0-to-v1.23.0.md)）。
-
-数据层是 entgo：修改 `ent/schema/` 后运行 `go generate ./ent`，或直接
-`go run entgo.io/ent/cmd/ent generate ./ent/schema`。数据库结构变更仍以
-`initialize/migrate/database/` 下成对的手写 SQL 迁移为准。
-
-### 多平台构建
-
-使用 `Makefile` 构建多种平台（如 Linux、Windows、macOS）：
-
-```bash
-make all  # 构建 linux-amd64、darwin-amd64、windows-amd64
-make linux-arm64  # 构建特定平台
-```
-
-支持的平台包括：
-
-- Linux：`386`、`amd64`、`arm64`（`make` 还可构建 `linux-amd64-v3`、`linux-armv5`、`linux-armv6`、
-  `linux-armv7`）
-- Windows：`386`、`amd64`、`arm64`（以及 `windows-amd64-v3`、`windows-armv7`）
-- macOS：`amd64`、`arm64`（以及 `darwin-amd64-v3`）
-
-所有二进制都是静态链接的（`CGO_ENABLED=0 -trimpath`），版本信息由 Makefile 注入到
-`pkg/constant.Version` / `pkg/constant.BuildTime`。发布（见
-[`.github/workflows/release.yml`](.github/workflows/release.yml)）为上述平台提供
-`ppanel-server-<os>-<arch>.tar.gz`（Windows 为 `.zip`），每个压缩包附带一个 `.sha256` 校验文件。
-
-## 🧩 fork 与上游的差异
-
-| 方面 | 本 fork | 上游 v1.21.7 |
-|---|---|---|
-| ORM | entgo（`ent/`、`pkg/orm`） | GORM |
-| 节点协议实例 | 多协议实例，以 `type:id` 为键 | 单协议引用 |
-| 插件 | 内置 WASM 插件系统（`internal/plugin`、`Plugin` 配置段） | 无 |
-| 无限流量 | 支持 `traffic_unlimited` | — |
-| Stripe | Checkout Sessions（`CreateCheckoutSession`） | — |
-| 订阅渲染 | Edge 订阅签名接口，见 [docs/edge-subscribe.md](docs/edge-subscribe.md) | 无 |
-| 配置文件路径 | `config.yaml` | `etc/ppanel.yaml` |
-| 配置段 | 有 `Transport`、`Device`、`Plugin`、`EdgeSubscribe`；`MySQL` 为废弃别名 | 有 `AppLocation`、`Redis.QueueDB`、`Database.ConnMaxLifetime/ConnMaxIdleTime` |
-| 队列 Redis 库 | 硬编码为 `5`（`queue/queue.go`） | `Redis.QueueDB` 可配置 |
-
-完整说明见[配置指南](doc/config-zh.md)。
+- [安装与运维](doc/install-zh.md)：二进制、Docker、初始化、升级和健康检查。
+- [配置指南](doc/config-zh.md)与[配置示例](config.yaml.example)。
+- [开发指南](doc/development-zh.md)：目录职责、接口/数据层开发、多平台构建和 fork 兼容边界。
+- 专项文档：[Edge 订阅](docs/edge-subscribe.md)、[节点 Protobuf 接口](api/server/v1/README.md)、[MySQL → PostgreSQL](tools/mysql2postgres/README.md)。
+- 维护者参考：[同步台账](.ai/sync-diffs/README.md)、[开发 agent 指引](.ai/prompts/README.md)。
 
 ## 🤝 贡献
 

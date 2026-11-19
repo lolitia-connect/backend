@@ -96,6 +96,9 @@ func (m *customUserModel) queryUserStatistics(ctx context.Context, start, end ti
 }
 
 func formatUserBucket(date time.Time, bucket string) string {
+	// Bucket into local calendar days/months to match the locally-computed
+	// query range and dashboard rendering; the stored timestamp is UTC.
+	date = date.In(time.Local)
 	if bucket == "month" {
 		return date.Format("2006-01")
 	}

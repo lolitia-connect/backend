@@ -111,7 +111,7 @@ Database:
   Username: ""                      # Database username (required)
   Password: ""                      # Database password (required)
   Dbname: ""                        # Database name (required)
-  Config: "sslmode=disable&TimeZone=Asia/Shanghai"  # PostgreSQL; MySQL: charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai
+  Config: "sslmode=disable&TimeZone=UTC"  # Database stores UTC; PostgreSQL; MySQL: charset=utf8mb4&parseTime=true&loc=UTC
   MaxIdleConns: 10                  # Maximum idle connections
   MaxOpenConns: 10                  # Maximum open connections
   SlowThreshold: 1000               # Slow query threshold (milliseconds)
@@ -365,9 +365,14 @@ tasks. Nothing is exported until `Endpoint` is set.
   Required.
 - **`Config`**: Dialect-specific connection parameters.
   - MySQL default:
-    `charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai`.
+    `charset=utf8mb4&parseTime=true&loc=UTC`.
   - PostgreSQL example:
-    `sslmode=disable&TimeZone=Asia/Shanghai`.
+    `sslmode=disable&TimeZone=UTC`.
+  - **Timezone basis:** the database stores UTC; the connection is **pinned**
+    to `loc=UTC` / `TimeZone=UTC` (any timezone in `Config` is overridden), and
+    the application renders values in the process-local timezone (`time.Local`)
+    after reading. To upgrade a legacy database, apply migration
+    `02170_localtime_to_utc` (below).
   - **Divergence:** upstream default for PostgreSQL is
     `sslmode=prefer&TimeZone=<AppLocation>&application_name=perfect-panel`, and
     it injects `TimeZone` automatically. This fork has no `AppLocation` setting

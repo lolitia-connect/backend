@@ -361,6 +361,10 @@ func mapKeys(values map[int64]struct{}) []int64 {
 }
 
 func formatOrderBucket(date time.Time, bucket string) string {
+	// Orders are bucketed into local calendar days/months to match the
+	// locally-computed query range and what the dashboard renders; the stored
+	// timestamp is UTC.
+	date = date.In(time.Local)
 	if bucket == "month" {
 		return date.Format("2006-01")
 	}

@@ -1,0 +1,91 @@
+# Backend development guide
+
+This guide covers directory responsibilities, API/data-layer development, builds and compatibility boundaries. See [installation](install.md), [configuration](config.md) and [contribution guidelines](../CONTRIBUTING.md) for their respective workflows. Dated sync work, task history and verification results belong in the [sync ledgers](../.ai/sync-diffs/README.md), not the README.
+
+[中文](development-zh.md)
+
+## Directory structure
+
+```
+.
+├── cmd/              # Application entry point (run, healthcheck, migrate, version)
+├── doc/              # Documentation (config.md, install.md)
+├── docs/             # Topic documents (e.g. edge-subscribe.md)
+├── config.yaml.example # Example configuration file
+├── ent/              # entgo generated ORM client and schemas
+├── initialize/       # System initialization and database migrations
+├── internal/         # Internal modules
+│   ├── config/       # Configuration parsing
+│   ├── handler/      # HTTP handlers
+│   ├── middleware/   # HTTP middleware
+│   ├── logic/        # Business logic
+│   ├── model/        # Data models
+│   ├── plugin/       # WASM plugin system
+│   ├── svc/          # Service layer
+│   ├── transport/    # HTTP server and health endpoints
+│   └── types/        # Type definitions
+├── pkg/              # Utility code
+├── plugins/          # Plugin directory (WASM binaries are not committed)
+├── queue/            # Queue services
+├── scheduler/        # Scheduled tasks
+├── script/           # Installation and CI helper scripts
+├── scripts/          # Performance and maintenance scripts
+├── go.mod            # Go module definition
+├── Makefile          # Build automation
+└── Dockerfile        # Docker configuration
+```
+
+## Development workflow
+
+### Adding a new endpoint
+
+This fork uses hand-written Hertz handlers (`internal/handler/`), not a go-zero `.api` generation step.
+To add an endpoint:
+
+1. Add the request/response types under `internal/types/`.
+2. Implement the business logic under `internal/logic/`.
+3. Add the handler under `internal/handler/` and register the route in `internal/handler/routes.go`.
+4. If the frontend needs it, run `bun run api:refresh` from `frontend/` to re-export this
+   repository's routes and types (the contract is derived straight from the Go AST by
+   `frontend/scripts/backend-contract.go`; see the
+   [frontend development guide](../../frontend/docs/guide/frontend-development.md)).
+
+The data layer is entgo: after editing `ent/schema/` run `go generate ./ent`, or
+`go run entgo.io/ent/cmd/ent generate ./ent/schema` directly. Schema changes still land as paired
+hand-written SQL migrations under `initialize/migrate/database/`.
+
+### Build for Multiple Platforms
+
+Use the `Makefile` to build for various platforms (e.g., Linux, Windows, macOS):
+
+```bash
+make all  # Builds linux-amd64, darwin-amd64, windows-amd64
+make linux-arm64  # Build for specific platform
+```
+
+Supported platforms include:
+
+- Linux: `386`, `amd64`, `arm64` (plus `linux-amd64-v3`, `linux-armv5`, `linux-armv6`, `linux-armv7`)
+- Windows: `386`, `amd64`, `arm64` (plus `windows-amd64-v3`, `windows-armv7`)
+- macOS: `amd64`, `arm64` (plus `darwin-amd64-v3`)
+
+Every binary is static (`CGO_ENABLED=0 -trimpath`), with the version metadata injected by the Makefile into
+`pkg/constant.Version` / `pkg/constant.BuildTime`. The release
+([`.github/workflows/release.yml`](../.github/workflows/release.yml)) publishes
+`ppanel-server-<os>-<arch>.tar.gz` (`.zip` for Windows) for those platforms, each with a `.sha256` file.
+
+## Architecture compatibility boundaries
+
+| Aspect | This fork | Upstream v1.21.7 |
+|---|---|---|
+| ORM | entgo (`ent/`, `pkg/orm`) | GORM |
+| Node protocol instances | Multi-protocol instances keyed `type:id` | Single protocol reference |
+| Plugins | Built-in WASM plugin system (`internal/plugin`, `Plugin` section) | None |
+| Unlimited traffic | `traffic_unlimited` supported | — |
+| Stripe | Checkout Sessions (`CreateCheckoutSession`) | — |
+| Subscription rendering | Signed Edge subscribe API, see [docs/edge-subscribe.md](../docs/edge-subscribe.md) | None |
+| Configuration path | `config.yaml` | `etc/ppanel.yaml` |
+| Configuration sections | Has `Transport`, `Device`, `Plugin`, `EdgeSubscribe`; `MySQL` is a deprecated alias | Has `AppLocation`, `Redis.QueueDB`, `Database.ConnMaxLifetime/ConnMaxIdleTime` |
+| Queue Redis database | Hard-coded to `5` (`queue/queue.go`) | Configurable as `Redis.QueueDB` |
+
+Full details: [configuration guide](config.md).

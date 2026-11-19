@@ -1,6 +1,13 @@
 # Sync Diffs Archive
 
-This folder stores version-specific diff analysis for each upstream sync.
+This folder stores version-specific upstream sync analysis and dated fork-customization snapshots.
+
+## 当前入口（2026-11-19）
+
+- **先读**：[同步 v1.21.7 后的当前自定义改动](./v1.21.7-local-2026-11-19.md)。固定本地同步落点 `34fd88c8` → HEAD `dc46571f`，并单独记录未提交 UTC 改造。
+- [完整提交/逐文件/工作树 Markdown 索引](./v1.21.7-local-2026-11-19.files.md)：逐项说明改动，保留工作树采样指纹；不包含本次文档自身。
+- [当前开发 agent 约束](../prompts/current-customizations.md)与[后续同步流程](../prompts/sync-upstream.md)。
+- 历史同步：[v1.20.3 → v1.21.7](./v1.20.3-to-v1.21.7.md)、[v1.3.8 → v1.20.3](./v1.3.8-to-v1.20.3.md)。历史待办/验证按当时提交理解，当前行为以新快照和实际代码为准。
 
 ## Structure
 
@@ -13,7 +20,9 @@ This folder stores version-specific diff analysis for each upstream sync.
 
 ## File Naming Convention
 
-Use the format: `<last-synced-tag>-to-<new-tag>.md`
+For an upstream sync, use `<last-synced-tag>-to-<new-tag>.md`.
+
+For local work after a sync, use `<last-synced-tag>-local-<YYYY-MM-DD>.md` with a companion `.files.md`. **Store diff records and prompts only as Markdown**, not separate structured manifests. Describe concrete behavior changes, affected files, compatibility constraints and actual verification, rather than only listing names or commit subjects. Record the official commit, local sync landing, fixed HEAD, capture time, all committed changed paths (including removals/renames), and pre-existing worktree changes separately. Never treat an uncommitted migration as a release or reuse historical test results as current evidence.
 
 Examples:
 - `v1.3.8-to-v1.20.3.md`

@@ -97,7 +97,7 @@ func (l *CheckSubscriptionLogic) sendExpiredNotify(ctx context.Context, subs []i
 		taskPayload.Content = map[string]interface{}{
 			"SiteLogo":   l.svc.Config.Site.SiteLogo,
 			"SiteName":   l.svc.Config.Site.SiteName,
-			"ExpireDate": sub.ExpireTime.Format("2006-01-02 15:04:05"),
+			"ExpireDate": sub.ExpireTime.In(time.Local).Format("2006-01-02 15:04:05"),
 		}
 		payloadBuy, err := json.Marshal(taskPayload)
 		if err != nil {

@@ -167,7 +167,7 @@ func (l *TelegramLogic) adminCommand(message *models.Message) error {
 			for _, entry := range entries {
 				var login modellog.Login
 				if login.Unmarshal([]byte(entry.Content)) == nil {
-					text += fmt.Sprintf("%s %s %s\n", entry.CreatedAt.Format(time.DateTime), login.LoginIP, login.Method)
+					text += fmt.Sprintf("%s %s %s\n", entry.CreatedAt.In(time.Local).Format(time.DateTime), login.LoginIP, login.Method)
 				}
 			}
 		} else {

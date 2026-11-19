@@ -11,13 +11,10 @@
 
 [English](README_EN.md) | [中文](README.md) | [Report Bug](https://github.com/lolitia-connect/backend/issues/new) | [Request Feature](https://github.com/lolitia-connect/backend/issues/new)
 
-> **This repository is a fork of [perfect-panel/server](https://github.com/perfect-panel/server)**
-> ([lolitia-connect/backend](https://github.com/lolitia-connect/backend)) that merges upstream release tags
-> periodically (see [`.ai/sync-diffs/`](.ai/sync-diffs/)). Compared with upstream it uses entgo instead of GORM,
-> supports multi-protocol instances keyed `type:id`, ships a WASM plugin system, unlimited traffic
-> (`traffic_unlimited`), Stripe Checkout Sessions and Edge subscribe
-> (see [docs/edge-subscribe.md](docs/edge-subscribe.md)). The configuration file is `config.yaml`
-> (upstream uses `etc/ppanel.yaml`).
+> [lolitia-connect/backend](https://github.com/lolitia-connect/backend) is a fork of
+> [perfect-panel/server](https://github.com/perfect-panel/server), using entgo with multi-protocol
+> instances, WASM plugins, unlimited traffic, Stripe Checkout Sessions and Edge subscribe.
+> See the [development guide](doc/development.md) for architecture and compatibility boundaries.
 
 </div>
 
@@ -94,85 +91,12 @@ Deploying a release binary instead of building? See the [installation guide](doc
 
 ### 🐳 Docker Deployment
 
-The image runs as an unprivileged user (uid 65532), listens on port 8080, reads `/app/config.yaml` and reports
-its health through `ppanel healthcheck` (`HEALTHCHECK`). **The first-run setup wizard listens on `127.0.0.1`
-inside the container and cannot be reached through a published port**, so a container deployment provides the
-connections in one of two ways:
+Use the repository's [Dockerfile](Dockerfile) and [docker-compose.yml](docker-compose.yml).
+The container runs as uid 65532; first start requires `PPANEL_DB` / `PPANEL_REDIS` or a pre-filled
+configuration file. Its loopback-only setup wizard is not reachable through a published port.
 
-- set `PPANEL_DB` and `PPANEL_REDIS`: on the first start the server completes the empty configuration file with
-  them and a generated JWT secret, applies the migrations and creates the first administrator, whose password is
-  printed once in `docker logs`; or
-- mount a pre-filled `config.yaml` ([configuration guide](doc/config.md)).
-
-| Variable | Format | Example |
-|---|---|---|
-| `PPANEL_DB` | MySQL DSN `user:password@tcp(host:port)/dbname`, or a URL: `mysql://…`, `postgres://user:password@host:5432/dbname?sslmode=require` | `ppanel:secret@tcp(db:3306)/ppanel` |
-| `PPANEL_REDIS` | `redis://[:password@]host[:port][/db]` | `redis://:secret@redis:6379/0` |
-
-1. **Build the Docker image**:
-   ```bash
-   docker buildx build --platform linux/amd64 -t ppanel-server:latest .
-   ```
-
-2. **Run the container**. The mounted configuration file must exist and be writable by uid 65532 on the first
-   start, when the server completes it:
-   ```bash
-   touch config.yaml && sudo chown 65532:65532 config.yaml
-   docker run -d --name ppanel-server -p 8080:8080 \
-     -e PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' \
-     -e PPANEL_REDIS='redis://:secret@redis:6379/0' \
-     -v "$(pwd)/config.yaml:/app/config.yaml" \
-     ppanel-server:latest
-   docker logs -f ppanel-server   # prints the first administrator's password once
-   ```
-
-3. **Use Docker Compose**. The repository's [`docker-compose.yml`](docker-compose.yml) builds the image,
-   publishes port 8080, mounts `./config.yaml` and checks the container's health:
-   ```yaml
-   services:
-     ppanel:
-       container_name: ppanel-server
-       build:
-         context: .
-         dockerfile: Dockerfile
-       ports:
-         - "8080:8080"
-       environment:
-         PPANEL_DB: ${PPANEL_DB:-}
-         PPANEL_REDIS: ${PPANEL_REDIS:-}
-       volumes:
-         - ./config.yaml:/app/config.yaml
-         - ppanel-logs:/app/logs
-         - ppanel-cache:/app/cache
-       healthcheck:
-         test: ["CMD", "/app/ppanel", "healthcheck", "--config", "/app/config.yaml"]
-         interval: 30s
-         timeout: 5s
-         retries: 3
-         start_period: 30s
-       restart: always
-
-   volumes:
-     ppanel-logs:
-     ppanel-cache:
-   ```
-   `./config.yaml` must exist as a **file** before the first `docker compose up` (Docker creates a directory of
-   that name otherwise) and be writable by uid 65532; provide `PPANEL_DB` / `PPANEL_REDIS`, then:
-   ```bash
-   mkdir -p logs cache && touch config.yaml && sudo chown 65532:65532 config.yaml
-   PPANEL_DB='ppanel:secret@tcp(db:3306)/ppanel' PPANEL_REDIS='redis://:secret@redis:6379/0' docker compose up -d
-   ```
-   Stop the container with `docker stop --time 20` so the graceful shutdown (HTTP first, then the scheduler,
-   the task worker and the trace exporter) can finish.
-
-4. **Pull a published image** (after CI/CD publishes):
-   ```bash
-   docker pull ppanel/ppanel-server:latest
-   docker run --rm -p 8080:8080 ppanel/ppanel-server:latest
-   ```
-
-The server answers `GET /healthz` (liveness) and `GET /readyz` (readiness: database and Redis reachable) for
-monitoring and load balancers; see the [configuration guide](doc/config.md#6-health-checks).
+See [Docker installation](doc/install.md#docker) for builds, configuration permissions, startup,
+health checks, and graceful shutdown.
 
 ## 📖 API Documentation
 
@@ -205,93 +129,13 @@ Visit [ppanel.dev](https://ppanel.dev/) for more details.
 
 ![Architecture Diagram](./doc/image/architecture-en.png)
 
-## 📁 Directory Structure
+## 📚 Documentation
 
-```
-.
-├── cmd/              # Application entry point (run, healthcheck, migrate, version)
-├── doc/              # Documentation (config.md, install.md)
-├── docs/             # Topic documents (e.g. edge-subscribe.md)
-├── config.yaml.example # Example configuration file
-├── ent/              # entgo generated ORM client and schemas
-├── initialize/       # System initialization and database migrations
-├── internal/         # Internal modules
-│   ├── config/       # Configuration parsing
-│   ├── handler/      # HTTP handlers
-│   ├── middleware/   # HTTP middleware
-│   ├── logic/        # Business logic
-│   ├── model/        # Data models
-│   ├── plugin/       # WASM plugin system
-│   ├── svc/          # Service layer
-│   ├── transport/    # HTTP server and health endpoints
-│   └── types/        # Type definitions
-├── pkg/              # Utility code
-├── plugins/          # Plugin directory (WASM binaries are not committed)
-├── queue/            # Queue services
-├── scheduler/        # Scheduled tasks
-├── script/           # Installation and CI helper scripts
-├── scripts/          # Performance and maintenance scripts
-├── go.mod            # Go module definition
-├── Makefile          # Build automation
-└── Dockerfile        # Docker configuration
-```
-
-## 💻 Development
-
-### Adding a new endpoint
-
-This branch's HTTP layer is hand-written Hertz handlers (`internal/handler/`); there is no
-go-zero `.api` generation step any more. Upstream removed that toolchain in
-`chore(codegen): remove legacy go-zero generation assets` and this fork now mirrors that. To add
-an endpoint:
-
-1. Add the request/response types under `internal/types/`.
-2. Implement the business logic under `internal/logic/`.
-3. Add the handler under `internal/handler/` and register the route in `internal/handler/routes.go`.
-4. If the frontend needs it, run `bun run api:refresh` from `frontend/` to re-export this
-   repository's routes and types (the contract is derived straight from the Go AST by
-   `frontend/scripts/backend-contract.go`; see the
-   [frontend ledger](../../frontend/.ai/sync-diffs/v1.22.0-to-v1.23.0.md)).
-
-The data layer is entgo: after editing `ent/schema/` run `go generate ./ent`, or
-`go run entgo.io/ent/cmd/ent generate ./ent/schema` directly. Schema changes still land as paired
-hand-written SQL migrations under `initialize/migrate/database/`.
-
-### Build for Multiple Platforms
-
-Use the `Makefile` to build for various platforms (e.g., Linux, Windows, macOS):
-
-```bash
-make all  # Builds linux-amd64, darwin-amd64, windows-amd64
-make linux-arm64  # Build for specific platform
-```
-
-Supported platforms include:
-
-- Linux: `386`, `amd64`, `arm64` (plus `linux-amd64-v3`, `linux-armv5`, `linux-armv6`, `linux-armv7`)
-- Windows: `386`, `amd64`, `arm64` (plus `windows-amd64-v3`, `windows-armv7`)
-- macOS: `amd64`, `arm64` (plus `darwin-amd64-v3`)
-
-Every binary is static (`CGO_ENABLED=0 -trimpath`), with the version metadata injected by the Makefile into
-`pkg/constant.Version` / `pkg/constant.BuildTime`. The release
-([`.github/workflows/release.yml`](.github/workflows/release.yml)) publishes
-`ppanel-server-<os>-<arch>.tar.gz` (`.zip` for Windows) for those platforms, each with a `.sha256` file.
-
-## 🧩 Fork differences from upstream
-
-| Aspect | This fork | Upstream v1.21.7 |
-|---|---|---|
-| ORM | entgo (`ent/`, `pkg/orm`) | GORM |
-| Node protocol instances | Multi-protocol instances keyed `type:id` | Single protocol reference |
-| Plugins | Built-in WASM plugin system (`internal/plugin`, `Plugin` section) | None |
-| Unlimited traffic | `traffic_unlimited` supported | — |
-| Stripe | Checkout Sessions (`CreateCheckoutSession`) | — |
-| Subscription rendering | Signed Edge subscribe API, see [docs/edge-subscribe.md](docs/edge-subscribe.md) | None |
-| Configuration path | `config.yaml` | `etc/ppanel.yaml` |
-| Configuration sections | Has `Transport`, `Device`, `Plugin`, `EdgeSubscribe`; `MySQL` is a deprecated alias | Has `AppLocation`, `Redis.QueueDB`, `Database.ConnMaxLifetime/ConnMaxIdleTime` |
-| Queue Redis database | Hard-coded to `5` (`queue/queue.go`) | Configurable as `Redis.QueueDB` |
-
-Full details: [configuration guide](doc/config.md).
+- [Installation and operations](doc/install.md): binaries, Docker, setup, upgrades, and health checks.
+- [Configuration guide](doc/config.md) and [example configuration](config.yaml.example).
+- [Development guide](doc/development.md): directory responsibilities, API/data-layer changes, platform builds, and fork compatibility boundaries.
+- Topic guides: [Edge subscribe](docs/edge-subscribe.md), [node Protobuf API](api/server/v1/README.md), and [MySQL → PostgreSQL](tools/mysql2postgres/README.md).
+- Maintainer references: [sync ledgers](.ai/sync-diffs/README.md) and [development agent guidance](.ai/prompts/README.md).
 
 ## 🤝 Contributing
 

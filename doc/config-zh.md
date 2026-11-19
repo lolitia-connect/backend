@@ -101,7 +101,7 @@ Database:
   Username: ""                      # 数据库用户名（必填）
   Password: ""                      # 数据库密码（必填）
   Dbname: ""                        # 数据库名（必填）
-  Config: "sslmode=disable&TimeZone=Asia/Shanghai"  # PostgreSQL；MySQL 用 charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai
+  Config: "sslmode=disable&TimeZone=UTC"  # 数据库统一以 UTC 存储；PostgreSQL；MySQL 用 charset=utf8mb4&parseTime=true&loc=UTC
   MaxIdleConns: 10                  # 最大空闲连接数
   MaxOpenConns: 10                  # 最大打开连接数
   SlowThreshold: 1000               # 慢查询阈值（毫秒）
@@ -285,8 +285,9 @@ MaxMind GeoLite2 城市库为登录与审计日志提供地址归属地。没有
   直接照抄示例而不修改 `Driver` 会以 PostgreSQL 驱动连接。请让 `Driver` 与 `Config` 都匹配实际数据库。
 - **`Addr`**、**`Username`**、**`Password`**、**`Dbname`**：连接信息，均必填。
 - **`Config`**：方言相关的连接参数。
-  - MySQL 默认：`charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai`。
-  - PostgreSQL 示例：`sslmode=disable&TimeZone=Asia/Shanghai`。
+  - MySQL 默认：`charset=utf8mb4&parseTime=true&loc=UTC`。
+  - PostgreSQL 示例：`sslmode=disable&TimeZone=UTC`。
+  - **时区口径：** 数据库统一以 UTC 存储；连接层**强制** `loc=UTC` / `TimeZone=UTC`（不受 `Config` 中时区设置影响），应用读出后按进程本地时区 `time.Local` 呈现。升级旧库请执行迁移 `02170_localtime_to_utc`（见下）。
   - **分歧：** 上游的 PostgreSQL 默认值是
     `sslmode=prefer&TimeZone=<AppLocation>&application_name=perfect-panel`，并会自动注入 `TimeZone`。
     本 fork 没有 `AppLocation` 配置项，也不会改写 `Config`；请自行设置时区。跨网络访问数据库请使用

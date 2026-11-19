@@ -47,7 +47,8 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 
 	isDemo := strings.ToLower(os.Getenv("PPANEL_MODE")) == "demo"
 
-	if req.Avatar != "" && !tool.IsValidImageSize(req.Avatar, 1024) {
+	// OAuth avatars may be URLs; only validate newly submitted image data.
+	if req.Avatar != userInfo.Avatar && req.Avatar != "" && !tool.IsValidImageSize(req.Avatar, 1024) {
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Invalid Image Size")
 	}
 

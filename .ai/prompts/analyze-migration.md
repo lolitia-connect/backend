@@ -1,5 +1,7 @@
 # Analyze Migration Prompt
 
+> Read [current-customizations.md](./current-customizations.md), [the current ledger](../sync-diffs/v1.21.7-local-2026-11-19.md) and [the actual migration strategy](./architecture-context.md#2-migration-strategy-dual-system) first. The examples below describe schema intent, not deployable instructions or remaining feature work. This fork runs embedded MySQL **and PostgreSQL** SQL via golang-migrate at setup/upgrade; ent generation alone does not create deployed tables. For every schema decision below, also supply/check the SQL upgrade path in both dialects. Check tracked and untracked migration numbers; 02170 is recorded as worktree-only UTC work, not an available number or an approved migration. Never run conversion against shared/production data as part of analysis.
+
 You are analyzing an upstream SQL migration and translating it to the local entgo-based system.
 
 ## Context
@@ -37,19 +39,19 @@ cat ent/schema/<ENTITY>.go
 
 ```
 Is it a simple column add/remove/rename?
-  → YES: Update ent/schema/*.go, run go generate ./ent
-  
+  → YES: Update ent schema/generated code AND the SQL upgrade path.
+
 Is it a complex data migration (moving data between tables)?
-  → YES: Write hand-written SQL migration
-  
+  → YES: Write hand-written SQL for both supported dialects.
+
 Is it an index optimization (BRIN, partial, fillfactor)?
-  → YES: Write hand-written SQL migration (entgo doesn't support these)
-  
+  → YES: Write dialect-appropriate SQL and document non-applicable variants.
+
 Is it a new table?
-  → YES: Create new ent/schema/<table>.go, run go generate ./ent
-  
+  → YES: Create ent schema/generated code AND table-creation SQL.
+
 Is it dropping a column with data?
-  → YES: Write hand-written SQL to migrate data first, then update ent schema
+  → YES: Migrate data before the destructive schema/SQL step.
 ```
 
 ## Migration Numbering

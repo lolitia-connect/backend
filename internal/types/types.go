@@ -1451,6 +1451,15 @@ type LoginLog struct {
 
 type LoginResponse struct {
 	Token string `json:"token"`
+	// InviteRequired is set when an OAuth sign-in resolved a brand-new
+	// identity but the panel enforces invitation-only registration. The
+	// client must collect an invitation code and finish registration with
+	// OAuthToken instead of treating the response as a completed login.
+	InviteRequired bool `json:"invite_required,omitempty"`
+	// OAuthToken is the one-time ticket referencing the verified provider
+	// identity cached server-side. It is echoed back to /v1/auth/oauth/register
+	// together with the invitation code to complete registration.
+	OAuthToken string `json:"oauth_token,omitempty"`
 }
 
 type MessageLog struct {
@@ -1609,6 +1618,15 @@ type OAthLoginRequest struct {
 type OAuthLoginGetTokenRequest struct {
 	Method   string      `json:"method" validate:"required"` // google, facebook, apple, telegram, github etc.
 	Callback interface{} `json:"callback" validate:"required"`
+	Invite   string      `json:"invite,optional"` // optional invitation code collected before the provider round trip
+}
+
+// OAuthRegisterRequest completes an invitation-gated OAuth registration. It
+// carries the one-time ticket returned by /v1/auth/oauth/login/token (when it
+// answered with invite_required) and the invitation code the user supplied.
+type OAuthRegisterRequest struct {
+	OAuthToken string `json:"oauth_token" validate:"required"`
+	Invite     string `json:"invite" validate:"required"`
 }
 
 type OAuthLoginResponse struct {

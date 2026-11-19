@@ -56,6 +56,12 @@ const TelegramCallbackKey = "auth:telegram_callback"
 // DeviceCacheKeyKey cache session key
 const DeviceCacheKeyKey = "auth:device_identifier"
 
+// OAuthPendingRegisterKey prefixes the verified-but-unregistered OAuth
+// identities held while a forced-invite sign-up waits for the user to supply
+// an invitation code. The value is a registration capability, not a session,
+// and is consumed once the account is created.
+const OAuthPendingRegisterKey = "auth:oauth_pending_register"
+
 // GlobalConfigKey Global Config Key
 const GlobalConfigKey = "system:global_config"
 

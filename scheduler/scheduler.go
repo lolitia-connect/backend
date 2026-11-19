@@ -115,11 +115,16 @@ func (m *Service) Stop() {
 }
 
 func initService(svc *svc.ServiceContext) *asynq.Scheduler {
-	location, _ := time.LoadLocation("Asia/Shanghai")
+	// Use the process-local timezone so scheduled tasks fire on the same
+	// day boundary that the business logic computes with (everything else in
+	// the backend uses time.Local). A hardcoded Asia/Shanghai location here
+	// made cron tasks fire at Shanghai midnight while the logic derived
+	// "yesterday"/"today" from time.Local, so on servers in another timezone
+	// the daily traffic archive and the console disagreed by a day.
 	return asynq.NewScheduler(
 		asynq.RedisClientOpt{Addr: svc.Config.Redis.Host, Password: svc.Config.Redis.Pass, DB: 5},
 		&asynq.SchedulerOpts{
-			Location: location,
+			Location: time.Local,
 			Logger:   logging.NewAsynqLogger(),
 		},
 	)

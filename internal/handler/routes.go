@@ -761,6 +761,9 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 
 		// OAuth login get token
 		authOauthGroupRouter.POST("/login/token", authOauth.OAuthLoginGetTokenHandler(serverCtx))
+
+		// OAuth register with invitation code (completes a forced-invite sign-up)
+		authOauthGroupRouter.POST("/register", authOauth.OAuthRegisterHandler(serverCtx))
 	}
 
 	commonGroupRouter := router.Group("/v1/common")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -54,20 +53,30 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 	now := time.Now()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	todayEnd := todayStart.Add(24 * time.Hour)
+	// Yesterday is derived from "now" (same clock/timezone as the rest of this
+	// logic) and queried live from traffic_log, instead of reading archived
+	// rank logs keyed by a date string. This keeps yesterday's rankings on the
+	// exact same timezone basis (time.Local) as today's and does not depend on
+	// the daily archive job having run. Raw traffic_log rows are retained for
+	// at least ClearDays (minimum 7) days, so a live query is reliable.
+	yesterday := now.AddDate(0, 0, -1)
 	trafficStore := l.svcCtx.Store.TrafficLog()
 	logStore := l.svcCtx.Store.Log()
 	nodeStore := l.svcCtx.Store.Node()
 
-	// Parallelize three traffic_log queries to reduce latency
+	// Parallelize the traffic_log queries to reduce latency
 	var (
 		todayTop10User                 []traffic.UserTrafficRanking
 		todayTop10Server               []traffic.ServerTrafficRanking
+		yesterdayTop10User             []traffic.UserTrafficRanking
+		yesterdayTop10Server           []traffic.ServerTrafficRanking
 		todayTraffic                   *traffic.TotalTraffic
 		userErr, serverErr, trafficErr error
+		userYErr, serverYErr           error
 		wg                             sync.WaitGroup
 	)
 
-	wg.Add(3)
+	wg.Add(5)
 
 	// Query 1: Today's top 10 users by traffic
 	go func() {
@@ -87,6 +96,18 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 		todayTraffic, trafficErr = trafficStore.QueryTrafficSummary(l.ctx, todayStart, todayEnd)
 	}()
 
+	// Query 4: Yesterday's top 10 users by traffic
+	go func() {
+		defer wg.Done()
+		yesterdayTop10User, userYErr = trafficStore.TopUsersTrafficByDay(l.ctx, yesterday, 10)
+	}()
+
+	// Query 5: Yesterday's top 10 servers by traffic
+	go func() {
+		defer wg.Done()
+		yesterdayTop10Server, serverYErr = trafficStore.TopServersTrafficByDay(l.ctx, yesterday, 10)
+	}()
+
 	wg.Wait()
 
 	if userErr != nil {
@@ -101,8 +122,16 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 		zap.S().Errorf("[QueryServerTotalData] Sum today traffic failed: %v", trafficErr.Error())
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Sum today traffic failed: %v", trafficErr.Error())
 	}
+	// Yesterday's rankings are supplementary; log failures but still return
+	// today's data so the dashboard keeps rendering.
+	if userYErr != nil {
+		l.Logger.Errorw("[QueryServerTotalData] Query yesterday user traffic failed", zap.Any("error", userYErr.Error()))
+	}
+	if serverYErr != nil {
+		l.Logger.Errorw("[QueryServerTotalData] Query yesterday server traffic failed", zap.Any("error", serverYErr.Error()))
+	}
 
-	// Build today user traffic ranking
+	// Build user traffic rankings (ordering preserved from the store query)
 	var userTodayTrafficRanking []types.UserTrafficData
 	for _, item := range todayTop10User {
 		userTodayTrafficRanking = append(userTodayTrafficRanking, types.UserTrafficData{
@@ -112,41 +141,26 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 		})
 	}
 
-	// Query yesterday user traffic rank log
-	yesterday := todayStart.Add(-24 * time.Hour).Format(time.DateOnly)
-
-	yesterdayLog, err := logStore.FindFirstByDateType(l.ctx, yesterday, log.TypeUserTrafficRank.Uint8())
-	if err != nil {
-		l.Logger.Errorw("[QueryServerTotalDataLogic] Query yesterday user traffic rank log error", zap.Any("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query yesterday user traffic rank log error: %v", err)
-	}
-
 	var yesterdayUserRankData []types.UserTrafficData
-	if yesterdayLog != nil {
-		var rank log.UserTrafficRank
-		err = rank.Unmarshal([]byte(yesterdayLog.Content))
-		if err != nil {
-			l.Logger.Errorw("[QueryServerTotalDataLogic] Unmarshal yesterday user traffic rank log error", zap.Any("error", err.Error()))
-		}
-		// Extract and sort keys to maintain rank order
-		keys := make([]uint8, 0, len(rank.Rank))
-		for k := range rank.Rank {
-			keys = append(keys, k)
-		}
-		sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-		for _, k := range keys {
-			yesterdayUserRankData = append(yesterdayUserRankData, types.UserTrafficData{
-				SID:      rank.Rank[k].SubscribeId,
-				Upload:   rank.Rank[k].Upload,
-				Download: rank.Rank[k].Download,
-			})
-		}
+	for _, item := range yesterdayTop10User {
+		yesterdayUserRankData = append(yesterdayUserRankData, types.UserTrafficData{
+			SID:      item.SubscribeId,
+			Upload:   item.Upload,
+			Download: item.Download,
+		})
 	}
 
-	// Batch fetch server names for today's ranking
-	serverIDs := make([]int64, 0, 10)
+	// Batch fetch server names for both today's and yesterday's rankings
+	serverIDSet := make(map[int64]struct{})
 	for _, item := range todayTop10Server {
-		serverIDs = append(serverIDs, item.ServerId)
+		serverIDSet[item.ServerId] = struct{}{}
+	}
+	for _, item := range yesterdayTop10Server {
+		serverIDSet[item.ServerId] = struct{}{}
+	}
+	serverIDs := make([]int64, 0, len(serverIDSet))
+	for id := range serverIDSet {
+		serverIDs = append(serverIDs, id)
 	}
 
 	serverMap := make(map[int64]string)
@@ -162,68 +176,22 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 
 	var todayServerRanking []types.ServerTrafficData
 	for _, item := range todayTop10Server {
-		name := ""
-		if serverName, ok := serverMap[item.ServerId]; ok {
-			name = serverName
-		}
 		todayServerRanking = append(todayServerRanking, types.ServerTrafficData{
 			ServerId: item.ServerId,
-			Name:     name,
+			Name:     serverMap[item.ServerId],
 			Upload:   item.Upload,
 			Download: item.Download,
 		})
 	}
 
-	// Query yesterday server traffic rank
-	var yesterdayTop10Server []types.ServerTrafficData
-	yesterdayServerTrafficLog, err := logStore.FindFirstByDateType(l.ctx, yesterday, log.TypeServerTrafficRank.Uint8())
-	if err != nil {
-		l.Logger.Errorw("[QueryServerTotalDataLogic] Query yesterday server traffic rank log error", zap.Any("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query yesterday server traffic rank log error: %v", err)
-	}
-	if yesterdayServerTrafficLog != nil {
-		var rank log.ServerTrafficRank
-		err = rank.Unmarshal([]byte(yesterdayServerTrafficLog.Content))
-		if err != nil {
-			l.Logger.Errorw("[QueryServerTotalDataLogic] Unmarshal yesterday server traffic rank log error", zap.Any("error", err.Error()))
-		}
-
-		// Extract and sort keys to maintain rank order
-		serverKeys := make([]uint8, 0, len(rank.Rank))
-		for k := range rank.Rank {
-			serverKeys = append(serverKeys, k)
-		}
-		sort.Slice(serverKeys, func(i, j int) bool { return serverKeys[i] < serverKeys[j] })
-
-		// Collect yesterday server IDs not already fetched
-		yesterdayServerIDs := make([]int64, 0, len(rank.Rank))
-		for _, k := range serverKeys {
-			v := rank.Rank[k]
-			if _, ok := serverMap[v.ServerId]; !ok {
-				yesterdayServerIDs = append(yesterdayServerIDs, v.ServerId)
-			}
-		}
-		if len(yesterdayServerIDs) > 0 {
-			if extraServers, err := nodeStore.QueryServerList(l.ctx, yesterdayServerIDs); err == nil {
-				for _, s := range extraServers {
-					serverMap[s.Id] = s.Name
-				}
-			}
-		}
-
-		for _, k := range serverKeys {
-			v := rank.Rank[k]
-			name := ""
-			if serverName, ok := serverMap[v.ServerId]; ok {
-				name = serverName
-			}
-			yesterdayTop10Server = append(yesterdayTop10Server, types.ServerTrafficData{
-				ServerId: v.ServerId,
-				Name:     name,
-				Upload:   v.Upload,
-				Download: v.Download,
-			})
-		}
+	var yesterdayServerRanking []types.ServerTrafficData
+	for _, item := range yesterdayTop10Server {
+		yesterdayServerRanking = append(yesterdayServerRanking, types.ServerTrafficData{
+			ServerId: item.ServerId,
+			Name:     serverMap[item.ServerId],
+			Upload:   item.Upload,
+			Download: item.Download,
+		})
 	}
 
 	// Query online user count
@@ -282,7 +250,7 @@ func (l *QueryServerTotalDataLogic) QueryServerTotalData() (resp *types.ServerTo
 		MonthlyDownload:               monthlyDownload,
 		UpdatedAt:                     now.Unix(),
 		ServerTrafficRankingToday:     todayServerRanking,
-		ServerTrafficRankingYesterday: yesterdayTop10Server,
+		ServerTrafficRankingYesterday: yesterdayServerRanking,
 		UserTrafficRankingToday:       userTodayTrafficRanking,
 		UserTrafficRankingYesterday:   yesterdayUserRankData,
 	}

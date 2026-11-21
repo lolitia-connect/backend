@@ -1,6 +1,8 @@
 package adapter
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -150,6 +152,88 @@ func TestClient_Build(t *testing.T) {
 
 	t.Logf("[测试] 输出: %s", buf)
 
+}
+
+func TestClientBuildDuplicateNodeNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		proxies []Proxy
+		want    []string
+	}{
+		{
+			name: "number each duplicate group by node sort without reordering output",
+			proxies: []Proxy{
+				{Name: "香港", Sort: 30},
+				{Name: "日本", Sort: 50},
+				{Name: "香港", Sort: 10},
+				{Name: "美国", Sort: 40},
+				{Name: "香港", Sort: 20},
+				{Name: "日本", Sort: 60},
+			},
+			want: []string{"香港 #3", "日本 #1", "香港 #1", "美国", "香港 #2", "日本 #2"},
+		},
+		{
+			name: "keep input order for equal sorts",
+			proxies: []Proxy{
+				{Name: "香港", Sort: 10},
+				{Name: "香港", Sort: 10},
+			},
+			want: []string{"香港 #1", "香港 #2"},
+		},
+		{
+			name: "reserve existing suffixed names",
+			proxies: []Proxy{
+				{Name: "香港", Sort: 20},
+				{Name: "香港 #1", Sort: 30},
+				{Name: "香港 #3", Sort: 40},
+				{Name: "香港", Sort: 10},
+				{Name: "香港 #3", Sort: 50},
+			},
+			want: []string{"香港 #4", "香港 #1", "香港 #3 #1", "香港 #2", "香港 #3 #2"},
+		},
+		{
+			name: "leave distinct names unchanged",
+			proxies: []Proxy{
+				{Name: "香港", Sort: 10},
+				{Name: "香港 #1", Sort: 20},
+				{Name: "日本", Sort: 30},
+			},
+			want: []string{"香港", "香港 #1", "日本"},
+		},
+		{
+			name: "empty subscription",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &Client{
+				ClientTemplate: `{{ .Proxies | toJson }}`,
+				Proxies:        tt.proxies,
+			}
+			original := append([]Proxy(nil), tt.proxies...)
+			for range 2 {
+				output, err := client.Build()
+				if err != nil {
+					t.Fatal(err)
+				}
+				var rendered []Proxy
+				if err := json.Unmarshal(output, &rendered); err != nil {
+					t.Fatal(err)
+				}
+				var names []string
+				for _, proxy := range rendered {
+					names = append(names, proxy.Name)
+				}
+				if !reflect.DeepEqual(names, tt.want) {
+					t.Fatalf("names = %v, want %v", names, tt.want)
+				}
+				if !reflect.DeepEqual(client.Proxies, original) {
+					t.Fatal("rendering changed the original proxies")
+				}
+			}
+		})
+	}
 }
 
 func TestClientBuildProtocolCredentials(t *testing.T) {

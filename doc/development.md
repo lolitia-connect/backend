@@ -78,6 +78,19 @@ hand-written SQL migrations under `initialize/migrate/database/`.
   The per-user subscription traffic endpoint accepts Unix-millisecond `start_time` / `end_time`
   bounds, including the start and excluding the end.
 
+### Subscription node names
+
+Subscription downloads and admin template previews share `adapter.Client.Build`. Valid nodes
+passed to a render with exactly matching names receive ` #1`, ` #2`, ` #3`, and so on in ascending
+node-settings `Sort` order. Equal sort values retain input order, and the proxy list itself keeps
+its existing order. Each configuration calculates its own numbering; unique names, database nodes,
+and the original proxy data remain unchanged.
+
+Numbering skips names already present in the configuration. For example, two `Hong Kong` nodes
+alongside a `Hong Kong #1` node become `Hong Kong #2` and `Hong Kong #3` in sort order, while the
+existing `Hong Kong #1` stays unchanged. Templates use `Name` from `.Proxies` for both node
+definitions and group references so they remain consistent.
+
 ### Build for Multiple Platforms
 
 Use the `Makefile` to build for various platforms (e.g., Linux, Windows, macOS):

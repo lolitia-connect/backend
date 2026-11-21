@@ -135,10 +135,8 @@ func (c *Client) Build() ([]byte, error) {
 	}
 
 	proxies := make([]map[string]interface{}, len(c.Proxies))
-	names := uniqueProxyNames(c.Proxies)
-	for i, p := range c.Proxies {
+	for i, p := range prepareProxies(c.Proxies) {
 		proxies[i] = StructToMap(p)
-		proxies[i]["Name"] = names[i]
 		password, err := node.ProtocolCredential(p.Type, c.UserInfo.Password)
 		if err != nil {
 			return nil, err

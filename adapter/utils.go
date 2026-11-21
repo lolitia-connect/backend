@@ -2,25 +2,24 @@ package adapter
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 )
 
-func uniqueProxyNames(proxies []Proxy) []string {
-	names := make([]string, len(proxies))
-	counts := make(map[string]int, len(proxies))
-	order := make([]int, len(proxies))
-	for i, proxy := range proxies {
-		names[i] = proxy.Name
-		counts[proxy.Name]++
-		order[i] = i
-	}
-	sort.SliceStable(order, func(i, j int) bool {
-		return proxies[order[i]].Sort < proxies[order[j]].Sort
+func prepareProxies(proxies []Proxy) []Proxy {
+	result := slices.Clone(proxies)
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].Sort < result[j].Sort
 	})
 
+	counts := make(map[string]int, len(result))
+	for _, proxy := range result {
+		counts[proxy.Name]++
+	}
+
 	next := make(map[string]int)
-	for _, i := range order {
-		name := proxies[i].Name
+	for i, proxy := range result {
+		name := proxy.Name
 		if counts[name] < 2 {
 			continue
 		}
@@ -31,10 +30,10 @@ func uniqueProxyNames(proxies []Proxy) []string {
 			if counts[candidate] != 0 {
 				continue
 			}
-			names[i] = candidate
+			result[i].Name = candidate
 			counts[candidate] = 1
 			break
 		}
 	}
-	return names
+	return result
 }

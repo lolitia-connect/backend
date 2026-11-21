@@ -161,7 +161,7 @@ func TestClientBuildDuplicateNodeNames(t *testing.T) {
 		want    []string
 	}{
 		{
-			name: "number each duplicate group by node sort without reordering output",
+			name: "sort output and number each duplicate group starting at one",
 			proxies: []Proxy{
 				{Name: "香港", Sort: 30},
 				{Name: "日本", Sort: 50},
@@ -170,15 +170,25 @@ func TestClientBuildDuplicateNodeNames(t *testing.T) {
 				{Name: "香港", Sort: 20},
 				{Name: "日本", Sort: 60},
 			},
-			want: []string{"香港 #3", "日本 #1", "香港 #1", "美国", "香港 #2", "日本 #2"},
+			want: []string{"香港 #1", "香港 #2", "香港 #3", "美国", "日本 #1", "日本 #2"},
+		},
+		{
+			name: "preserve original spaces and only number exact matches",
+			proxies: []Proxy{
+				{Name: "香港 HKBN 1 @ XXX", Sort: 30},
+				{Name: "香港 HKBN1 @ XXX", Sort: 20},
+				{Name: "香港 HKBN 1 @ XXX", Sort: 10},
+			},
+			want: []string{"香港 HKBN 1 @ XXX #1", "香港 HKBN1 @ XXX", "香港 HKBN 1 @ XXX #2"},
 		},
 		{
 			name: "keep input order for equal sorts",
 			proxies: []Proxy{
 				{Name: "香港", Sort: 10},
+				{Name: "日本", Sort: 10},
 				{Name: "香港", Sort: 10},
 			},
-			want: []string{"香港 #1", "香港 #2"},
+			want: []string{"香港 #1", "日本", "香港 #2"},
 		},
 		{
 			name: "reserve existing suffixed names",
@@ -189,14 +199,14 @@ func TestClientBuildDuplicateNodeNames(t *testing.T) {
 				{Name: "香港", Sort: 10},
 				{Name: "香港 #3", Sort: 50},
 			},
-			want: []string{"香港 #4", "香港 #1", "香港 #3 #1", "香港 #2", "香港 #3 #2"},
+			want: []string{"香港 #2", "香港 #4", "香港 #1", "香港 #3 #1", "香港 #3 #2"},
 		},
 		{
-			name: "leave distinct names unchanged",
+			name: "sort distinct nodes without renaming them",
 			proxies: []Proxy{
+				{Name: "日本", Sort: 30},
 				{Name: "香港", Sort: 10},
 				{Name: "香港 #1", Sort: 20},
-				{Name: "日本", Sort: 30},
 			},
 			want: []string{"香港", "香港 #1", "日本"},
 		},
@@ -222,7 +232,10 @@ func TestClientBuildDuplicateNodeNames(t *testing.T) {
 					t.Fatal(err)
 				}
 				var names []string
-				for _, proxy := range rendered {
+				for i, proxy := range rendered {
+					if i > 0 && rendered[i-1].Sort > proxy.Sort {
+						t.Fatalf("proxy %d has sort %d after sort %d", i, proxy.Sort, rendered[i-1].Sort)
+					}
 					names = append(names, proxy.Name)
 				}
 				if !reflect.DeepEqual(names, tt.want) {

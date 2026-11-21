@@ -56,14 +56,15 @@ func TestAdapterClientDuplicateNamesAreLocalToConfig(t *testing.T) {
 {{end}}`
 
 	tests := []struct {
-		name    string
-		servers []*node.Node
-		want    []string
+		name        string
+		servers     []*node.Node
+		want        []string
+		wantServers []string
 	}{
-		{"combined", servers, []string{"香港 #2", "香港 #1"}},
-		{"first separately", servers[:1], []string{"香港"}},
-		{"second with invalid duplicate", []*node.Node{&invalid, servers[1]}, []string{"香港"}},
-		{"combined again", servers, []string{"香港 #2", "香港 #1"}},
+		{"combined", servers, []string{"香港 #1", "香港 #2"}, []string{"trojan.example.com", "ss.example.com"}},
+		{"first separately", servers[:1], []string{"香港"}, []string{"ss.example.com"}},
+		{"second with invalid duplicate", []*node.Node{&invalid, servers[1]}, []string{"香港"}, []string{"trojan.example.com"}},
+		{"combined again", servers, []string{"香港 #1", "香港 #2"}, []string{"trojan.example.com", "ss.example.com"}},
 	}
 	for _, format := range []string{"yaml", "base64"} {
 		for _, tt := range tests {
@@ -84,7 +85,8 @@ func TestAdapterClientDuplicateNamesAreLocalToConfig(t *testing.T) {
 				}
 				var config struct {
 					Proxies []struct {
-						Name string `yaml:"name"`
+						Name   string `yaml:"name"`
+						Server string `yaml:"server"`
 					} `yaml:"proxies"`
 					Groups []struct {
 						Proxies []string `yaml:"proxies"`
@@ -93,12 +95,16 @@ func TestAdapterClientDuplicateNamesAreLocalToConfig(t *testing.T) {
 				if err := yaml.Unmarshal(output, &config); err != nil {
 					t.Fatal(err)
 				}
-				var names []string
+				var names, addresses []string
 				for _, proxy := range config.Proxies {
 					names = append(names, proxy.Name)
+					addresses = append(addresses, proxy.Server)
 				}
 				if !reflect.DeepEqual(names, tt.want) {
 					t.Fatalf("proxy names = %v, want %v", names, tt.want)
+				}
+				if !reflect.DeepEqual(addresses, tt.wantServers) {
+					t.Fatalf("proxy servers = %v, want %v", addresses, tt.wantServers)
 				}
 				if len(config.Groups) != 1 || !reflect.DeepEqual(config.Groups[0].Proxies, names) {
 					t.Fatalf("group references = %v, want %v", config.Groups, names)

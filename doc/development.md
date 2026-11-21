@@ -81,10 +81,11 @@ hand-written SQL migrations under `initialize/migrate/database/`.
 ### Subscription node names
 
 Subscription downloads and admin template previews share `adapter.Client.Build`. Valid nodes
-passed to a render with exactly matching names receive ` #1`, ` #2`, ` #3`, and so on in ascending
-node-settings `Sort` order. Equal sort values retain input order, and the proxy list itself keeps
-its existing order. Each configuration calculates its own numbering; unique names, database nodes,
-and the original proxy data remain unchanged.
+passed to a render are first sorted by ascending node-settings `Sort`, then nodes with exactly
+matching names receive ` #1`, ` #2`, ` #3`, and so on, including the first duplicate. Equal sort
+values retain input order, and node definitions and group references use the same ordered list.
+Each configuration calculates its own numbering; unique names remain unchanged. Sorting and
+numbering operate on a copy, preserving database nodes and the original proxy data.
 
 Numbering skips names already present in the configuration. For example, two `Hong Kong` nodes
 alongside a `Hong Kong #1` node become `Hong Kong #2` and `Hong Kong #3` in sort order, while the

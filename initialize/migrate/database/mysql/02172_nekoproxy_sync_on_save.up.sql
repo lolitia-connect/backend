@@ -1,0 +1,1 @@
+ALTER TABLE nekoproxy_bindings ADD COLUMN sync_on_save BOOLEAN NOT NULL DEFAULT TRUE;

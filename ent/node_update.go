@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/predicate"
 )
@@ -228,9 +229,34 @@ func (_u *NodeUpdate) SetUpdatedAt(v time.Time) *NodeUpdate {
 	return _u
 }
 
+// SetNekoproxyBindingID sets the "nekoproxy_binding" edge to the NekoproxyBinding entity by ID.
+func (_u *NodeUpdate) SetNekoproxyBindingID(id int64) *NodeUpdate {
+	_u.mutation.SetNekoproxyBindingID(id)
+	return _u
+}
+
+// SetNillableNekoproxyBindingID sets the "nekoproxy_binding" edge to the NekoproxyBinding entity by ID if the given value is not nil.
+func (_u *NodeUpdate) SetNillableNekoproxyBindingID(id *int64) *NodeUpdate {
+	if id != nil {
+		_u = _u.SetNekoproxyBindingID(*id)
+	}
+	return _u
+}
+
+// SetNekoproxyBinding sets the "nekoproxy_binding" edge to the NekoproxyBinding entity.
+func (_u *NodeUpdate) SetNekoproxyBinding(v *NekoproxyBinding) *NodeUpdate {
+	return _u.SetNekoproxyBindingID(v.ID)
+}
+
 // Mutation returns the NodeMutation object of the builder.
 func (_u *NodeUpdate) Mutation() *NodeMutation {
 	return _u.mutation
+}
+
+// ClearNekoproxyBinding clears the "nekoproxy_binding" edge to the NekoproxyBinding entity.
+func (_u *NodeUpdate) ClearNekoproxyBinding() *NodeUpdate {
+	_u.mutation.ClearNekoproxyBinding()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -371,6 +397,35 @@ func (_u *NodeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(node.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.NekoproxyBindingCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   node.NekoproxyBindingTable,
+			Columns: []string{node.NekoproxyBindingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(nekoproxybinding.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.NekoproxyBindingIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   node.NekoproxyBindingTable,
+			Columns: []string{node.NekoproxyBindingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(nekoproxybinding.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -591,9 +646,34 @@ func (_u *NodeUpdateOne) SetUpdatedAt(v time.Time) *NodeUpdateOne {
 	return _u
 }
 
+// SetNekoproxyBindingID sets the "nekoproxy_binding" edge to the NekoproxyBinding entity by ID.
+func (_u *NodeUpdateOne) SetNekoproxyBindingID(id int64) *NodeUpdateOne {
+	_u.mutation.SetNekoproxyBindingID(id)
+	return _u
+}
+
+// SetNillableNekoproxyBindingID sets the "nekoproxy_binding" edge to the NekoproxyBinding entity by ID if the given value is not nil.
+func (_u *NodeUpdateOne) SetNillableNekoproxyBindingID(id *int64) *NodeUpdateOne {
+	if id != nil {
+		_u = _u.SetNekoproxyBindingID(*id)
+	}
+	return _u
+}
+
+// SetNekoproxyBinding sets the "nekoproxy_binding" edge to the NekoproxyBinding entity.
+func (_u *NodeUpdateOne) SetNekoproxyBinding(v *NekoproxyBinding) *NodeUpdateOne {
+	return _u.SetNekoproxyBindingID(v.ID)
+}
+
 // Mutation returns the NodeMutation object of the builder.
 func (_u *NodeUpdateOne) Mutation() *NodeMutation {
 	return _u.mutation
+}
+
+// ClearNekoproxyBinding clears the "nekoproxy_binding" edge to the NekoproxyBinding entity.
+func (_u *NodeUpdateOne) ClearNekoproxyBinding() *NodeUpdateOne {
+	_u.mutation.ClearNekoproxyBinding()
+	return _u
 }
 
 // Where appends a list predicates to the NodeUpdate builder.
@@ -764,6 +844,35 @@ func (_u *NodeUpdateOne) sqlSave(ctx context.Context) (_node *Node, err error) {
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(node.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.NekoproxyBindingCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   node.NekoproxyBindingTable,
+			Columns: []string{node.NekoproxyBindingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(nekoproxybinding.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.NekoproxyBindingIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   node.NekoproxyBindingTable,
+			Columns: []string{node.NekoproxyBindingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(nekoproxybinding.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &Node{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 )
 
@@ -45,8 +46,31 @@ type Node struct {
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
-	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	// Edges holds the relations/edges for other nodes in the graph.
+	// The values are being populated by the NodeQuery when eager-loading is set.
+	Edges        NodeEdges `json:"edges"`
 	selectValues sql.SelectValues
+}
+
+// NodeEdges holds the relations/edges for other nodes in the graph.
+type NodeEdges struct {
+	// NekoproxyBinding holds the value of the nekoproxy_binding edge.
+	NekoproxyBinding *NekoproxyBinding `json:"nekoproxy_binding,omitempty"`
+	// loadedTypes holds the information for reporting if a
+	// type was loaded (or requested) in eager-loading or not.
+	loadedTypes [1]bool
+}
+
+// NekoproxyBindingOrErr returns the NekoproxyBinding value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e NodeEdges) NekoproxyBindingOrErr() (*NekoproxyBinding, error) {
+	if e.NekoproxyBinding != nil {
+		return e.NekoproxyBinding, nil
+	} else if e.loadedTypes[0] {
+		return nil, &NotFoundError{label: nekoproxybinding.Label}
+	}
+	return nil, &NotLoadedError{edge: "nekoproxy_binding"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -182,6 +206,11 @@ func (_m *Node) assignValues(columns []string, values []any) error {
 // This includes values selected through modifiers, order, etc.
 func (_m *Node) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
+}
+
+// QueryNekoproxyBinding queries the "nekoproxy_binding" edge of the Node entity.
+func (_m *Node) QueryNekoproxyBinding() *NekoproxyBindingQuery {
+	return NewNodeClient(_m.config).QueryNekoproxyBinding(_m)
 }
 
 // Update returns a builder for updating this Node.

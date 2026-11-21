@@ -12,6 +12,7 @@ import (
 	"github.com/perfect-panel/server/ent/document"
 	"github.com/perfect-panel/server/ent/grouphistory"
 	"github.com/perfect-panel/server/ent/grouphistorydetail"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/order"
@@ -252,6 +253,76 @@ func init() {
 	grouphistorydetailDescCreatedAt := grouphistorydetailFields[6].Descriptor()
 	// grouphistorydetail.DefaultCreatedAt holds the default value on creation for the created_at field.
 	grouphistorydetail.DefaultCreatedAt = grouphistorydetailDescCreatedAt.Default.(func() time.Time)
+	nekoproxybindingFields := schema.NekoproxyBinding{}.Fields()
+	_ = nekoproxybindingFields
+	// nekoproxybindingDescAPIURL is the schema descriptor for api_url field.
+	nekoproxybindingDescAPIURL := nekoproxybindingFields[2].Descriptor()
+	// nekoproxybinding.APIURLValidator is a validator for the "api_url" field. It is called by the builders before save.
+	nekoproxybinding.APIURLValidator = func() func(string) error {
+		validators := nekoproxybindingDescAPIURL.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(api_url string) error {
+			for _, fn := range fns {
+				if err := fn(api_url); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// nekoproxybindingDescForwardID is the schema descriptor for forward_id field.
+	nekoproxybindingDescForwardID := nekoproxybindingFields[3].Descriptor()
+	// nekoproxybinding.ForwardIDValidator is a validator for the "forward_id" field. It is called by the builders before save.
+	nekoproxybinding.ForwardIDValidator = func() func(string) error {
+		validators := nekoproxybindingDescForwardID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(forward_id string) error {
+			for _, fn := range fns {
+				if err := fn(forward_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// nekoproxybindingDescSessionID is the schema descriptor for session_id field.
+	nekoproxybindingDescSessionID := nekoproxybindingFields[4].Descriptor()
+	// nekoproxybinding.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	nekoproxybinding.SessionIDValidator = func() func(string) error {
+		validators := nekoproxybindingDescSessionID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(session_id string) error {
+			for _, fn := range fns {
+				if err := fn(session_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// nekoproxybindingDescSyncOnSave is the schema descriptor for sync_on_save field.
+	nekoproxybindingDescSyncOnSave := nekoproxybindingFields[5].Descriptor()
+	// nekoproxybinding.DefaultSyncOnSave holds the default value on creation for the sync_on_save field.
+	nekoproxybinding.DefaultSyncOnSave = nekoproxybindingDescSyncOnSave.Default.(bool)
+	// nekoproxybindingDescCreatedAt is the schema descriptor for created_at field.
+	nekoproxybindingDescCreatedAt := nekoproxybindingFields[6].Descriptor()
+	// nekoproxybinding.DefaultCreatedAt holds the default value on creation for the created_at field.
+	nekoproxybinding.DefaultCreatedAt = nekoproxybindingDescCreatedAt.Default.(func() time.Time)
+	// nekoproxybindingDescUpdatedAt is the schema descriptor for updated_at field.
+	nekoproxybindingDescUpdatedAt := nekoproxybindingFields[7].Descriptor()
+	// nekoproxybinding.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	nekoproxybinding.DefaultUpdatedAt = nekoproxybindingDescUpdatedAt.Default.(func() time.Time)
+	// nekoproxybinding.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	nekoproxybinding.UpdateDefaultUpdatedAt = nekoproxybindingDescUpdatedAt.UpdateDefault.(func() time.Time)
 	nodeFields := schema.Node{}.Fields()
 	_ = nodeFields
 	// nodeDescName is the schema descriptor for name field.

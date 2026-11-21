@@ -151,6 +151,38 @@ var (
 		Columns:    GroupHistoryDetailColumns,
 		PrimaryKey: []*schema.Column{GroupHistoryDetailColumns[0]},
 	}
+	// NekoproxyBindingsColumns holds the columns for the "nekoproxy_bindings" table.
+	NekoproxyBindingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "api_url", Type: field.TypeString, Size: 512},
+		{Name: "forward_id", Type: field.TypeString, Size: 128},
+		{Name: "session_id", Type: field.TypeString, Size: 128},
+		{Name: "sync_on_save", Type: field.TypeBool, Default: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "node_id", Type: field.TypeInt64, Unique: true},
+	}
+	// NekoproxyBindingsTable holds the schema information for the "nekoproxy_bindings" table.
+	NekoproxyBindingsTable = &schema.Table{
+		Name:       "nekoproxy_bindings",
+		Columns:    NekoproxyBindingsColumns,
+		PrimaryKey: []*schema.Column{NekoproxyBindingsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "nekoproxy_bindings_nodes_nekoproxy_binding",
+				Columns:    []*schema.Column{NekoproxyBindingsColumns[7]},
+				RefColumns: []*schema.Column{NodesColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "nekoproxybinding_api_url_forward_id",
+				Unique:  true,
+				Columns: []*schema.Column{NekoproxyBindingsColumns[1], NekoproxyBindingsColumns[2]},
+			},
+		},
+	}
 	// NodesColumns holds the columns for the "nodes" table.
 	NodesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -834,6 +866,7 @@ var (
 		DocumentTable,
 		GroupHistoryTable,
 		GroupHistoryDetailTable,
+		NekoproxyBindingsTable,
 		NodesTable,
 		NodeGroupTable,
 		OrderTable,
@@ -887,6 +920,10 @@ func init() {
 	}
 	GroupHistoryDetailTable.Annotation = &entsql.Annotation{
 		Table: "group_history_detail",
+	}
+	NekoproxyBindingsTable.ForeignKeys[0].RefTable = NodesTable
+	NekoproxyBindingsTable.Annotation = &entsql.Annotation{
+		Table: "nekoproxy_bindings",
 	}
 	NodesTable.Annotation = &entsql.Annotation{
 		Table: "nodes",

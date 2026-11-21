@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	adminNekoproxy "github.com/perfect-panel/server/internal/handler/admin/nekoproxy"
 	adminSystem "github.com/perfect-panel/server/internal/handler/admin/system"
 	adminUser "github.com/perfect-panel/server/internal/handler/admin/user"
 	publicUser "github.com/perfect-panel/server/internal/handler/public/user"
@@ -21,6 +22,10 @@ func TestHandlersRejectBindingErrorsBeforeBusinessLogic(t *testing.T) {
 		name, method, target, body string
 		handler                    func(*hertzx.Context)
 	}{
+		{"malformed Nekoproxy node ID", http.MethodPut, "/v1/admin/server/nekoproxy/binding", `{"node_id":1,"forward_id":"l4s-1","session_id":"session-1"}`, adminNekoproxy.BindHandler(service)},
+		{"missing Nekoproxy session", http.MethodPut, "/v1/admin/server/nekoproxy/binding", `{"node_id":"1","forward_id":"l4s-1"}`, adminNekoproxy.BindHandler(service)},
+		{"negative Nekoproxy sync ID", http.MethodPost, "/v1/admin/server/nekoproxy/sync", `{"node_id":"-1"}`, adminNekoproxy.SyncHandler(service)},
+		{"invalid Nekoproxy token type", http.MethodPut, "/v1/admin/server/nekoproxy/config", `{"api_url":"https://example.test","api_token":42}`, adminNekoproxy.UpdateConfigHandler(service)},
 		{"malformed user flag", http.MethodPut, "/v1/admin/user/basic", `{"user_id":"7","enable":"false"}`, adminUser.UpdateUserBasicInfoHandler(service)},
 		{"malformed notification flag", http.MethodPut, "/v1/public/user/notify", `{"enable_login_notify":"false"}`, publicUser.UpdateUserNotifyHandler(service)},
 		{"malformed configuration", http.MethodPut, "/v1/admin/system/invite", `{"forced_invite":true,"referral_percentage":"invalid"}`, adminSystem.UpdateInviteConfigHandler(service)},

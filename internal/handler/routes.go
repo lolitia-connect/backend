@@ -14,6 +14,7 @@ import (
 	adminGroup "github.com/perfect-panel/server/internal/handler/admin/group"
 	adminLog "github.com/perfect-panel/server/internal/handler/admin/log"
 	adminMarketing "github.com/perfect-panel/server/internal/handler/admin/marketing"
+	adminNekoproxy "github.com/perfect-panel/server/internal/handler/admin/nekoproxy"
 	adminOrder "github.com/perfect-panel/server/internal/handler/admin/order"
 	adminPayment "github.com/perfect-panel/server/internal/handler/admin/payment"
 	adminRedemption "github.com/perfect-panel/server/internal/handler/admin/redemption"
@@ -385,6 +386,14 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 	adminServerGroupRouter.Use(middleware.AuthMiddleware(serverCtx))
 
 	{
+		adminServerGroupRouter.GET("/nekoproxy/config", adminNekoproxy.GetConfigHandler(serverCtx))
+		adminServerGroupRouter.PUT("/nekoproxy/config", adminNekoproxy.UpdateConfigHandler(serverCtx))
+		adminServerGroupRouter.GET("/nekoproxy/state", adminNekoproxy.GetStateHandler(serverCtx))
+		adminServerGroupRouter.GET("/nekoproxy/binding", adminNekoproxy.GetBindingHandler(serverCtx))
+		adminServerGroupRouter.PUT("/nekoproxy/binding", adminNekoproxy.BindHandler(serverCtx))
+		adminServerGroupRouter.DELETE("/nekoproxy/binding", adminNekoproxy.UnbindHandler(serverCtx))
+		adminServerGroupRouter.POST("/nekoproxy/sync", adminNekoproxy.SyncHandler(serverCtx))
+
 		// Create Server
 		adminServerGroupRouter.POST("/create", adminServer.CreateServerHandler(serverCtx))
 

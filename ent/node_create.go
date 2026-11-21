@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 )
 
@@ -212,6 +213,25 @@ func (_c *NodeCreate) SetNillableUpdatedAt(v *time.Time) *NodeCreate {
 func (_c *NodeCreate) SetID(v int64) *NodeCreate {
 	_c.mutation.SetID(v)
 	return _c
+}
+
+// SetNekoproxyBindingID sets the "nekoproxy_binding" edge to the NekoproxyBinding entity by ID.
+func (_c *NodeCreate) SetNekoproxyBindingID(id int64) *NodeCreate {
+	_c.mutation.SetNekoproxyBindingID(id)
+	return _c
+}
+
+// SetNillableNekoproxyBindingID sets the "nekoproxy_binding" edge to the NekoproxyBinding entity by ID if the given value is not nil.
+func (_c *NodeCreate) SetNillableNekoproxyBindingID(id *int64) *NodeCreate {
+	if id != nil {
+		_c = _c.SetNekoproxyBindingID(*id)
+	}
+	return _c
+}
+
+// SetNekoproxyBinding sets the "nekoproxy_binding" edge to the NekoproxyBinding entity.
+func (_c *NodeCreate) SetNekoproxyBinding(v *NekoproxyBinding) *NodeCreate {
+	return _c.SetNekoproxyBindingID(v.ID)
 }
 
 // Mutation returns the NodeMutation object of the builder.
@@ -461,6 +481,22 @@ func (_c *NodeCreate) createSpec() (*Node, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(node.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
+	}
+	if nodes := _c.mutation.NekoproxyBindingIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2O,
+			Inverse: false,
+			Table:   node.NekoproxyBindingTable,
+			Columns: []string{node.NekoproxyBindingColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(nekoproxybinding.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
 }

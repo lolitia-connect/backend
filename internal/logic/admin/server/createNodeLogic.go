@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 
+	"github.com/perfect-panel/server/internal/logic/admin/nekoproxy"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -40,6 +41,9 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 		NodeType:     req.NodeType,
 		IsHidden:     req.IsHidden,
 		NodeGroupIds: node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds)),
+	}
+	if req.Nekoproxy != nil {
+		return nekoproxy.NewLogic(l.ctx, l.svcCtx).CreateNode(&data, req.Nekoproxy)
 	}
 	err := l.svcCtx.Store.Node().InsertNode(l.ctx, &data)
 	if err != nil {

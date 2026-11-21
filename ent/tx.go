@@ -26,6 +26,8 @@ type Tx struct {
 	GroupHistory *GroupHistoryClient
 	// GroupHistoryDetail is the client for interacting with the GroupHistoryDetail builders.
 	GroupHistoryDetail *GroupHistoryDetailClient
+	// NekoproxyBinding is the client for interacting with the NekoproxyBinding builders.
+	NekoproxyBinding *NekoproxyBindingClient
 	// Node is the client for interacting with the Node builders.
 	Node *NodeClient
 	// NodeGroup is the client for interacting with the NodeGroup builders.
@@ -222,6 +224,7 @@ func (tx *Tx) init() {
 	tx.Document = NewDocumentClient(tx.config)
 	tx.GroupHistory = NewGroupHistoryClient(tx.config)
 	tx.GroupHistoryDetail = NewGroupHistoryDetailClient(tx.config)
+	tx.NekoproxyBinding = NewNekoproxyBindingClient(tx.config)
 	tx.Node = NewNodeClient(tx.config)
 	tx.NodeGroup = NewNodeGroupClient(tx.config)
 	tx.Order = NewOrderClient(tx.config)

@@ -334,17 +334,18 @@ type CreateNodeGroupRequest struct {
 }
 
 type CreateNodeRequest struct {
-	Name         string   `json:"name"`
-	Tags         []string `json:"tags,omitempty"`
-	Port         uint16   `json:"port"`
-	Address      string   `json:"address"`
-	ServerId     int64    `json:"server_id,string"`
-	Protocol     string   `json:"protocol"`
-	ProtocolId   string   `json:"protocol_id"`
-	Enabled      *bool    `json:"enabled"`
-	NodeType     string   `json:"node_type,omitempty"`
-	IsHidden     *bool    `json:"is_hidden,omitempty"`
-	NodeGroupIds []string `json:"node_group_ids,omitempty"`
+	Nekoproxy    *NekoproxyNodeOptions `json:"nekoproxy,omitempty"`
+	Name         string                `json:"name"`
+	Tags         []string              `json:"tags,omitempty"`
+	Port         uint16                `json:"port"`
+	Address      string                `json:"address"`
+	ServerId     int64                 `json:"server_id,string"`
+	Protocol     string                `json:"protocol"`
+	ProtocolId   string                `json:"protocol_id"`
+	Enabled      *bool                 `json:"enabled"`
+	NodeType     string                `json:"node_type,omitempty"`
+	IsHidden     *bool                 `json:"is_hidden,omitempty"`
+	NodeGroupIds []string              `json:"node_group_ids,omitempty"`
 }
 
 type CreateOrderRequest struct {
@@ -2900,18 +2901,19 @@ type UpdateNodeGroupRequest struct {
 }
 
 type UpdateNodeRequest struct {
-	Id           int64    `json:"id,string"`
-	Name         string   `json:"name"`
-	Tags         []string `json:"tags,omitempty"`
-	Port         uint16   `json:"port"`
-	Address      string   `json:"address"`
-	ServerId     int64    `json:"server_id,string"`
-	Protocol     string   `json:"protocol"`
-	ProtocolId   string   `json:"protocol_id"`
-	Enabled      *bool    `json:"enabled"`
-	NodeType     string   `json:"node_type,omitempty"`
-	IsHidden     *bool    `json:"is_hidden,omitempty"`
-	NodeGroupIds []string `json:"node_group_ids,omitempty"`
+	NekoproxySyncOnSave *bool    `json:"nekoproxy_sync_on_save,omitempty"`
+	Id                  int64    `json:"id,string"`
+	Name                string   `json:"name"`
+	Tags                []string `json:"tags,omitempty"`
+	Port                uint16   `json:"port"`
+	Address             string   `json:"address"`
+	ServerId            int64    `json:"server_id,string"`
+	Protocol            string   `json:"protocol"`
+	ProtocolId          string   `json:"protocol_id"`
+	Enabled             *bool    `json:"enabled"`
+	NodeType            string   `json:"node_type,omitempty"`
+	IsHidden            *bool    `json:"is_hidden,omitempty"`
+	NodeGroupIds        []string `json:"node_group_ids,omitempty"`
 }
 
 type UpdateOrderStatusRequest struct {

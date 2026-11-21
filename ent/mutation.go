@@ -18,6 +18,7 @@ import (
 	"github.com/perfect-panel/server/ent/document"
 	"github.com/perfect-panel/server/ent/grouphistory"
 	"github.com/perfect-panel/server/ent/grouphistorydetail"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/order"
@@ -66,6 +67,7 @@ const (
 	TypeDocument                        = "Document"
 	TypeGroupHistory                    = "GroupHistory"
 	TypeGroupHistoryDetail              = "GroupHistoryDetail"
+	TypeNekoproxyBinding                = "NekoproxyBinding"
 	TypeNode                            = "Node"
 	TypeNodeGroup                       = "NodeGroup"
 	TypeOrder                           = "Order"
@@ -5906,34 +5908,749 @@ func (m *GroupHistoryDetailMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown GroupHistoryDetail edge %s", name)
 }
 
+// NekoproxyBindingMutation represents an operation that mutates the NekoproxyBinding nodes in the graph.
+type NekoproxyBindingMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	api_url       *string
+	forward_id    *string
+	session_id    *string
+	sync_on_save  *bool
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	node          *int64
+	clearednode   bool
+	done          bool
+	oldValue      func(context.Context) (*NekoproxyBinding, error)
+	predicates    []predicate.NekoproxyBinding
+}
+
+var _ ent.Mutation = (*NekoproxyBindingMutation)(nil)
+
+// nekoproxybindingOption allows management of the mutation configuration using functional options.
+type nekoproxybindingOption func(*NekoproxyBindingMutation)
+
+// newNekoproxyBindingMutation creates new mutation for the NekoproxyBinding entity.
+func newNekoproxyBindingMutation(c config, op Op, opts ...nekoproxybindingOption) *NekoproxyBindingMutation {
+	m := &NekoproxyBindingMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeNekoproxyBinding,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withNekoproxyBindingID sets the ID field of the mutation.
+func withNekoproxyBindingID(id int64) nekoproxybindingOption {
+	return func(m *NekoproxyBindingMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *NekoproxyBinding
+		)
+		m.oldValue = func(ctx context.Context) (*NekoproxyBinding, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().NekoproxyBinding.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withNekoproxyBinding sets the old NekoproxyBinding of the mutation.
+func withNekoproxyBinding(node *NekoproxyBinding) nekoproxybindingOption {
+	return func(m *NekoproxyBindingMutation) {
+		m.oldValue = func(context.Context) (*NekoproxyBinding, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m NekoproxyBindingMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m NekoproxyBindingMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of NekoproxyBinding entities.
+func (m *NekoproxyBindingMutation) SetID(id int64) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *NekoproxyBindingMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *NekoproxyBindingMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().NekoproxyBinding.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetNodeID sets the "node_id" field.
+func (m *NekoproxyBindingMutation) SetNodeID(i int64) {
+	m.node = &i
+}
+
+// NodeID returns the value of the "node_id" field in the mutation.
+func (m *NekoproxyBindingMutation) NodeID() (r int64, exists bool) {
+	v := m.node
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNodeID returns the old "node_id" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldNodeID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNodeID: %w", err)
+	}
+	return oldValue.NodeID, nil
+}
+
+// ResetNodeID resets all changes to the "node_id" field.
+func (m *NekoproxyBindingMutation) ResetNodeID() {
+	m.node = nil
+}
+
+// SetAPIURL sets the "api_url" field.
+func (m *NekoproxyBindingMutation) SetAPIURL(s string) {
+	m.api_url = &s
+}
+
+// APIURL returns the value of the "api_url" field in the mutation.
+func (m *NekoproxyBindingMutation) APIURL() (r string, exists bool) {
+	v := m.api_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIURL returns the old "api_url" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldAPIURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIURL: %w", err)
+	}
+	return oldValue.APIURL, nil
+}
+
+// ResetAPIURL resets all changes to the "api_url" field.
+func (m *NekoproxyBindingMutation) ResetAPIURL() {
+	m.api_url = nil
+}
+
+// SetForwardID sets the "forward_id" field.
+func (m *NekoproxyBindingMutation) SetForwardID(s string) {
+	m.forward_id = &s
+}
+
+// ForwardID returns the value of the "forward_id" field in the mutation.
+func (m *NekoproxyBindingMutation) ForwardID() (r string, exists bool) {
+	v := m.forward_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldForwardID returns the old "forward_id" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldForwardID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldForwardID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldForwardID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldForwardID: %w", err)
+	}
+	return oldValue.ForwardID, nil
+}
+
+// ResetForwardID resets all changes to the "forward_id" field.
+func (m *NekoproxyBindingMutation) ResetForwardID() {
+	m.forward_id = nil
+}
+
+// SetSessionID sets the "session_id" field.
+func (m *NekoproxyBindingMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *NekoproxyBindingMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldSessionID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *NekoproxyBindingMutation) ResetSessionID() {
+	m.session_id = nil
+}
+
+// SetSyncOnSave sets the "sync_on_save" field.
+func (m *NekoproxyBindingMutation) SetSyncOnSave(b bool) {
+	m.sync_on_save = &b
+}
+
+// SyncOnSave returns the value of the "sync_on_save" field in the mutation.
+func (m *NekoproxyBindingMutation) SyncOnSave() (r bool, exists bool) {
+	v := m.sync_on_save
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSyncOnSave returns the old "sync_on_save" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldSyncOnSave(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSyncOnSave is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSyncOnSave requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSyncOnSave: %w", err)
+	}
+	return oldValue.SyncOnSave, nil
+}
+
+// ResetSyncOnSave resets all changes to the "sync_on_save" field.
+func (m *NekoproxyBindingMutation) ResetSyncOnSave() {
+	m.sync_on_save = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *NekoproxyBindingMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *NekoproxyBindingMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *NekoproxyBindingMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *NekoproxyBindingMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *NekoproxyBindingMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *NekoproxyBindingMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearNode clears the "node" edge to the Node entity.
+func (m *NekoproxyBindingMutation) ClearNode() {
+	m.clearednode = true
+	m.clearedFields[nekoproxybinding.FieldNodeID] = struct{}{}
+}
+
+// NodeCleared reports if the "node" edge to the Node entity was cleared.
+func (m *NekoproxyBindingMutation) NodeCleared() bool {
+	return m.clearednode
+}
+
+// NodeIDs returns the "node" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// NodeID instead. It exists only for internal usage by the builders.
+func (m *NekoproxyBindingMutation) NodeIDs() (ids []int64) {
+	if id := m.node; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetNode resets all changes to the "node" edge.
+func (m *NekoproxyBindingMutation) ResetNode() {
+	m.node = nil
+	m.clearednode = false
+}
+
+// Where appends a list predicates to the NekoproxyBindingMutation builder.
+func (m *NekoproxyBindingMutation) Where(ps ...predicate.NekoproxyBinding) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the NekoproxyBindingMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *NekoproxyBindingMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.NekoproxyBinding, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *NekoproxyBindingMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *NekoproxyBindingMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (NekoproxyBinding).
+func (m *NekoproxyBindingMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *NekoproxyBindingMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.node != nil {
+		fields = append(fields, nekoproxybinding.FieldNodeID)
+	}
+	if m.api_url != nil {
+		fields = append(fields, nekoproxybinding.FieldAPIURL)
+	}
+	if m.forward_id != nil {
+		fields = append(fields, nekoproxybinding.FieldForwardID)
+	}
+	if m.session_id != nil {
+		fields = append(fields, nekoproxybinding.FieldSessionID)
+	}
+	if m.sync_on_save != nil {
+		fields = append(fields, nekoproxybinding.FieldSyncOnSave)
+	}
+	if m.created_at != nil {
+		fields = append(fields, nekoproxybinding.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, nekoproxybinding.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *NekoproxyBindingMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case nekoproxybinding.FieldNodeID:
+		return m.NodeID()
+	case nekoproxybinding.FieldAPIURL:
+		return m.APIURL()
+	case nekoproxybinding.FieldForwardID:
+		return m.ForwardID()
+	case nekoproxybinding.FieldSessionID:
+		return m.SessionID()
+	case nekoproxybinding.FieldSyncOnSave:
+		return m.SyncOnSave()
+	case nekoproxybinding.FieldCreatedAt:
+		return m.CreatedAt()
+	case nekoproxybinding.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *NekoproxyBindingMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case nekoproxybinding.FieldNodeID:
+		return m.OldNodeID(ctx)
+	case nekoproxybinding.FieldAPIURL:
+		return m.OldAPIURL(ctx)
+	case nekoproxybinding.FieldForwardID:
+		return m.OldForwardID(ctx)
+	case nekoproxybinding.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case nekoproxybinding.FieldSyncOnSave:
+		return m.OldSyncOnSave(ctx)
+	case nekoproxybinding.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case nekoproxybinding.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown NekoproxyBinding field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *NekoproxyBindingMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case nekoproxybinding.FieldNodeID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNodeID(v)
+		return nil
+	case nekoproxybinding.FieldAPIURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIURL(v)
+		return nil
+	case nekoproxybinding.FieldForwardID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetForwardID(v)
+		return nil
+	case nekoproxybinding.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case nekoproxybinding.FieldSyncOnSave:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSyncOnSave(v)
+		return nil
+	case nekoproxybinding.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case nekoproxybinding.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown NekoproxyBinding field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *NekoproxyBindingMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *NekoproxyBindingMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *NekoproxyBindingMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown NekoproxyBinding numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *NekoproxyBindingMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *NekoproxyBindingMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *NekoproxyBindingMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown NekoproxyBinding nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *NekoproxyBindingMutation) ResetField(name string) error {
+	switch name {
+	case nekoproxybinding.FieldNodeID:
+		m.ResetNodeID()
+		return nil
+	case nekoproxybinding.FieldAPIURL:
+		m.ResetAPIURL()
+		return nil
+	case nekoproxybinding.FieldForwardID:
+		m.ResetForwardID()
+		return nil
+	case nekoproxybinding.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case nekoproxybinding.FieldSyncOnSave:
+		m.ResetSyncOnSave()
+		return nil
+	case nekoproxybinding.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case nekoproxybinding.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown NekoproxyBinding field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *NekoproxyBindingMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.node != nil {
+		edges = append(edges, nekoproxybinding.EdgeNode)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *NekoproxyBindingMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case nekoproxybinding.EdgeNode:
+		if id := m.node; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *NekoproxyBindingMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *NekoproxyBindingMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *NekoproxyBindingMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearednode {
+		edges = append(edges, nekoproxybinding.EdgeNode)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *NekoproxyBindingMutation) EdgeCleared(name string) bool {
+	switch name {
+	case nekoproxybinding.EdgeNode:
+		return m.clearednode
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *NekoproxyBindingMutation) ClearEdge(name string) error {
+	switch name {
+	case nekoproxybinding.EdgeNode:
+		m.ClearNode()
+		return nil
+	}
+	return fmt.Errorf("unknown NekoproxyBinding unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *NekoproxyBindingMutation) ResetEdge(name string) error {
+	switch name {
+	case nekoproxybinding.EdgeNode:
+		m.ResetNode()
+		return nil
+	}
+	return fmt.Errorf("unknown NekoproxyBinding edge %s", name)
+}
+
 // NodeMutation represents an operation that mutates the Node nodes in the graph.
 type NodeMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int64
-	name                 *string
-	tags                 *string
-	port                 *uint16
-	addport              *int16
-	address              *string
-	server_id            *int64
-	addserver_id         *int64
-	protocol             *string
-	protocol_id          *string
-	enabled              *bool
-	node_type            *string
-	is_hidden            *bool
-	sort                 *int
-	addsort              *int
-	node_group_ids       *[]int64
-	appendnode_group_ids []int64
-	created_at           *time.Time
-	updated_at           *time.Time
-	clearedFields        map[string]struct{}
-	done                 bool
-	oldValue             func(context.Context) (*Node, error)
-	predicates           []predicate.Node
+	op                       Op
+	typ                      string
+	id                       *int64
+	name                     *string
+	tags                     *string
+	port                     *uint16
+	addport                  *int16
+	address                  *string
+	server_id                *int64
+	addserver_id             *int64
+	protocol                 *string
+	protocol_id              *string
+	enabled                  *bool
+	node_type                *string
+	is_hidden                *bool
+	sort                     *int
+	addsort                  *int
+	node_group_ids           *[]int64
+	appendnode_group_ids     []int64
+	created_at               *time.Time
+	updated_at               *time.Time
+	clearedFields            map[string]struct{}
+	nekoproxy_binding        *int64
+	clearednekoproxy_binding bool
+	done                     bool
+	oldValue                 func(context.Context) (*Node, error)
+	predicates               []predicate.Node
 }
 
 var _ ent.Mutation = (*NodeMutation)(nil)
@@ -6633,6 +7350,45 @@ func (m *NodeMutation) ResetUpdatedAt() {
 	m.updated_at = nil
 }
 
+// SetNekoproxyBindingID sets the "nekoproxy_binding" edge to the NekoproxyBinding entity by id.
+func (m *NodeMutation) SetNekoproxyBindingID(id int64) {
+	m.nekoproxy_binding = &id
+}
+
+// ClearNekoproxyBinding clears the "nekoproxy_binding" edge to the NekoproxyBinding entity.
+func (m *NodeMutation) ClearNekoproxyBinding() {
+	m.clearednekoproxy_binding = true
+}
+
+// NekoproxyBindingCleared reports if the "nekoproxy_binding" edge to the NekoproxyBinding entity was cleared.
+func (m *NodeMutation) NekoproxyBindingCleared() bool {
+	return m.clearednekoproxy_binding
+}
+
+// NekoproxyBindingID returns the "nekoproxy_binding" edge ID in the mutation.
+func (m *NodeMutation) NekoproxyBindingID() (id int64, exists bool) {
+	if m.nekoproxy_binding != nil {
+		return *m.nekoproxy_binding, true
+	}
+	return
+}
+
+// NekoproxyBindingIDs returns the "nekoproxy_binding" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// NekoproxyBindingID instead. It exists only for internal usage by the builders.
+func (m *NodeMutation) NekoproxyBindingIDs() (ids []int64) {
+	if id := m.nekoproxy_binding; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetNekoproxyBinding resets all changes to the "nekoproxy_binding" edge.
+func (m *NodeMutation) ResetNekoproxyBinding() {
+	m.nekoproxy_binding = nil
+	m.clearednekoproxy_binding = false
+}
+
 // Where appends a list predicates to the NodeMutation builder.
 func (m *NodeMutation) Where(ps ...predicate.Node) {
 	m.predicates = append(m.predicates, ps...)
@@ -7035,19 +7791,28 @@ func (m *NodeMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *NodeMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.nekoproxy_binding != nil {
+		edges = append(edges, node.EdgeNekoproxyBinding)
+	}
 	return edges
 }
 
 // AddedIDs returns all IDs (to other nodes) that were added for the given edge
 // name in this mutation.
 func (m *NodeMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case node.EdgeNekoproxyBinding:
+		if id := m.nekoproxy_binding; id != nil {
+			return []ent.Value{*id}
+		}
+	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *NodeMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
 	return edges
 }
 
@@ -7059,25 +7824,42 @@ func (m *NodeMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *NodeMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.clearednekoproxy_binding {
+		edges = append(edges, node.EdgeNekoproxyBinding)
+	}
 	return edges
 }
 
 // EdgeCleared returns a boolean which indicates if the edge with the given name
 // was cleared in this mutation.
 func (m *NodeMutation) EdgeCleared(name string) bool {
+	switch name {
+	case node.EdgeNekoproxyBinding:
+		return m.clearednekoproxy_binding
+	}
 	return false
 }
 
 // ClearEdge clears the value of the edge with the given name. It returns an error
 // if that edge is not defined in the schema.
 func (m *NodeMutation) ClearEdge(name string) error {
+	switch name {
+	case node.EdgeNekoproxyBinding:
+		m.ClearNekoproxyBinding()
+		return nil
+	}
 	return fmt.Errorf("unknown Node unique edge %s", name)
 }
 
 // ResetEdge resets all changes to the edge with the given name in this mutation.
 // It returns an error if the edge is not defined in the schema.
 func (m *NodeMutation) ResetEdge(name string) error {
+	switch name {
+	case node.EdgeNekoproxyBinding:
+		m.ResetNekoproxyBinding()
+		return nil
+	}
 	return fmt.Errorf("unknown Node edge %s", name)
 }
 

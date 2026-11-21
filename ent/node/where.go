@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/perfect-panel/server/ent/predicate"
 )
 
@@ -737,6 +738,29 @@ func UpdatedAtLT(v time.Time) predicate.Node {
 // UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
 func UpdatedAtLTE(v time.Time) predicate.Node {
 	return predicate.Node(sql.FieldLTE(FieldUpdatedAt, v))
+}
+
+// HasNekoproxyBinding applies the HasEdge predicate on the "nekoproxy_binding" edge.
+func HasNekoproxyBinding() predicate.Node {
+	return predicate.Node(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, NekoproxyBindingTable, NekoproxyBindingColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasNekoproxyBindingWith applies the HasEdge predicate on the "nekoproxy_binding" edge with a given conditions (other predicates).
+func HasNekoproxyBindingWith(preds ...predicate.NekoproxyBinding) predicate.Node {
+	return predicate.Node(func(s *sql.Selector) {
+		step := newNekoproxyBindingStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
 }
 
 // And groups predicates with the AND operator between them.

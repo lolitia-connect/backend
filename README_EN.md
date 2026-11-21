@@ -98,6 +98,16 @@ configuration file. Its loopback-only setup wizard is not reachable through a pu
 See [Docker installation](doc/install.md#docker) for builds, configuration permissions, startup,
 health checks, and graceful shutdown.
 
+### Nekoproxy L4 integration
+
+Deploy Nekoproxy control with the `/api/v1/l4/*` token API, then update this backend and the admin frontend. Backend startup applies the MySQL/PostgreSQL `02171_nekoproxy_bindings` migration without rewriting existing node data.
+
+Open **Node Management → Nekoproxy connection**, enter the service URL and an `nkp_` API token, and connect/save. The URL can be the service root (including a reverse-proxy prefix) or the full `/api/v1/l4` base. Requests use only the public token API. Credentials remain in backend system settings and are excluded from configuration responses and request logs; protect database access and backups accordingly.
+
+Bindings have a unique node foreign key, a unique API URL/forward ID pair, and the selected session ID. Migration `02172_nekoproxy_sync_on_save` enables sync on save by default for each binding. Manage it at the bottom of the node editor. Manual sync updates only this node’s entry address/port; sync on save commits the entry, remaining edits and preference together. Failed synchronization leaves the node unchanged. Disable sync on save to edit offline. Unbinding or deleting a local node preserves the remote service.
+
+Node creation can bind an active session or create a forward and allocate an entry. Failures roll back the local transaction and attempt to delete the newly created remote forward. Failed cleanup reports the forward ID for manual removal. If a creation request times out before returning an ID, check Nekoproxy before retrying to avoid duplicates. See [Node Management](../frontend/docs/admin/maintenance/nodes.md).
+
 ## 📖 API Documentation
 
 Explore the full API documentation:

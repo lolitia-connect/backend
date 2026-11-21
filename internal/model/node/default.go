@@ -55,7 +55,7 @@ func NewModel(conn *ent.Client, cache *redis.Client) Model {
 
 func (m *defaultServerModel) InsertServer(ctx context.Context, data *Server) error {
 	if data.Sort == 0 {
-		maxSort, err := m.db.Server.Query().Aggregate(ent.Max(entserver.FieldSort)).Int(ctx)
+		maxSort, err := m.db.Server.Query().Aggregate(maxSortOrZero(entserver.FieldSort)).Int(ctx)
 		if err != nil {
 			return err
 		}
@@ -134,7 +134,7 @@ func (m *defaultServerModel) DeleteServer(ctx context.Context, id int64) error {
 
 func (m *defaultServerModel) InsertNode(ctx context.Context, data *Node) error {
 	if data.Sort == 0 {
-		maxSort, err := m.db.Node.Query().Aggregate(ent.Max(entnode.FieldSort)).Int(ctx)
+		maxSort, err := m.db.Node.Query().Aggregate(maxSortOrZero(entnode.FieldSort)).Int(ctx)
 		if err != nil {
 			return err
 		}

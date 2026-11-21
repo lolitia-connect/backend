@@ -19,6 +19,7 @@ import (
 	"github.com/perfect-panel/server/ent/document"
 	"github.com/perfect-panel/server/ent/grouphistory"
 	"github.com/perfect-panel/server/ent/grouphistorydetail"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/order"
@@ -115,6 +116,7 @@ func checkColumn(t, c string) error {
 			document.Table:                        document.ValidColumn,
 			grouphistory.Table:                    grouphistory.ValidColumn,
 			grouphistorydetail.Table:              grouphistorydetail.ValidColumn,
+			nekoproxybinding.Table:                nekoproxybinding.ValidColumn,
 			node.Table:                            node.ValidColumn,
 			nodegroup.Table:                       nodegroup.ValidColumn,
 			order.Table:                           order.ValidColumn,

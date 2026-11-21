@@ -27,6 +27,9 @@ type GroupHistory func(*sql.Selector)
 // GroupHistoryDetail is the predicate function for grouphistorydetail builders.
 type GroupHistoryDetail func(*sql.Selector)
 
+// NekoproxyBinding is the predicate function for nekoproxybinding builders.
+type NekoproxyBinding func(*sql.Selector)
+
 // Node is the predicate function for node builders.
 type Node func(*sql.Selector)
 

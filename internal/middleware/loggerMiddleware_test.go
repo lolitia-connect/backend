@@ -33,10 +33,10 @@ func TestLoggedQueryRedactsNodeSecret(t *testing.T) {
 // Bodies are masked by key first and then redacted, so a credential that sits
 // in a field the key list does not know about is still removed.
 func TestLoggedBodyRedactsBeyondKeyMasking(t *testing.T) {
-	body := []byte(`{"email":"alice@example.com","password":"hunter2","note":"ping admin@example.com"}`)
+	body := []byte(`{"email":"alice@example.com","password":"hunter2","api_token":"nkp_private_key","note":"ping admin@example.com"}`)
 
-	masked := maskSensitiveFields(body, []string{"password", "old_password", "new_password"})
-	if strings.Contains(string(masked), "hunter2") {
+	masked := maskSensitiveFields(body, []string{"password", "old_password", "new_password", "api_token"})
+	if strings.Contains(string(masked), "hunter2") || strings.Contains(string(masked), "nkp_private_key") {
 		t.Fatalf("key masking left the password in place: %s", masked)
 	}
 

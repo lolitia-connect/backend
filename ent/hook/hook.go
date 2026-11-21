@@ -93,6 +93,18 @@ func (f GroupHistoryDetailFunc) Mutate(ctx context.Context, m ent.Mutation) (ent
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.GroupHistoryDetailMutation", m)
 }
 
+// The NekoproxyBindingFunc type is an adapter to allow the use of ordinary
+// function as NekoproxyBinding mutator.
+type NekoproxyBindingFunc func(context.Context, *ent.NekoproxyBindingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f NekoproxyBindingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.NekoproxyBindingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NekoproxyBindingMutation", m)
+}
+
 // The NodeFunc type is an adapter to allow the use of ordinary
 // function as Node mutator.
 type NodeFunc func(context.Context, *ent.NodeMutation) (ent.Value, error)

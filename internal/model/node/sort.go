@@ -9,6 +9,12 @@ import (
 	entserver "github.com/perfect-panel/server/ent/server"
 )
 
+func maxSortOrZero(field string) ent.AggregateFunc {
+	return func(s *sql.Selector) string {
+		return "COALESCE(" + sql.Max(s.C(field)) + ", 0)"
+	}
+}
+
 func (m *defaultServerModel) reorderServers(ctx context.Context) error {
 	servers, err := m.db.Server.Query().Order(entserver.BySort(), entserver.ByID()).All(ctx)
 	if err != nil {

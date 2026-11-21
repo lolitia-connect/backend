@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/perfect-panel/server/ent/ads"
 	"github.com/perfect-panel/server/ent/announcement"
 	"github.com/perfect-panel/server/ent/authmethod"
@@ -21,6 +22,7 @@ import (
 	"github.com/perfect-panel/server/ent/document"
 	"github.com/perfect-panel/server/ent/grouphistory"
 	"github.com/perfect-panel/server/ent/grouphistorydetail"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/order"
@@ -71,6 +73,8 @@ type Client struct {
 	GroupHistory *GroupHistoryClient
 	// GroupHistoryDetail is the client for interacting with the GroupHistoryDetail builders.
 	GroupHistoryDetail *GroupHistoryDetailClient
+	// NekoproxyBinding is the client for interacting with the NekoproxyBinding builders.
+	NekoproxyBinding *NekoproxyBindingClient
 	// Node is the client for interacting with the Node builders.
 	Node *NodeClient
 	// NodeGroup is the client for interacting with the NodeGroup builders.
@@ -147,6 +151,7 @@ func (c *Client) init() {
 	c.Document = NewDocumentClient(c.config)
 	c.GroupHistory = NewGroupHistoryClient(c.config)
 	c.GroupHistoryDetail = NewGroupHistoryDetailClient(c.config)
+	c.NekoproxyBinding = NewNekoproxyBindingClient(c.config)
 	c.Node = NewNodeClient(c.config)
 	c.NodeGroup = NewNodeGroupClient(c.config)
 	c.Order = NewOrderClient(c.config)
@@ -275,6 +280,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Document:                        NewDocumentClient(cfg),
 		GroupHistory:                    NewGroupHistoryClient(cfg),
 		GroupHistoryDetail:              NewGroupHistoryDetailClient(cfg),
+		NekoproxyBinding:                NewNekoproxyBindingClient(cfg),
 		Node:                            NewNodeClient(cfg),
 		NodeGroup:                       NewNodeGroupClient(cfg),
 		Order:                           NewOrderClient(cfg),
@@ -330,6 +336,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Document:                        NewDocumentClient(cfg),
 		GroupHistory:                    NewGroupHistoryClient(cfg),
 		GroupHistoryDetail:              NewGroupHistoryDetailClient(cfg),
+		NekoproxyBinding:                NewNekoproxyBindingClient(cfg),
 		Node:                            NewNodeClient(cfg),
 		NodeGroup:                       NewNodeGroupClient(cfg),
 		Order:                           NewOrderClient(cfg),
@@ -389,9 +396,9 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Ads, c.Announcement, c.AuthMethod, c.Coupon, c.Document, c.GroupHistory,
-		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.OrderEvent, c.Payment,
-		c.RedemptionCode, c.RedemptionRecord, c.Server, c.ServerConfigOverride,
-		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup,
+		c.GroupHistoryDetail, c.NekoproxyBinding, c.Node, c.NodeGroup, c.Order,
+		c.OrderEvent, c.Payment, c.RedemptionCode, c.RedemptionRecord, c.Server,
+		c.ServerConfigOverride, c.Subscribe, c.SubscribeApplication, c.SubscribeGroup,
 		c.SubscriptionEntitlement, c.SubscriptionEntitlementRevision,
 		c.SubscriptionPeriod, c.System, c.SystemLog, c.Task, c.Ticket, c.TicketFollow,
 		c.TrafficBatch, c.TrafficLog, c.User, c.UserAuthMethod, c.UserDevice,
@@ -406,9 +413,9 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Ads, c.Announcement, c.AuthMethod, c.Coupon, c.Document, c.GroupHistory,
-		c.GroupHistoryDetail, c.Node, c.NodeGroup, c.Order, c.OrderEvent, c.Payment,
-		c.RedemptionCode, c.RedemptionRecord, c.Server, c.ServerConfigOverride,
-		c.Subscribe, c.SubscribeApplication, c.SubscribeGroup,
+		c.GroupHistoryDetail, c.NekoproxyBinding, c.Node, c.NodeGroup, c.Order,
+		c.OrderEvent, c.Payment, c.RedemptionCode, c.RedemptionRecord, c.Server,
+		c.ServerConfigOverride, c.Subscribe, c.SubscribeApplication, c.SubscribeGroup,
 		c.SubscriptionEntitlement, c.SubscriptionEntitlementRevision,
 		c.SubscriptionPeriod, c.System, c.SystemLog, c.Task, c.Ticket, c.TicketFollow,
 		c.TrafficBatch, c.TrafficLog, c.User, c.UserAuthMethod, c.UserDevice,
@@ -435,6 +442,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.GroupHistory.mutate(ctx, m)
 	case *GroupHistoryDetailMutation:
 		return c.GroupHistoryDetail.mutate(ctx, m)
+	case *NekoproxyBindingMutation:
+		return c.NekoproxyBinding.mutate(ctx, m)
 	case *NodeMutation:
 		return c.Node.mutate(ctx, m)
 	case *NodeGroupMutation:
@@ -1429,6 +1438,155 @@ func (c *GroupHistoryDetailClient) mutate(ctx context.Context, m *GroupHistoryDe
 	}
 }
 
+// NekoproxyBindingClient is a client for the NekoproxyBinding schema.
+type NekoproxyBindingClient struct {
+	config
+}
+
+// NewNekoproxyBindingClient returns a client for the NekoproxyBinding from the given config.
+func NewNekoproxyBindingClient(c config) *NekoproxyBindingClient {
+	return &NekoproxyBindingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `nekoproxybinding.Hooks(f(g(h())))`.
+func (c *NekoproxyBindingClient) Use(hooks ...Hook) {
+	c.hooks.NekoproxyBinding = append(c.hooks.NekoproxyBinding, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `nekoproxybinding.Intercept(f(g(h())))`.
+func (c *NekoproxyBindingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.NekoproxyBinding = append(c.inters.NekoproxyBinding, interceptors...)
+}
+
+// Create returns a builder for creating a NekoproxyBinding entity.
+func (c *NekoproxyBindingClient) Create() *NekoproxyBindingCreate {
+	mutation := newNekoproxyBindingMutation(c.config, OpCreate)
+	return &NekoproxyBindingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of NekoproxyBinding entities.
+func (c *NekoproxyBindingClient) CreateBulk(builders ...*NekoproxyBindingCreate) *NekoproxyBindingCreateBulk {
+	return &NekoproxyBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *NekoproxyBindingClient) MapCreateBulk(slice any, setFunc func(*NekoproxyBindingCreate, int)) *NekoproxyBindingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &NekoproxyBindingCreateBulk{err: fmt.Errorf("calling to NekoproxyBindingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*NekoproxyBindingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &NekoproxyBindingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for NekoproxyBinding.
+func (c *NekoproxyBindingClient) Update() *NekoproxyBindingUpdate {
+	mutation := newNekoproxyBindingMutation(c.config, OpUpdate)
+	return &NekoproxyBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *NekoproxyBindingClient) UpdateOne(_m *NekoproxyBinding) *NekoproxyBindingUpdateOne {
+	mutation := newNekoproxyBindingMutation(c.config, OpUpdateOne, withNekoproxyBinding(_m))
+	return &NekoproxyBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *NekoproxyBindingClient) UpdateOneID(id int64) *NekoproxyBindingUpdateOne {
+	mutation := newNekoproxyBindingMutation(c.config, OpUpdateOne, withNekoproxyBindingID(id))
+	return &NekoproxyBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for NekoproxyBinding.
+func (c *NekoproxyBindingClient) Delete() *NekoproxyBindingDelete {
+	mutation := newNekoproxyBindingMutation(c.config, OpDelete)
+	return &NekoproxyBindingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *NekoproxyBindingClient) DeleteOne(_m *NekoproxyBinding) *NekoproxyBindingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *NekoproxyBindingClient) DeleteOneID(id int64) *NekoproxyBindingDeleteOne {
+	builder := c.Delete().Where(nekoproxybinding.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &NekoproxyBindingDeleteOne{builder}
+}
+
+// Query returns a query builder for NekoproxyBinding.
+func (c *NekoproxyBindingClient) Query() *NekoproxyBindingQuery {
+	return &NekoproxyBindingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeNekoproxyBinding},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a NekoproxyBinding entity by its id.
+func (c *NekoproxyBindingClient) Get(ctx context.Context, id int64) (*NekoproxyBinding, error) {
+	return c.Query().Where(nekoproxybinding.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *NekoproxyBindingClient) GetX(ctx context.Context, id int64) *NekoproxyBinding {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryNode queries the node edge of a NekoproxyBinding.
+func (c *NekoproxyBindingClient) QueryNode(_m *NekoproxyBinding) *NodeQuery {
+	query := (&NodeClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(nekoproxybinding.Table, nekoproxybinding.FieldID, id),
+			sqlgraph.To(node.Table, node.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, true, nekoproxybinding.NodeTable, nekoproxybinding.NodeColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *NekoproxyBindingClient) Hooks() []Hook {
+	return c.hooks.NekoproxyBinding
+}
+
+// Interceptors returns the client interceptors.
+func (c *NekoproxyBindingClient) Interceptors() []Interceptor {
+	return c.inters.NekoproxyBinding
+}
+
+func (c *NekoproxyBindingClient) mutate(ctx context.Context, m *NekoproxyBindingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&NekoproxyBindingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&NekoproxyBindingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&NekoproxyBindingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&NekoproxyBindingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown NekoproxyBinding mutation op: %q", m.Op())
+	}
+}
+
 // NodeClient is a client for the Node schema.
 type NodeClient struct {
 	config
@@ -1535,6 +1693,22 @@ func (c *NodeClient) GetX(ctx context.Context, id int64) *Node {
 		panic(err)
 	}
 	return obj
+}
+
+// QueryNekoproxyBinding queries the nekoproxy_binding edge of a Node.
+func (c *NodeClient) QueryNekoproxyBinding(_m *Node) *NekoproxyBindingQuery {
+	query := (&NekoproxyBindingClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(node.Table, node.FieldID, id),
+			sqlgraph.To(nekoproxybinding.Table, nekoproxybinding.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, node.NekoproxyBindingTable, node.NekoproxyBindingColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
 }
 
 // Hooks returns the client hooks.
@@ -5290,9 +5464,9 @@ func (c *UserWithdrawalClient) mutate(ctx context.Context, m *UserWithdrawalMuta
 type (
 	hooks struct {
 		Ads, Announcement, AuthMethod, Coupon, Document, GroupHistory,
-		GroupHistoryDetail, Node, NodeGroup, Order, OrderEvent, Payment,
-		RedemptionCode, RedemptionRecord, Server, ServerConfigOverride, Subscribe,
-		SubscribeApplication, SubscribeGroup, SubscriptionEntitlement,
+		GroupHistoryDetail, NekoproxyBinding, Node, NodeGroup, Order, OrderEvent,
+		Payment, RedemptionCode, RedemptionRecord, Server, ServerConfigOverride,
+		Subscribe, SubscribeApplication, SubscribeGroup, SubscriptionEntitlement,
 		SubscriptionEntitlementRevision, SubscriptionPeriod, System, SystemLog, Task,
 		Ticket, TicketFollow, TrafficBatch, TrafficLog, User, UserAuthMethod,
 		UserDevice, UserDeviceOnlineRecord, UserSubscribe, UserWallet,
@@ -5300,9 +5474,9 @@ type (
 	}
 	inters struct {
 		Ads, Announcement, AuthMethod, Coupon, Document, GroupHistory,
-		GroupHistoryDetail, Node, NodeGroup, Order, OrderEvent, Payment,
-		RedemptionCode, RedemptionRecord, Server, ServerConfigOverride, Subscribe,
-		SubscribeApplication, SubscribeGroup, SubscriptionEntitlement,
+		GroupHistoryDetail, NekoproxyBinding, Node, NodeGroup, Order, OrderEvent,
+		Payment, RedemptionCode, RedemptionRecord, Server, ServerConfigOverride,
+		Subscribe, SubscribeApplication, SubscribeGroup, SubscriptionEntitlement,
 		SubscriptionEntitlementRevision, SubscriptionPeriod, System, SystemLog, Task,
 		Ticket, TicketFollow, TrafficBatch, TrafficLog, User, UserAuthMethod,
 		UserDevice, UserDeviceOnlineRecord, UserSubscribe, UserWallet,

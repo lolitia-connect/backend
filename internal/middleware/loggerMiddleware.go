@@ -54,7 +54,7 @@ func LoggerMiddleware(svc *svc.ServiceContext) app.HandlerFunc {
 			logs = append(logs, zap.Any("error", logredact.Text(errMessage)))
 		}
 		if shouldLogBody(method, path) {
-			logs = append(logs, zap.Any("request_body", logredact.Text(string(maskSensitiveFields(ctx.Request.Body(), []string{"password", "old_password", "new_password"})))))
+			logs = append(logs, zap.Any("request_body", logredact.Text(string(maskSensitiveFields(ctx.Request.Body(), []string{"password", "old_password", "new_password", "api_token"})))))
 			logs = append(logs, zap.Any("response_body", logredact.Text(string(ctx.Response.Body()))))
 		} else if isBodyMethod(method) && isServerTelemetryPath(path) {
 			logs = append(logs, zap.Any("body_omitted", true))

@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -11,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/perfect-panel/server/ent/nekoproxybinding"
 	"github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/predicate"
 )
@@ -18,10 +20,11 @@ import (
 // NodeQuery is the builder for querying Node entities.
 type NodeQuery struct {
 	config
-	ctx        *QueryContext
-	order      []node.OrderOption
-	inters     []Interceptor
-	predicates []predicate.Node
+	ctx                  *QueryContext
+	order                []node.OrderOption
+	inters               []Interceptor
+	predicates           []predicate.Node
+	withNekoproxyBinding *NekoproxyBindingQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -56,6 +59,28 @@ func (_q *NodeQuery) Unique(unique bool) *NodeQuery {
 func (_q *NodeQuery) Order(o ...node.OrderOption) *NodeQuery {
 	_q.order = append(_q.order, o...)
 	return _q
+}
+
+// QueryNekoproxyBinding chains the current query on the "nekoproxy_binding" edge.
+func (_q *NodeQuery) QueryNekoproxyBinding() *NekoproxyBindingQuery {
+	query := (&NekoproxyBindingClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(node.Table, node.FieldID, selector),
+			sqlgraph.To(nekoproxybinding.Table, nekoproxybinding.FieldID),
+			sqlgraph.Edge(sqlgraph.O2O, false, node.NekoproxyBindingTable, node.NekoproxyBindingColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
 }
 
 // First returns the first Node entity from the query.
@@ -245,15 +270,27 @@ func (_q *NodeQuery) Clone() *NodeQuery {
 		return nil
 	}
 	return &NodeQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]node.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.Node{}, _q.predicates...),
+		config:               _q.config,
+		ctx:                  _q.ctx.Clone(),
+		order:                append([]node.OrderOption{}, _q.order...),
+		inters:               append([]Interceptor{}, _q.inters...),
+		predicates:           append([]predicate.Node{}, _q.predicates...),
+		withNekoproxyBinding: _q.withNekoproxyBinding.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
+}
+
+// WithNekoproxyBinding tells the query-builder to eager-load the nodes that are connected to
+// the "nekoproxy_binding" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *NodeQuery) WithNekoproxyBinding(opts ...func(*NekoproxyBindingQuery)) *NodeQuery {
+	query := (&NekoproxyBindingClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withNekoproxyBinding = query
+	return _q
 }
 
 // GroupBy is used to group vertices by one or more fields/columns.
@@ -332,8 +369,11 @@ func (_q *NodeQuery) prepareQuery(ctx context.Context) error {
 
 func (_q *NodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Node, error) {
 	var (
-		nodes = []*Node{}
-		_spec = _q.querySpec()
+		nodes       = []*Node{}
+		_spec       = _q.querySpec()
+		loadedTypes = [1]bool{
+			_q.withNekoproxyBinding != nil,
+		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*Node).scanValues(nil, columns)
@@ -341,6 +381,7 @@ func (_q *NodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Node, e
 	_spec.Assign = func(columns []string, values []any) error {
 		node := &Node{config: _q.config}
 		nodes = append(nodes, node)
+		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
 	}
 	for i := range hooks {
@@ -352,7 +393,41 @@ func (_q *NodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Node, e
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
+	if query := _q.withNekoproxyBinding; query != nil {
+		if err := _q.loadNekoproxyBinding(ctx, query, nodes, nil,
+			func(n *Node, e *NekoproxyBinding) { n.Edges.NekoproxyBinding = e }); err != nil {
+			return nil, err
+		}
+	}
 	return nodes, nil
+}
+
+func (_q *NodeQuery) loadNekoproxyBinding(ctx context.Context, query *NekoproxyBindingQuery, nodes []*Node, init func(*Node), assign func(*Node, *NekoproxyBinding)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*Node)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(nekoproxybinding.FieldNodeID)
+	}
+	query.Where(predicate.NekoproxyBinding(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(node.NekoproxyBindingColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.NodeID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "node_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
 }
 
 func (_q *NodeQuery) sqlCount(ctx context.Context) (int, error) {

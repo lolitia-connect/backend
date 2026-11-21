@@ -6,6 +6,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 )
 
@@ -15,6 +16,12 @@ type Node struct {
 
 func (Node) Annotations() []schema.Annotation {
 	return []schema.Annotation{entsql.Annotation{Table: "nodes"}}
+}
+
+func (Node) Edges() []ent.Edge {
+	return []ent.Edge{
+		edge.To("nekoproxy_binding", NekoproxyBinding.Type).Unique().Annotations(entsql.OnDelete(entsql.Cascade)),
+	}
 }
 
 func (Node) Fields() []ent.Field {

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 
+	"github.com/perfect-panel/server/internal/logic/admin/nekoproxy"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -46,8 +47,12 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 	data.NodeType = req.NodeType
 	data.IsHidden = req.IsHidden
 	data.NodeGroupIds = node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds))
-	err = nodeStore.UpdateNode(l.ctx, data)
+	err = nekoproxy.NewLogic(l.ctx, l.svcCtx).UpdateNode(data, req.NekoproxySyncOnSave)
 	if err != nil {
+		var domainErr *xerr.CodeError
+		if errors.As(err, &domainErr) {
+			return err
+		}
 		l.Logger.Errorw("[UpdateNode] Update Database Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "[UpdateNode] Update Database Error")
 	}

@@ -37,6 +37,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Test
+        run: go test -count=1 ./...
+
       - name: Build
         env:
           CGO_ENABLED: 0

@@ -35,6 +35,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Test
+        run: go test -count=1 ./...
+
       # Fork-specific: this job keeps publishing a single linux/amd64 tarball
       # and checksum for the branch pushes and manual dispatches that
       # release.yml does not cover. It now builds through the same Makefile

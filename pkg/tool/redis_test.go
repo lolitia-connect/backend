@@ -1,6 +1,10 @@
 package tool
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/alicebob/miniredis/v2"
+)
 
 func TestParseRedisURI(t *testing.T) {
 	uri := "redis://localhost:6379"
@@ -12,7 +16,7 @@ func TestParseRedisURI(t *testing.T) {
 }
 
 func TestRedisPing(t *testing.T) {
-	uri := "redis://localhost:6379"
+	uri := "redis://" + miniredis.RunT(t).Addr()
 	addr, password, database, err := ParseRedisURI(uri)
 	if err != nil {
 		t.Fatal(err)

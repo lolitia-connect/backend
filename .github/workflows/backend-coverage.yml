@@ -11,6 +11,31 @@ permissions:
 jobs:
   coverage:
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-test
+          MARIADB_DATABASE: ppanel_test
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ci-test
+          POSTGRES_DB: ppanel_test
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d ppanel_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -21,6 +46,9 @@ jobs:
           go-version-file: go.mod
 
       - name: Measure coverage
+        env:
+          PPANEL_TEST_MYSQL_DSN: root:ci-test@tcp(127.0.0.1:${{ job.services.mariadb.ports['3306'] }})/ppanel_test?parseTime=true&multiStatements=true
+          PPANEL_TEST_POSTGRES_DSN: postgres://postgres:ci-test@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/ppanel_test?sslmode=disable
         run: go test -p 2 -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
 
       - name: Upload coverage profile

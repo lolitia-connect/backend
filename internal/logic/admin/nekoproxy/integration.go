@@ -11,6 +11,7 @@ import (
 	"github.com/perfect-panel/server/ent"
 	entbinding "github.com/perfect-panel/server/ent/nekoproxybinding"
 	entnode "github.com/perfect-panel/server/ent/node"
+	"github.com/perfect-panel/server/ent/predicate"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
@@ -324,33 +325,79 @@ func (l *Logic) Sync(req *types.SyncNekoproxyRequest) (*types.NekoproxySyncRespo
 	return result, nil
 }
 
-func (l *Logic) UpdateNode(data *node.Node, preference *bool) error {
+func bindingSnapshot(binding *ent.NekoproxyBinding) []predicate.NekoproxyBinding {
+	match := []predicate.NekoproxyBinding{
+		entbinding.ID(binding.ID), entbinding.APIURL(binding.APIURL),
+		entbinding.ForwardID(binding.ForwardID), entbinding.SessionID(binding.SessionID),
+		entbinding.SyncOnSave(binding.SyncOnSave),
+	}
+	if binding.ManagedTargetPort == nil {
+		return append(match, entbinding.ManagedTargetPortIsNil())
+	}
+	return append(match, entbinding.ManagedTargetPort(*binding.ManagedTargetPort))
+}
+
+func (l *Logic) UpdateNode(data *node.Node, preference *bool, change *types.NekoproxyBindingUpdate) error {
+	action := ""
+	if change != nil {
+		if err := l.svc.Validate(change); err != nil {
+			return inputError(err.Error())
+		}
+		action = change.Action
+		if action == "bind" && (change.ForwardID == "" || change.SessionID == "") {
+			return inputError("select an active forwarding session")
+		}
+	}
 	binding, err := l.svc.Store.Ent().NekoproxyBinding.Query().Where(entbinding.NodeID(data.Id)).Only(l.ctx)
-	if ent.IsNotFound(err) {
-		if preference != nil {
+	if err != nil && !ent.IsNotFound(err) {
+		return err
+	}
+	if binding == nil && action != "bind" {
+		if preference != nil || action != "" {
 			return inputError("this node is no longer bound; reopen its settings")
 		}
 		return l.svc.Store.Node().UpdateNode(l.ctx, data)
 	}
-	if err != nil {
-		return err
+	if action == "unbind" {
+		return l.svc.Store.InTx(l.ctx, func(store repository.Store) error {
+			count, err := store.Ent().NekoproxyBinding.Delete().Where(bindingSnapshot(binding)...).Exec(l.ctx)
+			if err != nil {
+				return err
+			}
+			if count == 0 {
+				return inputError("binding changed while saving; reopen the node and try again")
+			}
+			return store.Node().UpdateNode(l.ctx, data)
+		})
 	}
-	syncOnSave := binding.SyncOnSave
+
+	syncOnSave := true
+	var apiURL, forwardID, sessionID string
+	var managedTargetPort *uint16
+	if binding != nil {
+		apiURL, forwardID, sessionID = binding.APIURL, binding.ForwardID, binding.SessionID
+		syncOnSave, managedTargetPort = binding.SyncOnSave, binding.ManagedTargetPort
+	}
 	if preference != nil {
 		syncOnSave = *preference
 	}
 	var client *remote.Client
 	var entry *forwardEntry
-	if syncOnSave {
+	if syncOnSave || action != "" {
 		var config connection
 		config, client, err = l.client()
 		if err != nil {
 			return err
 		}
-		if binding.APIURL != config.APIURL {
+		if action == "bind" {
+			if apiURL != config.APIURL || forwardID != change.ForwardID {
+				managedTargetPort = nil
+			}
+			apiURL, forwardID, sessionID = config.APIURL, change.ForwardID, change.SessionID
+		} else if apiURL != config.APIURL {
 			return inputError("this node is bound to another Nekoproxy API address")
 		}
-		entry, err = selectSession(l.ctx, client, binding.ForwardID, binding.SessionID)
+		entry, err = selectSession(l.ctx, client, forwardID, sessionID)
 		if err != nil {
 			return remoteError(err)
 		}
@@ -361,19 +408,32 @@ func (l *Logic) UpdateNode(data *node.Node, preference *bool) error {
 	}
 	var previousPort, updatedPort uint16
 	err = l.svc.Store.InTx(l.ctx, func(store repository.Store) error {
-		guard := store.Ent().NekoproxyBinding.UpdateOneID(binding.ID).
-			Where(entbinding.APIURL(binding.APIURL), entbinding.ForwardID(binding.ForwardID), entbinding.SessionID(binding.SessionID), entbinding.SyncOnSave(binding.SyncOnSave))
-		if binding.ManagedTargetPort == nil {
-			guard.Where(entbinding.ManagedTargetPortIsNil())
+		bindings := store.Ent().NekoproxyBinding
+		if binding == nil {
+			if err := bindings.Create().SetNodeID(data.Id).SetAPIURL(apiURL).SetForwardID(forwardID).
+				SetSessionID(sessionID).SetSyncOnSave(syncOnSave).Exec(l.ctx); err != nil {
+				if ent.IsConstraintError(err) {
+					return inputError("this Nekoproxy forward or node is already bound")
+				}
+				return err
+			}
 		} else {
-			guard.Where(entbinding.ManagedTargetPort(*binding.ManagedTargetPort))
-		}
-		err := guard.SetSyncOnSave(syncOnSave).Exec(l.ctx)
-		if ent.IsNotFound(err) {
-			return inputError("binding changed while saving; reopen the node and try again")
-		}
-		if err != nil {
-			return err
+			update := bindings.UpdateOneID(binding.ID).Where(bindingSnapshot(binding)...).SetSyncOnSave(syncOnSave)
+			if action == "bind" {
+				update.SetAPIURL(apiURL).SetForwardID(forwardID).SetSessionID(sessionID)
+				if managedTargetPort == nil {
+					update.ClearManagedTargetPort()
+				}
+			}
+			if err := update.Exec(l.ctx); err != nil {
+				if ent.IsNotFound(err) {
+					return inputError("binding changed while saving; reopen the node and try again")
+				}
+				if action == "bind" && ent.IsConstraintError(err) {
+					return inputError("this Nekoproxy forward is already bound to another node")
+				}
+				return err
+			}
 		}
 		old, err := store.Node().FindOneNode(l.ctx, data.Id)
 		if err != nil {
@@ -382,15 +442,15 @@ func (l *Logic) UpdateNode(data *node.Node, preference *bool) error {
 		if err := store.Node().UpdateNode(l.ctx, data); err != nil {
 			return err
 		}
-		if entry == nil || (old.ServerId == data.ServerId && old.Protocol == data.Protocol && old.ProtocolId == data.ProtocolId) {
+		if !syncOnSave || (old.ServerId == data.ServerId && old.Protocol == data.Protocol && old.ProtocolId == data.ProtocolId) {
 			return nil
 		}
-		port, err := managedPortOnSave(l.ctx, store, old, data, binding.ManagedTargetPort, entry.service.TargetPort)
+		port, err := managedPortOnSave(l.ctx, store, old, data, managedTargetPort, entry.service.TargetPort)
 		if err != nil {
 			return err
 		}
-		if binding.ManagedTargetPort == nil || *binding.ManagedTargetPort != port {
-			if err := store.Ent().NekoproxyBinding.UpdateOneID(binding.ID).SetManagedTargetPort(port).Exec(l.ctx); err != nil {
+		if managedTargetPort == nil || *managedTargetPort != port {
+			if err := bindings.Update().Where(entbinding.NodeID(data.Id)).SetManagedTargetPort(port).Exec(l.ctx); err != nil {
 				return err
 			}
 		}
@@ -399,8 +459,8 @@ func (l *Logic) UpdateNode(data *node.Node, preference *bool) error {
 		}
 		// Patch last, while holding the binding lock. A rejected remote write rolls back all local edits.
 		previousPort = uint16(entry.service.TargetPort)
-		if err := client.UpdateTargetPort(l.ctx, binding.ForwardID, previousPort, port); err != nil {
-			return remoteError(fmt.Errorf("could not confirm target port update for Nekoproxy forward %s; check its target before retrying: %w", binding.ForwardID, err))
+		if err := client.UpdateTargetPort(l.ctx, forwardID, previousPort, port); err != nil {
+			return remoteError(fmt.Errorf("could not confirm target port update for Nekoproxy forward %s; check its target before retrying: %w", forwardID, err))
 		}
 		updatedPort = port
 		return nil
@@ -408,8 +468,8 @@ func (l *Logic) UpdateNode(data *node.Node, preference *bool) error {
 	if err != nil && updatedPort != 0 {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(l.ctx), 15*time.Second)
 		defer cancel()
-		if undoErr := client.UpdateTargetPort(cleanupCtx, binding.ForwardID, updatedPort, previousPort); undoErr != nil {
-			return remoteError(fmt.Errorf("node save failed; verify target port of Nekoproxy forward %s: %w", binding.ForwardID, undoErr))
+		if undoErr := client.UpdateTargetPort(cleanupCtx, forwardID, updatedPort, previousPort); undoErr != nil {
+			return remoteError(fmt.Errorf("node save failed; verify target port of Nekoproxy forward %s: %w", forwardID, undoErr))
 		}
 	}
 	return err

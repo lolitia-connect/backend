@@ -36,6 +36,11 @@ func ValidateSentryDSN(raw string) error {
 }
 
 func ConfigureSentry(enabled bool, dsn string, debug bool) error {
+	return ConfigureSentryProducts(enabled, enabled, enabled, enabled, false, dsn, debug)
+}
+
+func ConfigureSentryProducts(errorEnabled, logsEnabled, tracingEnabled, metricsEnabled, traceIDHeaderEnabled bool, dsn string, debug bool) error {
+	enabled := errorEnabled || logsEnabled || tracingEnabled || metricsEnabled || traceIDHeaderEnabled
 	if !enabled {
 		CloseSentry()
 		return nil
@@ -49,7 +54,10 @@ func ConfigureSentry(enabled bool, dsn string, debug bool) error {
 	}
 	backendSentry.mu.Lock()
 	old := backendSentry.client
-	if old != nil && old.Options().Dsn == dsn && old.Options().Environment == environment {
+	if old != nil && old.Options().Dsn == dsn && old.Options().Environment == environment &&
+		backendSentry.errorEnabled == errorEnabled && backendSentry.logsEnabled == logsEnabled &&
+		backendSentry.tracingEnabled == tracingEnabled && backendSentry.metricsEnabled == metricsEnabled &&
+		backendSentry.traceIDHeaderEnabled == traceIDHeaderEnabled {
 		backendSentry.mu.Unlock()
 		return nil
 	}
@@ -57,7 +65,7 @@ func ConfigureSentry(enabled bool, dsn string, debug bool) error {
 		Dsn:                   dsn,
 		Release:               constant.Version,
 		Environment:           environment,
-		EnableTracing:         true,
+		EnableTracing:         tracingEnabled,
 		TracesSampleRate:      1.0,
 		MaxBreadcrumbs:        -1,
 		DisableClientReports:  true,
@@ -74,6 +82,11 @@ func ConfigureSentry(enabled bool, dsn string, debug bool) error {
 	hub := sentry.NewHub(client, sentry.NewScope())
 	backendSentry.client = client
 	backendSentry.hub = hub
+	backendSentry.errorEnabled = errorEnabled
+	backendSentry.logsEnabled = logsEnabled
+	backendSentry.tracingEnabled = tracingEnabled
+	backendSentry.metricsEnabled = metricsEnabled
+	backendSentry.traceIDHeaderEnabled = traceIDHeaderEnabled
 	backendSentry.mu.Unlock()
 	closeClient(old)
 	return nil
@@ -84,6 +97,11 @@ func CloseSentry() {
 	old := backendSentry.client
 	backendSentry.client = nil
 	backendSentry.hub = nil
+	backendSentry.errorEnabled = false
+	backendSentry.logsEnabled = false
+	backendSentry.tracingEnabled = false
+	backendSentry.metricsEnabled = false
+	backendSentry.traceIDHeaderEnabled = false
 	backendSentry.mu.Unlock()
 	closeClient(old)
 }
@@ -98,9 +116,14 @@ func closeClient(client *sentry.Client) {
 // The local core owns log messages and fields. They can contain credentials,
 // request bodies or SQL, including when interpolated into the message itself.
 type sentryCore struct {
-	mu     sync.RWMutex
-	client *sentry.Client
-	hub    *sentry.Hub
+	mu                   sync.RWMutex
+	client               *sentry.Client
+	hub                  *sentry.Hub
+	errorEnabled         bool
+	logsEnabled          bool
+	tracingEnabled       bool
+	metricsEnabled       bool
+	traceIDHeaderEnabled bool
 }
 
 func (c *sentryCore) Enabled(level zapcore.Level) bool {
@@ -109,7 +132,10 @@ func (c *sentryCore) Enabled(level zapcore.Level) bool {
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.client != nil && c.hub != nil
+	if c.client == nil || c.hub == nil {
+		return false
+	}
+	return (level >= zapcore.ErrorLevel && c.errorEnabled) || c.logsEnabled
 }
 
 func (c *sentryCore) With([]zapcore.Field) zapcore.Core { return c }
@@ -124,12 +150,13 @@ func (c *sentryCore) Check(entry zapcore.Entry, checked *zapcore.CheckedEntry) *
 func (c *sentryCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 	c.mu.RLock()
 	client, hub := c.client, c.hub
+	errorEnabled, logsEnabled := c.errorEnabled, c.logsEnabled
 	c.mu.RUnlock()
 	if client == nil || hub == nil {
 		return nil
 	}
 
-	if entry.Level >= zapcore.ErrorLevel {
+	if entry.Level >= zapcore.ErrorLevel && errorEnabled {
 		level := sentry.LevelError
 		if entry.Level >= zapcore.PanicLevel {
 			level = sentry.LevelFatal
@@ -141,6 +168,9 @@ func (c *sentryCore) Write(entry zapcore.Entry, fields []zapcore.Field) error {
 		}, nil, nil)
 	}
 
+	if !logsEnabled {
+		return nil
+	}
 	logger := sentry.NewLogger(sentry.SetHubOnContext(context.Background(), hub))
 	logEntry := logger.Info()
 	switch {
@@ -266,12 +296,14 @@ func safeAttributeValue(value attribute.Value) attribute.Value {
 	}
 }
 
-func StartSentryRequest(ctx context.Context, name string) (context.Context, func(status int, expected bool)) {
+func StartSentryRequest(ctx context.Context, name string) (context.Context, func(status int, expected bool), string) {
 	backendSentry.mu.RLock()
 	hub := backendSentry.hub
+	tracingEnabled := backendSentry.tracingEnabled
+	traceIDHeaderEnabled := backendSentry.traceIDHeaderEnabled
 	backendSentry.mu.RUnlock()
-	if hub == nil {
-		return ctx, func(int, bool) {}
+	if hub == nil || (!tracingEnabled && !traceIDHeaderEnabled) {
+		return ctx, func(int, bool) {}, ""
 	}
 
 	ctx = sentry.SetHubOnContext(ctx, hub)
@@ -281,6 +313,10 @@ func StartSentryRequest(ctx context.Context, name string) (context.Context, func
 		sentry.WithTransactionName(logredact.Text(name)),
 		sentry.WithDescription(logredact.Text(name)),
 	)
+	traceID := ""
+	if traceIDHeaderEnabled {
+		traceID = span.TraceID.String()
+	}
 	return span.Context(), func(status int, expected bool) {
 		span.SetTag("http.status_code", strconv.Itoa(status))
 		if expected {
@@ -289,14 +325,15 @@ func StartSentryRequest(ctx context.Context, name string) (context.Context, func
 			span.Status = sentry.SpanStatusInternalError
 		}
 		span.Finish()
-	}
+	}, traceID
 }
 
 func RecordSentryRequestMetrics(ctx context.Context, method, route string, status int, duration time.Duration) {
 	backendSentry.mu.RLock()
 	hub := backendSentry.hub
+	metricsEnabled := backendSentry.metricsEnabled
 	backendSentry.mu.RUnlock()
-	if hub == nil {
+	if hub == nil || !metricsEnabled {
 		return
 	}
 

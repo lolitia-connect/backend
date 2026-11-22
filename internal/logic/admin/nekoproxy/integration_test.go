@@ -197,7 +197,7 @@ func TestNekoproxyNodeSavePreferenceAndAtomicSync(t *testing.T) {
 	}
 	data.Name, data.Address = "edited", "drift.example.test"
 	f.port = 3456
-	if err := f.logic.UpdateNode(data, nil); err != nil {
+	if err := f.logic.UpdateNode(data, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	entry, err := f.logic.NodeEntry(1)
@@ -207,15 +207,15 @@ func TestNekoproxyNodeSavePreferenceAndAtomicSync(t *testing.T) {
 	f.unavailable = true
 	off, on := false, true
 	data.Address, data.Port = "manual.example.test", 443
-	if err := f.logic.UpdateNode(data, &off); err != nil {
+	if err := f.logic.UpdateNode(data, &off, nil); err != nil {
 		t.Fatal(err)
 	}
 	data.Name = "saved offline"
-	if err := f.logic.UpdateNode(data, nil); err != nil {
+	if err := f.logic.UpdateNode(data, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	data.Name = "must not persist"
-	if err := f.logic.UpdateNode(data, &on); err == nil {
+	if err := f.logic.UpdateNode(data, &on, nil); err == nil {
 		t.Fatal("accepted failed remote sync")
 	}
 	entry, err = f.logic.NodeEntry(1)
@@ -231,12 +231,63 @@ func TestNekoproxyNodeSavePreferenceAndAtomicSync(t *testing.T) {
 	if err != nil || entry.Binding.SyncOnSave || entry.Port != 3456 {
 		t.Fatalf("manual sync changed preference: %+v %v", entry, err)
 	}
-	if err := f.logic.UpdateNode(data, &on); err != nil {
+	if err := f.logic.UpdateNode(data, &on, nil); err != nil {
 		t.Fatal(err)
 	}
 	entry, err = f.logic.NodeEntry(1)
 	if err != nil || !entry.Binding.SyncOnSave || entry.Port != 3456 {
 		t.Fatalf("re-enabled save: %+v %v", entry, err)
+	}
+}
+
+func TestNekoproxyNodeSaveBindingChanges(t *testing.T) {
+	f := setupIntegration(t)
+	ctx := t.Context()
+	bind := &types.NekoproxyBindingUpdate{Action: "bind", ForwardID: "l4s-1", SessionID: "session-1"}
+	unbind := &types.NekoproxyBindingUpdate{Action: "unbind"}
+	nodeStore := f.logic.svc.Store.Node()
+	data, err := nodeStore.FindOneNode(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data.Name = "bound on save"
+	off := false
+	if err := f.logic.UpdateNode(data, &off, bind); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := f.logic.NodeEntry(1)
+	if err != nil || entry.Binding == nil || entry.Binding.SyncOnSave || entry.Port != 2345 || f.client.Node.GetX(ctx, 1).Name != data.Name {
+		t.Fatalf("bind and save: %+v %v", entry, err)
+	}
+
+	other, err := nodeStore.FindOneNode(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.Name = "must not persist"
+	if err := f.logic.UpdateNode(other, nil, bind); err == nil || f.client.Node.GetX(ctx, 2).Name != "other" {
+		t.Fatalf("duplicate binding partially saved the node: %v", err)
+	}
+
+	f.port = 3456
+	data.Name = "synced on save"
+	if err := f.logic.UpdateNode(data, nil, &types.NekoproxyBindingUpdate{Action: "sync"}); err != nil {
+		t.Fatal(err)
+	}
+	entry, err = f.logic.NodeEntry(1)
+	if err != nil || entry.Binding == nil || entry.Binding.SyncOnSave || entry.Port != 3456 || f.client.Node.GetX(ctx, 1).Name != data.Name {
+		t.Fatalf("sync once and save: %+v %v", entry, err)
+	}
+
+	f.unavailable = true
+	data.Name = "unbound on save"
+	data.Address = "manual.example.test"
+	if err := f.logic.UpdateNode(data, nil, unbind); err != nil {
+		t.Fatal(err)
+	}
+	entry, err = f.logic.NodeEntry(1)
+	if err != nil || entry.Binding != nil || entry.Address != data.Address || f.client.Node.GetX(ctx, 1).Name != data.Name || f.deletes != 0 {
+		t.Fatalf("offline unbind and save: %+v %v", entry, err)
 	}
 }
 
@@ -258,14 +309,14 @@ func TestNekoproxyProtocolSwitchUsesInstancePortNotEntryPort(t *testing.T) {
 	}
 	edit.ProtocolId, edit.Name = "3", "changed"
 	f.patchStatus = http.StatusConflict
-	if err := f.logic.UpdateNode(edit, nil); err == nil {
+	if err := f.logic.UpdateNode(edit, nil, nil); err == nil {
 		t.Fatal("failed target update accepted")
 	}
 	if n := f.client.Node.GetX(ctx, 1); n.ProtocolID != "2" || n.Name == "changed" || f.targetPort != 443 {
 		t.Fatal("failed patch partially saved the edit")
 	}
 	f.patchStatus = 0
-	if err := f.logic.UpdateNode(edit, nil); err != nil {
+	if err := f.logic.UpdateNode(edit, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if n := f.client.Node.GetX(ctx, 1); n.ProtocolID != "3" || n.Port != uint16(f.port) || f.targetPort != 8443 {
@@ -273,11 +324,11 @@ func TestNekoproxyProtocolSwitchUsesInstancePortNotEntryPort(t *testing.T) {
 	}
 	// An operator can pin a different target directly in Nekoproxy, even if it matches a later selection.
 	f.targetPort, edit.Protocol, edit.ProtocolId = 9443, "trojan", "2"
-	if err := f.logic.UpdateNode(edit, nil); err != nil {
+	if err := f.logic.UpdateNode(edit, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	edit.Protocol = "vless"
-	if err := f.logic.UpdateNode(edit, nil); err != nil {
+	if err := f.logic.UpdateNode(edit, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if f.targetPort != 9443 || f.patches != 2 {
@@ -305,7 +356,7 @@ func TestNekoproxyCreatedTargetRespectsManualOverrideAndOfflineSave(t *testing.T
 			data.Protocol = "trojan"
 			sync := !tc.offline
 			f.unavailable = tc.offline
-			if err := f.logic.UpdateNode(data, &sync); err != nil {
+			if err := f.logic.UpdateNode(data, &sync, nil); err != nil {
 				t.Fatal(err)
 			}
 			if f.targetPort != tc.want || f.client.Node.GetX(t.Context(), data.Id).Protocol != "trojan" {

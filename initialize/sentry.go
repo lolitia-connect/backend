@@ -19,8 +19,15 @@ func restoreSentry(svc *svc.ServiceContext) {
 	}
 	var settings types.LogSetting
 	tool.SystemConfigSliceReflectToStruct(rows, &settings)
-	enabled := settings.SentryEnabled != nil && *settings.SentryEnabled
-	if err := logging.ConfigureSentry(enabled, settings.SentryDSN, svc.Config.Debug); err != nil {
+	if settings.SentryErrorEnabled == nil {
+		settings.SentryErrorEnabled = settings.SentryEnabled
+	}
+	errorEnabled := settings.SentryErrorEnabled != nil && *settings.SentryErrorEnabled
+	logsEnabled := settings.SentryLogsEnabled != nil && *settings.SentryLogsEnabled
+	tracingEnabled := settings.SentryTracingEnabled != nil && *settings.SentryTracingEnabled
+	metricsEnabled := settings.SentryMetricsEnabled != nil && *settings.SentryMetricsEnabled
+	traceIDHeaderEnabled := settings.SentryTraceIDHeaderEnabled != nil && *settings.SentryTraceIDHeaderEnabled
+	if err := logging.ConfigureSentryProducts(errorEnabled, logsEnabled, tracingEnabled, metricsEnabled, traceIDHeaderEnabled, settings.SentryDSN, svc.Config.Debug); err != nil {
 		logging.CloseSentry()
 		zap.S().Warnw("Backend Sentry reporting is disabled", "error", err)
 	}

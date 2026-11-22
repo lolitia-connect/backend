@@ -1438,10 +1438,15 @@ type LogResponse struct {
 }
 
 type LogSetting struct {
-	AutoClear     *bool  `json:"auto_clear,omitempty"`
-	ClearDays     int64  `json:"clear_days,omitempty"`
-	SentryEnabled *bool  `json:"sentry_enabled,omitempty"`
-	SentryDSN     string `json:"sentry_dsn,omitempty"`
+	AutoClear                  *bool  `json:"auto_clear,omitempty"`
+	ClearDays                  int64  `json:"clear_days,omitempty"`
+	SentryEnabled              *bool  `json:"sentry_enabled,omitempty"` // legacy alias for error monitoring
+	SentryErrorEnabled         *bool  `json:"sentry_error_enabled,omitempty"`
+	SentryLogsEnabled          *bool  `json:"sentry_logs_enabled,omitempty"`
+	SentryTracingEnabled       *bool  `json:"sentry_tracing_enabled,omitempty"`
+	SentryMetricsEnabled       *bool  `json:"sentry_metrics_enabled,omitempty"`
+	SentryTraceIDHeaderEnabled *bool  `json:"sentry_trace_id_header_enabled,omitempty"`
+	SentryDSN                  string `json:"sentry_dsn,omitempty"`
 }
 
 type LoginLog struct {
@@ -2904,20 +2909,21 @@ type UpdateNodeGroupRequest struct {
 }
 
 type UpdateNodeRequest struct {
-	NekoproxySyncOnSave *bool    `json:"nekoproxy_sync_on_save,omitempty"`
-	Id                  int64    `json:"id,string"`
-	Name                string   `json:"name"`
-	Tags                []string `json:"tags,omitempty"`
-	Port                uint16   `json:"port"`
-	Address             string   `json:"address"`
-	ServerId            int64    `json:"server_id,string"`
-	Protocol            string   `json:"protocol"`
-	ProtocolId          string   `json:"protocol_id"`
-	Enabled             *bool    `json:"enabled"`
-	NodeType            string   `json:"node_type,omitempty"`
-	IsHidden            *bool    `json:"is_hidden,omitempty"`
-	Sort                *int     `json:"sort,omitempty" validate:"omitempty,gte=0"`
-	NodeGroupIds        []string `json:"node_group_ids,omitempty"`
+	NekoproxyBinding    *NekoproxyBindingUpdate `json:"nekoproxy_binding,omitempty"`
+	NekoproxySyncOnSave *bool                   `json:"nekoproxy_sync_on_save,omitempty"`
+	Id                  int64                   `json:"id,string"`
+	Name                string                  `json:"name"`
+	Tags                []string                `json:"tags,omitempty"`
+	Port                uint16                  `json:"port"`
+	Address             string                  `json:"address"`
+	ServerId            int64                   `json:"server_id,string"`
+	Protocol            string                  `json:"protocol"`
+	ProtocolId          string                  `json:"protocol_id"`
+	Enabled             *bool                   `json:"enabled"`
+	NodeType            string                  `json:"node_type,omitempty"`
+	IsHidden            *bool                   `json:"is_hidden,omitempty"`
+	Sort                *int                    `json:"sort,omitempty" validate:"omitempty,gte=0"`
+	NodeGroupIds        []string                `json:"node_group_ids,omitempty"`
 }
 
 type UpdateOrderStatusRequest struct {

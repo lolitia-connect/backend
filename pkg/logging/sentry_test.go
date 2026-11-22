@@ -19,6 +19,27 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
+func TestSentryTraceIDHeaderSwitch(t *testing.T) {
+	defer CloseSentry()
+	const dsn = "http://test-key@127.0.0.1:1/42"
+	if err := ConfigureSentryProducts(false, false, false, false, true, dsn, true); err != nil {
+		t.Fatal(err)
+	}
+	_, finish, traceID := StartSentryRequest(context.Background(), "GET /trace-id")
+	if len(traceID) != 32 {
+		t.Fatalf("trace ID length = %d, want 32", len(traceID))
+	}
+	finish(200, true)
+	if err := ConfigureSentryProducts(false, false, false, false, false, dsn, true); err != nil {
+		t.Fatal(err)
+	}
+	_, finish, traceID = StartSentryRequest(context.Background(), "GET /trace-id")
+	if traceID != "" {
+		t.Fatalf("trace ID returned while header switch disabled: %q", traceID)
+	}
+	finish(200, true)
+}
+
 func TestSentryReportsOnlySanitizedFailures(t *testing.T) {
 	events := make(chan []byte, 10)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +74,7 @@ func TestSentryReportsOnlySanitizedFailures(t *testing.T) {
 	if err := ConfigureSentry(true, dsn, true); err != nil {
 		t.Fatal(err)
 	}
-	requestCtx, finishRequest := StartSentryRequest(context.Background(), "GET /test")
+	requestCtx, finishRequest, _ := StartSentryRequest(context.Background(), "GET /test")
 	RecordSentryRequestMetrics(requestCtx, "GET", "/test", 200, 12*time.Millisecond)
 	previousHertzLogger := hlog.DefaultLogger()
 	hlog.SetLogger(NewHertzLogger())

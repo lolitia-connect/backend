@@ -33,5 +33,23 @@ func (l *GetLogSettingLogic) GetLogSetting() (resp *types.LogSetting, err error)
 	resp = &types.LogSetting{SentryEnabled: new(bool)}
 	// reflect to response
 	tool.SystemConfigSliceReflectToStruct(configs, resp)
+	if resp.SentryErrorEnabled == nil {
+		resp.SentryErrorEnabled = resp.SentryEnabled
+	}
+	if resp.SentryEnabled == nil {
+		resp.SentryEnabled = resp.SentryErrorEnabled
+	}
+	if resp.SentryLogsEnabled == nil {
+		resp.SentryLogsEnabled = new(bool)
+	}
+	if resp.SentryTracingEnabled == nil {
+		resp.SentryTracingEnabled = new(bool)
+	}
+	if resp.SentryMetricsEnabled == nil {
+		resp.SentryMetricsEnabled = new(bool)
+	}
+	if resp.SentryTraceIDHeaderEnabled == nil {
+		resp.SentryTraceIDHeaderEnabled = new(bool)
+	}
 	return
 }

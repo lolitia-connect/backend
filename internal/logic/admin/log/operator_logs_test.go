@@ -223,6 +223,34 @@ func TestSentrySettingsSurviveCleanupOnlyWrites(t *testing.T) {
 	}
 }
 
+func TestSentryProductSwitchesPersistIndependently(t *testing.T) {
+	service, _ := operatorLogFixture(t)
+	ctx := requestmeta.WithActor(context.Background(), 7)
+	write := NewUpdateLogSettingLogic(ctx, service)
+	defer logging.CloseSentry()
+	errorEnabled := true
+	logsEnabled := false
+	tracingEnabled := true
+	metricsEnabled := false
+	const dsn = "http://test-key@127.0.0.1:1/42"
+	if err := write.UpdateLogSetting(&types.LogSetting{
+		SentryErrorEnabled:   &errorEnabled,
+		SentryLogsEnabled:    &logsEnabled,
+		SentryTracingEnabled: &tracingEnabled,
+		SentryMetricsEnabled: &metricsEnabled,
+		SentryDSN:            dsn,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := NewGetLogSettingLogic(ctx, service).GetLogSetting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SentryErrorEnabled == nil || !*cfg.SentryErrorEnabled || cfg.SentryLogsEnabled == nil || *cfg.SentryLogsEnabled || cfg.SentryTracingEnabled == nil || !*cfg.SentryTracingEnabled || cfg.SentryMetricsEnabled == nil || *cfg.SentryMetricsEnabled {
+		t.Fatalf("independent Sentry switches were not persisted: %+v", cfg)
+	}
+}
+
 func TestRetentionChangeRequiresAuditAndSevenDays(t *testing.T) {
 	service, client := operatorLogFixture(t)
 	ctx := requestmeta.WithActor(context.Background(), 7)

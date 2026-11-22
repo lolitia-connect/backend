@@ -105,7 +105,10 @@ func TraceMiddleware(_ *svc.ServiceContext) app.HandlerFunc {
 			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
 		)
 		defer span.End()
-		sentryCtx, finishSentry := logging.StartSentryRequest(c, fmt.Sprintf("%s %s", method, spanName))
+		sentryCtx, finishSentry, sentryTraceID := logging.StartSentryRequest(c, fmt.Sprintf("%s %s", method, spanName))
+		if sentryTraceID != "" {
+			ctx.Header("X-Trace-Id", sentryTraceID)
+		}
 		defer func() {
 			status := responseStatus(ctx)
 			finishSentry(status, status < 500 && !hasUnexpectedRequestError(ctx))

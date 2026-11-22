@@ -37,15 +37,23 @@ func NewUpdateLogSettingLogic(ctx context.Context, svcCtx *svc.ServiceContext) *
 var logSettingsMu sync.Mutex
 
 func (l *UpdateLogSettingLogic) UpdateLogSetting(req *types.LogSetting) error {
-	if req == nil || (req.AutoClear == nil && req.SentryEnabled == nil) ||
+	if req == nil {
+		return xerr.NewErrCode(xerr.InvalidParams)
+	}
+	sentryErrorEnabled := req.SentryErrorEnabled
+	if sentryErrorEnabled == nil {
+		sentryErrorEnabled = req.SentryEnabled
+	}
+	sentryRequested := sentryErrorEnabled != nil || req.SentryLogsEnabled != nil || req.SentryTracingEnabled != nil || req.SentryMetricsEnabled != nil || req.SentryTraceIDHeaderEnabled != nil || req.SentryDSN != ""
+	if req == nil || (req.AutoClear == nil && !sentryRequested) ||
 		(req.AutoClear != nil && req.ClearDays < 7) || (req.AutoClear == nil && req.ClearDays != 0) {
 		return xerr.NewErrCode(xerr.InvalidParams)
 	}
 	dsn := strings.TrimSpace(req.SentryDSN)
-	if req.SentryEnabled == nil && dsn != "" {
+	if !sentryRequested && dsn != "" {
 		return xerr.NewErrCode(xerr.InvalidParams)
 	}
-	if req.SentryEnabled != nil && (*req.SentryEnabled || dsn != "") {
+	if sentryRequested && (sentryErrorEnabled != nil && *sentryErrorEnabled || req.SentryLogsEnabled != nil && *req.SentryLogsEnabled || req.SentryTracingEnabled != nil && *req.SentryTracingEnabled || req.SentryMetricsEnabled != nil && *req.SentryMetricsEnabled || dsn != "") {
 		if err := logging.ValidateSentryDSN(dsn); err != nil {
 			return xerr.NewErrCodeMsg(xerr.InvalidParams, err.Error())
 		}
@@ -65,14 +73,42 @@ func (l *UpdateLogSettingLogic) UpdateLogSetting(req *types.LogSetting) error {
 			}
 			audit = append(audit, fmt.Sprintf("auto_clear=%t,clear_days=%d", *req.AutoClear, req.ClearDays))
 		}
-		if req.SentryEnabled != nil {
-			if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryEnabled", strconv.FormatBool(*req.SentryEnabled), "bool", "Backend Sentry reporting"); err != nil {
-				return err
+		if sentryRequested {
+			if sentryErrorEnabled != nil {
+				value := strconv.FormatBool(*sentryErrorEnabled)
+				if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryEnabled", value, "bool", "Backend Sentry error monitoring"); err != nil {
+					return err
+				}
+				if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryErrorEnabled", value, "bool", "Backend Sentry error monitoring"); err != nil {
+					return err
+				}
 			}
-			if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryDSN", dsn, "string", "Backend Sentry project DSN"); err != nil {
-				return err
+			if req.SentryLogsEnabled != nil {
+				if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryLogsEnabled", strconv.FormatBool(*req.SentryLogsEnabled), "bool", "Backend Sentry logging"); err != nil {
+					return err
+				}
 			}
-			audit = append(audit, fmt.Sprintf("sentry_enabled=%t", *req.SentryEnabled))
+			if req.SentryTracingEnabled != nil {
+				if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryTracingEnabled", strconv.FormatBool(*req.SentryTracingEnabled), "bool", "Backend Sentry tracing"); err != nil {
+					return err
+				}
+			}
+			if req.SentryMetricsEnabled != nil {
+				if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryMetricsEnabled", strconv.FormatBool(*req.SentryMetricsEnabled), "bool", "Backend Sentry application metrics"); err != nil {
+					return err
+				}
+			}
+			if req.SentryTraceIDHeaderEnabled != nil {
+				if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryTraceIDHeaderEnabled", strconv.FormatBool(*req.SentryTraceIDHeaderEnabled), "bool", "Backend Sentry trace ID response header"); err != nil {
+					return err
+				}
+			}
+			if req.SentryDSN != "" || sentryErrorEnabled != nil {
+				if err := systemStore.UpsertByCategoryKey(l.ctx, "log", "SentryDSN", dsn, "string", "Backend Sentry project DSN"); err != nil {
+					return err
+				}
+			}
+			audit = append(audit, fmt.Sprintf("sentry_error=%t,logs=%t,tracing=%t,metrics=%t,trace_id_header=%t", boolValue(sentryErrorEnabled), boolValue(req.SentryLogsEnabled), boolValue(req.SentryTracingEnabled), boolValue(req.SentryMetricsEnabled), boolValue(req.SentryTraceIDHeaderEnabled)))
 		}
 		entry, err := modellog.NewAdminActionLog(l.ctx, modellog.AdminAction{Action: "settings.log", Object: "log", Detail: strings.Join(audit, ",")})
 		if err != nil {
@@ -88,8 +124,12 @@ func (l *UpdateLogSettingLogic) UpdateLogSetting(req *types.LogSetting) error {
 	if req.AutoClear != nil {
 		l.svcCtx.Config.Log = config.Log{AutoClear: *req.AutoClear, ClearDays: req.ClearDays}
 	}
-	if req.SentryEnabled != nil {
-		return logging.ConfigureSentry(*req.SentryEnabled, dsn, l.svcCtx.Config.Debug)
+	if sentryRequested {
+		return logging.ConfigureSentryProducts(boolValue(sentryErrorEnabled), boolValue(req.SentryLogsEnabled), boolValue(req.SentryTracingEnabled), boolValue(req.SentryMetricsEnabled), boolValue(req.SentryTraceIDHeaderEnabled), dsn, l.svcCtx.Config.Debug)
 	}
 	return nil
+}
+
+func boolValue(value *bool) bool {
+	return value != nil && *value
 }

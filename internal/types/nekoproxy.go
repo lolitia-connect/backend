@@ -81,6 +81,12 @@ type UnbindNekoproxyRequest struct {
 	NodeID int64 `json:"node_id,string" validate:"gt=0"`
 }
 
+type NekoproxyBindingUpdate struct {
+	Action    string `json:"action" validate:"oneof=bind unbind sync"`
+	ForwardID string `json:"forward_id,omitempty" validate:"max=128"`
+	SessionID string `json:"session_id,omitempty" validate:"max=128"`
+}
+
 type SyncNekoproxyRequest struct {
 	NodeID int64 `json:"node_id,string,omitempty" validate:"gte=0"`
 }

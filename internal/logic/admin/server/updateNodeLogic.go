@@ -50,7 +50,7 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 		data.Sort = *req.Sort
 	}
 	data.NodeGroupIds = node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds))
-	err = nekoproxy.NewLogic(l.ctx, l.svcCtx).UpdateNode(data, req.NekoproxySyncOnSave)
+	err = nekoproxy.NewLogic(l.ctx, l.svcCtx).UpdateNode(data, req.NekoproxySyncOnSave, req.NekoproxyBinding)
 	if err != nil {
 		var domainErr *xerr.CodeError
 		if errors.As(err, &domainErr) {

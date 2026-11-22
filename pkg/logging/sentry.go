@@ -276,7 +276,13 @@ func safeBackendTransaction(event *sentry.Event, _ *sentry.EventHint) *sentry.Ev
 	event.ServerName = ""
 	event.Breadcrumbs = nil
 	event.Tags = nil
-	event.Contexts = nil
+	traceContext := make(map[string]sentry.Context, 1)
+	if event.Contexts != nil {
+		if trace, ok := event.Contexts["trace"]; ok {
+			traceContext["trace"] = trace
+		}
+	}
+	event.Contexts = traceContext
 	return event
 }
 

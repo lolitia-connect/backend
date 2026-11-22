@@ -40,6 +40,45 @@ func TestSentryTraceIDHeaderSwitch(t *testing.T) {
 	finish(200, true)
 }
 
+func TestSentryTransactionPayloadIsValid(t *testing.T) {
+	events := make(chan []byte, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		events <- body
+	}))
+	defer server.Close()
+	defer CloseSentry()
+	dsn := strings.Replace(server.URL, "://", "://sdk-key@", 1) + "/42"
+	if err := ConfigureSentryProducts(false, false, true, false, false, dsn, true); err != nil {
+		t.Fatal(err)
+	}
+	_, finish, _ := StartSentryRequest(context.Background(), "GET /health")
+	finish(200, true)
+	select {
+	case envelope := <-events:
+		lines := bytes.Split(bytes.TrimSpace(envelope), []byte("\n"))
+		if len(lines) < 3 || !bytes.Contains(lines[1], []byte(`"type":"transaction"`)) {
+			t.Fatalf("unexpected transaction envelope: %s", envelope)
+		}
+		var event sentry.Event
+		if err := json.Unmarshal(lines[2], &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Type != "transaction" || event.Transaction != "GET /health" || event.StartTime.IsZero() || event.Timestamp.IsZero() || event.Timestamp.Before(event.StartTime) {
+			t.Fatalf("invalid transaction payload: %s", lines[2])
+		}
+		if _, ok := event.Contexts["trace"]; !ok {
+			t.Fatalf("transaction trace context missing: %s", lines[2])
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for transaction envelope")
+	}
+}
+
 func TestSentryReportsOnlySanitizedFailures(t *testing.T) {
 	events := make(chan []byte, 10)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -20,7 +20,7 @@ func TelegramHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 			// Without a configured bot nothing could legitimately be calling
 			// this endpoint, and deriving a secret from an empty token would
 			// accept whatever that derivation happens to produce.
-			zap.L().Error("[TelegramHandler] Telegram bot token is not configured")
+			zap.L().Debug("[TelegramHandler] Webhook called while bot is disabled")
 			c.Abort()
 			result.HttpResult(c, nil, nil)
 			return
@@ -30,14 +30,14 @@ func TelegramHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 		// no credential ever has to be stored or logged.
 		secret := c.GetHeader("X-Telegram-Bot-Api-Secret-Token")
 		if !telegramsecret.Equal(secret, telegramsecret.Derive(token)) {
-			zap.L().Error("[TelegramHandler] Webhook secret token mismatch")
+			zap.L().Warn("[TelegramHandler] Webhook secret token mismatch")
 			c.Abort()
 			result.HttpResult(c, nil, nil)
 			return
 		}
 		l := telegram.NewTelegramLogic(c.Request.Context(), svcCtx)
 		if err := l.HandleUpdatePayload(c.Raw().Request.Body()); err != nil {
-			zap.L().Error("[TelegramHandler] Failed to decode update", zap.Any("error", err.Error()))
+			zap.L().Debug("[TelegramHandler] Invalid update payload")
 			c.Abort()
 			result.HttpResult(c, nil, err)
 			return

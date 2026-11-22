@@ -43,7 +43,7 @@ func (l *CreateUserTicketFollowLogic) CreateUserTicketFollow(req *types.CreateUs
 	}
 	// check access
 	if u.Id != t.UserId {
-		l.Logger.Errorw("[CreateUserTicketFollow] Invalid access", zap.Any("user_id", u.Id), zap.Any("ticket_user_id", t.UserId))
+		l.Logger.Warnw("[CreateUserTicketFollow] Invalid access", zap.Any("user_id", u.Id))
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "invalid access")
 	}
 	data := &ticket.Follow{

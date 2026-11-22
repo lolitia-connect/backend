@@ -345,6 +345,7 @@ type CreateNodeRequest struct {
 	Enabled      *bool                 `json:"enabled"`
 	NodeType     string                `json:"node_type,omitempty"`
 	IsHidden     *bool                 `json:"is_hidden,omitempty"`
+	Sort         *int                  `json:"sort,omitempty" validate:"omitempty,gte=0"`
 	NodeGroupIds []string              `json:"node_group_ids,omitempty"`
 }
 
@@ -1437,8 +1438,10 @@ type LogResponse struct {
 }
 
 type LogSetting struct {
-	AutoClear *bool `json:"auto_clear"`
-	ClearDays int64 `json:"clear_days"`
+	AutoClear     *bool  `json:"auto_clear,omitempty"`
+	ClearDays     int64  `json:"clear_days,omitempty"`
+	SentryEnabled *bool  `json:"sentry_enabled,omitempty"`
+	SentryDSN     string `json:"sentry_dsn,omitempty"`
 }
 
 type LoginLog struct {
@@ -1514,7 +1517,7 @@ type Node struct {
 	Enabled      *bool    `json:"enabled"`
 	NodeType     string   `json:"node_type"` // front: 前置节点, landing: 落地节点
 	IsHidden     *bool    `json:"is_hidden"`
-	Sort         int      `json:"sort,omitempty"`
+	Sort         int      `json:"sort"`
 	NodeGroupId  int64    `json:"node_group_id,omitempty,string"`
 	NodeGroupIds []string `json:"node_group_ids,omitempty"`
 	CreatedAt    int64    `json:"created_at"`
@@ -2512,7 +2515,7 @@ type SliderVerifyCaptchaResponse struct {
 
 type SortItem struct {
 	Id   int64 `json:"id,string" validate:"required"`
-	Sort int64 `json:"sort" validate:"required"`
+	Sort int64 `json:"sort" validate:"gte=0,lte=2147483647"`
 }
 
 type StopBatchSendEmailTaskRequest struct {
@@ -2890,7 +2893,7 @@ type UpdateNodeGroupRequest struct {
 	Name                string `json:"name"`
 	Type                string `json:"type,omitempty"`
 	Description         string `json:"description"`
-	Sort                int    `json:"sort"`
+	Sort                *int   `json:"sort,omitempty" validate:"omitempty,gte=0"`
 	ForCalculation      *bool  `json:"for_calculation"`
 	IsExpiredGroup      *bool  `json:"is_expired_group"`
 	ExpiredDaysLimit    *int   `json:"expired_days_limit"`
@@ -2913,6 +2916,7 @@ type UpdateNodeRequest struct {
 	Enabled             *bool    `json:"enabled"`
 	NodeType            string   `json:"node_type,omitempty"`
 	IsHidden            *bool    `json:"is_hidden,omitempty"`
+	Sort                *int     `json:"sort,omitempty" validate:"omitempty,gte=0"`
 	NodeGroupIds        []string `json:"node_group_ids,omitempty"`
 }
 
@@ -2934,7 +2938,7 @@ type UpdatePaymentMethodRequest struct {
 	FeeMode      uint        `json:"fee_mode"`
 	FeePercent   int64       `json:"fee_percent,omitempty"`
 	FeeAmount    int64       `json:"fee_amount,omitempty"`
-	Sort         int64       `json:"sort,omitempty"`
+	Sort         *int64      `json:"sort,omitempty" validate:"omitempty,gte=0"`
 	Enable       *bool       `json:"enable" validate:"required"`
 	CurrencyUnit string      `json:"currency_unit,omitempty"`
 	ExchangeRate float64     `json:"exchange_rate,omitempty"`
@@ -2956,7 +2960,7 @@ type UpdateServerRequest struct {
 	Country   string     `json:"country,omitempty"`
 	City      string     `json:"city,omitempty"`
 	Address   string     `json:"address"`
-	Sort      int        `json:"sort,omitempty"`
+	Sort      *int       `json:"sort,omitempty" validate:"omitempty,gte=0"`
 	Protocols []Protocol `json:"protocols"`
 }
 

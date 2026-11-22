@@ -88,6 +88,7 @@ func writeParamError(ctx *app.RequestContext, err error) {
 
 func writeServerReportResult(ctx *app.RequestContext, err error) {
 	if errors.Is(err, node.ErrServerBusy) {
+		ctx.Error(err)
 		ctx.Header("Retry-After", "1")
 		if acceptsProtobuf(ctx) {
 			writeServerProtobuf(ctx, consts.StatusServiceUnavailable, &serverv1.Result{Code: 503, Message: "server user authorization is refreshing"})

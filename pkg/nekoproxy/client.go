@@ -206,6 +206,22 @@ func (c *Client) Service(ctx context.Context, id string) (*Service, error) {
 	}
 	return &result, nil
 }
+func (c *Client) UpdateTargetPort(ctx context.Context, id string, expected, target uint16) error {
+	if !identifier.MatchString(id) || expected == 0 || target == 0 {
+		return errors.New("invalid forward ID or target port")
+	}
+	var result struct {
+		OK bool `json:"ok"`
+	}
+	if err := c.request(ctx, http.MethodPatch, "/services/"+id+"/target-port", map[string]uint16{"expectedTargetPort": expected, "targetPort": target}, &result); err != nil {
+		return err
+	}
+	if !result.OK {
+		return errors.New("Nekoproxy did not confirm the target port update")
+	}
+	return nil
+}
+
 func (c *Client) Create(ctx context.Context, input CreateService) (*Service, error) {
 	var result Service
 	if err := c.request(ctx, http.MethodPost, "/services", input, &result); err != nil {

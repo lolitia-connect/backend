@@ -63,7 +63,7 @@ func (l *CreateRedemptionCodeLogic) generateUniqueCode() (string, error) {
 func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemptionCodeRequest) error {
 	// Check if subscribe plan is valid
 	if req.SubscribePlan == 0 {
-		l.Logger.Errorw("[CreateRedemptionCode] Subscribe plan cannot be empty")
+		l.Logger.Debugw("[CreateRedemptionCode] Subscribe plan cannot be empty")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "subscribe plan cannot be empty")
 	}
 
@@ -71,7 +71,7 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 	_, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, req.SubscribePlan)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			l.Logger.Errorw("[CreateRedemptionCode] Subscribe plan not found", zap.Any("subscribe_plan", req.SubscribePlan))
+			l.Logger.Debugw("[CreateRedemptionCode] Subscribe plan not found", zap.Any("subscribe_plan", req.SubscribePlan))
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "subscribe plan not found")
 		}
 		l.Logger.Errorw("[CreateRedemptionCode] Database Error", zap.Any("error", err.Error()))
@@ -80,7 +80,7 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 
 	// Validate batch count
 	if req.BatchCount < 1 {
-		l.Logger.Errorw("[CreateRedemptionCode] Batch count must be at least 1")
+		l.Logger.Debug("[CreateRedemptionCode] Batch count must be at least 1")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "batch count must be at least 1")
 	}
 

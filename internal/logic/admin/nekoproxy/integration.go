@@ -175,7 +175,12 @@ func (l *Logic) State() (*types.NekoproxyState, error) {
 	return state, nil
 }
 
-func selectSession(ctx context.Context, client *remote.Client, forwardID, sessionID string) (*remote.Session, error) {
+type forwardEntry struct {
+	*remote.Session
+	service *remote.Service
+}
+
+func selectSession(ctx context.Context, client *remote.Client, forwardID, sessionID string) (*forwardEntry, error) {
 	service, err := client.Service(ctx, forwardID)
 	if err != nil {
 		return nil, err
@@ -192,21 +197,25 @@ func selectSession(ctx context.Context, client *remote.Client, forwardID, sessio
 			if _, _, err := session.Endpoint(); err != nil {
 				return nil, err
 			}
-			return &session, nil
+			return &forwardEntry{Session: &session, service: service}, nil
 		}
 	}
 	return nil, errors.New("the selected forwarding session no longer exists; refresh and select an active session")
 }
 
-func saveBinding(ctx context.Context, client *ent.Client, nodeID int64, base, forwardID, sessionID string) error {
+func saveBinding(ctx context.Context, client *ent.Client, nodeID int64, base, forwardID, sessionID string, managed *uint16) error {
 	binding, err := client.NekoproxyBinding.Query().Where(entbinding.NodeID(nodeID)).Only(ctx)
 	if ent.IsNotFound(err) {
-		return client.NekoproxyBinding.Create().SetNodeID(nodeID).SetAPIURL(base).SetForwardID(forwardID).SetSessionID(sessionID).Exec(ctx)
+		return client.NekoproxyBinding.Create().SetNodeID(nodeID).SetAPIURL(base).SetForwardID(forwardID).SetSessionID(sessionID).SetNillableManagedTargetPort(managed).Exec(ctx)
 	}
 	if err != nil {
 		return err
 	}
-	return client.NekoproxyBinding.UpdateOneID(binding.ID).SetAPIURL(base).SetForwardID(forwardID).SetSessionID(sessionID).Exec(ctx)
+	update := client.NekoproxyBinding.UpdateOneID(binding.ID).SetAPIURL(base).SetForwardID(forwardID).SetSessionID(sessionID)
+	if binding.APIURL != base || binding.ForwardID != forwardID {
+		update.ClearManagedTargetPort()
+	}
+	return update.Exec(ctx)
 }
 
 func (l *Logic) Bind(req *types.BindNekoproxyRequest) error {
@@ -229,7 +238,7 @@ func (l *Logic) Bind(req *types.BindNekoproxyRequest) error {
 			return err
 		}
 		serverID = n.ServerID
-		if err := saveBinding(l.ctx, store.Ent(), n.ID, config.APIURL, req.ForwardID, req.SessionID); err != nil {
+		if err := saveBinding(l.ctx, store.Ent(), n.ID, config.APIURL, req.ForwardID, req.SessionID, nil); err != nil {
 			return err
 		}
 		return store.Ent().Node.UpdateOneID(n.ID).SetAddress(host).SetPort(port).Exec(l.ctx)
@@ -330,36 +339,80 @@ func (l *Logic) UpdateNode(data *node.Node, preference *bool) error {
 	if preference != nil {
 		syncOnSave = *preference
 	}
+	var client *remote.Client
+	var entry *forwardEntry
 	if syncOnSave {
-		config, client, err := l.client()
+		var config connection
+		config, client, err = l.client()
 		if err != nil {
 			return err
 		}
 		if binding.APIURL != config.APIURL {
 			return inputError("this node is bound to another Nekoproxy API address")
 		}
-		session, err := selectSession(l.ctx, client, binding.ForwardID, binding.SessionID)
+		entry, err = selectSession(l.ctx, client, binding.ForwardID, binding.SessionID)
 		if err != nil {
 			return remoteError(err)
 		}
-		data.Address, data.Port, err = session.Endpoint()
+		data.Address, data.Port, err = entry.Endpoint()
 		if err != nil {
 			return remoteError(err)
 		}
 	}
-	// Resolve the remote endpoint before opening the transaction, then guard against a concurrent rebind.
-	return l.svc.Store.InTx(l.ctx, func(store repository.Store) error {
-		err := store.Ent().NekoproxyBinding.UpdateOneID(binding.ID).
-			Where(entbinding.APIURL(binding.APIURL), entbinding.ForwardID(binding.ForwardID), entbinding.SessionID(binding.SessionID), entbinding.SyncOnSave(binding.SyncOnSave)).
-			SetSyncOnSave(syncOnSave).Exec(l.ctx)
+	var previousPort, updatedPort uint16
+	err = l.svc.Store.InTx(l.ctx, func(store repository.Store) error {
+		guard := store.Ent().NekoproxyBinding.UpdateOneID(binding.ID).
+			Where(entbinding.APIURL(binding.APIURL), entbinding.ForwardID(binding.ForwardID), entbinding.SessionID(binding.SessionID), entbinding.SyncOnSave(binding.SyncOnSave))
+		if binding.ManagedTargetPort == nil {
+			guard.Where(entbinding.ManagedTargetPortIsNil())
+		} else {
+			guard.Where(entbinding.ManagedTargetPort(*binding.ManagedTargetPort))
+		}
+		err := guard.SetSyncOnSave(syncOnSave).Exec(l.ctx)
 		if ent.IsNotFound(err) {
 			return inputError("binding changed while saving; reopen the node and try again")
 		}
 		if err != nil {
 			return err
 		}
-		return store.Node().UpdateNode(l.ctx, data)
+		old, err := store.Node().FindOneNode(l.ctx, data.Id)
+		if err != nil {
+			return err
+		}
+		if err := store.Node().UpdateNode(l.ctx, data); err != nil {
+			return err
+		}
+		if entry == nil || (old.ServerId == data.ServerId && old.Protocol == data.Protocol && old.ProtocolId == data.ProtocolId) {
+			return nil
+		}
+		port, err := managedPortOnSave(l.ctx, store, old, data, binding.ManagedTargetPort, entry.service.TargetPort)
+		if err != nil {
+			return err
+		}
+		if binding.ManagedTargetPort == nil || *binding.ManagedTargetPort != port {
+			if err := store.Ent().NekoproxyBinding.UpdateOneID(binding.ID).SetManagedTargetPort(port).Exec(l.ctx); err != nil {
+				return err
+			}
+		}
+		if port == 0 || int(port) == entry.service.TargetPort {
+			return nil
+		}
+		// Patch last, while holding the binding lock. A rejected remote write rolls back all local edits.
+		previousPort = uint16(entry.service.TargetPort)
+		if err := client.UpdateTargetPort(l.ctx, binding.ForwardID, previousPort, port); err != nil {
+			return remoteError(fmt.Errorf("could not confirm target port update for Nekoproxy forward %s; check its target before retrying: %w", binding.ForwardID, err))
+		}
+		updatedPort = port
+		return nil
 	})
+	if err != nil && updatedPort != 0 {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(l.ctx), 15*time.Second)
+		defer cancel()
+		if undoErr := client.UpdateTargetPort(cleanupCtx, binding.ForwardID, updatedPort, previousPort); undoErr != nil {
+			return remoteError(fmt.Errorf("node save failed; verify target port of Nekoproxy forward %s: %w", binding.ForwardID, undoErr))
+		}
+	}
+	return err
 }
 
 func (l *Logic) CreateNode(data *node.Node, options *types.NekoproxyNodeOptions) error {
@@ -390,7 +443,11 @@ func (l *Logic) CreateNode(data *node.Node, options *types.NekoproxyNodeOptions)
 		forwardID, created = service.ID, true
 		session, err = client.Issue(l.ctx, forwardID, remote.IssueSession{EntryGroupID: input.EntryGroupID, RequestedPort: input.RequestedPort})
 	} else {
-		session, err = selectSession(l.ctx, client, forwardID, options.SessionID)
+		var entry *forwardEntry
+		entry, err = selectSession(l.ctx, client, forwardID, options.SessionID)
+		if err == nil {
+			session = entry.Session
+		}
 	}
 	if err == nil {
 		data.Address, data.Port, err = session.Endpoint()
@@ -400,7 +457,21 @@ func (l *Logic) CreateNode(data *node.Node, options *types.NekoproxyNodeOptions)
 			if err := store.Node().InsertNode(l.ctx, data); err != nil {
 				return err
 			}
-			return saveBinding(l.ctx, store.Ent(), data.Id, config.APIURL, forwardID, session.SessionID)
+			var managed *uint16
+			if input := options.Create; input != nil {
+				port := uint16(0)
+				if !input.TargetPortManual && data.ServerId != 0 && data.ProtocolId != "" {
+					protocolPort, err := selectedPort(l.ctx, store, data, false)
+					if err != nil {
+						return err
+					}
+					if int(protocolPort) == input.TargetPort {
+						port = protocolPort
+					}
+				}
+				managed = &port
+			}
+			return saveBinding(l.ctx, store.Ent(), data.Id, config.APIURL, forwardID, session.SessionID, managed)
 		})
 	}
 	if err != nil {

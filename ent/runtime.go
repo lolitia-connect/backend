@@ -314,11 +314,11 @@ func init() {
 	// nekoproxybinding.DefaultSyncOnSave holds the default value on creation for the sync_on_save field.
 	nekoproxybinding.DefaultSyncOnSave = nekoproxybindingDescSyncOnSave.Default.(bool)
 	// nekoproxybindingDescCreatedAt is the schema descriptor for created_at field.
-	nekoproxybindingDescCreatedAt := nekoproxybindingFields[6].Descriptor()
+	nekoproxybindingDescCreatedAt := nekoproxybindingFields[7].Descriptor()
 	// nekoproxybinding.DefaultCreatedAt holds the default value on creation for the created_at field.
 	nekoproxybinding.DefaultCreatedAt = nekoproxybindingDescCreatedAt.Default.(func() time.Time)
 	// nekoproxybindingDescUpdatedAt is the schema descriptor for updated_at field.
-	nekoproxybindingDescUpdatedAt := nekoproxybindingFields[7].Descriptor()
+	nekoproxybindingDescUpdatedAt := nekoproxybindingFields[8].Descriptor()
 	// nekoproxybinding.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	nekoproxybinding.DefaultUpdatedAt = nekoproxybindingDescUpdatedAt.Default.(func() time.Time)
 	// nekoproxybinding.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

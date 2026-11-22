@@ -36,7 +36,7 @@ func (l *UpdateRedemptionCodeLogic) UpdateRedemptionCode(req *types.UpdateRedemp
 	if req.TotalCount != 0 {
 		// Total count cannot be less than used count
 		if req.TotalCount < redemptionCode.UsedCount {
-			l.Logger.Errorw("[UpdateRedemptionCode] Total count cannot be less than used count",
+			l.Logger.Debugw("[UpdateRedemptionCode] Total count cannot be less than used count",
 				zap.Any("total_count", req.TotalCount),
 				zap.Any("used_count", redemptionCode.UsedCount))
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams),

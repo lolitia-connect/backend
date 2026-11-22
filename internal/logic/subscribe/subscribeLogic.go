@@ -113,7 +113,6 @@ func (l *SubscribeLogic) Handler(req *types.SubscribeRequest) (resp *types.Subsc
 	// Find user subscribe by token
 	userSubscribe, err := l.getUserSubscribe(req.Token)
 	if err != nil {
-		l.Logger.Errorw("[SubscribeLogic] Get user subscribe failed", zap.Any("error", err.Error()), zap.Any("token", req.Token))
 		return nil, err
 	}
 
@@ -225,17 +224,19 @@ func (l *SubscribeLogic) getSubscribeV2URL() string {
 // getUserSubscribe 是本次修改的核心部分
 func (l *SubscribeLogic) getUserSubscribe(token string) (*user.Subscribe, error) {
 	userSub, err := l.svc.Store.User().FindOneSubscribeByToken(l.ctx, token)
+	if ent.IsNotFound(err) || (err == nil && userSub == nil) {
+		return nil, errors.Wrap(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe token not found")
+	}
 	if err != nil {
-		l.Logger.Infow("[Generate Subscribe]find subscribe error: %v", zap.Any("error", err.Error()), zap.Any("token", token))
+		l.Logger.Errorw("[Generate Subscribe] Subscription lookup failed", "error", err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
-	if userSub == nil {
-		l.Logger.Infow("[Generate Subscribe]subscribe token not found", zap.Any("token", token))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe token not found")
-	}
 	userInfo, err := l.svc.Store.User().FindOne(l.ctx, userSub.UserId)
+	if ent.IsNotFound(err) {
+		return nil, xerr.NewErrCode(xerr.SubscribeNotAvailable)
+	}
 	if err != nil {
-		l.Logger.Infow("[Generate Subscribe] failed to get user info", zap.Any("error", err.Error()), zap.Any("userId", userSub.UserId))
+		l.Logger.Errorw("[Generate Subscribe] User lookup failed", "error", err)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "failed to get user info: %v", err.Error())
 	}
 	if userInfo == nil || userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {

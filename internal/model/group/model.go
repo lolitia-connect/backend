@@ -115,7 +115,7 @@ func (m *customGroupModel) QueryNodeGroupList(ctx context.Context, page, size in
 	if err != nil {
 		return 0, nil, err
 	}
-	items, err := query.Order(entnodegroup.BySort()).Offset((page - 1) * size).Limit(size).All(ctx)
+	items, err := query.Order(entnodegroup.BySort(), entnodegroup.ByID()).Offset((page - 1) * size).Limit(size).All(ctx)
 	return int64(total), nodeGroupsFromEnt(items), err
 }
 

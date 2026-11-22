@@ -84,6 +84,33 @@ func (_u *NekoproxyBindingUpdate) SetNillableSyncOnSave(v *bool) *NekoproxyBindi
 	return _u
 }
 
+// SetManagedTargetPort sets the "managed_target_port" field.
+func (_u *NekoproxyBindingUpdate) SetManagedTargetPort(v uint16) *NekoproxyBindingUpdate {
+	_u.mutation.ResetManagedTargetPort()
+	_u.mutation.SetManagedTargetPort(v)
+	return _u
+}
+
+// SetNillableManagedTargetPort sets the "managed_target_port" field if the given value is not nil.
+func (_u *NekoproxyBindingUpdate) SetNillableManagedTargetPort(v *uint16) *NekoproxyBindingUpdate {
+	if v != nil {
+		_u.SetManagedTargetPort(*v)
+	}
+	return _u
+}
+
+// AddManagedTargetPort adds value to the "managed_target_port" field.
+func (_u *NekoproxyBindingUpdate) AddManagedTargetPort(v int16) *NekoproxyBindingUpdate {
+	_u.mutation.AddManagedTargetPort(v)
+	return _u
+}
+
+// ClearManagedTargetPort clears the value of the "managed_target_port" field.
+func (_u *NekoproxyBindingUpdate) ClearManagedTargetPort() *NekoproxyBindingUpdate {
+	_u.mutation.ClearManagedTargetPort()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *NekoproxyBindingUpdate) SetUpdatedAt(v time.Time) *NekoproxyBindingUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -178,6 +205,15 @@ func (_u *NekoproxyBindingUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if value, ok := _u.mutation.SyncOnSave(); ok {
 		_spec.SetField(nekoproxybinding.FieldSyncOnSave, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.ManagedTargetPort(); ok {
+		_spec.SetField(nekoproxybinding.FieldManagedTargetPort, field.TypeUint16, value)
+	}
+	if value, ok := _u.mutation.AddedManagedTargetPort(); ok {
+		_spec.AddField(nekoproxybinding.FieldManagedTargetPort, field.TypeUint16, value)
+	}
+	if _u.mutation.ManagedTargetPortCleared() {
+		_spec.ClearField(nekoproxybinding.FieldManagedTargetPort, field.TypeUint16)
+	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(nekoproxybinding.FieldUpdatedAt, field.TypeTime, value)
 	}
@@ -254,6 +290,33 @@ func (_u *NekoproxyBindingUpdateOne) SetNillableSyncOnSave(v *bool) *NekoproxyBi
 	if v != nil {
 		_u.SetSyncOnSave(*v)
 	}
+	return _u
+}
+
+// SetManagedTargetPort sets the "managed_target_port" field.
+func (_u *NekoproxyBindingUpdateOne) SetManagedTargetPort(v uint16) *NekoproxyBindingUpdateOne {
+	_u.mutation.ResetManagedTargetPort()
+	_u.mutation.SetManagedTargetPort(v)
+	return _u
+}
+
+// SetNillableManagedTargetPort sets the "managed_target_port" field if the given value is not nil.
+func (_u *NekoproxyBindingUpdateOne) SetNillableManagedTargetPort(v *uint16) *NekoproxyBindingUpdateOne {
+	if v != nil {
+		_u.SetManagedTargetPort(*v)
+	}
+	return _u
+}
+
+// AddManagedTargetPort adds value to the "managed_target_port" field.
+func (_u *NekoproxyBindingUpdateOne) AddManagedTargetPort(v int16) *NekoproxyBindingUpdateOne {
+	_u.mutation.AddManagedTargetPort(v)
+	return _u
+}
+
+// ClearManagedTargetPort clears the value of the "managed_target_port" field.
+func (_u *NekoproxyBindingUpdateOne) ClearManagedTargetPort() *NekoproxyBindingUpdateOne {
+	_u.mutation.ClearManagedTargetPort()
 	return _u
 }
 
@@ -380,6 +443,15 @@ func (_u *NekoproxyBindingUpdateOne) sqlSave(ctx context.Context) (_node *Nekopr
 	}
 	if value, ok := _u.mutation.SyncOnSave(); ok {
 		_spec.SetField(nekoproxybinding.FieldSyncOnSave, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ManagedTargetPort(); ok {
+		_spec.SetField(nekoproxybinding.FieldManagedTargetPort, field.TypeUint16, value)
+	}
+	if value, ok := _u.mutation.AddedManagedTargetPort(); ok {
+		_spec.AddField(nekoproxybinding.FieldManagedTargetPort, field.TypeUint16, value)
+	}
+	if _u.mutation.ManagedTargetPortCleared() {
+		_spec.ClearField(nekoproxybinding.FieldManagedTargetPort, field.TypeUint16)
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(nekoproxybinding.FieldUpdatedAt, field.TypeTime, value)

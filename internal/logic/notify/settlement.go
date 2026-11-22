@@ -3,10 +3,12 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/payment"
@@ -15,19 +17,31 @@ import (
 	"github.com/perfect-panel/server/queue/types"
 )
 
+type rejectedNotification struct{ error }
+
+func (r rejectedNotification) Unwrap() error { return r.error }
+
+func IsRejectedNotification(err error) bool {
+	var rejection rejectedNotification
+	return errors.As(err, &rejection)
+}
+
 func settlePayment(ctx context.Context, store repository.Store, method *payment.Payment, orderNo, tradeNo string, amount int64, currency string) (bool, error) {
 	activate := false
 	var rejection error
 	err := store.InTx(ctx, func(transaction repository.Store) error {
 		current, err := transaction.Order().FindOneByOrderNoForUpdate(ctx, orderNo)
 		if err != nil {
+			if ent.IsNotFound(err) {
+				return rejectedNotification{err}
+			}
 			return err
 		}
 		if current == nil || method == nil || tradeNo == "" {
-			return fmt.Errorf("payment does not belong to order")
+			return rejectedNotification{errors.New("payment does not belong to order")}
 		}
 		reject := func(reason string) error {
-			rejection = fmt.Errorf("%s", reason)
+			rejection = rejectedNotification{errors.New(reason)}
 			return transaction.Log().RecordUnmatchedPayment(ctx, current.UserId, log.UnmatchedPaymentFrom(ctx, log.UnmatchedPayment{
 				OrderNo: orderNo, TradeNo: tradeNo, Platform: method.Platform, Amount: amount,
 				Currency: strings.ToUpper(currency), Reason: reason,

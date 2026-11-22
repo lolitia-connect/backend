@@ -12,6 +12,15 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type rejectedState string
+
+func (r rejectedState) Error() string { return string(r) }
+
+func IsRejected(err error) bool {
+	var rejection rejectedState
+	return errors.Is(err, redis.Nil) || errors.As(err, &rejection)
+}
+
 type State struct {
 	Purpose  string `json:"purpose"`
 	UserID   int64  `json:"user_id"`
@@ -49,8 +58,11 @@ func Issue(ctx context.Context, client *redis.Client, provider, purpose string, 
 }
 
 func Read(ctx context.Context, client *redis.Client, provider, code string) (*State, error) {
-	if client == nil || len(code) != 32 {
-		return nil, errors.New("invalid OAuth state")
+	if len(code) != 32 {
+		return nil, rejectedState("invalid OAuth state")
+	}
+	if client == nil {
+		return nil, errors.New("OAuth state store unavailable")
 	}
 	payload, err := client.Get(ctx, provider+":"+code).Result()
 	if err != nil {
@@ -69,15 +81,18 @@ func Consume(ctx context.Context, client *redis.Client, provider, purpose string
 		return "", err
 	}
 	if state.Purpose != purpose || state.UserID != userID {
-		return "", errors.New("OAuth state belongs to another flow or account")
+		return "", rejectedState("OAuth state belongs to another flow or account")
 	}
 	payload, err := json.Marshal(state)
 	if err != nil {
 		return "", err
 	}
 	removed, err := client.Eval(ctx, `if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end; return 0`, []string{provider + ":" + code}, string(payload)).Int64()
-	if err != nil || removed != 1 {
-		return "", errors.New("OAuth state was already consumed")
+	if err != nil {
+		return "", err
+	}
+	if removed != 1 {
+		return "", rejectedState("OAuth state was already consumed")
 	}
 	return state.Redirect, nil
 }

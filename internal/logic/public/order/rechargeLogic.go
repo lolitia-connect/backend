@@ -9,6 +9,7 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/orderaudit"
@@ -47,12 +48,12 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 
 	// Validate recharge amount
 	if req.Amount <= 0 {
-		l.Logger.Errorw("[Recharge] Invalid recharge amount", zap.Any("amount", req.Amount), zap.Any("user_id", u.Id))
+		l.Logger.Debugw("[Recharge] Invalid recharge amount", zap.Any("user_id", u.Id))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "recharge amount must be greater than 0")
 	}
 
 	if req.Amount > MaxRechargeAmount {
-		l.Logger.Errorw("[Recharge] Recharge amount exceeds maximum limit",
+		l.Logger.Debugw("[Recharge] Recharge amount exceeds maximum limit",
 			zap.Any("amount", req.Amount),
 			zap.Any("max", MaxRechargeAmount),
 			zap.Any("user_id", u.Id))
@@ -61,6 +62,9 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 
 	// find payment method
 	payment, err := store.Payment().FindOne(l.ctx, req.Payment)
+	if ent.IsNotFound(err) {
+		return nil, xerr.NewErrCode(xerr.PaymentMethodNotFound)
+	}
 	if err != nil {
 		l.Logger.Errorw("[Recharge] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(err, "find payment error: %v", err.Error())
@@ -71,7 +75,7 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 
 	// Validate total amount after adding fee
 	if totalAmount > MaxOrderAmount {
-		l.Logger.Errorw("[Recharge] Total amount exceeds maximum limit after fee",
+		l.Logger.Debugw("[Recharge] Total amount exceeds maximum limit after fee",
 			zap.Any("amount", totalAmount),
 			zap.Any("max", MaxOrderAmount),
 			zap.Any("user_id", u.Id))

@@ -96,12 +96,13 @@ type NekoproxySyncResponse struct {
 }
 
 type CreateNekoproxyForward struct {
-	ChainID       string `json:"chain_id" validate:"required,max=128"`
-	EntryGroupID  string `json:"entry_group_id" validate:"required,max=128"`
-	Protocol      string `json:"protocol" validate:"oneof=tcp udp tcp_udp"`
-	TargetHost    string `json:"target_host" validate:"required,max=255"`
-	TargetPort    int    `json:"target_port" validate:"gte=1,lte=65535"`
-	RequestedPort int    `json:"requested_port" validate:"gte=0,lte=65535"`
+	ChainID          string `json:"chain_id" validate:"required,max=128"`
+	EntryGroupID     string `json:"entry_group_id" validate:"required,max=128"`
+	Protocol         string `json:"protocol" validate:"oneof=tcp udp tcp_udp"`
+	TargetHost       string `json:"target_host" validate:"required,max=255"`
+	TargetPort       int    `json:"target_port" validate:"gte=1,lte=65535"`
+	TargetPortManual bool   `json:"target_port_manual,omitempty"`
+	RequestedPort    int    `json:"requested_port" validate:"gte=0,lte=65535"`
 }
 
 type NekoproxyNodeOptions struct {

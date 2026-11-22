@@ -41,9 +41,7 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 	// 将字符串 ID 转换为 int64
 	userSubscribeId, err := strconv.ParseInt(req.UserSubscribeId, 10, 64)
 	if err != nil {
-		l.Logger.Errorw("[GetUserTrafficStats] Invalid User Subscribe ID:",
-			zap.Any("user_subscribe_id", req.UserSubscribeId),
-			zap.Any("err", err.Error()))
+		l.Logger.Debug("[GetUserTrafficStats] Invalid subscription ID")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid subscription ID")
 	}
 
@@ -51,7 +49,7 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 	userSubscribe, err := l.svcCtx.Store.User().FindOneSubscribe(l.ctx, userSubscribeId)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			l.Logger.Errorw("[GetUserTrafficStats] User Subscribe Not Found:",
+			l.Logger.Debugw("[GetUserTrafficStats] User Subscribe Not Found:",
 				zap.Any("user_subscribe_id", userSubscribeId),
 				zap.Any("user_id", u.Id))
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Subscription not found")
@@ -61,7 +59,7 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 	}
 
 	if userSubscribe.UserId != u.Id {
-		l.Logger.Errorw("[GetUserTrafficStats] User Subscribe Access Denied:",
+		l.Logger.Warnw("[GetUserTrafficStats] User Subscribe Access Denied:",
 			zap.Any("user_subscribe_id", userSubscribeId),
 			zap.Any("subscribe_user_id", userSubscribe.UserId),
 			zap.Any("current_user_id", u.Id))

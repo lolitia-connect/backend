@@ -30,6 +30,9 @@ type fixture struct {
 	client       *ent.Client
 	url          string
 	port         int
+	targetPort   int
+	patchStatus  int
+	patches      int
 	issueFailure bool
 	unavailable  bool
 	deletes      int
@@ -46,7 +49,7 @@ func setupIntegration(t *testing.T) *fixture {
 	ctx := context.Background()
 	client.Node.Create().SetID(1).SetName("existing").SetAddress("old.example.com").SetPort(443).SetServerID(99).SetProtocol("vless").SetProtocolID("2").SetSort(1).SaveX(ctx)
 	client.Node.Create().SetID(2).SetName("other").SetSort(2).SaveX(ctx)
-	f := &fixture{client: client, port: 2345}
+	f := &fixture{client: client, port: 2345, targetPort: 443}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer nkp_test" || !strings.HasPrefix(r.URL.Path, "/api/v1/l4/") {
 			t.Error("incorrect token API request")
@@ -56,9 +59,23 @@ func setupIntegration(t *testing.T) *fixture {
 			fmt.Fprint(w, `{"error":"API_TOKEN_REQUIRED"}`)
 			return
 		}
-		service := remote.Service{ID: "l4s-1", Enabled: true}
+		service := remote.Service{ID: "l4s-1", Enabled: true, TargetPort: f.targetPort}
 		session := remote.Session{ServiceID: "l4s-1", SessionID: "session-1", NodeHost: "entry.example.com", AllocatedPort: f.port, Status: "active"}
 		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/api/v1/l4/services/l4s-1/target-port":
+			f.patches++
+			var body map[string]int
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body) != 2 || body["expectedTargetPort"] != f.targetPort || body["targetPort"] <= 0 {
+				t.Errorf("bad guarded port update: %v / %v", body, err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if f.patchStatus != 0 {
+				w.WriteHeader(f.patchStatus)
+				return
+			}
+			f.targetPort = body["targetPort"]
+			fmt.Fprint(w, `{"ok":true}`)
 		case r.Method == http.MethodDelete:
 			f.deletes++
 			fmt.Fprint(w, `{"ok":true}`)
@@ -220,6 +237,81 @@ func TestNekoproxyNodeSavePreferenceAndAtomicSync(t *testing.T) {
 	entry, err = f.logic.NodeEntry(1)
 	if err != nil || !entry.Binding.SyncOnSave || entry.Port != 3456 {
 		t.Fatalf("re-enabled save: %+v %v", entry, err)
+	}
+}
+
+func (f *fixture) seedProtocols(t *testing.T) {
+	t.Helper()
+	f.client.Server.Create().SetID(99).SetProtocols(`[{"type":"trojan","id":"2","port":9443,"enable":true},{"type":"vless","id":"2","port":443,"enable":true},{"type":"vless","id":"3","port":8443,"enable":true}]`).SaveX(t.Context())
+}
+
+func TestNekoproxyProtocolSwitchUsesInstancePortNotEntryPort(t *testing.T) {
+	f := setupIntegration(t)
+	f.seedProtocols(t)
+	ctx := t.Context()
+	if err := f.logic.Bind(&types.BindNekoproxyRequest{NodeID: 1, ForwardID: "l4s-1", SessionID: "session-1"}); err != nil {
+		t.Fatal(err)
+	}
+	edit, err := f.logic.svc.Store.Node().FindOneNode(ctx, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit.ProtocolId, edit.Name = "3", "changed"
+	f.patchStatus = http.StatusConflict
+	if err := f.logic.UpdateNode(edit, nil); err == nil {
+		t.Fatal("failed target update accepted")
+	}
+	if n := f.client.Node.GetX(ctx, 1); n.ProtocolID != "2" || n.Name == "changed" || f.targetPort != 443 {
+		t.Fatal("failed patch partially saved the edit")
+	}
+	f.patchStatus = 0
+	if err := f.logic.UpdateNode(edit, nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.client.Node.GetX(ctx, 1); n.ProtocolID != "3" || n.Port != uint16(f.port) || f.targetPort != 8443 {
+		t.Fatalf("wrong entry or target: %d/%d", n.Port, f.targetPort)
+	}
+	// An operator can pin a different target directly in Nekoproxy, even if it matches a later selection.
+	f.targetPort, edit.Protocol, edit.ProtocolId = 9443, "trojan", "2"
+	if err := f.logic.UpdateNode(edit, nil); err != nil {
+		t.Fatal(err)
+	}
+	edit.Protocol = "vless"
+	if err := f.logic.UpdateNode(edit, nil); err != nil {
+		t.Fatal(err)
+	}
+	if f.targetPort != 9443 || f.patches != 2 {
+		t.Fatal("remote manual target was overwritten")
+	}
+}
+
+func TestNekoproxyCreatedTargetRespectsManualOverrideAndOfflineSave(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		manual, offline bool
+		want            int
+	}{
+		{"auto", false, false, 9443}, {"explicit old default", true, false, 443}, {"sync off", false, true, 443},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setupIntegration(t)
+			f.seedProtocols(t)
+			data := &node.Node{Name: "new", NodeType: "landing", ServerId: 99, Protocol: "vless", ProtocolId: "2"}
+			opts := newForwardOptions()
+			opts.Create.TargetPortManual = tc.manual
+			if err := f.logic.CreateNode(data, opts); err != nil {
+				t.Fatal(err)
+			}
+			data.Protocol = "trojan"
+			sync := !tc.offline
+			f.unavailable = tc.offline
+			if err := f.logic.UpdateNode(data, &sync); err != nil {
+				t.Fatal(err)
+			}
+			if f.targetPort != tc.want || f.client.Node.GetX(t.Context(), data.Id).Protocol != "trojan" {
+				t.Fatalf("expected target %d, got %d", tc.want, f.targetPort)
+			}
+		})
 	}
 }
 

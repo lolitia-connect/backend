@@ -18,8 +18,6 @@ import (
 type customServerLogicModel interface {
 	FilterServerList(ctx context.Context, params *FilterParams) (int64, []*Server, error)
 	FilterNodeList(ctx context.Context, params *FilterNodeParams) (int64, []*Node, error)
-	QueryNodeSorts(ctx context.Context) ([]SortItem, error)
-	QueryServerSorts(ctx context.Context) ([]SortItem, error)
 	UpdateNodeSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerSort(ctx context.Context, id int64, sort int64) error
 	UpdateServerLastReportedAt(ctx context.Context, id int64, t time.Time) error
@@ -38,8 +36,6 @@ type customServerLogicModel interface {
 	QueryEnabledVisibleNodes(ctx context.Context) ([]*Node, error)
 	QueryEnabledVisibleNodesByIds(ctx context.Context, ids []int64) ([]*Node, error)
 	ClearAllNodeGroupIds(ctx context.Context) error
-	SortNodesByName(ctx context.Context) error
-	SortServersByName(ctx context.Context) error
 }
 
 const (
@@ -76,11 +72,6 @@ type FilterNodeParams struct {
 	IsHidden     *bool    // IsHidden - when not nil, filter by hidden status
 }
 
-type SortItem struct {
-	Id   int64
-	Sort int64
-}
-
 // FilterServerList Filter Server List
 func (m *customServerModel) FilterServerList(ctx context.Context, params *FilterParams) (int64, []*Server, error) {
 	if params == nil {
@@ -111,25 +102,18 @@ func (m *customServerModel) QueryServerList(ctx context.Context, ids []int64) (s
 	return entServersToModel(list), err
 }
 
-func (m *customServerModel) QueryServerSorts(ctx context.Context) ([]SortItem, error) {
-	list, err := m.db.Server.Query().Order(entserver.BySort(), entserver.ByID()).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]SortItem, 0, len(list))
-	for _, item := range list {
-		items = append(items, SortItem{Id: item.ID, Sort: int64(item.Sort)})
-	}
-	return items, nil
-}
-
 func (m *customServerModel) UpdateServerSort(ctx context.Context, id int64, sort int64) error {
-	server, err := m.FindOneServer(ctx, id)
+	server, err := m.db.Server.Query().Where(entserver.ID(id)).Only(ctx)
 	if err != nil {
 		return err
 	}
-	server.Sort = int(sort)
-	return m.UpdateServer(ctx, server)
+	if err := m.db.Server.UpdateOneID(id).SetSort(int(sort)).Exec(ctx); err != nil {
+		return err
+	}
+	if m.Cache != nil {
+		return m.ClearServerCache(ctx, server.ID)
+	}
+	return nil
 }
 
 // UpdateServerLastReportedAt updates only the last_reported_at field,
@@ -281,18 +265,6 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 	return int64(total), nodes, nil
 }
 
-func (m *customServerModel) QueryNodeSorts(ctx context.Context) ([]SortItem, error) {
-	list, err := m.db.Node.Query().Order(entnode.BySort(), entnode.ByID()).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]SortItem, 0, len(list))
-	for _, item := range list {
-		items = append(items, SortItem{Id: item.ID, Sort: int64(item.Sort)})
-	}
-	return items, nil
-}
-
 func (m *customServerModel) CountByNodeGroupId(ctx context.Context, nodeGroupId int64) (int64, error) {
 	count, err := m.db.Node.Query().Where(predicate.Node(func(s *sql.Selector) {
 		s.Where(sql.ExprP("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroupId)))
@@ -316,46 +288,21 @@ func (m *customServerModel) ClearAllNodeGroupIds(ctx context.Context) error {
 }
 
 func (m *customServerModel) UpdateNodeSort(ctx context.Context, id int64, sort int64) error {
-	node, err := m.FindOneNode(ctx, id)
+	node, err := m.db.Node.Query().Where(entnode.ID(id)).Only(ctx)
 	if err != nil {
 		return err
 	}
-	node.Sort = int(sort)
-	return m.UpdateNode(ctx, node)
+	if err := m.db.Node.UpdateOneID(id).SetSort(int(sort)).Exec(ctx); err != nil {
+		return err
+	}
+	if m.Cache != nil {
+		return m.ClearServerCache(ctx, node.ServerID)
+	}
+	return nil
 }
 
 func (m *customServerModel) QueryNodeTags(ctx context.Context) ([]string, error) {
 	return m.db.Node.Query().Select(entnode.FieldTags).Strings(ctx)
-}
-
-func (m *customServerModel) SortNodesByName(ctx context.Context) error {
-	nodes, err := m.db.Node.Query().Order(nodeNameGBKOrder()).All(ctx)
-	if err != nil {
-		return err
-	}
-	for i, n := range nodes {
-		if n.Sort != i {
-			if err := m.db.Node.UpdateOneID(n.ID).SetSort(i).Exec(ctx); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (m *customServerModel) SortServersByName(ctx context.Context) error {
-	servers, err := m.db.Server.Query().Order(serverNameGBKOrder()).All(ctx)
-	if err != nil {
-		return err
-	}
-	for i, s := range servers {
-		if s.Sort != i {
-			if err := m.db.Server.UpdateOneID(s.ID).SetSort(i).Exec(ctx); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (m *customServerModel) CountEnabledNodes(ctx context.Context) (int64, error) {

@@ -2,19 +2,19 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/mail"
 	"strings"
 
 	"github.com/perfect-panel/server/internal/config"
-	"github.com/perfect-panel/server/internal/logic/common"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/uuidx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -46,10 +46,9 @@ func (l *OAuthRegisterLogic) OAuthRegister(req *types.OAuthRegisterRequest, ip, 
 
 	identity, err := loadPendingOAuth(l.ctx, l.svcCtx.Redis, req.OAuthToken)
 	if err != nil || identity == nil {
-		l.Logger.Errorw("pending oauth registration not found or expired",
-			zap.Any("request_id", requestID),
-			zap.Any("error", err),
-		)
+		if err != nil && !errors.Is(err, redis.Nil) {
+			l.Logger.Errorw("Pending OAuth registration lookup failed", "request_id", requestID, "error", err)
+		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "oauth registration session expired")
 	}
 
@@ -63,7 +62,7 @@ func (l *OAuthRegisterLogic) OAuthRegister(req *types.OAuthRegisterRequest, ip, 
 	email := identity.Email
 	emailVerified := true
 	if email == "" {
-		email, emailVerified, err = l.resolveCollectedEmail(req, requestID)
+		email, emailVerified, err = l.resolveCollectedEmail(req)
 		if err != nil {
 			return nil, err
 		}
@@ -103,7 +102,7 @@ func (l *OAuthRegisterLogic) OAuthRegister(req *types.OAuthRegisterRequest, ip, 
 // normalised address and whether it should be stored as verified. When email
 // verification is enabled the supplied code must match the one issued through
 // /v1/common/send_code for the register flow.
-func (l *OAuthRegisterLogic) resolveCollectedEmail(req *types.OAuthRegisterRequest, requestID string) (string, bool, error) {
+func (l *OAuthRegisterLogic) resolveCollectedEmail(req *types.OAuthRegisterRequest) (string, bool, error) {
 	email := strings.TrimSpace(req.Email)
 	if email == "" {
 		return "", false, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "email is required")
@@ -120,25 +119,8 @@ func (l *OAuthRegisterLogic) resolveCollectedEmail(req *types.OAuthRegisterReque
 	}
 
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeCacheKey, constant.Register, email)
-	value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-	if err != nil {
-		l.Logger.Errorw("oauth email verification code not found",
-			zap.Any("request_id", requestID),
-			zap.Any("cacheKey", cacheKey),
-			zap.Any("error", err.Error()),
-		)
-		return "", false, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	var payload common.CacheKeyPayload
-	if err = json.Unmarshal([]byte(value), &payload); err != nil {
-		l.Logger.Errorw("oauth email verification code corrupt",
-			zap.Any("request_id", requestID),
-			zap.Any("error", err.Error()),
-		)
-		return "", false, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	if payload.Code == "" || payload.Code != req.Code {
-		return "", false, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
+	if err := usersession.VerifyCode(l.ctx, l.svcCtx.Redis, cacheKey, req.Code); err != nil {
+		return "", false, err
 	}
 	return email, true, nil
 }

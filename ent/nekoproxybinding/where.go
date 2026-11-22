@@ -80,6 +80,11 @@ func SyncOnSave(v bool) predicate.NekoproxyBinding {
 	return predicate.NekoproxyBinding(sql.FieldEQ(FieldSyncOnSave, v))
 }
 
+// ManagedTargetPort applies equality check predicate on the "managed_target_port" field. It's identical to ManagedTargetPortEQ.
+func ManagedTargetPort(v uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldEQ(FieldManagedTargetPort, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.NekoproxyBinding {
 	return predicate.NekoproxyBinding(sql.FieldEQ(FieldCreatedAt, v))
@@ -313,6 +318,56 @@ func SyncOnSaveEQ(v bool) predicate.NekoproxyBinding {
 // SyncOnSaveNEQ applies the NEQ predicate on the "sync_on_save" field.
 func SyncOnSaveNEQ(v bool) predicate.NekoproxyBinding {
 	return predicate.NekoproxyBinding(sql.FieldNEQ(FieldSyncOnSave, v))
+}
+
+// ManagedTargetPortEQ applies the EQ predicate on the "managed_target_port" field.
+func ManagedTargetPortEQ(v uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldEQ(FieldManagedTargetPort, v))
+}
+
+// ManagedTargetPortNEQ applies the NEQ predicate on the "managed_target_port" field.
+func ManagedTargetPortNEQ(v uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldNEQ(FieldManagedTargetPort, v))
+}
+
+// ManagedTargetPortIn applies the In predicate on the "managed_target_port" field.
+func ManagedTargetPortIn(vs ...uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldIn(FieldManagedTargetPort, vs...))
+}
+
+// ManagedTargetPortNotIn applies the NotIn predicate on the "managed_target_port" field.
+func ManagedTargetPortNotIn(vs ...uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldNotIn(FieldManagedTargetPort, vs...))
+}
+
+// ManagedTargetPortGT applies the GT predicate on the "managed_target_port" field.
+func ManagedTargetPortGT(v uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldGT(FieldManagedTargetPort, v))
+}
+
+// ManagedTargetPortGTE applies the GTE predicate on the "managed_target_port" field.
+func ManagedTargetPortGTE(v uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldGTE(FieldManagedTargetPort, v))
+}
+
+// ManagedTargetPortLT applies the LT predicate on the "managed_target_port" field.
+func ManagedTargetPortLT(v uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldLT(FieldManagedTargetPort, v))
+}
+
+// ManagedTargetPortLTE applies the LTE predicate on the "managed_target_port" field.
+func ManagedTargetPortLTE(v uint16) predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldLTE(FieldManagedTargetPort, v))
+}
+
+// ManagedTargetPortIsNil applies the IsNil predicate on the "managed_target_port" field.
+func ManagedTargetPortIsNil() predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldIsNull(FieldManagedTargetPort))
+}
+
+// ManagedTargetPortNotNil applies the NotNil predicate on the "managed_target_port" field.
+func ManagedTargetPortNotNil() predicate.NekoproxyBinding {
+	return predicate.NekoproxyBinding(sql.FieldNotNull(FieldManagedTargetPort))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

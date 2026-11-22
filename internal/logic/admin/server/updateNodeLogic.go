@@ -46,6 +46,9 @@ func (l *UpdateNodeLogic) UpdateNode(req *types.UpdateNodeRequest) error {
 	data.Enabled = req.Enabled
 	data.NodeType = req.NodeType
 	data.IsHidden = req.IsHidden
+	if req.Sort != nil {
+		data.Sort = *req.Sort
+	}
 	data.NodeGroupIds = node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds))
 	err = nekoproxy.NewLogic(l.ctx, l.svcCtx).UpdateNode(data, req.NekoproxySyncOnSave)
 	if err != nil {

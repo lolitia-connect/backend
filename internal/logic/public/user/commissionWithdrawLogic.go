@@ -43,7 +43,7 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Failed to read wallet for user %d: %v", u.Id, err)
 	}
 	if walletInfo.Commission < req.Amount {
-		zap.S().Errorf("User %d has insufficient commission balance: %.2f, requested: %.2f", u.Id, float64(walletInfo.Commission)/100, float64(req.Amount)/100)
+		l.Logger.Debug("Insufficient commission for withdrawal")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserCommissionNotEnough), "User %d has insufficient commission balance", u.Id)
 	}
 

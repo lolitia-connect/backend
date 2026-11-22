@@ -42,6 +42,9 @@ func (l *CreateNodeLogic) CreateNode(req *types.CreateNodeRequest) error {
 		IsHidden:     req.IsHidden,
 		NodeGroupIds: node.JSONInt64Slice(tool.StringSliceToInt64Slice(req.NodeGroupIds)),
 	}
+	if req.Sort != nil {
+		data.Sort = *req.Sort
+	}
 	if req.Nekoproxy != nil {
 		return nekoproxy.NewLogic(l.ctx, l.svcCtx).CreateNode(&data, req.Nekoproxy)
 	}

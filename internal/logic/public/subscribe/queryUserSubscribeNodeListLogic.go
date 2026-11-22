@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/group"
 	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/user"
@@ -49,7 +50,6 @@ func (l *QueryUserSubscribeNodeListLogic) QueryUserSubscribeNodeList() (resp *ty
 	for _, us := range userSubscribes {
 		userSubscribe, err := l.getUserSubscribe(us.Token)
 		if err != nil {
-			l.Logger.Errorw("[SubscribeLogic] Get user subscribe failed", zap.Any("error", err.Error()), zap.Any("token", userSubscribe.Token))
 			return nil, err
 		}
 		nodes, err := l.getServers(userSubscribe)
@@ -365,13 +365,12 @@ func (l *QueryUserSubscribeNodeListLogic) getAccessibleNodeGroup(nodeGroupId int
 
 func (l *QueryUserSubscribeNodeListLogic) getUserSubscribe(token string) (*user.Subscribe, error) {
 	userSub, err := l.svcCtx.Store.User().FindOneSubscribeByToken(l.ctx, token)
-	if err != nil {
-		l.Logger.Infow("[Generate Subscribe]find subscribe error: %v", zap.Any("error", err.Error()), zap.Any("token", token))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
+	if ent.IsNotFound(err) || (err == nil && userSub == nil) {
+		return nil, errors.Wrap(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe token not found")
 	}
-	if userSub == nil {
-		l.Logger.Infow("[Generate Subscribe]subscribe token not found", zap.Any("token", token))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe token not found")
+	if err != nil {
+		l.Logger.Errorw("[Generate Subscribe] Subscription lookup failed", "error", err)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 
 	//  Ignore expiration check

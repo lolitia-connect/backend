@@ -74,7 +74,9 @@ func (l *AlipayPlusNotifyLogic) AlipayPlusNotify(r *http.Request) error {
 	}
 	activate, err := settlePayment(l.ctx, l.svcCtx.Store, data, notify.OrderNo, notify.OrderNo, notify.Amount, configCurrency(data.CurrencyUnit, l.svcCtx.Config.Currency.Unit))
 	if err != nil {
-		l.Logger.Error("[AlipayPlusNotify] Update order status failed", zap.Any("error", err.Error()), zap.Any("orderNo", notify.OrderNo))
+		if !IsRejectedNotification(err) {
+			l.Logger.Errorw("[AlipayPlusNotify] Order settlement failed", "error", err)
+		}
 		return err
 	}
 

@@ -31,7 +31,7 @@ func (l *ToggleRedemptionCodeStatusLogic) ToggleRedemptionCodeStatus(req *types.
 	codeInfo, err := l.svcCtx.Store.RedemptionCode().FindOne(l.ctx, req.Id)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			l.Logger.Errorw("[ToggleRedemptionCodeStatus] Redemption code not found", zap.Any("id", req.Id))
+			l.Logger.Debugw("[ToggleRedemptionCodeStatus] Redemption code not found", zap.Any("id", req.Id))
 			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code not found")
 		}
 		l.Logger.Errorw("[ToggleRedemptionCodeStatus] Database Error", zap.Any("error", err.Error()))

@@ -76,10 +76,10 @@ func (l *EPayNotifyLogic) EPayNotify(req *types.EPayNotifyRequest) error {
 	}
 	params, err := gateway.VerifyNotification(values)
 	if err != nil {
-		return err
+		return rejectedNotification{err}
 	}
 	if req.OutTradeNo != params["out_trade_no"] || req.TradeNo != params["trade_no"] || req.TradeStatus != params["trade_status"] {
-		return errors.New("payment notification differs from signed parameters")
+		return rejectedNotification{errors.New("payment notification differs from signed parameters")}
 	}
 	amount, err := epay.ParseMoney(params["money"])
 	if err != nil {
@@ -91,18 +91,17 @@ func (l *EPayNotifyLogic) EPayNotify(req *types.EPayNotifyRequest) error {
 	}
 	if queryErr == nil {
 		if queried == nil || !queried.Paid || queried.Refunded {
-			return errors.New("gateway has not confirmed an unrefunded payment")
+			return rejectedNotification{errors.New("gateway has not confirmed an unrefunded payment")}
 		}
 		if !queried.StatusOnly {
 			queriedAmount, err := epay.ParseMoney(queried.Money)
 			if err != nil || queriedAmount != amount || queried.OrderNo != req.OutTradeNo || queried.TradeNo != req.TradeNo || queried.MerchantID != config.Pid || queried.Type != params["type"] {
-				return errors.New("gateway payment differs from signed notification")
+				return rejectedNotification{errors.New("gateway payment differs from signed notification")}
 			}
 		}
 	}
 	activate, err := settlePayment(l.ctx, store, data, req.OutTradeNo, req.TradeNo, amount, "CNY")
 	if err != nil {
-		l.Logger.Error("[EPayNotify] Update order status failed", zap.Any("error", err.Error()), zap.Any("orderNo", req.OutTradeNo))
 		return err
 	}
 	if activate {

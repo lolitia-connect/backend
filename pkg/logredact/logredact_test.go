@@ -11,7 +11,7 @@ func TestSensitiveKeyRedactsKnownNames(t *testing.T) {
 		"cookie", "signature", "session_id", "uuid", "request_body", "response",
 		"payload", "sql", "user", "order_info", "subscribe", "template", "value",
 		"email", "recovery_email", "phone", "ip", "user_agent", "device_id",
-		"group_chat_id", "redirect_url",
+		"group_chat_id", "redirect_url", "sentry_dsn",
 	} {
 		t.Run(key, func(t *testing.T) {
 			if !SensitiveKey(key) {
@@ -73,6 +73,7 @@ func TestTextRedactsCompoundCredentialQueryParameters(t *testing.T) {
 		"private_key=signingcredential",
 		"client_secret=oauthcredential",
 		"subscribe_token=subscriptioncredential",
+		"sentry_dsn=https%3A%2F%2Fingest-key%40example.test%2F42",
 		"access_token=jwtcredential",
 	} {
 		t.Run(query, func(t *testing.T) {

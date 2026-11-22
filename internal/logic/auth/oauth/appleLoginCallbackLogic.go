@@ -30,7 +30,9 @@ func (l *AppleLoginCallbackLogic) AppleLoginCallback(req *types.AppleLoginCallba
 	// validate the state code
 	state, err := oauthstate.Read(l.ctx, l.svcCtx.Redis, "apple", req.State)
 	if err != nil {
-		l.Logger.Errorw("get apple state code from redis failed", zap.Any("error", err.Error()), zap.Any("code", req.State))
+		if !oauthstate.IsRejected(err) {
+			l.Logger.Errorw("Apple state lookup failed", "error", err)
+		}
 		http.Redirect(w, r, l.svcCtx.Config.Site.Host, http.StatusTemporaryRedirect)
 		return nil
 	}

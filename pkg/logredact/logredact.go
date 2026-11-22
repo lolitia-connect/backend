@@ -28,7 +28,7 @@ var (
 	// The prefix is captured so the parameter name survives: the query string a
 	// logger hands over usually has no leading "?", so anchoring on [?&] alone
 	// would leave the first parameter unredacted.
-	sensitiveQueryPattern = regexp.MustCompile(`(?i)(^|[?&])((?:access_?token|subscribe_?token|auth_?code|api_?key|secret_?key|private_?key|client_?secret|code|key|password|secret|signature|token)=)[^&#\s]+`)
+	sensitiveQueryPattern = regexp.MustCompile(`(?i)(^|[?&])((?:access_?token|subscribe_?token|auth_?code|api_?key|secret_?key|private_?key|client_?secret|sentry_?dsn|code|key|password|secret|signature|token)=)[^&#\s]+`)
 )
 
 var sensitiveMarkers = []string{
@@ -49,7 +49,7 @@ var sensitiveKeyNames = map[string]struct{}{
 	"identifier": {}, "recipient": {}, "subject": {}, "text": {}, "command": {},
 	"redirect": {}, "redirecturl": {}, "url": {}, "refercode": {}, "deductionlog": {},
 	// A bare "ip" carries no marker and is a personal identifier on its own.
-	"ip": {},
+	"ip": {}, "sentrydsn": {},
 }
 
 // SensitiveKey reports whether a field of this name must be redacted. A caller

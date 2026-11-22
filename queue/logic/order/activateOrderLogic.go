@@ -57,9 +57,10 @@ const (
 
 // Predefined error variables for common error conditions
 var (
-	ErrInvalidOrderStatus = fmt.Errorf("invalid order status")
-	ErrInvalidOrderType   = fmt.Errorf("invalid order type")
-	ErrUnfulfillable      = errors.New("order can no longer be fulfilled")
+	ErrInvalidOrderStatus     = fmt.Errorf("invalid order status")
+	ErrInvalidOrderType       = fmt.Errorf("invalid order type")
+	ErrUnfulfillable          = errors.New("order can no longer be fulfilled")
+	errSubscribeQuotaExceeded = errors.New("subscribe quota limit exceeded")
 )
 
 // ActivateOrderLogic handles the activation and processing of paid orders
@@ -529,7 +530,7 @@ func (l *ActivateOrderLogic) createUserSubscription(ctx context.Context, orderIn
 				zap.Any("quota", sub.Quota),
 				zap.Any("current_count", count),
 			)
-			return nil, fmt.Errorf("subscribe quota limit exceeded")
+			return nil, errSubscribeQuotaExceeded
 		}
 	}
 
@@ -1240,7 +1241,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 						zap.Any("quota", sub.Quota),
 						zap.Any("current_count", count),
 					)
-					return fmt.Errorf("subscribe quota limit exceeded")
+					return errSubscribeQuotaExceeded
 				}
 			}
 
@@ -1308,7 +1309,9 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 	})
 
 	if err != nil {
-		zap.S().Error("Redemption transaction failed", zap.Any("error", err.Error()))
+		if !errors.Is(err, ErrUnfulfillable) && !errors.Is(err, errSubscribeQuotaExceeded) && !errors.Is(err, user.ErrProviderManaged) {
+			zap.S().Errorw("Redemption transaction failed", "error", err)
+		}
 		return err
 	}
 

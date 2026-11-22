@@ -85,8 +85,8 @@ func TestSettlementRejectsUnrelatedAndClosedPayments(t *testing.T) {
 			orders := &settlementOrders{current: &order.Order{Status: test.status, PaymentId: test.paymentID, TradeNo: test.storedTrade, Amount: 100}}
 			store := &settlementStore{orders: orders}
 			activate, err := settlePayment(context.Background(), store, &payment.Payment{Id: 7}, "order", "trade", 100, "USD")
-			if err == nil || activate || orders.writes != 0 {
-				t.Fatalf("unmatched payment activated: %t, %v, writes %d", activate, err, orders.writes)
+			if !IsRejectedNotification(err) || activate || orders.writes != 0 {
+				t.Fatalf("unmatched payment: activate=%t, err=%v, writes=%d", activate, err, orders.writes)
 			}
 			if len(store.unmatched) != 1 {
 				t.Fatal("unmatched payment was not audited")
@@ -129,11 +129,11 @@ func TestDebugDoesNotBypassGatewaySignatures(t *testing.T) {
 	service := &svc.ServiceContext{}
 	service.Config.Debug = true
 	ctx := context.WithValue(context.Background(), constant.CtxKeyPayment, &payment.Payment{Platform: "EPay", Config: `{"pid":"merchant","key":"secret","url":"https://pay.example"}`})
-	if err := NewEPayNotifyLogic(ctx, service, EPayNotifyMeta{Params: map[string]string{}}).EPayNotify(&types.EPayNotifyRequest{}); err == nil {
+	if err := NewEPayNotifyLogic(ctx, service, EPayNotifyMeta{Params: map[string]string{}}).EPayNotify(&types.EPayNotifyRequest{}); !IsRejectedNotification(err) {
 		t.Fatal("debug mode bypassed EPay signature verification")
 	}
 	ctx = context.WithValue(context.Background(), constant.CtxKeyPayment, &payment.Payment{Platform: "Cryptomus", Config: `{"merchant_id":"merchant","api_key":"secret"}`})
-	if err := NewCryptomusNotifyLogic(ctx, service).CryptomusNotify([]byte(`{"order_id":"order","sign":"invalid"}`)); err == nil {
+	if err := NewCryptomusNotifyLogic(ctx, service).CryptomusNotify([]byte(`{"order_id":"order","sign":"invalid"}`)); !IsRejectedNotification(err) {
 		t.Fatal("debug mode bypassed Cryptomus signature verification")
 	}
 }

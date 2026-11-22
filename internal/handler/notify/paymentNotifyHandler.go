@@ -34,7 +34,7 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 				return
 			}
 			if err := c.Request.ParseForm(); err != nil {
-				zap.L().Error("[PaymentNotifyHandler] ParseForm failed", zap.Any("error", err.Error()))
+				zap.L().Debug("[PaymentNotifyHandler] Invalid notification form")
 				c.String(http.StatusBadRequest, "%s", "invalid payment notification")
 				return
 			}
@@ -44,7 +44,9 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 				Values: c.Request.Form,
 			})
 			if err := l.EPayNotify(req); err != nil {
-				zap.S().Errorf("EPayNotify failed: %v", err.Error())
+				if !notify.IsRejectedNotification(err) {
+					zap.L().Error("EPay notification failed", zap.Error(err))
+				}
 				c.String(http.StatusBadRequest, "%s", err.Error())
 				return
 			}
@@ -52,6 +54,10 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 		case payment.Stripe:
 			l := notify.NewStripeNotifyLogic(c.Request.Context(), svcCtx)
 			if err := l.StripeNotify(c.Request, c.Writer); err != nil {
+				if notify.IsRejectedNotification(err) {
+					c.String(http.StatusBadRequest, "%s", "invalid payment notification")
+					return
+				}
 				c.String(http.StatusInternalServerError, "%s", "payment notification could not be processed")
 				return
 			}
@@ -62,7 +68,9 @@ func PaymentNotifyHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 			// body, so the untouched bytes must reach the verifier.
 			l := notify.NewCryptomusNotifyLogic(c.Request.Context(), svcCtx)
 			if err := l.CryptomusNotify(hertzx.RequestContext(c).Request.Body()); err != nil {
-				zap.S().Errorf("CryptomusNotify failed: %v", err.Error())
+				if !notify.IsRejectedNotification(err) {
+					zap.L().Error("Cryptomus notification failed", zap.Error(err))
+				}
 				c.String(http.StatusBadRequest, "%s", err.Error())
 				return
 			}

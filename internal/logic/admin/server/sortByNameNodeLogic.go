@@ -3,9 +3,8 @@ package server
 import (
 	"context"
 
+	"github.com/perfect-panel/server/internal/logic/admin/listorder"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/pkg/xerr"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -24,9 +23,5 @@ func NewSortByNameNodeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *So
 }
 
 func (l *SortByNameNodeLogic) SortByNameNode() error {
-	if err := l.svcCtx.Store.Node().SortNodesByName(l.ctx); err != nil {
-		l.Logger.Errorw("[SortByNameNode] Error: ", zap.Any("error", err.Error()))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "%v", err)
-	}
-	return nil
+	return listorder.Nodes.ByName(l.ctx, l.svcCtx.Store)
 }

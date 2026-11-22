@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/perfect-panel/server/ent"
 	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/pkg/constant"
@@ -70,10 +70,8 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "system busy, please try again later")
 	}
 	if !lockSuccess {
-		l.Logger.Errorw("[RedeemCode] Redemption in progress",
-			zap.Any("user_id", u.Id),
-			zap.Any("code", req.Code))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "redemption in progress, please wait")
+		l.Logger.Debug("[RedeemCode] Redemption in progress")
+		return nil, errors.Wrap(xerr.NewErrCode(xerr.TooManyRequests), "redemption in progress, please wait")
 	}
 	defer l.svcCtx.Redis.Del(l.ctx, lockKey)
 
@@ -81,7 +79,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	redemptionCode, err := l.svcCtx.Store.RedemptionCode().FindOneByCode(l.ctx, req.Code)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			l.Logger.Errorw("[RedeemCode] Redemption code not found", zap.Any("code", req.Code))
+			l.Logger.Debug("[RedeemCode] Redemption code not found")
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code not found")
 		}
 		l.Logger.Errorw("[RedeemCode] Database Error", zap.Any("error", err.Error()))
@@ -90,18 +88,13 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 
 	// Check if redemption code is enabled
 	if redemptionCode.Status != 1 {
-		l.Logger.Errorw("[RedeemCode] Redemption code is disabled",
-			zap.Any("code", req.Code),
-			zap.Any("status", redemptionCode.Status))
+		l.Logger.Debug("[RedeemCode] Redemption code is disabled")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code is disabled")
 	}
 
 	// Check if redemption code has remaining count
 	if redemptionCode.TotalCount > 0 && redemptionCode.UsedCount >= redemptionCode.TotalCount {
-		l.Logger.Errorw("[RedeemCode] Redemption code has been fully used",
-			zap.Any("code", req.Code),
-			zap.Any("total_count", redemptionCode.TotalCount),
-			zap.Any("used_count", redemptionCode.UsedCount))
+		l.Logger.Debug("[RedeemCode] Redemption code has been fully used")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "redemption code has been fully used")
 	}
 
@@ -113,9 +106,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	}
 	for _, record := range userRecords {
 		if record.RedemptionCodeId == redemptionCode.Id {
-			l.Logger.Errorw("[RedeemCode] User has already redeemed this code",
-				zap.Any("user_id", u.Id),
-				zap.Any("code", req.Code))
+			l.Logger.Debug("[RedeemCode] User has already redeemed this code")
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "you have already redeemed this code")
 		}
 	}
@@ -123,15 +114,16 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	// Find subscribe plan from redemption code
 	subscribePlan, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, redemptionCode.SubscribePlan)
 	if err != nil {
-		l.Logger.Errorw("[RedeemCode] Subscribe plan not found",
-			zap.Any("subscribe_plan", redemptionCode.SubscribePlan),
-			zap.Any("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "subscribe plan not found")
+		if ent.IsNotFound(err) {
+			return nil, errors.Wrap(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe plan not found")
+		}
+		l.Logger.Errorw("[RedeemCode] Subscribe plan lookup failed", "error", err)
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "subscribe plan lookup failed: %v", err)
 	}
 
 	// Check if subscribe plan is available
-	if !*subscribePlan.Sell {
-		l.Logger.Errorw("[RedeemCode] Subscribe plan is not available",
+	if subscribePlan == nil || subscribePlan.Sell == nil || !*subscribePlan.Sell {
+		l.Logger.Debugw("[RedeemCode] Subscribe plan is not available",
 			zap.Any("subscribe_plan", redemptionCode.SubscribePlan))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe plan is not available")
 	}
@@ -144,7 +136,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "check quota failed")
 		}
 		if count >= subscribePlan.Quota {
-			l.Logger.Errorw("[RedeemCode] Subscribe quota limit exceeded",
+			l.Logger.Debugw("[RedeemCode] Subscribe quota limit exceeded",
 				zap.Any("user_id", u.Id),
 				zap.Any("subscribe_id", redemptionCode.SubscribePlan),
 				zap.Any("quota", subscribePlan.Quota),

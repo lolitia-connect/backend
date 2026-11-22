@@ -58,8 +58,7 @@ func HttpResult(ctx *hertzx.Context, resp interface{}, err error) {
 
 // ParamErrorResult Param Error Result
 func ParamErrorResult(ctx *hertzx.Context, err error) {
-	errMsg := err.Error()
-	_ = ctx.Error(errors.New(errMsg))
+	_ = ctx.Error(xerr.NewErrCodeMsg(xerr.InvalidParams, err.Error()))
 	result := BuildParamErrorResult(err)
 	ctx.JSON(result.StatusCode, result.Body)
 }

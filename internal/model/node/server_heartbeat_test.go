@@ -55,9 +55,6 @@ func TestUpdateServerKeepsNewerHeartbeat(t *testing.T) {
 	}
 }
 
-// TestUpdateServerSortKeepsNewerHeartbeat pins that the sort-only entry point
-// inherits the fix: it loads a row and calls UpdateServer, so it must not write
-// the loaded last_reported_at back either.
 func TestUpdateServerSortKeepsNewerHeartbeat(t *testing.T) {
 	client := deletionClient(t)
 	ctx := context.Background()

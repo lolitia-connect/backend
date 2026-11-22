@@ -50,6 +50,7 @@ var startCmd = &cobra.Command{
 }
 
 func run() error {
+	defer logging.CloseSentry()
 	services, resources := getServers()
 	defer func() {
 		if err := resources.Close(); err != nil {

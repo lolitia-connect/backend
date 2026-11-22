@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/logredact"
@@ -56,11 +57,11 @@ func LoggerMiddleware(svc *svc.ServiceContext) app.HandlerFunc {
 		if shouldLogBody(method, path) {
 			logs = append(logs, zap.Any("request_body", logredact.Text(string(maskSensitiveFields(ctx.Request.Body(), []string{"password", "old_password", "new_password", "api_token"})))))
 			logs = append(logs, zap.Any("response_body", logredact.Text(string(ctx.Response.Body()))))
-		} else if isBodyMethod(method) && isServerTelemetryPath(path) {
+		} else if isBodyMethod(method) {
 			logs = append(logs, zap.Any("body_omitted", true))
 		}
 		logs = append(logs, zap.Any("duration", cost))
-		if responseStatus >= 500 && responseStatus <= 599 {
+		if responseStatus >= 500 && responseStatus <= 599 && !isExpectedRetry(ctx) {
 			zap.L().Error("HTTP Error", logs...)
 		} else {
 			zap.L().Info("HTTP Request", logs...)
@@ -70,6 +71,11 @@ func LoggerMiddleware(svc *svc.ServiceContext) app.HandlerFunc {
 			zap.S().Debugf("404 Not Found: Host:%s Path:%s IsPanDomain:%v", host, path, svc.Config.Subscribe.PanDomain)
 		}
 	}
+}
+
+func isExpectedRetry(ctx *app.RequestContext) bool {
+	last := ctx.Errors.Last()
+	return ctx.Response.StatusCode() == consts.StatusServiceUnavailable && last != nil && errors.Is(last.Err, node.ErrServerBusy)
 }
 
 func responseStatus(ctx *app.RequestContext) int {
@@ -93,7 +99,8 @@ func hertzxErrorMessage(ctx *app.RequestContext) string {
 }
 
 func shouldLogBody(method, path string) bool {
-	return isBodyMethod(method) && !isServerTelemetryPath(path)
+	path = strings.TrimSuffix(path, "/")
+	return isBodyMethod(method) && !isServerTelemetryPath(path) && path != "/v1/admin/log/setting" && path != "/v1/public/redemption"
 }
 
 func isBodyMethod(method string) bool {

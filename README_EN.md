@@ -106,6 +106,8 @@ Open **Node Management → Nekoproxy connection**, enter the service URL and an 
 
 Bindings have a unique node foreign key, a unique API URL/forward ID pair, and the selected session ID. Migration `02172_nekoproxy_sync_on_save` enables sync on save by default for each binding. Manage it at the bottom of the node editor. Manual sync updates only this node’s entry address/port; sync on save commits the entry, remaining edits and preference together. Failed synchronization leaves the node unchanged. Disable sync on save to edit offline. Unbinding or deleting a local node preserves the remote service.
 
+Migration `02173_nekoproxy_managed_target_port` records which target port follows the server protocol. Deploy control with the token-only `PATCH /api/v1/l4/services/{id}/target-port` endpoint before enabling this behavior. Saving a protocol change updates the forward and its active sessions, without reallocating the entry or overwriting a manual target. An older binding is adopted only when its target still matches the previous protocol port.
+
 Node creation can bind an active session or create a forward and allocate an entry. Failures roll back the local transaction and attempt to delete the newly created remote forward. Failed cleanup reports the forward ID for manual removal. If a creation request times out before returning an ID, check Nekoproxy before retrying to avoid duplicates. See [Node Management](../frontend/docs/admin/maintenance/nodes.md).
 
 ## 📖 API Documentation

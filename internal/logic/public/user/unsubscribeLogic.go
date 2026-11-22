@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/repository"
@@ -45,6 +46,9 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 
 	// find user subscription by ID
 	userSub, err := l.svcCtx.Store.User().FindOneSubscribe(l.ctx, req.Id)
+	if ent.IsNotFound(err) {
+		return xerr.NewErrCode(xerr.InvalidAccess)
+	}
 	if err != nil {
 		l.Logger.Errorw("FindOneSubscribe failed", zap.Any("error", err.Error()), zap.Any("reqId", req.Id))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "FindOneSubscribe failed: %v", err.Error())
@@ -59,7 +63,7 @@ func (l *UnsubscribeLogic) Unsubscribe(req *types.UnsubscribeRequest) error {
 	activate := []uint8{0, 1, 2}
 
 	if !tool.Contains(activate, userSub.Status) {
-		l.Logger.Errorw("Subscription status invalid for cancellation", zap.Any("userSubscribeId", userSub.Id), zap.Any("status", userSub.Status))
+		l.Logger.Debugw("Subscription status invalid for cancellation", zap.Any("userSubscribeId", userSub.Id), zap.Any("status", userSub.Status))
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Subscription status invalid for cancellation")
 	}
 

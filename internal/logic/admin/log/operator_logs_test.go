@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/pkg/requestmeta"
 	_ "modernc.org/sqlite"
 )
@@ -179,6 +181,45 @@ func TestOperatorLogFiltersKeepActorsAndPayersSeparate(t *testing.T) {
 	payments, err := FilterUnmatchedPaymentLog(ctx, service, &types.FilterUnmatchedPaymentLogRequest{UserId: 8})
 	if err != nil || payments.Total != 1 || len(payments.List) != 1 || payments.List[0].UserId != 8 || payments.List[0].TradeNo != "8" {
 		t.Fatalf("payer filter = %+v, %v", payments, err)
+	}
+}
+
+func TestSentrySettingsSurviveCleanupOnlyWrites(t *testing.T) {
+	service, client := operatorLogFixture(t)
+	ctx := requestmeta.WithActor(context.Background(), 7)
+	read := NewGetLogSettingLogic(ctx, service)
+	write := NewUpdateLogSettingLogic(ctx, service)
+	cfg, err := read.GetLogSetting()
+	if err != nil || cfg.SentryEnabled == nil || *cfg.SentryEnabled || cfg.SentryDSN != "" {
+		t.Fatalf("unexpected defaults: %+v, %v", cfg, err)
+	}
+	enabled := true
+	const dsn = "http://test-key@127.0.0.1:1/42"
+	defer logging.CloseSentry()
+	if err := write.UpdateLogSetting(&types.LogSetting{SentryEnabled: &enabled, SentryDSN: dsn}); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range map[string]string{"AutoClear": "false", "ClearDays": "7"} {
+		client.System.Create().SetCategory("log").SetKey(key).SetValue(value).SetDesc(key).SaveX(ctx)
+	}
+	if err := write.UpdateLogSetting(&types.LogSetting{AutoClear: &enabled, ClearDays: 14}); err != nil {
+		t.Fatal(err)
+	}
+	if err := write.UpdateLogSetting(&types.LogSetting{SentryEnabled: &enabled, SentryDSN: "https://key:secret@invalid.test/42"}); err == nil {
+		t.Fatal("accepted a secret-bearing DSN")
+	}
+	entries := client.SystemLog.Query().AllX(ctx)
+	if len(entries) != 2 {
+		t.Fatalf("expected two successful saves, got %d", len(entries))
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Content, "test-key") {
+			t.Fatal("DSN in audit record")
+		}
+	}
+	cfg, err = read.GetLogSetting()
+	if err != nil || cfg.SentryEnabled == nil || !*cfg.SentryEnabled || cfg.SentryDSN != dsn {
+		t.Fatalf("legacy or invalid update changed reporting: %+v, %v", cfg, err)
 	}
 }
 

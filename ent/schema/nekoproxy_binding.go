@@ -27,6 +27,7 @@ func (NekoproxyBinding) Fields() []ent.Field {
 		field.String("forward_id").MaxLen(128).NotEmpty(),
 		field.String("session_id").MaxLen(128).NotEmpty(),
 		field.Bool("sync_on_save").Default(true),
+		field.Uint16("managed_target_port").Optional().Nillable().Comment("Last protocol-managed target port; 0 is manual, NULL is an unclassified binding"),
 		field.Time("created_at").Default(time.Now).Immutable(),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

@@ -24,6 +24,8 @@ const (
 	FieldSessionID = "session_id"
 	// FieldSyncOnSave holds the string denoting the sync_on_save field in the database.
 	FieldSyncOnSave = "sync_on_save"
+	// FieldManagedTargetPort holds the string denoting the managed_target_port field in the database.
+	FieldManagedTargetPort = "managed_target_port"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -49,6 +51,7 @@ var Columns = []string{
 	FieldForwardID,
 	FieldSessionID,
 	FieldSyncOnSave,
+	FieldManagedTargetPort,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -111,6 +114,11 @@ func BySessionID(opts ...sql.OrderTermOption) OrderOption {
 // BySyncOnSave orders the results by the sync_on_save field.
 func BySyncOnSave(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSyncOnSave, opts...).ToFunc()
+}
+
+// ByManagedTargetPort orders the results by the managed_target_port field.
+func ByManagedTargetPort(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldManagedTargetPort, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

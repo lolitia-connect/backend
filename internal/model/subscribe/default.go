@@ -45,14 +45,6 @@ func newSubscribeModel(db *ent.Client, c *redis.Client) *defaultSubscribeModel {
 	return &defaultSubscribeModel{db: db, redis: c, table: "subscribe"}
 }
 
-func (m *defaultSubscribeModel) batchGetCacheKeys(subscribes ...*Subscribe) []string {
-	var keys []string
-	for _, item := range subscribes {
-		keys = append(keys, m.getCacheKeys(item)...)
-	}
-	return keys
-}
-
 func (m *defaultSubscribeModel) getCacheKeys(data *Subscribe) []string {
 	if data == nil {
 		return []string{}

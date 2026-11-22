@@ -69,14 +69,16 @@ func (l *AlipayNotifyLogic) AlipayNotify(r *http.Request) error {
 
 		activate, err := settlePayment(l.ctx, store, data, notify.OrderNo, r.Form.Get("trade_no"), notify.Amount, "CNY")
 		if err != nil {
-			l.Logger.Error("[AlipayNotify] Update order status failed", zap.Any("error", err.Error()), zap.Any("orderNo", notify.OrderNo))
+			if !IsRejectedNotification(err) {
+				l.Logger.Errorw("[AlipayNotify] Order settlement failed", "error", err)
+			}
 			return err
 		}
 		if activate {
 			return enqueueActivation(l.ctx, l.svcCtx, notify.OrderNo)
 		}
 	} else {
-		l.Logger.Error("[AlipayNotify] Notify status failed", zap.Any("status", string(notify.Status)))
+		l.Logger.Debugw("[AlipayNotify] Payment not settled", "status", string(notify.Status))
 	}
 	return nil
 }

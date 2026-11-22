@@ -71,8 +71,8 @@ func (l *UpdateNodeGroupLogic) UpdateNodeGroup(req *types.UpdateNodeGroupRequest
 		}
 		nodeGroup.Type = nodeGroupType
 	}
-	if req.Sort != 0 {
-		nodeGroup.Sort = req.Sort
+	if req.Sort != nil {
+		nodeGroup.Sort = *req.Sort
 	}
 	if req.ForCalculation != nil {
 		nodeGroup.ForCalculation = req.ForCalculation

@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/hertzx"
+	"github.com/perfect-panel/server/pkg/logging"
 	"github.com/perfect-panel/server/pkg/trace"
+	"github.com/perfect-panel/server/pkg/xerr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -76,11 +79,25 @@ func remoteAddressParts(addr net.Addr) (string, string) {
 	return host, port
 }
 
+func hasUnexpectedRequestError(ctx *app.RequestContext) bool {
+	hxCtx, ok := hertzx.ContextFromRequestContext(ctx)
+	if !ok {
+		return false
+	}
+	for _, err := range hxCtx.Errors {
+		if !xerr.IsRejection(err.Err) {
+			return true
+		}
+	}
+	return false
+}
+
 func TraceMiddleware(_ *svc.ServiceContext) app.HandlerFunc {
 	return func(c context.Context, ctx *app.RequestContext) {
 		tracer := trace.TracerFromContext(c)
 		spanName := ctx.FullPath()
 		method := string(ctx.Method())
+		startedAt := time.Now()
 
 		c, span := tracer.Start(
 			c,
@@ -88,6 +105,12 @@ func TraceMiddleware(_ *svc.ServiceContext) app.HandlerFunc {
 			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
 		)
 		defer span.End()
+		sentryCtx, finishSentry := logging.StartSentryRequest(c, fmt.Sprintf("%s %s", method, spanName))
+		defer func() {
+			status := responseStatus(ctx)
+			finishSentry(status, status < 500 && !hasUnexpectedRequestError(ctx))
+			logging.RecordSentryRequestMetrics(sentryCtx, method, spanName, status, time.Since(startedAt))
+		}()
 
 		requestId := trace.TraceIDFromContext(c)
 
@@ -103,14 +126,18 @@ func TraceMiddleware(_ *svc.ServiceContext) app.HandlerFunc {
 		ctx.Next(c)
 
 		status := responseStatus(ctx)
-		span.SetStatus(statusByWriter(status))
+		if !isExpectedRetry(ctx) {
+			span.SetStatus(statusByWriter(status))
+		}
 		if status > 0 {
 			span.SetAttributes(semconv.HTTPResponseStatusCodeKey.Int(status))
 		}
-		if hxCtx, ok := hertzx.ContextFromRequestContext(ctx); ok && len(hxCtx.Errors) > 0 {
-			span.SetStatus(codes.Error, hxCtx.Errors.String())
+		if hxCtx, ok := hertzx.ContextFromRequestContext(ctx); ok {
 			for _, err := range hxCtx.Errors {
-				span.RecordError(err.Err)
+				if !xerr.IsRejection(err.Err) {
+					span.SetStatus(codes.Error, "Backend error")
+					span.RecordError(err.Err)
+				}
 			}
 		}
 

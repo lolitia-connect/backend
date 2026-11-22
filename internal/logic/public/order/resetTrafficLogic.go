@@ -12,6 +12,7 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
@@ -47,6 +48,9 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 	}
 	// find user subscription
 	userSubscribe, err := store.User().FindOneUserSubscribe(l.ctx, req.UserSubscribeID)
+	if ent.IsNotFound(err) {
+		return nil, xerr.NewErrCode(xerr.InvalidAccess)
+	}
 	if err != nil {
 		l.Logger.Errorw("[ResetTraffic] Database query error", zap.Any("error", err.Error()), zap.Any("UserSubscribeID", req.UserSubscribeID))
 		return nil, errors.Wrapf(err, "find user subscribe error: %v", err.Error())
@@ -78,6 +82,9 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 	}
 	// find payment method
 	payment, err := store.Payment().FindOne(l.ctx, req.Payment)
+	if ent.IsNotFound(err) {
+		return nil, xerr.NewErrCode(xerr.PaymentMethodNotFound)
+	}
 	if err != nil {
 		l.Logger.Errorw("[ResetTraffic] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(err, "find payment error: %v", err.Error())
@@ -152,7 +159,9 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 		return orderaudit.InsertCreated(l.ctx, txStore.Log(), &orderInfo, orderaudit.SourceUser)
 	})
 	if err != nil {
-		l.Logger.Errorw("[ResetTraffic] Database insert error", zap.Any("error", err.Error()), zap.Any("order", orderInfo))
+		if !xerr.IsRejection(err) {
+			l.Logger.Errorw("[ResetTraffic] Order transaction failed", "error", err)
+		}
 		return nil, errors.Wrapf(err, "insert order error: %v", err.Error())
 	}
 	// Deferred task

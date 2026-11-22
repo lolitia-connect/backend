@@ -3,7 +3,9 @@ package logging
 import (
 	"context"
 	"io"
+	"strings"
 
+	hertzerrors "github.com/cloudwego/hertz/pkg/common/errors"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
 	"go.uber.org/zap"
 )
@@ -63,7 +65,32 @@ func (HertzLogger) Warnf(format string, v ...interface{}) {
 }
 
 func (HertzLogger) Errorf(format string, v ...interface{}) {
+	// Hertz passes err.Error() here, after discarding the parser's error type.
+	if (format == "HERTZ: "+hlog.EngineErrorFormat || format == hlog.EngineErrorFormat) && len(v) == 2 {
+		if reason, ok := v[0].(string); ok && isRejectedRequest(reason) {
+			zap.S().Debug("HERTZ: rejected invalid HTTP request")
+			return
+		}
+	}
 	zap.S().Errorf(format, v...)
+}
+
+func isRejectedRequest(reason string) bool {
+	if reason == hertzerrors.ErrHeaderTooLarge.Error() || reason == hertzerrors.ErrBodyTooLarge.Error() {
+		return true
+	}
+	header, ok := strings.CutPrefix(reason, "error when reading request headers: ")
+	if !ok {
+		return false
+	}
+	cause, _, _ := strings.Cut(header, ". Buffer size=")
+	switch cause {
+	case "malformed HTTP request", "invalid header name", "non-numeric chars at the end of Content-Length",
+		"EOF", "unexpected EOF", "timeout", "duplicate Content-Length header with conflicting values", "multiple Transfer-Encoding headers are not allowed":
+		return true
+	}
+	return strings.HasPrefix(cause, "invalid header key ") || strings.HasPrefix(cause, "invalid header value ") ||
+		strings.HasPrefix(cause, "unsupported Transfer-Encoding:") || strings.HasPrefix(cause, "both Transfer-Encoding and Content-Length headers are present in request:")
 }
 
 func (HertzLogger) Fatalf(format string, v ...interface{}) {

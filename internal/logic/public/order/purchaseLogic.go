@@ -65,7 +65,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 
 	// Validate quantity limit
 	if req.Quantity > MaxQuantity {
-		l.Logger.Errorw("[Purchase] Quantity exceeds maximum limit", zap.Any("quantity", req.Quantity), zap.Any("max", MaxQuantity))
+		l.Logger.Debugw("[Purchase] Quantity exceeds maximum limit", zap.Any("quantity", req.Quantity), zap.Any("max", MaxQuantity))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "quantity exceeds maximum limit of %d", MaxQuantity)
 	}
 
@@ -85,12 +85,15 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	sub, err := store.Subscribe().FindOne(l.ctx, req.SubscribeId)
 
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, xerr.NewErrCode(xerr.SubscribeNotAvailable)
+		}
 		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("subscribe_id", req.SubscribeId))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find subscribe error: %v", err.Error())
 	}
 	// check subscribe plan status
 	if !*sub.Sell {
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "subscribe not sell")
+		return nil, errors.Wrap(xerr.NewErrCode(xerr.SubscribeNotAvailable), "subscribe not sell")
 	}
 
 	// check subscribe plan inventory
@@ -111,7 +114,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 
 	// Validate amount to prevent overflow
 	if amount > MaxOrderAmount {
-		l.Logger.Errorw("[Purchase] Order amount exceeds maximum limit",
+		l.Logger.Debugw("[Purchase] Order amount exceeds maximum limit",
 			zap.Any("amount", amount),
 			zap.Any("max", MaxOrderAmount),
 			zap.Any("user_id", u.Id),
@@ -154,6 +157,9 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	// find payment method
 	payment, err := store.Payment().FindOne(l.ctx, req.Payment)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, xerr.NewErrCode(xerr.PaymentMethodNotFound)
+		}
 		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
 	}
@@ -165,7 +171,7 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 
 		// Final validation after adding fee
 		if amount > MaxOrderAmount {
-			l.Logger.Errorw("[Purchase] Final order amount exceeds maximum limit after fee",
+			l.Logger.Debugw("[Purchase] Final order amount exceeds maximum limit after fee",
 				zap.Any("amount", amount),
 				zap.Any("max", MaxOrderAmount),
 				zap.Any("user_id", u.Id))
@@ -273,7 +279,9 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		return orderaudit.InsertCreated(l.ctx, txStore.Log(), orderInfo, orderaudit.SourceUser)
 	})
 	if err != nil {
-		l.Logger.Errorw("[Purchase] Database insert error", zap.Any("error", err.Error()), zap.Any("orderInfo", orderInfo))
+		if !xerr.IsRejection(err) {
+			l.Logger.Errorw("[Purchase] Order transaction failed", "error", err)
+		}
 		var codeErr *xerr.CodeError
 		if errors.As(err, &codeErr) {
 			return nil, err

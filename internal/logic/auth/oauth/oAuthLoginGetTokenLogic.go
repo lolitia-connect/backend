@@ -127,7 +127,7 @@ func (l *OAuthLoginGetTokenLogic) google(req *types.OAuthLoginGetTokenRequest, r
 
 	var request oauthRequest
 	if err := tool.CloneMapToStruct(req.Callback.(map[string]interface{}), &request); err != nil {
-		l.Logger.Errorw("failed to parse google callback data",
+		l.Logger.Debugw("failed to parse google callback data",
 			zap.Any("request_id", requestID),
 			zap.Any("provider", OAuthGoogle),
 			zap.Any("error", err.Error()),
@@ -202,7 +202,7 @@ func (l *OAuthLoginGetTokenLogic) github(req *types.OAuthLoginGetTokenRequest, r
 
 	var request oauthRequest
 	if err := tool.CloneMapToStruct(req.Callback.(map[string]interface{}), &request); err != nil {
-		l.Logger.Errorw("failed to parse github callback data", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		l.Logger.Debugw("failed to parse github callback data", "request_id", requestID)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "parse callback data failed: %v", err)
 	}
 
@@ -251,7 +251,7 @@ func (l *OAuthLoginGetTokenLogic) facebook(req *types.OAuthLoginGetTokenRequest,
 
 	var request oauthRequest
 	if err := tool.CloneMapToStruct(req.Callback.(map[string]interface{}), &request); err != nil {
-		l.Logger.Errorw("failed to parse facebook callback data", zap.Any("request_id", requestID), zap.Any("error", err.Error()))
+		l.Logger.Debugw("failed to parse facebook callback data", "request_id", requestID)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "parse callback data failed: %v", err)
 	}
 
@@ -413,11 +413,7 @@ func (l *OAuthLoginGetTokenLogic) telegram(req *types.OAuthLoginGetTokenRequest,
 
 	callbackData, err := telegram.ParseAndValidateBase64([]byte(encodeText), cfg.BotToken)
 	if err != nil {
-		l.Logger.Errorw("failed to parse telegram callback data",
-			zap.Any("request_id", requestID),
-			zap.Any("provider", OAuthTelegram),
-			zap.Any("error", err.Error()),
-		)
+		l.Logger.Warnw("invalid telegram callback", "request_id", requestID)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "parse telegram callback failed: %v", err)
 	}
 
@@ -428,13 +424,7 @@ func (l *OAuthLoginGetTokenLogic) telegram(req *types.OAuthLoginGetTokenRequest,
 	)
 
 	if time.Now().Unix()-*callbackData.AuthDate > AuthExpire {
-		l.Logger.Errorw("telegram auth date expired",
-			zap.Any("request_id", requestID),
-			zap.Any("provider", OAuthTelegram),
-			zap.Any("auth_date", *callbackData.AuthDate),
-			zap.Any("current_time", time.Now().Unix()),
-			zap.Any("expire_seconds", AuthExpire),
-		)
+		l.Logger.Debugw("telegram auth date expired", "request_id", requestID)
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "auth date expired")
 	}
 
@@ -481,7 +471,7 @@ func (l *OAuthLoginGetTokenLogic) claimTelegramCallback(payload, requestID strin
 		return err
 	}
 	if !allowed {
-		l.Logger.Errorw("telegram callback replayed",
+		l.Logger.Warnw("telegram callback replayed",
 			zap.Any("request_id", requestID),
 			zap.Any("provider", OAuthTelegram),
 		)
@@ -512,11 +502,9 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite
 		var err error
 		referer, err = l.svcCtx.Store.User().FindOneByReferCode(l.ctx, invite)
 		if err != nil {
-			l.Logger.Errorw("invite code is invalid",
-				zap.Any("request_id", requestID),
-				zap.Any("auth_method", method),
-				zap.Any("error", err.Error()),
-			)
+			if !ent.IsNotFound(err) {
+				l.Logger.Errorw("Invitation lookup failed", "request_id", requestID, "error", err)
+			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InviteCodeError), "invite code is invalid: %v", err)
 		}
 	}
@@ -628,12 +616,9 @@ func (l *OAuthLoginGetTokenLogic) register(email, avatar, method, openid, invite
 	})
 
 	if err != nil {
-		l.Logger.Errorw("user registration failed",
-			zap.Any("request_id", requestID),
-			zap.Any("auth_method", method),
-			zap.Any("error", err.Error()),
-			zap.Any("duration_ms", time.Since(startTime).Milliseconds()),
-		)
+		if !xerr.IsRejection(err) {
+			l.Logger.Errorw("user registration failed", "request_id", requestID, "auth_method", method, "error", err)
+		}
 		return userInfo, err
 	}
 	clearTrialSubscribeCache(l.ctx, l.svcCtx, trialSubscribe)
@@ -700,11 +685,7 @@ func (l *OAuthLoginGetTokenLogic) checkEmailExists(store repository.Store, email
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "check email exists failed: %v", err)
 	}
 	if err == nil && userInfo != nil && userInfo.Id != 0 {
-		l.Logger.Errorw("email already exists for another user",
-			zap.Any("request_id", requestID),
-			zap.Any("email", email),
-			zap.Any("existing_user_id", userInfo.Id),
-		)
+		l.Logger.Debugw("email already exists for another user", "request_id", requestID)
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "user email exist: %v", email)
 	}
 	l.Logger.Debugw("email availability confirmed",
@@ -794,7 +775,7 @@ func (l *OAuthLoginGetTokenLogic) handleOAuthProvider(req *types.OAuthLoginGetTo
 	case OAuthFacebook:
 		return l.facebook(req, requestID, ip, userAgent)
 	default:
-		l.Logger.Errorw("unsupported oauth login method",
+		l.Logger.Debugw("unsupported oauth login method",
 			zap.Any("request_id", requestID),
 			zap.Any("method", req.Method),
 		)
@@ -860,12 +841,9 @@ func (l *OAuthLoginGetTokenLogic) validateStateCode(provider, state, requestID s
 
 	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, provider, "login", 0, state)
 	if err != nil {
-		l.Logger.Errorw("failed to validate state code",
-			zap.Any("request_id", requestID),
-			zap.Any("provider", provider),
-			zap.Any("state_key", stateKey),
-			zap.Any("error", err.Error()),
-		)
+		if !oauthstate.IsRejected(err) {
+			l.Logger.Errorw("OAuth state lookup failed", "provider", provider, "error", err)
+		}
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get %s state code failed: %v", provider, err)
 	}
 

@@ -2,14 +2,12 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/config"
-	"github.com/perfect-panel/server/internal/logic/common"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
@@ -59,7 +57,9 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 		// Check if the invite code is valid
 		referer, err = l.svcCtx.Store.User().FindOneByReferCode(l.ctx, req.Invite)
 		if err != nil {
-			l.Logger.Errorw("FindOneByReferCode Error", zap.Any("error", err))
+			if !ent.IsNotFound(err) {
+				l.Logger.Errorw("Invitation lookup failed", "error", err)
+			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InviteCodeError), "invite code is invalid")
 		}
 	}
@@ -67,19 +67,8 @@ func (l *UserRegisterLogic) UserRegister(req *types.UserRegisterRequest) (resp *
 	// if the email verification is enabled, the verification code is required
 	if email.EnableVerify {
 		cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeCacheKey, constant.Register, req.Email)
-		value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-		if err != nil {
-			l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-		}
-		var payload common.CacheKeyPayload
-		err = json.Unmarshal([]byte(value), &payload)
-		if err != nil {
-			l.Logger.Errorw("Unmarshal Error", zap.Any("error", err.Error()), zap.Any("value", value))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-		}
-		if payload.Code != req.Code {
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
+		if err := usersession.VerifyCode(l.ctx, l.svcCtx.Redis, cacheKey, req.Code); err != nil {
+			return nil, err
 		}
 	}
 

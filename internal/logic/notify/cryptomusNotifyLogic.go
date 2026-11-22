@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/payment"
 	"github.com/perfect-panel/server/internal/svc"
@@ -52,18 +53,15 @@ func (l *CryptomusNotifyLogic) CryptomusNotify(body []byte) error {
 	})
 
 	if !client.VerifyNotificationSign(body) {
-		l.Logger.Error("[CryptomusNotify] Verify sign failed")
-		return errors.New("verify sign failed")
+		return rejectedNotification{errors.New("verify sign failed")}
 	}
 
 	notification, err := cryptomus.ParseNotification(body)
 	if err != nil {
-		l.Logger.Errorw("[CryptomusNotify] Parse notification failed", zap.Any("error", err.Error()))
-		return err
+		return rejectedNotification{err}
 	}
 	if notification.OrderNo == "" {
-		l.Logger.Error("[CryptomusNotify] Notification has no order number")
-		return errors.New("notification has no order number")
+		return rejectedNotification{errors.New("notification has no order number")}
 	}
 
 	if !cryptomus.KnownStatus(notification.Status) {
@@ -78,10 +76,13 @@ func (l *CryptomusNotifyLogic) CryptomusNotify(body []byte) error {
 	}
 	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, notification.OrderNo)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return rejectedNotification{err}
+		}
 		return err
 	}
 	if orderInfo == nil {
-		return errors.New("order not found")
+		return rejectedNotification{errors.New("order not found")}
 	}
 
 	// Re-confirm with the gateway so a spoofed or replayed body cannot settle
@@ -90,15 +91,14 @@ func (l *CryptomusNotifyLogic) CryptomusNotify(body []byte) error {
 	if err != nil {
 		// An explicit "invoice not found" cannot be retried into existence.
 		if cryptomus.IsNotFound(err) {
-			l.Logger.Errorw("[CryptomusNotify] Invoice not found at gateway", zap.Any("orderNo", notification.OrderNo), zap.Any("uuid", notification.UUID))
+			l.Logger.Warnw("[CryptomusNotify] Invoice not found at gateway", "orderNo", notification.OrderNo)
 			return nil
 		}
 		l.Logger.Errorw("[CryptomusNotify] Gateway lookup failed", zap.Any("error", err.Error()))
 		return err
 	}
 	if invoice.OrderNo != orderInfo.OrderNo || invoice.UUID != notification.UUID {
-		l.Logger.Errorw("[CryptomusNotify] Invoice order mismatch", zap.Any("orderNo", orderInfo.OrderNo), zap.Any("invoiceOrder", invoice.OrderNo))
-		return errors.New("invoice does not belong to order")
+		return rejectedNotification{errors.New("invoice does not belong to order")}
 	}
 	amount, err := cryptomus.ParseMoney(invoice.Amount)
 	if err != nil {
@@ -115,7 +115,6 @@ func (l *CryptomusNotifyLogic) CryptomusNotify(body []byte) error {
 	}
 	activate, err := settlePayment(l.ctx, store, paymentConfig, orderInfo.OrderNo, invoice.UUID, amount, invoice.Currency)
 	if err != nil {
-		l.Logger.Error("[CryptomusNotify] Update order status failed", zap.Any("error", err.Error()), zap.Any("orderNo", orderInfo.OrderNo))
 		return err
 	}
 

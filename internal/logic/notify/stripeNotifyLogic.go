@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -39,7 +40,10 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
 	webhookPayload, err := io.ReadAll(r.Body)
 	if err != nil {
-		l.Logger.Errorw("[StripeNotify] error", zap.Any("errors", err.Error()))
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return rejectedNotification{err}
+		}
 		return err
 	}
 	signature := r.Header.Get("Stripe-Signature")
@@ -59,8 +63,7 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 
 	notify, err := client.ParseNotify(webhookPayload, signature)
 	if err != nil {
-		l.Logger.Errorw("[StripeNotify] error", zap.Any("errors", err.Error()))
-		return err
+		return rejectedNotification{err}
 	}
 
 	// Skip events that don't need processing (e.g. payment_failed, unhandled types)
@@ -73,17 +76,16 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 
 	// Validate order number
 	if notify.OrderNo == "" {
-		l.Logger.Errorw("[StripeNotify] order_no is empty in webhook", zap.Any("eventType", notify.EventType), zap.Any("tradeNo", notify.TradeNo))
-		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "order_no is empty in webhook event: %s, trade_no: %s", notify.EventType, notify.TradeNo)
+		return rejectedNotification{errors.New("order_no is empty in webhook")}
 	}
 
 	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, notify.OrderNo)
-	if err != nil {
-		l.Logger.Error("[StripeNotify] Find order failed", zap.Any("error", err.Error()), zap.Any("orderNo", notify.OrderNo))
-		return errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", notify.OrderNo)
+	if ent.IsNotFound(err) || (err == nil && orderInfo == nil) {
+		return rejectedNotification{xerr.NewErrCode(xerr.OrderNotExist)}
 	}
-	if orderInfo == nil {
-		return xerr.NewErrCode(xerr.OrderNotExist)
+	if err != nil {
+		l.Logger.Errorw("[StripeNotify] Find order failed", "error", err)
+		return err
 	}
 	if strings.HasPrefix(orderInfo.TradeNo, "cs_") && notify.EventType == "payment_intent.succeeded" {
 		return nil

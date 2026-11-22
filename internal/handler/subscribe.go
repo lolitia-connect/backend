@@ -99,7 +99,7 @@ func writeSubscribeResponse(c context.Context, ctx *app.RequestContext, svcCtx *
 			case xerr.SubscribeNotAvailable:
 				statusCode = consts.StatusNotFound
 				errMsg = "Not Found"
-			case xerr.SubscribeExpired:
+			case xerr.SubscribeExpired, xerr.UserDisabled:
 				statusCode = consts.StatusForbidden
 				errMsg = "Forbidden"
 			}

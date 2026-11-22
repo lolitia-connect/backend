@@ -30,7 +30,7 @@ func (l *GetLogSettingLogic) GetLogSetting() (resp *types.LogSetting, err error)
 		l.Logger.Errorw("[GetLogSetting] Database query error", zap.Any("error", err.Error()))
 		return nil, err
 	}
-	resp = &types.LogSetting{}
+	resp = &types.LogSetting{SentryEnabled: new(bool)}
 	// reflect to response
 	tool.SystemConfigSliceReflectToStruct(configs, resp)
 	return

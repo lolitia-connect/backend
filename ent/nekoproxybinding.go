@@ -28,6 +28,8 @@ type NekoproxyBinding struct {
 	SessionID string `json:"session_id,omitempty"`
 	// SyncOnSave holds the value of the "sync_on_save" field.
 	SyncOnSave bool `json:"sync_on_save,omitempty"`
+	// Last protocol-managed target port; 0 is manual, NULL is an unclassified binding
+	ManagedTargetPort *uint16 `json:"managed_target_port,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -65,7 +67,7 @@ func (*NekoproxyBinding) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case nekoproxybinding.FieldSyncOnSave:
 			values[i] = new(sql.NullBool)
-		case nekoproxybinding.FieldID, nekoproxybinding.FieldNodeID:
+		case nekoproxybinding.FieldID, nekoproxybinding.FieldNodeID, nekoproxybinding.FieldManagedTargetPort:
 			values[i] = new(sql.NullInt64)
 		case nekoproxybinding.FieldAPIURL, nekoproxybinding.FieldForwardID, nekoproxybinding.FieldSessionID:
 			values[i] = new(sql.NullString)
@@ -121,6 +123,13 @@ func (_m *NekoproxyBinding) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field sync_on_save", values[i])
 			} else if value.Valid {
 				_m.SyncOnSave = value.Bool
+			}
+		case nekoproxybinding.FieldManagedTargetPort:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field managed_target_port", values[i])
+			} else if value.Valid {
+				_m.ManagedTargetPort = new(uint16)
+				*_m.ManagedTargetPort = uint16(value.Int64)
 			}
 		case nekoproxybinding.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -189,6 +198,11 @@ func (_m *NekoproxyBinding) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("sync_on_save=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SyncOnSave))
+	builder.WriteString(", ")
+	if v := _m.ManagedTargetPort; v != nil {
+		builder.WriteString("managed_target_port=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

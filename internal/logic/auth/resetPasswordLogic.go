@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -72,19 +71,8 @@ func (l *ResetPasswordLogic) ResetPassword(req *types.ResetPasswordRequest) (res
 
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeCacheKey, constant.Security, req.Email)
 	// Check the verification code
-	if value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result(); err != nil {
-		l.Logger.Errorw("Verification code error", zap.Any("cacheKey", cacheKey), zap.Any("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "Verification code error")
-	} else {
-		var payload CacheKeyPayload
-		if err := json.Unmarshal([]byte(value), &payload); err != nil {
-			l.Logger.Errorw("Unmarshal errors", zap.Any("cacheKey", cacheKey), zap.Any("error", err.Error()), zap.Any("value", value))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "Verification code error")
-		}
-		if payload.Code != req.Code {
-			l.Logger.Errorw("Verification code error", zap.Any("cacheKey", cacheKey), zap.Any("error", "Verification code error"), zap.Any("reqCode", req.Code), zap.Any("payloadCode", payload.Code))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "Verification code error")
-		}
+	if err := usersession.VerifyCode(l.ctx, l.svcCtx.Redis, cacheKey, req.Code); err != nil {
+		return nil, err
 	}
 
 	// Verify captcha

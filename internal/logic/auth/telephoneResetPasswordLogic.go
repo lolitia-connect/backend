@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -51,27 +50,8 @@ func (l *TelephoneResetPasswordLogic) TelephoneResetPassword(req *types.Telephon
 
 	// if the email verification is enabled, the verification code is required
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.ParseVerifyType(uint8(constant.Security)), phoneNumber)
-	l.Logger.Infof("TelephoneResetPassword cacheKey: %s, code: %s", cacheKey, code)
-	value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-	if err != nil {
-		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	l.Logger.Infof("TelephoneResetPassword cacheKey: %s, code: %s,value : %s", cacheKey, code, value)
-	if value == "" {
-		l.Logger.Errorf("TelephoneResetPassword value empty: %s", value)
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-
-	var payload CacheKeyPayload
-	if err := json.Unmarshal([]byte(value), &payload); err != nil {
-		l.Logger.Errorf("TelephoneResetPassword Unmarshal Error: %s", err.Error())
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-
-	if payload.Code != code {
-		l.Logger.Errorf("TelephoneResetPassword code: %s, code: %s", code, payload.Code)
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
+	if err := usersession.VerifyCode(l.ctx, l.svcCtx.Redis, cacheKey, code); err != nil {
+		return nil, err
 	}
 
 	authMethods, err := l.svcCtx.Store.User().FindUserAuthMethodByOpenID(l.ctx, "mobile", phoneNumber)

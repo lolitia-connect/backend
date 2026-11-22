@@ -78,14 +78,10 @@ func (l *BindOAuthCallbackLogic) BindOAuthCallback(req *types.BindOAuthCallbackR
 	case "facebook":
 		err = l.facebook(req)
 	default:
-		l.Logger.Errorw("oauth login method not support", zap.Any("method", req.Method))
+		l.Logger.Debugw("oauth login method not supported", "method", req.Method)
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "oauth login method not support: %v", req.Method)
 	}
-	if err != nil {
-		l.Logger.Errorw("bind oauth callback failed: %v", zap.Any("error", err.Error()))
-		return err
-	}
-	return nil
+	return err
 }
 func (l *BindOAuthCallbackLogic) google(req *types.BindOAuthCallbackRequest) error {
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
@@ -102,7 +98,9 @@ func (l *BindOAuthCallbackLogic) google(req *types.BindOAuthCallbackRequest) err
 	// validate the state code
 	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "google", "bind", u.Id, request.State)
 	if err != nil {
-		l.Logger.Errorw("error get google state code: %v", zap.Any("error", err.Error()))
+		if !oauthstate.IsRejected(err) {
+			l.Logger.Errorw("Google state lookup failed", "error", err)
+		}
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get google state code failed")
 	}
 	// get google config
@@ -168,7 +166,9 @@ func (l *BindOAuthCallbackLogic) github(req *types.BindOAuthCallbackRequest) err
 	}
 	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "github", "bind", u.Id, request.State)
 	if err != nil {
-		l.Logger.Errorw("error get github state code: %v", zap.Any("error", err.Error()))
+		if !oauthstate.IsRejected(err) {
+			l.Logger.Errorw("GitHub state lookup failed", "error", err)
+		}
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get github state code failed")
 	}
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "github")
@@ -230,7 +230,9 @@ func (l *BindOAuthCallbackLogic) facebook(req *types.BindOAuthCallbackRequest) e
 	}
 	redirect, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "facebook", "bind", u.Id, request.State)
 	if err != nil {
-		l.Logger.Errorw("error get facebook state code: %v", zap.Any("error", err.Error()))
+		if !oauthstate.IsRejected(err) {
+			l.Logger.Errorw("Facebook state lookup failed", "error", err)
+		}
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get facebook state code failed")
 	}
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "facebook")
@@ -287,7 +289,9 @@ func (l *BindOAuthCallbackLogic) apple(req *types.BindOAuthCallbackRequest) erro
 	}
 	_, err := oauthstate.Consume(l.ctx, l.svcCtx.Redis, "apple", "bind", account.Id, state)
 	if err != nil {
-		l.Logger.Errorw("[BindOAuthCallbackLogic] Get State code error", zap.Any("error", err.Error()))
+		if !oauthstate.IsRejected(err) {
+			l.Logger.Errorw("Apple state lookup failed", "error", err)
+		}
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get apple state code failed: %v", err.Error())
 	}
 	appleAuth, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "apple")
@@ -336,7 +340,7 @@ func (l *BindOAuthCallbackLogic) apple(req *types.BindOAuthCallbackRequest) erro
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find user auth method by openid failed: %v", err.Error())
 	}
 	if userAuthMethod != nil && userAuthMethod.Id > 0 {
-		l.Logger.Errorw("[BindOAuthCallbackLogic] User already exists")
+		l.Logger.Debug("[BindOAuthCallbackLogic] User already exists")
 		return errors.Wrapf(xerr.NewErrCode(xerr.UserExist), "apple user already exists")
 	}
 	// query user info
@@ -369,13 +373,13 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 
 	callback, ok := req.Callback.(map[string]interface{})
 	if !ok {
-		l.Logger.Errorw("invalid telegram callback payload", zap.Any("callback_type", fmt.Sprintf("%T", req.Callback)))
+		l.Logger.Debug("invalid telegram callback payload")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "invalid telegram callback payload")
 	}
 
 	encodeText, ok := callback["tgAuthResult"].(string)
 	if !ok || encodeText == "" {
-		l.Logger.Errorw("telegram callback payload missing tgAuthResult")
+		l.Logger.Debug("telegram callback payload missing tgAuthResult")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "invalid telegram callback payload")
 	}
 
@@ -394,21 +398,17 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 
 	callbackData, err := telegram.ParseAndValidateBase64([]byte(encodeText), cfg.BotToken)
 	if err != nil {
-		l.Logger.Errorw("parse telegram callback failed", zap.Any("error", err.Error()))
+		l.Logger.Warn("invalid telegram callback")
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "parse telegram callback failed")
 	}
 
 	if callbackData.Id == nil || callbackData.AuthDate == nil {
-		l.Logger.Errorw("telegram callback payload missing required fields")
+		l.Logger.Debug("telegram callback payload missing required fields")
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "invalid telegram callback payload")
 	}
 
 	if time.Now().Unix()-*callbackData.AuthDate > telegramBindAuthExpire {
-		l.Logger.Errorw("telegram auth date expired",
-			zap.Any("auth_date", *callbackData.AuthDate),
-			zap.Any("current_time", time.Now().Unix()),
-			zap.Any("expire_seconds", telegramBindAuthExpire),
-		)
+		l.Logger.Debug("telegram auth date expired")
 		return errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "auth date expired")
 	}
 
@@ -422,7 +422,7 @@ func (l *BindOAuthCallbackLogic) telegram(req *types.BindOAuthCallbackRequest) e
 		l.Logger.Errorw("telegram bind replay check unavailable", zap.Any("error", claimErr.Error()))
 		return claimErr
 	} else if !allowed {
-		l.Logger.Errorw("telegram bind callback replayed")
+		l.Logger.Warn("telegram bind callback replayed")
 		return errors.Wrap(xerr.NewErrCode(xerr.ERROR), "telegram callback has already been used")
 	}
 

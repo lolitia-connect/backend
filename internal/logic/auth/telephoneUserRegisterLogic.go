@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -25,11 +24,6 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
-
-type CacheKeyPayload struct {
-	Code   string `json:"code"`
-	LastAt int64  `json:"lastAt"`
-}
 
 type TelephoneUserRegisterLogic struct {
 	Logger *zap.SugaredLogger
@@ -68,22 +62,9 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 
 	// if the email verification is enabled, the verification code is required
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.ParseVerifyType(uint8(constant.Register)), phoneNumber)
-	value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-	if err != nil {
-		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
+	if err := usersession.ConsumeCode(l.ctx, l.svcCtx.Redis, cacheKey, req.Code); err != nil {
+		return nil, err
 	}
-
-	var payload CacheKeyPayload
-	err = json.Unmarshal([]byte(value), &payload)
-	if err != nil {
-		l.Logger.Errorw("Unmarshal Error", zap.Any("error", err.Error()), zap.Any("value", value))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	if payload.Code != req.Code {
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	l.svcCtx.Redis.Del(l.ctx, cacheKey)
 
 	// Verify captcha
 	if err := l.verifyCaptcha(req); err != nil {
@@ -108,7 +89,9 @@ func (l *TelephoneUserRegisterLogic) TelephoneUserRegister(req *types.TelephoneR
 		// Check if the invite code is valid
 		referer, err = l.svcCtx.Store.User().FindOneByReferCode(l.ctx, req.Invite)
 		if err != nil {
-			l.Logger.Errorw("FindOneByReferCode Error", zap.Any("error", err))
+			if !ent.IsNotFound(err) {
+				l.Logger.Errorw("Invitation lookup failed", "error", err)
+			}
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InviteCodeError), "invite code is invalid")
 		}
 	}

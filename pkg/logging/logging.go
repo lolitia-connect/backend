@@ -63,7 +63,7 @@ func SetUp(c LogConf) error {
 		return err
 	}
 	core := zapcore.NewCore(encoder(c), ws, level(c.Level))
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1), zap.AddStacktrace(zapcore.FatalLevel))
+	logger := zap.New(zapcore.NewTee(core, &backendSentry), zap.AddCaller(), zap.AddCallerSkip(1), zap.AddStacktrace(zapcore.FatalLevel))
 	zap.ReplaceGlobals(logger)
 	log.SetOutput(zap.NewStdLog(logger).Writer())
 	hlog.SetLogger(NewHertzLogger())

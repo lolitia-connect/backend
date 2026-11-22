@@ -5911,21 +5911,23 @@ func (m *GroupHistoryDetailMutation) ResetEdge(name string) error {
 // NekoproxyBindingMutation represents an operation that mutates the NekoproxyBinding nodes in the graph.
 type NekoproxyBindingMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *int64
-	api_url       *string
-	forward_id    *string
-	session_id    *string
-	sync_on_save  *bool
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	node          *int64
-	clearednode   bool
-	done          bool
-	oldValue      func(context.Context) (*NekoproxyBinding, error)
-	predicates    []predicate.NekoproxyBinding
+	op                     Op
+	typ                    string
+	id                     *int64
+	api_url                *string
+	forward_id             *string
+	session_id             *string
+	sync_on_save           *bool
+	managed_target_port    *uint16
+	addmanaged_target_port *int16
+	created_at             *time.Time
+	updated_at             *time.Time
+	clearedFields          map[string]struct{}
+	node                   *int64
+	clearednode            bool
+	done                   bool
+	oldValue               func(context.Context) (*NekoproxyBinding, error)
+	predicates             []predicate.NekoproxyBinding
 }
 
 var _ ent.Mutation = (*NekoproxyBindingMutation)(nil)
@@ -6212,6 +6214,76 @@ func (m *NekoproxyBindingMutation) ResetSyncOnSave() {
 	m.sync_on_save = nil
 }
 
+// SetManagedTargetPort sets the "managed_target_port" field.
+func (m *NekoproxyBindingMutation) SetManagedTargetPort(u uint16) {
+	m.managed_target_port = &u
+	m.addmanaged_target_port = nil
+}
+
+// ManagedTargetPort returns the value of the "managed_target_port" field in the mutation.
+func (m *NekoproxyBindingMutation) ManagedTargetPort() (r uint16, exists bool) {
+	v := m.managed_target_port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldManagedTargetPort returns the old "managed_target_port" field's value of the NekoproxyBinding entity.
+// If the NekoproxyBinding object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NekoproxyBindingMutation) OldManagedTargetPort(ctx context.Context) (v *uint16, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldManagedTargetPort is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldManagedTargetPort requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldManagedTargetPort: %w", err)
+	}
+	return oldValue.ManagedTargetPort, nil
+}
+
+// AddManagedTargetPort adds u to the "managed_target_port" field.
+func (m *NekoproxyBindingMutation) AddManagedTargetPort(u int16) {
+	if m.addmanaged_target_port != nil {
+		*m.addmanaged_target_port += u
+	} else {
+		m.addmanaged_target_port = &u
+	}
+}
+
+// AddedManagedTargetPort returns the value that was added to the "managed_target_port" field in this mutation.
+func (m *NekoproxyBindingMutation) AddedManagedTargetPort() (r int16, exists bool) {
+	v := m.addmanaged_target_port
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearManagedTargetPort clears the value of the "managed_target_port" field.
+func (m *NekoproxyBindingMutation) ClearManagedTargetPort() {
+	m.managed_target_port = nil
+	m.addmanaged_target_port = nil
+	m.clearedFields[nekoproxybinding.FieldManagedTargetPort] = struct{}{}
+}
+
+// ManagedTargetPortCleared returns if the "managed_target_port" field was cleared in this mutation.
+func (m *NekoproxyBindingMutation) ManagedTargetPortCleared() bool {
+	_, ok := m.clearedFields[nekoproxybinding.FieldManagedTargetPort]
+	return ok
+}
+
+// ResetManagedTargetPort resets all changes to the "managed_target_port" field.
+func (m *NekoproxyBindingMutation) ResetManagedTargetPort() {
+	m.managed_target_port = nil
+	m.addmanaged_target_port = nil
+	delete(m.clearedFields, nekoproxybinding.FieldManagedTargetPort)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *NekoproxyBindingMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -6345,7 +6417,7 @@ func (m *NekoproxyBindingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NekoproxyBindingMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.node != nil {
 		fields = append(fields, nekoproxybinding.FieldNodeID)
 	}
@@ -6360,6 +6432,9 @@ func (m *NekoproxyBindingMutation) Fields() []string {
 	}
 	if m.sync_on_save != nil {
 		fields = append(fields, nekoproxybinding.FieldSyncOnSave)
+	}
+	if m.managed_target_port != nil {
+		fields = append(fields, nekoproxybinding.FieldManagedTargetPort)
 	}
 	if m.created_at != nil {
 		fields = append(fields, nekoproxybinding.FieldCreatedAt)
@@ -6385,6 +6460,8 @@ func (m *NekoproxyBindingMutation) Field(name string) (ent.Value, bool) {
 		return m.SessionID()
 	case nekoproxybinding.FieldSyncOnSave:
 		return m.SyncOnSave()
+	case nekoproxybinding.FieldManagedTargetPort:
+		return m.ManagedTargetPort()
 	case nekoproxybinding.FieldCreatedAt:
 		return m.CreatedAt()
 	case nekoproxybinding.FieldUpdatedAt:
@@ -6408,6 +6485,8 @@ func (m *NekoproxyBindingMutation) OldField(ctx context.Context, name string) (e
 		return m.OldSessionID(ctx)
 	case nekoproxybinding.FieldSyncOnSave:
 		return m.OldSyncOnSave(ctx)
+	case nekoproxybinding.FieldManagedTargetPort:
+		return m.OldManagedTargetPort(ctx)
 	case nekoproxybinding.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case nekoproxybinding.FieldUpdatedAt:
@@ -6456,6 +6535,13 @@ func (m *NekoproxyBindingMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetSyncOnSave(v)
 		return nil
+	case nekoproxybinding.FieldManagedTargetPort:
+		v, ok := value.(uint16)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetManagedTargetPort(v)
+		return nil
 	case nekoproxybinding.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -6478,6 +6564,9 @@ func (m *NekoproxyBindingMutation) SetField(name string, value ent.Value) error 
 // this mutation.
 func (m *NekoproxyBindingMutation) AddedFields() []string {
 	var fields []string
+	if m.addmanaged_target_port != nil {
+		fields = append(fields, nekoproxybinding.FieldManagedTargetPort)
+	}
 	return fields
 }
 
@@ -6486,6 +6575,8 @@ func (m *NekoproxyBindingMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *NekoproxyBindingMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case nekoproxybinding.FieldManagedTargetPort:
+		return m.AddedManagedTargetPort()
 	}
 	return nil, false
 }
@@ -6495,6 +6586,13 @@ func (m *NekoproxyBindingMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *NekoproxyBindingMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case nekoproxybinding.FieldManagedTargetPort:
+		v, ok := value.(int16)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddManagedTargetPort(v)
+		return nil
 	}
 	return fmt.Errorf("unknown NekoproxyBinding numeric field %s", name)
 }
@@ -6502,7 +6600,11 @@ func (m *NekoproxyBindingMutation) AddField(name string, value ent.Value) error 
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *NekoproxyBindingMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(nekoproxybinding.FieldManagedTargetPort) {
+		fields = append(fields, nekoproxybinding.FieldManagedTargetPort)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -6515,6 +6617,11 @@ func (m *NekoproxyBindingMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *NekoproxyBindingMutation) ClearField(name string) error {
+	switch name {
+	case nekoproxybinding.FieldManagedTargetPort:
+		m.ClearManagedTargetPort()
+		return nil
+	}
 	return fmt.Errorf("unknown NekoproxyBinding nullable field %s", name)
 }
 
@@ -6536,6 +6643,9 @@ func (m *NekoproxyBindingMutation) ResetField(name string) error {
 		return nil
 	case nekoproxybinding.FieldSyncOnSave:
 		m.ResetSyncOnSave()
+		return nil
+	case nekoproxybinding.FieldManagedTargetPort:
+		m.ResetManagedTargetPort()
 		return nil
 	case nekoproxybinding.FieldCreatedAt:
 		m.ResetCreatedAt()

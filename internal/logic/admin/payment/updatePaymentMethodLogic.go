@@ -44,9 +44,10 @@ func (l *UpdatePaymentMethodLogic) UpdatePaymentMethod(req *types.UpdatePaymentM
 		l.Logger.Errorw("find payment method error", zap.Any("id", req.Id), zap.Any("error", err.Error()))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %s", err.Error())
 	}
-	if req.Sort == 0 {
-		req.Sort = method.Sort
+	if req.Sort == nil {
+		req.Sort = &method.Sort
 	}
+	sortValue := *req.Sort
 	if payment.ParsePlatform(req.Platform) != payment.ParsePlatform(method.Platform) {
 		return nil, errors.New("payment platform cannot be changed")
 	}
@@ -63,6 +64,7 @@ func (l *UpdatePaymentMethodLogic) UpdatePaymentMethod(req *types.UpdatePaymentM
 		}
 	}
 	tool.DeepCopy(method, req)
+	method.Sort = sortValue
 	if req.Enable == nil {
 		method.Enable = previousEnabled
 	}

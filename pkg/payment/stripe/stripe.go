@@ -144,7 +144,6 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 	case "checkout.session.completed", "checkout.session.async_payment_succeeded":
 		var sess stripe.CheckoutSession
 		if err := json.Unmarshal(event.Data.Raw, &sess); err != nil {
-			zap.S().Error("Failed to unmarshal checkout session", zap.Any("error", err.Error()))
 			return nil, err
 		}
 		orderNo := sess.ClientReferenceID
@@ -174,7 +173,6 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 	case "payment_intent.succeeded":
 		var paymentIntent stripe.PaymentIntent
 		if err := json.Unmarshal(event.Data.Raw, &paymentIntent); err != nil {
-			zap.S().Error("Failed to unmarshal payment intent", zap.Any("error", err.Error()))
 			return nil, err
 		}
 		orderNo := paymentIntent.Metadata["order_no"]

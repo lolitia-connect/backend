@@ -37,6 +37,29 @@ func NewErrCode(errCode uint32) *CodeError {
 	return &CodeError{errCode: errCode, errMsg: MapErrMsg(errCode)}
 }
 
+// IsRejection identifies a refused request even when the API returns HTTP 200.
+// Unknown codes and infrastructure errors are deliberately left visible.
+func IsRejection(err error) bool {
+	var e *CodeError
+	if !errors.As(err, &e) {
+		return false
+	}
+	switch e.errCode {
+	case InvalidParams, TooManyRequests, ErrorTokenEmpty, ErrorTokenInvalid, ErrorTokenExpire, InvalidAccess,
+		InvalidCiphertext, PermissionDenied, UserExist, UserNotExist, UserPasswordError, UserDisabled,
+		InsufficientBalance, StopRegister, TelegramNotBound, UserNotBindOauth, InviteCodeError, UserCommissionNotEnough, RegisterIPLimit,
+		NodeExist, NodeNotExist, NodeGroupExist, NodeGroupNotExist, NodeGroupNotEmpty,
+		CouponNotExist, CouponAlreadyUsed, CouponNotApplicable, CouponInsufficientUsage, CouponExpired, CouponDisabled,
+		SubscribeExpired, SubscribeNotAvailable, UserSubscribeExist, SubscribeIsUsedError, SingleSubscribeModeExceedsLimit,
+		SubscribeQuotaLimit, SubscribeOutOfStock, TrafficExhausted, VerifyCodeError, SmsNotEnabled, EmailNotEnabled,
+		AuthenticatorNotSupportedError, TelephoneAreaCodeIsEmpty, TodaySendCountExceedsLimit, PasswordIsEmpty, AreaCodeIsEmpty,
+		PasswordOrVerificationCodeRequired, EmailExist, TelephoneExist, DeviceExist, TelephoneError, DeviceNotExist, UseridNotMatch,
+		OrderNotExist, PaymentMethodNotFound, OrderStatusError, InsufficientOfPeriod, ExistAvailableTraffic, WithdrawalAlreadyReviewed:
+		return true
+	}
+	return false
+}
+
 func NewErrMsg(errMsg string) *CodeError {
 	return &CodeError{errCode: ERROR, errMsg: errMsg}
 }

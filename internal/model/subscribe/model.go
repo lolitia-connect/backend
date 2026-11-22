@@ -47,9 +47,8 @@ type customSubscribeLogicModel interface {
 	FilterList(ctx context.Context, params *FilterParams) (int64, []*Subscribe, error)
 	FilterListByNodeGroups(ctx context.Context, params *FilterByNodeGroupsParams) (int64, []*Subscribe, error)
 	ClearCache(ctx context.Context, id ...int64) error
-	QuerySubscribeMinSortByIds(ctx context.Context, ids []int64) (int64, error)
+	UpdateSortValue(ctx context.Context, id, sort int64) error
 	QueryResetCycleSubscribeIds(ctx context.Context, resetCycle int) ([]int64, error)
-	UpdateSort(ctx context.Context, data []*Subscribe) error
 	QueryGroupList(ctx context.Context) (int64, []*Group, error)
 	QueryAll(ctx context.Context) ([]*Subscribe, error)
 	FindByIds(ctx context.Context, ids []int64) ([]*Subscribe, error)
@@ -88,15 +87,20 @@ func (m *customSubscribeModel) ClearAllNodeGroupIds(ctx context.Context) error {
 	return err
 }
 
-func (m *customSubscribeModel) QuerySubscribeMinSortByIds(ctx context.Context, ids []int64) (int64, error) {
-	minSort, err := m.db.Subscribe.Query().Where(entsubscribe.IDIn(ids...)).Aggregate(ent.Min(entsubscribe.FieldSort)).Int(ctx)
-	return int64(minSort), err
-}
-
 func (m *customSubscribeModel) QueryResetCycleSubscribeIds(ctx context.Context, resetCycle int) ([]int64, error) {
 	return m.db.Subscribe.Query().Where(entsubscribe.ResetCycle(int64(resetCycle))).IDs(ctx)
 }
 
+func (m *customSubscribeModel) UpdateSortValue(ctx context.Context, id, sort int64) error {
+	data, err := m.FindOne(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := m.db.Subscribe.UpdateOneID(id).SetSort(sort).Exec(ctx); err != nil {
+		return err
+	}
+	return m.delCache(ctx, m.getCacheKeys(data)...)
+}
 func (m *customSubscribeModel) ClearCache(ctx context.Context, ids ...int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -109,19 +113,6 @@ func (m *customSubscribeModel) ClearCache(ctx context.Context, ids ...int64) err
 			return err
 		}
 		cacheKeys = append(cacheKeys, m.getCacheKeys(data)...)
-	}
-	return m.delCache(ctx, cacheKeys...)
-}
-
-func (m *customSubscribeModel) UpdateSort(ctx context.Context, data []*Subscribe) error {
-	if len(data) == 0 {
-		return nil
-	}
-	cacheKeys := m.batchGetCacheKeys(data...)
-	for _, item := range data {
-		if err := m.Update(ctx, item); err != nil {
-			return err
-		}
 	}
 	return m.delCache(ctx, cacheKeys...)
 }
@@ -212,7 +203,7 @@ func (m *customSubscribeModel) FilterList(ctx context.Context, params *FilterPar
 		if err != nil {
 			return 0, nil, err
 		}
-		list, err := query.Order(entsubscribe.BySort()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
+		list, err := query.Order(entsubscribe.BySort(), entsubscribe.ByID()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
 		return int64(total), entSubscribesToModel(list), err
 	}
 
@@ -259,7 +250,7 @@ func (m *customSubscribeModel) FilterListByNodeGroups(ctx context.Context, param
 	if err != nil {
 		return 0, nil, err
 	}
-	list, err := query.Order(entsubscribe.BySort()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
+	list, err := query.Order(entsubscribe.BySort(), entsubscribe.ByID()).Limit(params.Size).Offset((params.Page - 1) * params.Size).All(ctx)
 	return int64(total), entSubscribesToModel(list), err
 }
 

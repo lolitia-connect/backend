@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -10,7 +9,6 @@ import (
 	"github.com/perfect-panel/server/ent"
 
 	"github.com/perfect-panel/server/internal/config"
-	"github.com/perfect-panel/server/internal/logic/common"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -121,25 +119,9 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 		upgradePasswordAfterLogin(l.ctx, l.svcCtx, l.Logger, userInfo, req.Password)
 	} else {
 		cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, constant.ParseVerifyType(uint8(constant.Security)), phoneNumber)
-		value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-		if err != nil {
-			l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
+		if err := usersession.ConsumeCode(l.ctx, l.svcCtx.Redis, cacheKey, req.TelephoneCode); err != nil {
+			return nil, err
 		}
-
-		if value == "" {
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-		}
-
-		var payload common.CacheKeyPayload
-		if err := json.Unmarshal([]byte(value), &payload); err != nil {
-			l.Logger.Errorw("[SendSmsCode]: Unmarshal Error", zap.Any("error", err.Error()), zap.Any("value", value))
-		}
-
-		if payload.Code != req.TelephoneCode {
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-		}
-		l.svcCtx.Redis.Del(l.ctx, cacheKey)
 	}
 
 	// Bind device to user if identifier is provided

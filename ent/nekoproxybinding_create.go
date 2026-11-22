@@ -59,6 +59,20 @@ func (_c *NekoproxyBindingCreate) SetNillableSyncOnSave(v *bool) *NekoproxyBindi
 	return _c
 }
 
+// SetManagedTargetPort sets the "managed_target_port" field.
+func (_c *NekoproxyBindingCreate) SetManagedTargetPort(v uint16) *NekoproxyBindingCreate {
+	_c.mutation.SetManagedTargetPort(v)
+	return _c
+}
+
+// SetNillableManagedTargetPort sets the "managed_target_port" field if the given value is not nil.
+func (_c *NekoproxyBindingCreate) SetNillableManagedTargetPort(v *uint16) *NekoproxyBindingCreate {
+	if v != nil {
+		_c.SetManagedTargetPort(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *NekoproxyBindingCreate) SetCreatedAt(v time.Time) *NekoproxyBindingCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -235,6 +249,10 @@ func (_c *NekoproxyBindingCreate) createSpec() (*NekoproxyBinding, *sqlgraph.Cre
 	if value, ok := _c.mutation.SyncOnSave(); ok {
 		_spec.SetField(nekoproxybinding.FieldSyncOnSave, field.TypeBool, value)
 		_node.SyncOnSave = value
+	}
+	if value, ok := _c.mutation.ManagedTargetPort(); ok {
+		_spec.SetField(nekoproxybinding.FieldManagedTargetPort, field.TypeUint16, value)
+		_node.ManagedTargetPort = &value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(nekoproxybinding.FieldCreatedAt, field.TypeTime, value)

@@ -158,6 +158,7 @@ var (
 		{Name: "forward_id", Type: field.TypeString, Size: 128},
 		{Name: "session_id", Type: field.TypeString, Size: 128},
 		{Name: "sync_on_save", Type: field.TypeBool, Default: true},
+		{Name: "managed_target_port", Type: field.TypeUint16, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "node_id", Type: field.TypeInt64, Unique: true},
@@ -170,7 +171,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "nekoproxy_bindings_nodes_nekoproxy_binding",
-				Columns:    []*schema.Column{NekoproxyBindingsColumns[7]},
+				Columns:    []*schema.Column{NekoproxyBindingsColumns[8]},
 				RefColumns: []*schema.Column{NodesColumns[0]},
 				OnDelete:   schema.Cascade,
 			},

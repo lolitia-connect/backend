@@ -4,8 +4,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/protocol/consts"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/pkg/logredact"
 )
+
+func TestOnlyKnownRefreshRejectionDowngrades503(t *testing.T) {
+	ctx := app.NewContext(0)
+	ctx.Response.SetStatusCode(consts.StatusServiceUnavailable)
+	ctx.Response.Header.Set("Retry-After", "1")
+	if isExpectedRetry(ctx) {
+		t.Fatal("a genuine 503 was classified as an expected retry")
+	}
+	ctx.Error(node.ErrServerBusy)
+	if !isExpectedRetry(ctx) {
+		t.Fatal("the node refresh refusal was classified as a service failure")
+	}
+}
 
 // A subscription URL carries the user's token as a query parameter and the
 // access log writes the whole request line, so the token must not survive into

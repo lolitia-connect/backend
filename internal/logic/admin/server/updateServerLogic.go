@@ -41,6 +41,9 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "unmarshal protocols error: %v", err.Error())
 	}
 	data.Name = req.Name
+	if req.Sort != nil {
+		data.Sort = *req.Sort
+	}
 	data.Country = req.Country
 	data.City = req.City
 	// only update address when it's  different

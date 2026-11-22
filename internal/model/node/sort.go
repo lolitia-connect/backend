@@ -78,15 +78,3 @@ func (m *defaultServerModel) ensureUniqueNodeSort(ctx context.Context, data *Nod
 	data.Sort = maxSort + 1
 	return nil
 }
-
-func nodeNameGBKOrder() entnode.OrderOption {
-	return func(s *sql.Selector) {
-		s.OrderExpr(sql.Expr("CONVERT(name USING gbk) ASC"))
-	}
-}
-
-func serverNameGBKOrder() entserver.OrderOption {
-	return func(s *sql.Selector) {
-		s.OrderExpr(sql.Expr("CONVERT(name USING gbk) ASC"))
-	}
-}

@@ -2,13 +2,13 @@ package user
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/internal/usersession"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
@@ -30,29 +30,11 @@ func NewVerifyEmailLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Verif
 	}
 }
 
-type CacheKeyPayload struct {
-	Code   string `json:"code"`
-	LastAt int64  `json:"lastAt"`
-}
-
 func (l *VerifyEmailLogic) VerifyEmail(req *types.VerifyEmailRequest) error {
 	cacheKey := fmt.Sprintf("%s:%s:%s", config.AuthCodeCacheKey, constant.Security, req.Email)
-	value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
-	if err != nil {
-		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
+	if err := usersession.ConsumeCode(l.ctx, l.svcCtx.Redis, cacheKey, req.Code); err != nil {
+		return err
 	}
-
-	var payload CacheKeyPayload
-	err = json.Unmarshal([]byte(value), &payload)
-	if err != nil {
-		l.Logger.Errorw("Redis Error", zap.Any("error", err.Error()), zap.Any("cacheKey", cacheKey))
-		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	if payload.Code != req.Code {
-		return errors.Wrapf(xerr.NewErrCode(xerr.VerifyCodeError), "code error")
-	}
-	l.svcCtx.Redis.Del(l.ctx, cacheKey)
 
 	u, ok := l.ctx.Value(constant.CtxKeyUser).(*user.User)
 	if !ok {

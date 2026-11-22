@@ -321,6 +321,10 @@ The `healthcheck` subcommand follows these settings (section 6).
 > `Compress: true`, `Level: debug`, `Color: true`); a value in the file always
 > wins over the tag default.
 
+Routine `HTTP Request` entries are kept in local logs only. When backend Sentry
+Tracing is enabled, requests are visible in Sentry Traces. `HTTP Error` and other
+logs continue to follow the backend Sentry settings.
+
 ### 3.6 Tracing (`Trace`)
 
 OpenTelemetry tracing of the HTTP requests, the database calls and the queued

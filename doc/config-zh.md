@@ -255,6 +255,8 @@ MaxMind GeoLite2 城市库为登录与审计日志提供地址归属地。没有
 > 配置（`FilePath: logs/ppanel.log`、`MaxSize: 50`、`MaxBackup: 3`、`MaxAge: 30`、`Compress: true`、
 > `Level: debug`、`Color: true`）；文件中的值始终优先于 tag 默认值。
 
+常规的 `HTTP Request` 日志只写入本地日志。启用后端 Sentry Tracing 后，可在 Sentry Traces 中查看请求。`HTTP Error` 和其他日志仍按后端 Sentry 设置上报。
+
 ### 3.6 链路追踪 (`Trace`)
 
 对 HTTP 请求、数据库调用与队列任务的 OpenTelemetry 追踪。`Endpoint` 未设置时不会上报任何数据。

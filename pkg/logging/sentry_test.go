@@ -115,6 +115,8 @@ func TestSentryReportsOnlySanitizedFailures(t *testing.T) {
 	}
 	requestCtx, finishRequest, _ := StartSentryRequest(context.Background(), "GET /test")
 	RecordSentryRequestMetrics(requestCtx, "GET", "/test", 200, 12*time.Millisecond)
+	logger.Info("HTTP Request", zap.Int("status", 200))
+	logger.Info("service ready")
 	previousHertzLogger := hlog.DefaultLogger()
 	hlog.SetLogger(NewHertzLogger())
 	defer hlog.SetLogger(previousHertzLogger)
@@ -122,7 +124,7 @@ func TestSentryReportsOnlySanitizedFailures(t *testing.T) {
 	h.Errorf(hlog.EngineErrorFormat, "error when reading request headers: malformed HTTP request. Buffer size=12, contents: \"SSH-2.0-Go\\r\\n\"", "untrusted-peer")
 	logger.Warn("expected denial")
 	h.Errorf(hlog.EngineErrorFormat, "error when reading request headers: unexpected reader failure. Buffer size=1, contents: private-payload", "untrusted-peer")
-	logger.Error("private-message", zap.String("token", "private-token"))
+	logger.Error("HTTP Error", zap.String("token", "private-token"))
 	finishRequest(200, true)
 	if err := ConfigureSentry(false, "", false); err != nil {
 		t.Fatal(err)
@@ -144,6 +146,14 @@ func TestSentryReportsOnlySanitizedFailures(t *testing.T) {
 		payload := lines[2]
 		if bytes.Contains(lines[1], []byte(`"type":"log"`)) {
 			logEnvelopes++
+			if bytes.Contains(payload, []byte(`"body":"HTTP Request"`)) {
+				t.Fatal("HTTP Request was sent to Sentry Logs")
+			}
+			for _, body := range []string{`"body":"service ready"`, `"body":"HTTP Error"`} {
+				if !bytes.Contains(payload, []byte(body)) {
+					t.Errorf("Sentry Logs payload missing %s", body)
+				}
+			}
 			if bytes.Contains(payload, []byte("private-token")) {
 				t.Fatal("sensitive log attribute was not redacted")
 			}
@@ -176,6 +186,9 @@ func TestSentryReportsOnlySanitizedFailures(t *testing.T) {
 	}
 	if errorEvents != 2 || logEnvelopes != 1 || transactionEnvelopes != 1 || metricEnvelopes != 1 {
 		t.Fatalf("got %d error events, %d log, %d transaction, and %d metric envelopes, want 2, 1, 1, and 1", errorEvents, logEnvelopes, transactionEnvelopes, metricEnvelopes)
+	}
+	if logs.FilterMessage("HTTP Request").FilterLevelExact(zapcore.InfoLevel).Len() != 1 {
+		t.Fatal("HTTP Request was not logged locally at info level")
 	}
 	if logs.FilterLevelExact(zapcore.DebugLevel).Len() != 1 || logs.FilterLevelExact(zapcore.ErrorLevel).Len() != 4 {
 		t.Fatal("unexpected local severity for malformed traffic or genuine failures")

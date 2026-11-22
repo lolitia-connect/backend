@@ -237,7 +237,7 @@ func safeBackendEvent(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
 }
 
 func safeBackendLog(event *sentry.Log) *sentry.Log {
-	if event == nil {
+	if event == nil || event.Body == "HTTP Request" {
 		return nil
 	}
 	event.Body = logredact.Text(event.Body)

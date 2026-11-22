@@ -32,43 +32,24 @@ func TestTokenLimit_WithCtx(t *testing.T) {
 	}
 }
 
-func TestTokenLimit_Take(t *testing.T) {
+func TestTokenLimit_RefillsAtConfiguredRateAndCapsAtBurst(t *testing.T) {
 	store, _ := CreateRedisWithClean(t)
+	const rate, burst = 5, 10
+	limiter := NewTokenLimiter(rate, burst, store, "tokenlimit")
+	start := time.Unix(1_000, 0)
 
-	const (
-		total = 100
-		rate  = 5
-		burst = 10
-	)
-	l := NewTokenLimiter(rate, burst, store, "tokenlimit")
-	var allowed int
-	for i := 0; i < total; i++ {
-		time.Sleep(time.Second / time.Duration(total))
-		if l.Allow() {
-			allowed++
-		}
-	}
+	assert.True(t, limiter.AllowN(start, burst), "a new bucket permits a full burst")
+	assert.False(t, limiter.AllowN(start, 1), "an empty bucket rejects even one token")
+	assert.False(t, limiter.AllowN(start.Add(999*time.Millisecond), 1), "no refill before the next second")
 
-	assert.True(t, allowed >= burst+rate)
-}
+	refill := start.Add(time.Second)
+	assert.False(t, limiter.AllowN(refill, rate+1), "a one-second refill cannot exceed the configured rate")
+	assert.True(t, limiter.AllowN(refill, rate), "rejecting a request leaves the refilled tokens available")
+	assert.False(t, limiter.AllowN(refill, 1), "the refill is exhausted")
 
-func TestTokenLimit_TakeBurst(t *testing.T) {
-	store, _ := CreateRedisWithClean(t)
-
-	const (
-		total = 100
-		rate  = 5
-		burst = 10
-	)
-	l := NewTokenLimiter(rate, burst, store, "tokenlimit")
-	var allowed int
-	for i := 0; i < total; i++ {
-		if l.Allow() {
-			allowed++
-		}
-	}
-
-	assert.True(t, allowed >= burst)
+	afterIdle := start.Add(10 * time.Second)
+	assert.False(t, limiter.AllowN(afterIdle, burst+1), "idle time cannot grow the bucket past the burst cap")
+	assert.True(t, limiter.AllowN(afterIdle, burst), "an idle bucket permits a full burst again")
 }
 
 // CreateRedisWithClean returns an in process redis.Redis and a clean function.

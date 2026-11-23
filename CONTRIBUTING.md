@@ -22,7 +22,7 @@ To ensure the quality of the codebase and maintainability of the project, please
 - **Unit Tests**: Write unit tests for added or modified functionality and ensure all tests pass.
 - **Documentation Updates**: Update documentation if the PR includes new features or API changes.
 
-Both build workflows run `go test -count=1 ./...` before building. A failing test blocks the build and release. The separate Coverage workflow runs on pushes, pull requests and manual dispatches. It excludes Go files under `ent/` with the Ent generator header from the coverage profile, so handwritten Ent schemas still count. The check fails when statement coverage in the filtered profile falls below 95%. Download the `backend-coverage` artifact to inspect that profile.
+Both build workflows run `go test -count=1 ./...` before building. A failing test blocks the build and release. The separate Coverage workflow file is `.github/workflows/coverage.yml`; its single Coverage step runs the tests, filters Ent-generated Go files, checks the 95% statement threshold and writes a Markdown report to the GitHub Actions job summary. The filtered coverage profile is also uploaded as `backend-coverage`.
 
 ## 3. Branch Strategy
 

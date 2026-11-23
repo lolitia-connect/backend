@@ -11,11 +11,28 @@ NF != 3 || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ { invalid = 1; exit }
         covered += $2
     }
 }
+function status(value) { return value == 0 ? "PASS" : "FAIL" }
 END {
+    testStatus = ENVIRON["GITHUB_TEST_STATUS"] + 0
+    coverageError = ENVIRON["GITHUB_COVERAGE_ERROR"]
     if (invalid || !total) {
-        print "No usable coverage data"
+        result = "FAIL"
+        message = coverageError != "" ? coverageError : "No usable coverage data"
+        print message
+        if (ENVIRON["GITHUB_STEP_SUMMARY"] != "") {
+            print "## Coverage" >> ENVIRON["GITHUB_STEP_SUMMARY"]
+            printf "| Check | Result |\n| --- | --- |\n| Tests | %s |\n| Generated Ent sources | Excluded |\n| Statement coverage | %s |\n", status(testStatus), message >> ENVIRON["GITHUB_STEP_SUMMARY"]
+            close(ENVIRON["GITHUB_STEP_SUMMARY"])
+        }
         exit 1
     }
-    printf "Covered %d/%d statements (%.4f%%), required %d%%\n", covered, total, 100 * covered / total, minimum
-    exit (100 * covered < minimum * total)
+    percent = 100 * covered / total
+    printf "Covered %d/%d statements (%.4f%%), required %d%%\n", covered, total, percent, minimum
+    result = 100 * covered < minimum * total ? "FAIL" : "PASS"
+    if (ENVIRON["GITHUB_STEP_SUMMARY"] != "") {
+        print "## Coverage" >> ENVIRON["GITHUB_STEP_SUMMARY"]
+        printf "| Check | Result |\n| --- | --- |\n| Tests | %s |\n| Generated Ent sources | Excluded |\n| Statement coverage | %s, %.4f%% (%d/%d statements), required %d%% |\n", status(testStatus), result, percent, covered, total, minimum >> ENVIRON["GITHUB_STEP_SUMMARY"]
+        close(ENVIRON["GITHUB_STEP_SUMMARY"])
+    }
+    exit (testStatus != 0 || 100 * covered < minimum * total)
 }

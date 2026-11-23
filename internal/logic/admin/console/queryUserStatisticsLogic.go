@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const consoleUserStatisticsCacheKey = "console:user_statistics"
+const consoleUserStatisticsCacheKey = "console:user_statistics:v2"
 const consoleUserStatisticsCacheTTL = 60 * time.Second
 
 type QueryUserStatisticsLogic struct {
@@ -54,12 +54,13 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 		resp.Today.Register = todayUserResisterCount
 	}
 	// query today user purchase count
-	newToday, renewalToday, err := l.svcCtx.Store.Order().QueryDateUserCounts(l.ctx, now)
+	newToday, renewalToday, redemptionToday, err := l.svcCtx.Store.Order().QueryDateUserCounts(l.ctx, now)
 	if err != nil {
 		l.Logger.Errorw("[QueryUserStatisticsLogic] QueryDateUserCounts error", zap.Any("error", err.Error()))
 	} else {
 		resp.Today.NewOrderUsers = newToday
 		resp.Today.RenewalOrderUsers = renewalToday
+		resp.Today.RedemptionOrderUsers = redemptionToday
 	}
 	// query month user register count
 	monthUserResisterCount, err := l.svcCtx.Store.User().QueryResisterUserTotalByMonthly(l.ctx, now)
@@ -69,12 +70,13 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 		resp.Monthly.Register = monthUserResisterCount
 	}
 	// query month user purchase count
-	newMonth, renewalMonth, err := l.svcCtx.Store.Order().QueryMonthlyUserCounts(l.ctx, now)
+	newMonth, renewalMonth, redemptionMonth, err := l.svcCtx.Store.Order().QueryMonthlyUserCounts(l.ctx, now)
 	if err != nil {
 		l.Logger.Errorw("[QueryUserStatisticsLogic] QueryMonthlyUserCounts error", zap.Any("error", err.Error()))
 	} else {
 		resp.Monthly.NewOrderUsers = newMonth
 		resp.Monthly.RenewalOrderUsers = renewalMonth
+		resp.Monthly.RedemptionOrderUsers = redemptionMonth
 	}
 
 	// Get monthly daily user statistics list for the current month (from 1st to current date)
@@ -86,10 +88,11 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 		monthlyList := make([]types.UserStatistics, len(monthlyListData))
 		for i, data := range monthlyListData {
 			monthlyList[i] = types.UserStatistics{
-				Date:              data.Date,
-				Register:          data.Register,
-				NewOrderUsers:     data.NewOrderUsers,
-				RenewalOrderUsers: data.RenewalOrderUsers,
+				Date:                 data.Date,
+				Register:             data.Register,
+				NewOrderUsers:        data.NewOrderUsers,
+				RenewalOrderUsers:    data.RenewalOrderUsers,
+				RedemptionOrderUsers: data.RedemptionOrderUsers,
 			}
 		}
 		resp.Monthly.List = monthlyList
@@ -104,12 +107,13 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 	}
 
 	// query all user order counts
-	allNewOrderUsers, allRenewalOrderUsers, err := l.svcCtx.Store.Order().QueryTotalUserCounts(l.ctx)
+	allNewOrderUsers, allRenewalOrderUsers, allRedemptionOrderUsers, err := l.svcCtx.Store.Order().QueryTotalUserCounts(l.ctx)
 	if err != nil {
 		l.Logger.Errorw("[QueryUserStatisticsLogic] QueryTotalUserCounts error", zap.Any("error", err.Error()))
 	} else {
 		resp.All.NewOrderUsers = allNewOrderUsers
 		resp.All.RenewalOrderUsers = allRenewalOrderUsers
+		resp.All.RedemptionOrderUsers = allRedemptionOrderUsers
 	}
 
 	// Get all monthly user statistics list for the past 6 months
@@ -121,10 +125,11 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 		allList := make([]types.UserStatistics, len(allListData))
 		for i, data := range allListData {
 			allList[i] = types.UserStatistics{
-				Date:              data.Date,
-				Register:          data.Register,
-				NewOrderUsers:     data.NewOrderUsers,
-				RenewalOrderUsers: data.RenewalOrderUsers,
+				Date:                 data.Date,
+				Register:             data.Register,
+				NewOrderUsers:        data.NewOrderUsers,
+				RenewalOrderUsers:    data.RenewalOrderUsers,
+				RedemptionOrderUsers: data.RedemptionOrderUsers,
 			}
 		}
 		resp.All.List = allList

@@ -7,6 +7,7 @@ import (
 
 	entorder "github.com/perfect-panel/server/ent/order"
 	entuser "github.com/perfect-panel/server/ent/user"
+	"github.com/perfect-panel/server/internal/model/order"
 )
 
 func (m *customUserModel) QueryResisterUserTotalByDate(ctx context.Context, date time.Time) (int64, error) {
@@ -60,35 +61,34 @@ func (m *customUserModel) queryUserStatistics(ctx context.Context, start, end ti
 		}
 		stat.Register++
 	}
-	orders, err := m.db.Order.Query().Where(entorder.CreatedAtGTE(start), entorder.CreatedAtLTE(end), entorder.StatusIn(2, 5)).Select(entorder.FieldCreatedAt, entorder.FieldUserID, entorder.FieldIsNew).All(ctx)
+	orders, err := m.db.Order.Query().Where(entorder.CreatedAtGTE(start), entorder.CreatedAtLTE(end), entorder.StatusIn(2, 5)).Select(entorder.FieldCreatedAt, entorder.FieldUserID, entorder.FieldIsNew, entorder.FieldType).All(ctx)
 	if err != nil {
 		return nil, err
 	}
 	newUsers := make(map[string]map[int64]struct{})
 	renewalUsers := make(map[string]map[int64]struct{})
+	redemptionUsers := make(map[string]map[int64]struct{})
 	for _, item := range orders {
 		key := formatUserBucket(item.CreatedAt, bucket)
-		if _, ok := items[key]; !ok {
-			continue
+		if items[key] == nil {
+			items[key] = &UserStatisticsWithDate{Date: key}
 		}
-		bucketUsers := renewalUsers[key]
-		if item.IsNew {
-			bucketUsers = newUsers[key]
+		categoryUsers := renewalUsers
+		if item.Type == order.TypeRedemption {
+			categoryUsers = redemptionUsers
+		} else if item.IsNew {
+			categoryUsers = newUsers
 		}
-		if bucketUsers == nil {
-			bucketUsers = make(map[int64]struct{})
-			if item.IsNew {
-				newUsers[key] = bucketUsers
-			} else {
-				renewalUsers[key] = bucketUsers
-			}
+		if categoryUsers[key] == nil {
+			categoryUsers[key] = make(map[int64]struct{})
 		}
-		bucketUsers[item.UserID] = struct{}{}
+		categoryUsers[key][item.UserID] = struct{}{}
 	}
 	results := make([]UserStatisticsWithDate, 0, len(items))
 	for key, item := range items {
 		item.NewOrderUsers = int64(len(newUsers[key]))
 		item.RenewalOrderUsers = int64(len(renewalUsers[key]))
+		item.RedemptionOrderUsers = int64(len(redemptionUsers[key]))
 		results = append(results, *item)
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Date < results[j].Date })

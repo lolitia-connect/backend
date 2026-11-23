@@ -9,8 +9,10 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/alicebob/miniredis/v2"
+	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/enttest"
+	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
@@ -51,5 +53,33 @@ func TestUnavailablePlanAndFailedPlanLookup(t *testing.T) {
 	_, err = logic.RedeemCode(request)
 	if !errors.As(err, &appErr) || appErr.GetErrCode() != xerr.DatabaseQueryError || logs.Len() != 1 {
 		t.Fatalf("failed lookup: err=%v error logs=%d", err, logs.Len())
+	}
+}
+
+func TestFirstRedemptionDoesNotCreateNewPurchase(t *testing.T) {
+	db, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	client := enttest.NewClient(t, enttest.WithOptions(ent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { _ = client.Close() })
+	cache := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+	t.Cleanup(func() { _ = cache.Close() })
+	queue := asynq.NewClient(asynq.RedisClientOpt{Addr: cache.Options().Addr})
+	t.Cleanup(func() { _ = queue.Close() })
+	ctx := context.WithValue(t.Context(), constant.CtxKeyUser, &user.User{Id: 7})
+	plan := client.Subscribe.Create().SetSell(true).SaveX(ctx)
+	code := client.RedemptionCode.Create().SetCode("first-redemption").SetSubscribePlan(plan.ID).SaveX(ctx)
+	service := &svc.ServiceContext{Store: repository.NewStore(client, nil), Redis: cache, Queue: queue}
+	if _, err := NewRedeemCodeLogic(ctx, service).RedeemCode(&types.RedeemCodeRequest{Code: code.Code}); err != nil {
+		t.Fatal(err)
+	}
+	created := client.Order.Query().OnlyX(ctx)
+	if created.Type != order.TypeRedemption || created.IsNew || created.Amount != 0 {
+		t.Fatalf("redemption order = %+v", created)
+	}
+	if eligible, err := service.Store.Order().IsUserEligibleForNewOrder(ctx, 7); err != nil || !eligible {
+		t.Fatalf("first paid purchase eligibility = %v, %v", eligible, err)
 	}
 }

@@ -11,6 +11,7 @@ const (
 	TypeRenewal      uint8 = 2
 	TypeResetTraffic uint8 = 3
 	TypeRecharge     uint8 = 4
+	TypeRedemption   uint8 = 5
 )
 
 type Order struct {
@@ -61,7 +62,8 @@ type Order struct {
 }
 
 type OrdersTotal struct {
-	AmountTotal        int64
-	NewOrderAmount     int64
-	RenewalOrderAmount int64
+	AmountTotal           int64
+	NewOrderAmount        int64
+	RenewalOrderAmount    int64
+	RedemptionOrderAmount int64
 }

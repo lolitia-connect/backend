@@ -145,19 +145,11 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 		}
 	}
 
-	// 判断是否首次购买
-	isNew, err := l.svcCtx.Store.Order().IsUserEligibleForNewOrder(l.ctx, u.Id)
-	if err != nil {
-		l.Logger.Errorw("[RedeemCode] Check user order failed", zap.Any("error", err.Error()))
-		// 可以继续，默认为false
-		isNew = false
-	}
-
 	// 创建Order记录
 	orderInfo := &order.Order{
 		UserId:         u.Id,
 		OrderNo:        tool.GenerateTradeNo(),
-		Type:           5, // 兑换类型
+		Type:           order.TypeRedemption,
 		Quantity:       redemptionCode.Quantity,
 		Price:          0, // 兑换无价格
 		Amount:         0, // 兑换无金额
@@ -171,7 +163,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 		Commission:     0,
 		Status:         2, // 直接设置为已支付
 		SubscribeId:    redemptionCode.SubscribePlan,
-		IsNew:          isNew,
+		IsNew:          false,
 	}
 
 	// 保存Order到数据库

@@ -39,10 +39,11 @@ type Details struct {
 }
 
 type OrdersTotalWithDate struct {
-	Date               string
-	AmountTotal        int64
-	NewOrderAmount     int64
-	RenewalOrderAmount int64
+	Date                  string
+	AmountTotal           int64
+	NewOrderAmount        int64
+	RenewalOrderAmount    int64
+	RedemptionOrderAmount int64
 }
 
 func (o *Order) IsPaidRenewal() bool {

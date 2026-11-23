@@ -206,8 +206,9 @@ type SubscribeFilter struct {
 }
 
 type UserStatisticsWithDate struct {
-	Date              string
-	Register          int64
-	NewOrderUsers     int64
-	RenewalOrderUsers int64
+	Date                 string
+	Register             int64
+	NewOrderUsers        int64
+	RenewalOrderUsers    int64
+	RedemptionOrderUsers int64
 }

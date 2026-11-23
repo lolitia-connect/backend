@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const consoleRevenueStatisticsCacheKey = "console:revenue_statistics"
+const consoleRevenueStatisticsCacheKey = "console:revenue_statistics:v2"
 const consoleRevenueStatisticsCacheTTL = 60 * time.Second
 
 type QueryRevenueStatisticsLogic struct {
@@ -55,9 +55,10 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryDateOrders error: %v", err)
 	} else {
 		today = types.OrdersStatistics{
-			AmountTotal:        todayData.AmountTotal,
-			NewOrderAmount:     todayData.NewOrderAmount,
-			RenewalOrderAmount: todayData.RenewalOrderAmount,
+			AmountTotal:           todayData.AmountTotal,
+			NewOrderAmount:        todayData.NewOrderAmount,
+			RenewalOrderAmount:    todayData.RenewalOrderAmount,
+			RedemptionOrderAmount: todayData.RedemptionOrderAmount,
 		}
 	}
 	// Get monthly's revenue statistics
@@ -67,10 +68,11 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryMonthlyOrders error: %v", err)
 	} else {
 		monthly = types.OrdersStatistics{
-			AmountTotal:        monthlyData.AmountTotal,
-			NewOrderAmount:     monthlyData.NewOrderAmount,
-			RenewalOrderAmount: monthlyData.RenewalOrderAmount,
-			List:               make([]types.OrdersStatistics, 0),
+			AmountTotal:           monthlyData.AmountTotal,
+			NewOrderAmount:        monthlyData.NewOrderAmount,
+			RenewalOrderAmount:    monthlyData.RenewalOrderAmount,
+			RedemptionOrderAmount: monthlyData.RedemptionOrderAmount,
+			List:                  make([]types.OrdersStatistics, 0),
 		}
 	}
 
@@ -83,10 +85,11 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		monthlyList := make([]types.OrdersStatistics, len(monthlyListData))
 		for i, data := range monthlyListData {
 			monthlyList[i] = types.OrdersStatistics{
-				Date:               data.Date,
-				AmountTotal:        data.AmountTotal,
-				NewOrderAmount:     data.NewOrderAmount,
-				RenewalOrderAmount: data.RenewalOrderAmount,
+				Date:                  data.Date,
+				AmountTotal:           data.AmountTotal,
+				NewOrderAmount:        data.NewOrderAmount,
+				RenewalOrderAmount:    data.RenewalOrderAmount,
+				RedemptionOrderAmount: data.RedemptionOrderAmount,
 			}
 		}
 		monthly.List = monthlyList
@@ -99,10 +102,11 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "QueryTotalOrders error: %v", err)
 	} else {
 		all = types.OrdersStatistics{
-			AmountTotal:        allData.AmountTotal,
-			NewOrderAmount:     allData.NewOrderAmount,
-			RenewalOrderAmount: allData.RenewalOrderAmount,
-			List:               make([]types.OrdersStatistics, 0),
+			AmountTotal:           allData.AmountTotal,
+			NewOrderAmount:        allData.NewOrderAmount,
+			RenewalOrderAmount:    allData.RenewalOrderAmount,
+			RedemptionOrderAmount: allData.RedemptionOrderAmount,
+			List:                  make([]types.OrdersStatistics, 0),
 		}
 	}
 
@@ -115,10 +119,11 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		allList := make([]types.OrdersStatistics, len(allListData))
 		for i, data := range allListData {
 			allList[i] = types.OrdersStatistics{
-				Date:               data.Date,
-				AmountTotal:        data.AmountTotal,
-				NewOrderAmount:     data.NewOrderAmount,
-				RenewalOrderAmount: data.RenewalOrderAmount,
+				Date:                  data.Date,
+				AmountTotal:           data.AmountTotal,
+				NewOrderAmount:        data.NewOrderAmount,
+				RenewalOrderAmount:    data.RenewalOrderAmount,
+				RedemptionOrderAmount: data.RedemptionOrderAmount,
 			}
 		}
 		all.List = allList

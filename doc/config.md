@@ -158,6 +158,15 @@ Plugin: { Enabled: true, Directory: "plugins", MaxMemoryMB: 64, TimeoutSec: 30, 
 
 The `Model` key at the top of the file is described in section 3.12.
 
+`Log.AutoClear` controls automatic traffic detail cleanup, and `Log.ClearDays`
+sets the retention period. After daily statistics commit, a separate cleanup
+job deletes expired details in batches of at most 1000 rows using a fixed cutoff.
+Each batch commits independently, so cleanup failures do not roll back statistics.
+Both jobs rely on Asynq task retries without retrying database errors internally.
+A task lock and the committed daily summary prevent duplicate statistics; a global
+cleanup task lock prevents concurrent cleanup across instances. Disabling
+`AutoClear` also skips cleanup jobs that are already queued.
+
 ## 3. Configuration Details
 
 ### 3.1 Server Settings

@@ -170,8 +170,24 @@ func (m *customTrafficModel) QueryTrafficLogDetails(ctx context.Context, filter 
 }
 
 func (m *customTrafficModel) DeleteBefore(ctx context.Context, end time.Time) error {
-	_, err := m.db.TrafficLog.Delete().Where(enttrafficlog.TimestampLTE(end)).Exec(ctx)
-	return err
+	const batchSize = 1000
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		ids, err := m.db.TrafficLog.Query().Where(enttrafficlog.TimestampLTE(end)).
+			Order(enttrafficlog.ByTimestamp(), enttrafficlog.ByID()).Limit(batchSize).IDs(ctx)
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		// Each batch commits independently when called outside a transaction.
+		if _, err := m.db.TrafficLog.Delete().Where(enttrafficlog.IDIn(ids...), enttrafficlog.TimestampLTE(end)).Exec(ctx); err != nil {
+			return err
+		}
+	}
 }
 
 func dayRange(date time.Time) (time.Time, time.Time) {

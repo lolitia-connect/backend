@@ -2,10 +2,8 @@ package traffic
 
 import (
 	"context"
-	"errors"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/repository"
@@ -23,31 +21,23 @@ func NewStatLogic(svc *svc.ServiceContext) *StatLogic {
 	}
 }
 
-type trafficLogCleaner interface {
-	DeleteBefore(context.Context, time.Time) error
-}
-
-func clearExpiredTrafficLogs(ctx context.Context, cleaner trafficLogCleaner, autoClear bool, clearDays int64, end time.Time) error {
-	if !autoClear {
-		return nil
-	}
-	return cleaner.DeleteBefore(ctx, end.AddDate(0, 0, int(-clearDays)))
-}
-
-func isTrafficStatRetryableError(err error) bool {
-	var mysqlErr *mysql.MySQLError
-	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1020
-}
-
 func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 	now := time.Now()
-
-	// 获取全部有效订阅
-	// 获取统计时间范围
 	start := time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, time.Local)
-	end := start.Add(24 * time.Hour)
+	end := start.AddDate(0, 0, 1)
+	return withTrafficTaskLock(ctx, l.svc, "task:traffic:stat:"+start.Format(time.DateOnly), func(ctx context.Context) error {
+		return l.processDay(ctx, start, end)
+	})
+}
 
+func (l *StatLogic) processDay(ctx context.Context, start, end time.Time) error {
+	now := time.Now()
 	process := func(store repository.Store) error {
+		// The summary is written last and committed with every ranking entry.
+		completed, err := store.Log().FindFirstByDateType(ctx, start.Format(time.DateOnly), log.TypeTrafficStat.Uint8())
+		if err != nil || completed != nil {
+			return err
+		}
 		// 查询用户流量统计, 按用户和订阅分组
 		userTraffic, err := store.TrafficLog().QueryUserTrafficRanking(ctx, start, end)
 		if err != nil {
@@ -172,25 +162,14 @@ func (l *StatLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 			return err
 		}
 
-		err = clearExpiredTrafficLogs(ctx, store.TrafficLog(), l.svc.Config.Log.AutoClear, l.svc.Config.Log.ClearDays, end)
-		if err != nil {
-			zap.S().Errorf("[Traffic Stat Queue] Delete traffic log failed: %v", err)
-			return err
-		}
-
 		return nil
 	}
 
-	var err error
-	for attempt := 0; ; attempt++ {
-		err = l.svc.Store.InTx(ctx, process)
-		if !isTrafficStatRetryableError(err) || attempt >= 2 {
-			break
-		}
-		zap.S().Warnf("[Traffic Stat Queue] Retrying transaction after MariaDB error 1020 (attempt %d)", attempt+2)
+	if err := l.svc.Store.InTx(ctx, process); err != nil {
+		zap.S().Errorf("[Traffic Stat Queue] Process task failed: %v", err)
+		return err
 	}
-	if err != nil {
-		zap.S().Errorf("[Traffic Stat Queue] Process task failed: %v", err.Error())
+	if err := enqueueTrafficLogCleanup(ctx, l.svc, end); err != nil {
 		return err
 	}
 	zap.S().Infof("[Traffic Stat Queue] Process task completed successfully, consuming: %s", time.Since(now).String())

@@ -47,6 +47,7 @@ func RegisterHandlers(mux *asynq.ServeMux, serverCtx *svc.ServiceContext) {
 
 	// ScheduledTrafficStat
 	mux.Handle(types.SchedulerTrafficStat, traffic.NewStatLogic(serverCtx))
+	mux.Handle(types.CleanupTrafficLogs, traffic.NewCleanupTrafficLogsLogic(serverCtx))
 
 	// ForthwithQuotaTask
 	mux.Handle(types.ForthwithQuotaTask, task.NewQuotaTaskLogic(serverCtx))

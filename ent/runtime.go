@@ -557,28 +557,32 @@ func init() {
 	order.DefaultGuestIdentifier = orderDescGuestIdentifier.Default.(string)
 	// order.GuestIdentifierValidator is a validator for the "guest_identifier" field. It is called by the builders before save.
 	order.GuestIdentifierValidator = orderDescGuestIdentifier.Validators[0].(func(string) error)
+	// orderDescGuestPasswordHash is the schema descriptor for guest_password_hash field.
+	orderDescGuestPasswordHash := orderFields[29].Descriptor()
+	// order.GuestPasswordHashValidator is a validator for the "guest_password_hash" field. It is called by the builders before save.
+	order.GuestPasswordHashValidator = orderDescGuestPasswordHash.Validators[0].(func(string) error)
 	// orderDescSubscribeID is the schema descriptor for subscribe_id field.
-	orderDescSubscribeID := orderFields[29].Descriptor()
+	orderDescSubscribeID := orderFields[31].Descriptor()
 	// order.DefaultSubscribeID holds the default value on creation for the subscribe_id field.
 	order.DefaultSubscribeID = orderDescSubscribeID.Default.(int64)
 	// orderDescSubscribeToken is the schema descriptor for subscribe_token field.
-	orderDescSubscribeToken := orderFields[30].Descriptor()
+	orderDescSubscribeToken := orderFields[32].Descriptor()
 	// order.SubscribeTokenValidator is a validator for the "subscribe_token" field. It is called by the builders before save.
 	order.SubscribeTokenValidator = orderDescSubscribeToken.Validators[0].(func(string) error)
 	// orderDescUserSubscribeID is the schema descriptor for user_subscribe_id field.
-	orderDescUserSubscribeID := orderFields[31].Descriptor()
+	orderDescUserSubscribeID := orderFields[33].Descriptor()
 	// order.DefaultUserSubscribeID holds the default value on creation for the user_subscribe_id field.
 	order.DefaultUserSubscribeID = orderDescUserSubscribeID.Default.(int64)
 	// orderDescIsNew is the schema descriptor for is_new field.
-	orderDescIsNew := orderFields[32].Descriptor()
+	orderDescIsNew := orderFields[34].Descriptor()
 	// order.DefaultIsNew holds the default value on creation for the is_new field.
 	order.DefaultIsNew = orderDescIsNew.Default.(bool)
 	// orderDescCreatedAt is the schema descriptor for created_at field.
-	orderDescCreatedAt := orderFields[33].Descriptor()
+	orderDescCreatedAt := orderFields[35].Descriptor()
 	// order.DefaultCreatedAt holds the default value on creation for the created_at field.
 	order.DefaultCreatedAt = orderDescCreatedAt.Default.(func() time.Time)
 	// orderDescUpdatedAt is the schema descriptor for updated_at field.
-	orderDescUpdatedAt := orderFields[34].Descriptor()
+	orderDescUpdatedAt := orderFields[36].Descriptor()
 	// order.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	order.DefaultUpdatedAt = orderDescUpdatedAt.Default.(func() time.Time)
 	// order.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

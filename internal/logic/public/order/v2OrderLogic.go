@@ -24,6 +24,7 @@ import (
 	"github.com/perfect-panel/server/pkg/jwt"
 	"github.com/perfect-panel/server/pkg/limit"
 	"github.com/perfect-panel/server/pkg/requestmeta"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -162,9 +163,10 @@ func (l *V2OrderLogic) GetOrder(orderNo, checkoutToken string) (*types.V2OrderRe
 	if err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not found")
 	}
-	if err := l.authorizeOrder(orderInfo, checkoutToken); err != nil {
-		return nil, err
-	}
+	return l.snapshotResponse(orderInfo, checkoutToken)
+}
+
+func (l *V2OrderLogic) snapshotResponse(orderInfo *order.Order, checkoutToken string) (*types.V2OrderResponse, error) {
 	ticket, expiresAt, err := l.mintEventTicket(orderInfo, checkoutToken)
 	if err != nil {
 		return nil, err
@@ -348,8 +350,7 @@ func (l *V2OrderLogic) authorizeExistingCreate(orderInfo *order.Order, req *type
 // would otherwise obtain a valid capability; the recorded identity is the second
 // factor that keeps the order bound to the caller who created it.
 //
-// Unlike upstream, the fork keeps these credentials only in the temporary-order
-// record, so a replay after that record expires is refused instead of served.
+// Replay authentication uses the short-lived record, independently of fulfillment.
 func (l *V2OrderLogic) guestIdentityMatches(orderNo string, guest *types.V2GuestOrderRequest) bool {
 	cacheKey := fmt.Sprintf(constant.TempOrderCacheKey, orderNo)
 	value, err := l.svcCtx.Redis.Get(l.ctx, cacheKey).Result()
@@ -363,8 +364,13 @@ func (l *V2OrderLogic) guestIdentityMatches(orderNo string, guest *types.V2Guest
 	if tempOrder.OrderNo != orderNo {
 		return false
 	}
-	return tempOrder.AuthType == guest.AuthType && tempOrder.Identifier == guest.Identifier &&
-		subtle.ConstantTimeCompare([]byte(tempOrder.Password), []byte(guest.Password)) == 1
+	if tempOrder.AuthType != guest.AuthType || tempOrder.Identifier != guest.Identifier {
+		return false
+	}
+	if tempOrder.PasswordHash != "" {
+		return tool.VerifyPassWord(guest.Password, tempOrder.PasswordHash)
+	}
+	return tempOrder.Password != "" && subtle.ConstantTimeCompare([]byte(tempOrder.Password), []byte(guest.Password)) == 1
 }
 
 func (l *V2OrderLogic) authorizeOrder(orderInfo *order.Order, checkoutToken string) error {

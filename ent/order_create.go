@@ -412,6 +412,34 @@ func (_c *OrderCreate) SetNillableGuestIdentifier(v *string) *OrderCreate {
 	return _c
 }
 
+// SetGuestPasswordHash sets the "guest_password_hash" field.
+func (_c *OrderCreate) SetGuestPasswordHash(v string) *OrderCreate {
+	_c.mutation.SetGuestPasswordHash(v)
+	return _c
+}
+
+// SetNillableGuestPasswordHash sets the "guest_password_hash" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableGuestPasswordHash(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetGuestPasswordHash(*v)
+	}
+	return _c
+}
+
+// SetGuestInviteCode sets the "guest_invite_code" field.
+func (_c *OrderCreate) SetGuestInviteCode(v string) *OrderCreate {
+	_c.mutation.SetGuestInviteCode(v)
+	return _c
+}
+
+// SetNillableGuestInviteCode sets the "guest_invite_code" field if the given value is not nil.
+func (_c *OrderCreate) SetNillableGuestInviteCode(v *string) *OrderCreate {
+	if v != nil {
+		_c.SetGuestInviteCode(*v)
+	}
+	return _c
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_c *OrderCreate) SetSubscribeID(v int64) *OrderCreate {
 	_c.mutation.SetSubscribeID(v)
@@ -765,6 +793,11 @@ func (_c *OrderCreate) check() error {
 			return &ValidationError{Name: "guest_identifier", err: fmt.Errorf(`ent: validator failed for field "Order.guest_identifier": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.GuestPasswordHash(); ok {
+		if err := order.GuestPasswordHashValidator(v); err != nil {
+			return &ValidationError{Name: "guest_password_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_password_hash": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.SubscribeID(); !ok {
 		return &ValidationError{Name: "subscribe_id", err: errors.New(`ent: missing required field "Order.subscribe_id"`)}
 	}
@@ -928,6 +961,14 @@ func (_c *OrderCreate) createSpec() (*Order, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.GuestIdentifier(); ok {
 		_spec.SetField(order.FieldGuestIdentifier, field.TypeString, value)
 		_node.GuestIdentifier = value
+	}
+	if value, ok := _c.mutation.GuestPasswordHash(); ok {
+		_spec.SetField(order.FieldGuestPasswordHash, field.TypeString, value)
+		_node.GuestPasswordHash = &value
+	}
+	if value, ok := _c.mutation.GuestInviteCode(); ok {
+		_spec.SetField(order.FieldGuestInviteCode, field.TypeString, value)
+		_node.GuestInviteCode = &value
 	}
 	if value, ok := _c.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)

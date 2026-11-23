@@ -18,6 +18,7 @@ func RegisterV2OrderHandlers(router *server.Hertz, serverCtx *svc.ServiceContext
 	group.Use(hertzx.Wrap(middleware.OptionalAuthMiddleware(serverCtx)), hertzx.Wrap(middleware.DeviceMiddleware(serverCtx)))
 	group.POST("", hertzx.Wrap(publicOrder.V2CreateAndCheckoutHandler(serverCtx)))
 	group.POST("/:orderNo/checkout", hertzx.Wrap(publicOrder.V2CheckoutHandler(serverCtx)))
+	group.POST("/:orderNo/reconcile", hertzx.Wrap(publicOrder.V2ReconcileOrderHandler(serverCtx)))
 	group.GET("/:orderNo", hertzx.Wrap(publicOrder.V2GetOrderHandler(serverCtx)))
 	group.POST("/:orderNo/event-ticket", hertzx.Wrap(publicOrder.V2EventTicketHandler(serverCtx)))
 	group.POST("/:orderNo/session", hertzx.Wrap(publicOrder.V2OrderSessionHandler(serverCtx)))

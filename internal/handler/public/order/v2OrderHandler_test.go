@@ -1,15 +1,27 @@
 package order
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
 
+	"ariga.io/entcache"
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/protocol/sse"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/enttest"
+	"github.com/perfect-panel/server/internal/repository"
+	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/hertzx"
+	"github.com/perfect-panel/server/pkg/orm"
 	"github.com/redis/go-redis/v9"
+	_ "modernc.org/sqlite"
 )
 
 func TestValidIdempotencyKeyAcceptsOnlyOpaquePrintableKeys(t *testing.T) {
@@ -76,6 +88,38 @@ func TestRequestedEventIDPrefersTheHeaderAndFallsBackToTheCursor(t *testing.T) {
 				t.Fatalf("requestedEventID() = %d, want %d", got, tt.want)
 			}
 		})
+	}
+}
+
+type streamBuffer struct{ bytes.Buffer }
+
+func (*streamBuffer) Flush() error    { return nil }
+func (*streamBuffer) Finalize() error { return nil }
+
+func TestReplayObservesPaymentAfterEmptyReadOnSameConnection(t *testing.T) {
+	db, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+	client := enttest.NewClient(t, enttest.WithOptions(ent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	service := &svc.ServiceContext{Store: repository.NewStore(orm.NewEntClient(db, dialect.SQLite), nil)}
+	ctx := entcache.NewContext(t.Context())
+	raw := app.NewContext(0)
+	var stream streamBuffer
+	raw.Response.HijackWriter(&stream)
+	writer := sse.NewWriter(raw)
+	var cursor int64
+	if err := replayOrderEvents(ctx, writer, service, "return", &cursor); err != nil {
+		t.Fatal(err)
+	}
+	paid := client.OrderEvent.Create().SetOrderNo("return").SetEventType("order.payment_paid").SetPayload(`{"payment_status":"paid"}`).SaveX(t.Context())
+	if err := replayOrderEvents(ctx, writer, service, "return", &cursor); err != nil {
+		t.Fatal(err)
+	}
+	if cursor != paid.ID || !strings.Contains(stream.String(), "order.payment_paid") {
+		t.Fatalf("cursor %d, stream %q", cursor, stream.String())
 	}
 }
 

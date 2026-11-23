@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -362,7 +363,10 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 			successURL = "https://" + successURL
 		}
 	}
-	cancelURL := successURL
+	successURL, cancelURL, err := stripeReturnURLs(successURL, info.OrderNo)
+	if err != nil {
+		return "", err
+	}
 
 	// Create Stripe Checkout Session for redirect-based payment
 	result, err := client.CreateCheckoutSessionContext(l.ctx, &stripe.Order{
@@ -392,6 +396,22 @@ func (l *PurchaseCheckoutLogic) stripePayment(pay *payment.Payment, info *order.
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Update error: %s", err.Error())
 	}
 	return result.CheckoutURL, nil
+}
+
+func stripeReturnURLs(base, orderNo string) (success, cancel string, err error) {
+	u, err := url.Parse(base)
+	if err != nil || u.Hostname() == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", "", fmt.Errorf("invalid Stripe return URL")
+	}
+	q := u.Query()
+	q.Set("order_no", orderNo)
+	q.Del("stripe_return")
+	q.Del("checkout_token")
+	u.RawQuery = q.Encode()
+	cancel = u.String()
+	q.Set("stripe_return", "1")
+	u.RawQuery = q.Encode()
+	return u.String(), cancel, nil
 }
 
 // epayPayment processes EPay payment by generating a payment URL for redirect

@@ -194,6 +194,16 @@ func GuestIdentifier(v string) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldGuestIdentifier, v))
 }
 
+// GuestPasswordHash applies equality check predicate on the "guest_password_hash" field. It's identical to GuestPasswordHashEQ.
+func GuestPasswordHash(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestPasswordHash, v))
+}
+
+// GuestInviteCode applies equality check predicate on the "guest_invite_code" field. It's identical to GuestInviteCodeEQ.
+func GuestInviteCode(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestInviteCode, v))
+}
+
 // SubscribeID applies equality check predicate on the "subscribe_id" field. It's identical to SubscribeIDEQ.
 func SubscribeID(v int64) predicate.Order {
 	return predicate.Order(sql.FieldEQ(FieldSubscribeID, v))
@@ -1647,6 +1657,156 @@ func GuestIdentifierEqualFold(v string) predicate.Order {
 // GuestIdentifierContainsFold applies the ContainsFold predicate on the "guest_identifier" field.
 func GuestIdentifierContainsFold(v string) predicate.Order {
 	return predicate.Order(sql.FieldContainsFold(FieldGuestIdentifier, v))
+}
+
+// GuestPasswordHashEQ applies the EQ predicate on the "guest_password_hash" field.
+func GuestPasswordHashEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashNEQ applies the NEQ predicate on the "guest_password_hash" field.
+func GuestPasswordHashNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashIn applies the In predicate on the "guest_password_hash" field.
+func GuestPasswordHashIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldGuestPasswordHash, vs...))
+}
+
+// GuestPasswordHashNotIn applies the NotIn predicate on the "guest_password_hash" field.
+func GuestPasswordHashNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldGuestPasswordHash, vs...))
+}
+
+// GuestPasswordHashGT applies the GT predicate on the "guest_password_hash" field.
+func GuestPasswordHashGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashGTE applies the GTE predicate on the "guest_password_hash" field.
+func GuestPasswordHashGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashLT applies the LT predicate on the "guest_password_hash" field.
+func GuestPasswordHashLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashLTE applies the LTE predicate on the "guest_password_hash" field.
+func GuestPasswordHashLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashContains applies the Contains predicate on the "guest_password_hash" field.
+func GuestPasswordHashContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashHasPrefix applies the HasPrefix predicate on the "guest_password_hash" field.
+func GuestPasswordHashHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashHasSuffix applies the HasSuffix predicate on the "guest_password_hash" field.
+func GuestPasswordHashHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashIsNil applies the IsNil predicate on the "guest_password_hash" field.
+func GuestPasswordHashIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldGuestPasswordHash))
+}
+
+// GuestPasswordHashNotNil applies the NotNil predicate on the "guest_password_hash" field.
+func GuestPasswordHashNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldGuestPasswordHash))
+}
+
+// GuestPasswordHashEqualFold applies the EqualFold predicate on the "guest_password_hash" field.
+func GuestPasswordHashEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldGuestPasswordHash, v))
+}
+
+// GuestPasswordHashContainsFold applies the ContainsFold predicate on the "guest_password_hash" field.
+func GuestPasswordHashContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldGuestPasswordHash, v))
+}
+
+// GuestInviteCodeEQ applies the EQ predicate on the "guest_invite_code" field.
+func GuestInviteCodeEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldEQ(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeNEQ applies the NEQ predicate on the "guest_invite_code" field.
+func GuestInviteCodeNEQ(v string) predicate.Order {
+	return predicate.Order(sql.FieldNEQ(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeIn applies the In predicate on the "guest_invite_code" field.
+func GuestInviteCodeIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldIn(FieldGuestInviteCode, vs...))
+}
+
+// GuestInviteCodeNotIn applies the NotIn predicate on the "guest_invite_code" field.
+func GuestInviteCodeNotIn(vs ...string) predicate.Order {
+	return predicate.Order(sql.FieldNotIn(FieldGuestInviteCode, vs...))
+}
+
+// GuestInviteCodeGT applies the GT predicate on the "guest_invite_code" field.
+func GuestInviteCodeGT(v string) predicate.Order {
+	return predicate.Order(sql.FieldGT(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeGTE applies the GTE predicate on the "guest_invite_code" field.
+func GuestInviteCodeGTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldGTE(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeLT applies the LT predicate on the "guest_invite_code" field.
+func GuestInviteCodeLT(v string) predicate.Order {
+	return predicate.Order(sql.FieldLT(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeLTE applies the LTE predicate on the "guest_invite_code" field.
+func GuestInviteCodeLTE(v string) predicate.Order {
+	return predicate.Order(sql.FieldLTE(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeContains applies the Contains predicate on the "guest_invite_code" field.
+func GuestInviteCodeContains(v string) predicate.Order {
+	return predicate.Order(sql.FieldContains(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeHasPrefix applies the HasPrefix predicate on the "guest_invite_code" field.
+func GuestInviteCodeHasPrefix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasPrefix(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeHasSuffix applies the HasSuffix predicate on the "guest_invite_code" field.
+func GuestInviteCodeHasSuffix(v string) predicate.Order {
+	return predicate.Order(sql.FieldHasSuffix(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeIsNil applies the IsNil predicate on the "guest_invite_code" field.
+func GuestInviteCodeIsNil() predicate.Order {
+	return predicate.Order(sql.FieldIsNull(FieldGuestInviteCode))
+}
+
+// GuestInviteCodeNotNil applies the NotNil predicate on the "guest_invite_code" field.
+func GuestInviteCodeNotNil() predicate.Order {
+	return predicate.Order(sql.FieldNotNull(FieldGuestInviteCode))
+}
+
+// GuestInviteCodeEqualFold applies the EqualFold predicate on the "guest_invite_code" field.
+func GuestInviteCodeEqualFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldEqualFold(FieldGuestInviteCode, v))
+}
+
+// GuestInviteCodeContainsFold applies the ContainsFold predicate on the "guest_invite_code" field.
+func GuestInviteCodeContainsFold(v string) predicate.Order {
+	return predicate.Order(sql.FieldContainsFold(FieldGuestInviteCode, v))
 }
 
 // SubscribeIDEQ applies the EQ predicate on the "subscribe_id" field.

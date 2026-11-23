@@ -13,6 +13,7 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 
+	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/payment"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/payment/stripe"
@@ -66,11 +67,8 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 		return rejectedNotification{err}
 	}
 
-	// Skip events that don't need processing (e.g. payment_failed, unhandled types)
-	if notify.EventType != "payment_intent.succeeded" && notify.EventType != "checkout.session.completed" && notify.EventType != "checkout.session.async_payment_succeeded" {
-		return nil
-	}
-	if !notify.Paid {
+	asyncFailed := notify.EventType == "checkout.session.async_payment_failed"
+	if !asyncFailed && !notify.Paid {
 		return nil
 	}
 
@@ -79,23 +77,24 @@ func (l *StripeNotifyLogic) StripeNotify(r *http.Request, w http.ResponseWriter)
 		return rejectedNotification{errors.New("order_no is empty in webhook")}
 	}
 
-	orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, notify.OrderNo)
-	if ent.IsNotFound(err) || (err == nil && orderInfo == nil) {
-		return rejectedNotification{xerr.NewErrCode(xerr.OrderNotExist)}
+	if asyncFailed || notify.EventType == "payment_intent.succeeded" {
+		orderInfo, err := store.Order().FindOneByOrderNo(l.ctx, notify.OrderNo)
+		if ent.IsNotFound(err) || (err == nil && orderInfo == nil) {
+			return rejectedNotification{xerr.NewErrCode(xerr.OrderNotExist)}
+		}
+		if err != nil {
+			return err
+		}
+		if asyncFailed {
+			if orderInfo.Status != order.StatusPending || orderInfo.PaymentId != stripeConfig.Id || orderInfo.TradeNo != notify.TradeNo || !strings.HasPrefix(notify.TradeNo, "cs_") {
+				return nil
+			}
+			return EnqueueStripeCloseCheck(l.ctx, l.svcCtx, orderInfo.OrderNo)
+		}
+		// Only legacy orders bound to an intent can settle from pi_ events. New orders bind to a Session.
+		if !strings.HasPrefix(orderInfo.TradeNo, "pi_") {
+			return nil
+		}
 	}
-	if err != nil {
-		l.Logger.Errorw("[StripeNotify] Find order failed", "error", err)
-		return err
-	}
-	if strings.HasPrefix(orderInfo.TradeNo, "cs_") && notify.EventType == "payment_intent.succeeded" {
-		return nil
-	}
-	activate, err := settlePayment(l.ctx, store, stripeConfig, notify.OrderNo, notify.TradeNo, notify.Amount, notify.Currency)
-	if err != nil {
-		return err
-	}
-	if activate {
-		return enqueueActivation(l.ctx, l.svcCtx, notify.OrderNo)
-	}
-	return nil
+	return SettleConfirmedPayment(l.ctx, l.svcCtx, stripeConfig, notify.OrderNo, notify.TradeNo, notify.Amount, notify.Currency)
 }

@@ -9286,6 +9286,8 @@ type OrderMutation struct {
 	guest_checkout_token_hash *string
 	guest_auth_type           *string
 	guest_identifier          *string
+	guest_password_hash       *string
+	guest_invite_code         *string
 	subscribe_id              *int64
 	addsubscribe_id           *int64
 	subscribe_token           *string
@@ -10810,6 +10812,104 @@ func (m *OrderMutation) ResetGuestIdentifier() {
 	m.guest_identifier = nil
 }
 
+// SetGuestPasswordHash sets the "guest_password_hash" field.
+func (m *OrderMutation) SetGuestPasswordHash(s string) {
+	m.guest_password_hash = &s
+}
+
+// GuestPasswordHash returns the value of the "guest_password_hash" field in the mutation.
+func (m *OrderMutation) GuestPasswordHash() (r string, exists bool) {
+	v := m.guest_password_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGuestPasswordHash returns the old "guest_password_hash" field's value of the Order entity.
+// If the Order object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrderMutation) OldGuestPasswordHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGuestPasswordHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGuestPasswordHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGuestPasswordHash: %w", err)
+	}
+	return oldValue.GuestPasswordHash, nil
+}
+
+// ClearGuestPasswordHash clears the value of the "guest_password_hash" field.
+func (m *OrderMutation) ClearGuestPasswordHash() {
+	m.guest_password_hash = nil
+	m.clearedFields[order.FieldGuestPasswordHash] = struct{}{}
+}
+
+// GuestPasswordHashCleared returns if the "guest_password_hash" field was cleared in this mutation.
+func (m *OrderMutation) GuestPasswordHashCleared() bool {
+	_, ok := m.clearedFields[order.FieldGuestPasswordHash]
+	return ok
+}
+
+// ResetGuestPasswordHash resets all changes to the "guest_password_hash" field.
+func (m *OrderMutation) ResetGuestPasswordHash() {
+	m.guest_password_hash = nil
+	delete(m.clearedFields, order.FieldGuestPasswordHash)
+}
+
+// SetGuestInviteCode sets the "guest_invite_code" field.
+func (m *OrderMutation) SetGuestInviteCode(s string) {
+	m.guest_invite_code = &s
+}
+
+// GuestInviteCode returns the value of the "guest_invite_code" field in the mutation.
+func (m *OrderMutation) GuestInviteCode() (r string, exists bool) {
+	v := m.guest_invite_code
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGuestInviteCode returns the old "guest_invite_code" field's value of the Order entity.
+// If the Order object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *OrderMutation) OldGuestInviteCode(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGuestInviteCode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGuestInviteCode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGuestInviteCode: %w", err)
+	}
+	return oldValue.GuestInviteCode, nil
+}
+
+// ClearGuestInviteCode clears the value of the "guest_invite_code" field.
+func (m *OrderMutation) ClearGuestInviteCode() {
+	m.guest_invite_code = nil
+	m.clearedFields[order.FieldGuestInviteCode] = struct{}{}
+}
+
+// GuestInviteCodeCleared returns if the "guest_invite_code" field was cleared in this mutation.
+func (m *OrderMutation) GuestInviteCodeCleared() bool {
+	_, ok := m.clearedFields[order.FieldGuestInviteCode]
+	return ok
+}
+
+// ResetGuestInviteCode resets all changes to the "guest_invite_code" field.
+func (m *OrderMutation) ResetGuestInviteCode() {
+	m.guest_invite_code = nil
+	delete(m.clearedFields, order.FieldGuestInviteCode)
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (m *OrderMutation) SetSubscribeID(i int64) {
 	m.subscribe_id = &i
@@ -11113,7 +11213,7 @@ func (m *OrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *OrderMutation) Fields() []string {
-	fields := make([]string, 0, 34)
+	fields := make([]string, 0, 36)
 	if m.parent_id != nil {
 		fields = append(fields, order.FieldParentID)
 	}
@@ -11198,6 +11298,12 @@ func (m *OrderMutation) Fields() []string {
 	if m.guest_identifier != nil {
 		fields = append(fields, order.FieldGuestIdentifier)
 	}
+	if m.guest_password_hash != nil {
+		fields = append(fields, order.FieldGuestPasswordHash)
+	}
+	if m.guest_invite_code != nil {
+		fields = append(fields, order.FieldGuestInviteCode)
+	}
 	if m.subscribe_id != nil {
 		fields = append(fields, order.FieldSubscribeID)
 	}
@@ -11280,6 +11386,10 @@ func (m *OrderMutation) Field(name string) (ent.Value, bool) {
 		return m.GuestAuthType()
 	case order.FieldGuestIdentifier:
 		return m.GuestIdentifier()
+	case order.FieldGuestPasswordHash:
+		return m.GuestPasswordHash()
+	case order.FieldGuestInviteCode:
+		return m.GuestInviteCode()
 	case order.FieldSubscribeID:
 		return m.SubscribeID()
 	case order.FieldSubscribeToken:
@@ -11357,6 +11467,10 @@ func (m *OrderMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldGuestAuthType(ctx)
 	case order.FieldGuestIdentifier:
 		return m.OldGuestIdentifier(ctx)
+	case order.FieldGuestPasswordHash:
+		return m.OldGuestPasswordHash(ctx)
+	case order.FieldGuestInviteCode:
+		return m.OldGuestInviteCode(ctx)
 	case order.FieldSubscribeID:
 		return m.OldSubscribeID(ctx)
 	case order.FieldSubscribeToken:
@@ -11573,6 +11687,20 @@ func (m *OrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGuestIdentifier(v)
+		return nil
+	case order.FieldGuestPasswordHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGuestPasswordHash(v)
+		return nil
+	case order.FieldGuestInviteCode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGuestInviteCode(v)
 		return nil
 	case order.FieldSubscribeID:
 		v, ok := value.(int64)
@@ -11883,6 +12011,12 @@ func (m *OrderMutation) ClearedFields() []string {
 	if m.FieldCleared(order.FieldGuestCheckoutTokenHash) {
 		fields = append(fields, order.FieldGuestCheckoutTokenHash)
 	}
+	if m.FieldCleared(order.FieldGuestPasswordHash) {
+		fields = append(fields, order.FieldGuestPasswordHash)
+	}
+	if m.FieldCleared(order.FieldGuestInviteCode) {
+		fields = append(fields, order.FieldGuestInviteCode)
+	}
 	if m.FieldCleared(order.FieldSubscribeToken) {
 		fields = append(fields, order.FieldSubscribeToken)
 	}
@@ -11917,6 +12051,12 @@ func (m *OrderMutation) ClearField(name string) error {
 		return nil
 	case order.FieldGuestCheckoutTokenHash:
 		m.ClearGuestCheckoutTokenHash()
+		return nil
+	case order.FieldGuestPasswordHash:
+		m.ClearGuestPasswordHash()
+		return nil
+	case order.FieldGuestInviteCode:
+		m.ClearGuestInviteCode()
 		return nil
 	case order.FieldSubscribeToken:
 		m.ClearSubscribeToken()
@@ -12012,6 +12152,12 @@ func (m *OrderMutation) ResetField(name string) error {
 		return nil
 	case order.FieldGuestIdentifier:
 		m.ResetGuestIdentifier()
+		return nil
+	case order.FieldGuestPasswordHash:
+		m.ResetGuestPasswordHash()
+		return nil
+	case order.FieldGuestInviteCode:
+		m.ResetGuestInviteCode()
 		return nil
 	case order.FieldSubscribeID:
 		m.ResetSubscribeID()

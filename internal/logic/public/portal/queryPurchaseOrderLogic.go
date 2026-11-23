@@ -129,6 +129,9 @@ func (l *QueryPurchaseOrderLogic) handleTemporaryOrder(orderInfo *order.Order, c
 		return "", err
 	}
 	if orderInfo.UserId == 0 {
+		if orderInfo.Status == order.StatusPaid {
+			return "", nil // The payment is confirmed; activation creates the account.
+		}
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.OrderStatusError), "guest account is not ready")
 	}
 

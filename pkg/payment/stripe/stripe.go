@@ -3,10 +3,12 @@ package stripe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/stripe/stripe-go/v81/checkout/session"
 	"github.com/stripe/stripe-go/v81/webhookendpoint"
@@ -14,7 +16,6 @@ import (
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/customer"
 	"github.com/stripe/stripe-go/v81/paymentintent"
-	"github.com/stripe/stripe-go/v81/paymentmethod"
 	"github.com/stripe/stripe-go/v81/webhook"
 	"go.uber.org/zap"
 )
@@ -105,6 +106,17 @@ func (c *Client) QueryOrderStatus(orderNo string) (bool, error) {
 	return receipt.Paid, nil
 }
 
+func checkoutOrderNo(session *stripe.CheckoutSession) string {
+	metadata := session.Metadata["order_no"]
+	if session.ClientReferenceID == "" {
+		return metadata
+	}
+	if metadata != "" && metadata != session.ClientReferenceID {
+		return ""
+	}
+	return session.ClientReferenceID
+}
+
 func (c *Client) QueryPayment(ctx context.Context, tradeNo string) (*NotifyResult, error) {
 	if strings.HasPrefix(tradeNo, "pi_") {
 		params := &stripe.PaymentIntentParams{}
@@ -124,11 +136,35 @@ func (c *Client) QueryPayment(ctx context.Context, tradeNo string) (*NotifyResul
 	if err != nil {
 		return nil, err
 	}
-	orderNo := current.ClientReferenceID
-	if orderNo == "" {
-		orderNo = current.Metadata["order_no"]
+	return &NotifyResult{OrderNo: checkoutOrderNo(current), TradeNo: current.ID, Amount: FromStripeAmount(current.AmountTotal, string(current.Currency)), Currency: string(current.Currency), Paid: current.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid}, nil
+}
+
+// FindCheckoutSession locates a Checkout Session when the initial create request
+// succeeded remotely but its session ID was not persisted locally.
+func (c *Client) FindCheckoutSession(ctx context.Context, orderNo string, createdAfter time.Time) (*stripe.CheckoutSession, error) {
+	if strings.TrimSpace(orderNo) == "" {
+		return nil, fmt.Errorf("Stripe order number is required")
 	}
-	return &NotifyResult{OrderNo: orderNo, TradeNo: current.ID, Amount: FromStripeAmount(current.AmountTotal, string(current.Currency)), Currency: string(current.Currency), Paid: current.PaymentStatus == stripe.CheckoutSessionPaymentStatusPaid}, nil
+	params := &stripe.CheckoutSessionListParams{
+		ListParams: stripe.ListParams{
+			Context: ctx,
+			Limit:   stripe.Int64(100),
+		},
+	}
+	if !createdAfter.IsZero() {
+		params.CreatedRange = &stripe.RangeQueryParams{GreaterThanOrEqual: createdAfter.Unix()}
+	}
+	iterator := (session.Client{B: c.backend, Key: c.SecretKey}).List(params)
+	for iterator.Next() {
+		current := iterator.CheckoutSession()
+		if checkoutOrderNo(current) == orderNo {
+			return current, nil
+		}
+	}
+	if err := iterator.Err(); err != nil {
+		return nil, err
+	}
+	return nil, nil
 }
 
 // ParseNotify
@@ -141,15 +177,12 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 	}
 
 	switch event.Type {
-	case "checkout.session.completed", "checkout.session.async_payment_succeeded":
+	case "checkout.session.completed", "checkout.session.async_payment_succeeded", "checkout.session.async_payment_failed":
 		var sess stripe.CheckoutSession
 		if err := json.Unmarshal(event.Data.Raw, &sess); err != nil {
 			return nil, err
 		}
-		orderNo := sess.ClientReferenceID
-		if orderNo == "" {
-			orderNo = sess.Metadata["order_no"]
-		}
+		orderNo := checkoutOrderNo(&sess)
 		userId := sess.Metadata["user_id"]
 		uid, _ := strconv.ParseInt(userId, 10, 64)
 		var method string
@@ -177,23 +210,12 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 		}
 		orderNo := paymentIntent.Metadata["order_no"]
 		userId := paymentIntent.Metadata["user_id"]
-		var method string
-		if paymentIntent.PaymentMethod != nil && paymentIntent.PaymentMethod.ID != "" {
-			result, err := c.RetrievePaymentMethod(paymentIntent.PaymentMethod.ID)
-			if err != nil {
-				zap.S().Error("[stripe] Payment callback query payment method error", zap.Any("errors", err.Error()))
-			}
-			if result != nil {
-				method = string(result.Type)
-			}
-		}
 		uid, _ := strconv.ParseInt(userId, 10, 64)
 		return &NotifyResult{
 			EventType: string(event.Type),
 			OrderNo:   orderNo,
 			TradeNo:   paymentIntent.ID,
 			UserId:    uid,
-			Method:    method,
 			Amount:    FromStripeAmount(paymentIntent.AmountReceived, string(paymentIntent.Currency)),
 			Currency:  string(paymentIntent.Currency),
 			Paid:      paymentIntent.Status == stripe.PaymentIntentStatusSucceeded,
@@ -211,11 +233,6 @@ func (c *Client) ParseNotify(payload []byte, signature string) (*NotifyResult, e
 			EventType: string(event.Type),
 		}, nil
 	}
-}
-
-// RetrievePaymentMethod 查询支付方式
-func (c *Client) RetrievePaymentMethod(id string) (*stripe.PaymentMethod, error) {
-	return (paymentmethod.Client{B: c.backend, Key: c.SecretKey}).Get(id, nil)
 }
 
 // CreateCheckoutSession creates a Stripe Checkout Session for redirect-based payment
@@ -313,6 +330,8 @@ func (c *Client) DeleteWebhookEndpoint(ctx context.Context, id string) error {
 	return err
 }
 
+var ErrPaymentProcessing = errors.New("Stripe payment is still processing")
+
 func (c *Client) CancelCheckout(ctx context.Context, tradeNo string) error {
 	if strings.HasPrefix(tradeNo, "pi_") {
 		client := paymentintent.Client{B: c.backend, Key: c.SecretKey}
@@ -321,6 +340,9 @@ func (c *Client) CancelCheckout(ctx context.Context, tradeNo string) error {
 		intent, err := client.Get(tradeNo, params)
 		if err != nil {
 			return err
+		}
+		if intent.Status == stripe.PaymentIntentStatusProcessing {
+			return ErrPaymentProcessing
 		}
 		if intent.Status == stripe.PaymentIntentStatusCanceled {
 			return nil
@@ -336,6 +358,7 @@ func (c *Client) CancelCheckout(ctx context.Context, tradeNo string) error {
 	client := session.Client{B: c.backend, Key: c.SecretKey}
 	params := &stripe.CheckoutSessionParams{}
 	params.Context = ctx
+	params.AddExpand("payment_intent")
 	current, err := client.Get(tradeNo, params)
 	if err != nil {
 		return err
@@ -345,6 +368,13 @@ func (c *Client) CancelCheckout(ctx context.Context, tradeNo string) error {
 	}
 	if current.Status == stripe.CheckoutSessionStatusExpired {
 		return nil
+	}
+	if current.Status == stripe.CheckoutSessionStatusComplete && current.PaymentStatus == stripe.CheckoutSessionPaymentStatusUnpaid {
+		// A completed session cannot be reused. Only a definitively failed intent releases its reservation.
+		if pi := current.PaymentIntent; pi != nil && (pi.Status == stripe.PaymentIntentStatusCanceled || pi.Status == stripe.PaymentIntentStatusRequiresPaymentMethod) {
+			return nil
+		}
+		return ErrPaymentProcessing
 	}
 	if current.Status != stripe.CheckoutSessionStatusOpen {
 		return fmt.Errorf("Stripe checkout cannot be canceled yet")

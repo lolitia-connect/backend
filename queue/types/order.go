@@ -5,6 +5,7 @@ const (
 	ForthwithActivateOrder = "forthwith:order:activate"
 	PublishOrderEvents     = "order:events:publish"
 	CleanupOrderEvents     = "order:events:cleanup"
+	RecoverStripeOrders    = "order:stripe:recover"
 )
 
 type (

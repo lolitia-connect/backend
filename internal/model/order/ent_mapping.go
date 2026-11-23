@@ -42,6 +42,8 @@ func entToOrder(data *ent.Order) *Order {
 		GuestCheckoutTokenHash: stringValue(data.GuestCheckoutTokenHash),
 		GuestAuthType:          data.GuestAuthType,
 		GuestIdentifier:        data.GuestIdentifier,
+		GuestPasswordHash:      stringValue(data.GuestPasswordHash),
+		GuestInviteCode:        stringValue(data.GuestInviteCode),
 		SubscribeId:            data.SubscribeID,
 		SubscribeToken:         stringValue(data.SubscribeToken),
 		UserSubscribeId:        data.UserSubscribeID,

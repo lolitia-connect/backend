@@ -262,6 +262,8 @@ var (
 		{Name: "guest_checkout_token_hash", Type: field.TypeString, Nullable: true, Size: 64},
 		{Name: "guest_auth_type", Type: field.TypeString, Size: 32, Default: ""},
 		{Name: "guest_identifier", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "guest_password_hash", Type: field.TypeString, Nullable: true, Size: 255},
+		{Name: "guest_invite_code", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "subscribe_id", Type: field.TypeInt64, Default: 0},
 		{Name: "subscribe_token", Type: field.TypeString, Nullable: true, Size: 255},
 		{Name: "user_subscribe_id", Type: field.TypeInt64, Default: 0},

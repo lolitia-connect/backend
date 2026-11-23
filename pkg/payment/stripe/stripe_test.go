@@ -108,6 +108,38 @@ func TestCheckoutClientUsesInstanceKeyAndIdempotency(t *testing.T) {
 	}
 }
 
+func TestFindCheckoutSessionByOrderReference(t *testing.T) {
+	createdAfter := time.Unix(1700000000, 0)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/checkout/sessions" {
+			t.Errorf("unexpected path %s", request.URL.Path)
+		}
+		if got := request.URL.Query().Get("created[gte]"); got != "1700000000" {
+			t.Errorf("created lower bound = %q, want %q", got, "1700000000")
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"object":"list","data":[
+			{"id":"cs_other","client_reference_id":"other","metadata":{"order_no":"order-1"},"amount_total":1050,"currency":"jpy"},
+			{"id":"cs_order","metadata":{"order_no":"order-1"},"amount_total":1050,"currency":"jpy"}
+		],"has_more":false}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{SecretKey: "account-key"})
+	client.backend = stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
+		URL:               stripe.String(server.URL),
+		HTTPClient:        server.Client(),
+		MaxNetworkRetries: stripe.Int64(0),
+	})
+	result, err := client.FindCheckoutSession(context.Background(), "order-1", createdAfter)
+	if err != nil {
+		t.Fatalf("find checkout session: %v", err)
+	}
+	if result == nil || result.ID != "cs_order" {
+		t.Fatalf("checkout session = %#v, want cs_order", result)
+	}
+}
+
 func TestCheckoutNotificationRequiresPaymentStatus(t *testing.T) {
 	for _, eventType := range []string{"checkout.session.completed", "checkout.session.async_payment_succeeded"} {
 		for _, paid := range []bool{false, true} {

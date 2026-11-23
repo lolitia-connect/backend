@@ -50,6 +50,8 @@ type Order struct {
 	GuestCheckoutTokenHash string
 	GuestAuthType          string
 	GuestIdentifier        string
+	GuestPasswordHash      string `json:"-"`
+	GuestInviteCode        string `json:"-"`
 	SubscribeId            int64
 	SubscribeToken         string
 	UserSubscribeId        int64

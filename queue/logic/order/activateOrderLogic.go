@@ -16,6 +16,7 @@ import (
 	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/model/entitlement"
 	"github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/orderstream"
 	"github.com/perfect-panel/server/pkg/constant"
 	"go.uber.org/zap"
 
@@ -95,6 +96,7 @@ func (l *ActivateOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task) 
 	}
 
 	var effects []func()
+	var processed bool
 	err = l.svc.Store.InTx(ctx, func(store repository.Store) error {
 		orderInfo, err := store.Order().FindOneByOrderNoForUpdate(ctx, payload.OrderNo)
 		if err != nil {
@@ -112,6 +114,7 @@ func (l *ActivateOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task) 
 		if orderInfo.Method == entitlement.AppleIAPOrderMethod {
 			return user.ErrProviderManaged
 		}
+		processed = true
 		alreadyFulfilled := false
 		if store.Ent() != nil && (orderInfo.Type == OrderTypeSubscribe || orderInfo.Type == OrderTypeRenewal) {
 			alreadyFulfilled, err = store.Ent().SubscriptionPeriod.Query().
@@ -146,6 +149,9 @@ func (l *ActivateOrderLogic) ProcessTask(ctx context.Context, task *asynq.Task) 
 	})
 	if err != nil {
 		return err
+	}
+	if processed {
+		orderstream.Wake(ctx, l.svc.Redis, payload.OrderNo)
 	}
 	for _, effect := range effects {
 		effect()
@@ -359,12 +365,19 @@ func (l *ActivateOrderLogic) getExistingUser(ctx context.Context, userId int64) 
 	return userInfo, nil
 }
 
-// createGuestUser creates a new user account for guest orders using temporary order information
-// stored in Redis cache
 func (l *ActivateOrderLogic) createGuestUser(ctx context.Context, orderInfo *order.Order) (*user.User, error) {
-	tempOrder, err := l.getTempOrderInfo(ctx, orderInfo.OrderNo)
-	if err != nil {
-		return nil, err
+	tempOrder := &constant.TemporaryOrderInfo{AuthType: orderInfo.GuestAuthType, Identifier: orderInfo.GuestIdentifier, InviteCode: orderInfo.GuestInviteCode, PasswordHash: orderInfo.GuestPasswordHash}
+	if tempOrder.PasswordHash == "" {
+		// Orders created before durable guest registration still use the original cache.
+		legacy, err := l.getTempOrderInfo(ctx, orderInfo.OrderNo)
+		if err != nil {
+			return nil, err
+		}
+		if legacy.Password == "" {
+			return nil, fmt.Errorf("missing guest registration credentials")
+		}
+		legacy.PasswordHash = tool.EncodePassWord(legacy.Password)
+		tempOrder = legacy
 	}
 	identity, err := l.svc.Store.User().FindUserAuthMethodByOpenID(ctx, tempOrder.AuthType, tempOrder.Identifier)
 	if err != nil && !ent.IsNotFound(err) {
@@ -386,7 +399,7 @@ func (l *ActivateOrderLogic) createGuestUser(ctx context.Context, orderInfo *ord
 	}
 
 	userInfo := &user.User{
-		Password: tool.EncodePassWord(tempOrder.Password),
+		Password: tempOrder.PasswordHash,
 		Algo:     tool.PasswordAlgoArgon2id,
 	}
 

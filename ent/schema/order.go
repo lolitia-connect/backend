@@ -54,6 +54,8 @@ func (Order) Fields() []ent.Field {
 		field.String("guest_checkout_token_hash").StorageKey("guest_checkout_token_hash").MaxLen(64).Optional().Nillable(),
 		field.String("guest_auth_type").MaxLen(32).Default(""),
 		field.String("guest_identifier").MaxLen(255).Default(""),
+		field.String("guest_password_hash").MaxLen(255).Optional().Nillable().Sensitive(),
+		field.Text("guest_invite_code").Optional().Nillable(),
 		field.Int64("subscribe_id").StorageKey("subscribe_id").Default(0),
 		field.String("subscribe_token").StorageKey("subscribe_token").MaxLen(255).Optional().Nillable(),
 		field.Int64("user_subscribe_id").StorageKey("user_subscribe_id").Default(0),

@@ -23,6 +23,7 @@ func RegisterHandlers(mux *asynq.ServeMux, serverCtx *svc.ServiceContext) {
 	mux.Handle(types.DeferCloseOrder, orderLogic.NewDeferCloseOrderLogic(serverCtx))
 	// Forthwith activate order task
 	mux.Handle(types.ForthwithActivateOrder, orderLogic.NewActivateOrderLogic(serverCtx))
+	mux.Handle(types.RecoverStripeOrders, orderLogic.RecoverStripeOrders(serverCtx))
 	// Publish committed order events to Redis
 	mux.Handle(types.PublishOrderEvents, orderLogic.NewPublishOrderEventsLogic(serverCtx))
 	// Remove order events past the replay retention window

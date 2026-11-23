@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"ariga.io/entcache"
 	"github.com/cloudwego/hertz/pkg/protocol/sse"
 	orderLogic "github.com/perfect-panel/server/internal/logic/public/order"
 	"github.com/perfect-panel/server/internal/orderstream"
@@ -58,6 +59,18 @@ func V2CheckoutHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
 			return
 		}
 		resp, err := orderLogic.NewV2OrderLogic(c.Request.Context(), svcCtx).Checkout(c.Param("orderNo"), &req)
+		result.HttpResult(c, resp, err)
+	}
+}
+
+func V2ReconcileOrderHandler(svcCtx *svc.ServiceContext) func(c *hertzx.Context) {
+	return func(c *hertzx.Context) {
+		var req types.V2ReconcileOrderRequest
+		if err := c.ShouldBind(&req); err != nil {
+			result.ParamErrorResult(c, err)
+			return
+		}
+		resp, err := orderLogic.NewV2OrderLogic(c.Request.Context(), svcCtx).Reconcile(c.Param("orderNo"), req.CheckoutToken)
 		result.HttpResult(c, resp, err)
 	}
 }
@@ -249,6 +262,8 @@ func writeSSEReset(writer *sse.Writer, snapshot types.V2OrderSnapshot) error {
 }
 
 func replayOrderEvents(ctx context.Context, writer *sse.Writer, svcCtx *svc.ServiceContext, orderNo string, afterID *int64) error {
+	// The same GET stays open across commits, including after an empty read.
+	ctx = entcache.Skip(ctx)
 	for {
 		events, err := svcCtx.Store.OrderEvent().ListAfter(ctx, orderNo, *afterID, 500)
 		if err != nil {

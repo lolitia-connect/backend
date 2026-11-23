@@ -48,7 +48,8 @@ type TemporaryOrderInfo struct {
 	CheckoutToken string `json:"checkout_token,omitempty"`
 	Identifier    string `json:"identifier"`
 	AuthType      string `json:"auth_type"`
-	Password      string `json:"password"`
+	Password      string `json:"password,omitempty"` // Legacy temporary orders.
+	PasswordHash  string `json:"password_hash,omitempty"`
 	InviteCode    string `json:"invite_code,omitempty"`
 }
 

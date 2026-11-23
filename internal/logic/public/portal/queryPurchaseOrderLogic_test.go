@@ -19,6 +19,14 @@ func TestOrdinaryPaidOrderDoesNotIssueGuestSession(t *testing.T) {
 	}
 }
 
+func TestPaidGuestCanSeeReceiptBeforeActivationCreatesAccount(t *testing.T) {
+	logic := NewQueryPurchaseOrderLogic(context.Background(), nil)
+	info := &order.Order{Status: order.StatusPaid, GuestCheckoutTokenHash: constant.CheckoutTokenHash("capability")}
+	if token, err := logic.handleTemporaryOrder(info, "capability"); err != nil || token != "" {
+		t.Fatalf("paid but unfulfilled guest got token=%q, err=%v", token, err)
+	}
+}
+
 func TestGuestSessionRejectsWrongCapabilityBeforeStorage(t *testing.T) {
 	logic := NewQueryPurchaseOrderLogic(context.Background(), nil)
 	info := &order.Order{UserId: 42, GuestCheckoutTokenHash: constant.CheckoutTokenHash("owner-capability")}

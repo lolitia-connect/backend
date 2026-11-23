@@ -568,6 +568,46 @@ func (_u *OrderUpdate) SetNillableGuestIdentifier(v *string) *OrderUpdate {
 	return _u
 }
 
+// SetGuestPasswordHash sets the "guest_password_hash" field.
+func (_u *OrderUpdate) SetGuestPasswordHash(v string) *OrderUpdate {
+	_u.mutation.SetGuestPasswordHash(v)
+	return _u
+}
+
+// SetNillableGuestPasswordHash sets the "guest_password_hash" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableGuestPasswordHash(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetGuestPasswordHash(*v)
+	}
+	return _u
+}
+
+// ClearGuestPasswordHash clears the value of the "guest_password_hash" field.
+func (_u *OrderUpdate) ClearGuestPasswordHash() *OrderUpdate {
+	_u.mutation.ClearGuestPasswordHash()
+	return _u
+}
+
+// SetGuestInviteCode sets the "guest_invite_code" field.
+func (_u *OrderUpdate) SetGuestInviteCode(v string) *OrderUpdate {
+	_u.mutation.SetGuestInviteCode(v)
+	return _u
+}
+
+// SetNillableGuestInviteCode sets the "guest_invite_code" field if the given value is not nil.
+func (_u *OrderUpdate) SetNillableGuestInviteCode(v *string) *OrderUpdate {
+	if v != nil {
+		_u.SetGuestInviteCode(*v)
+	}
+	return _u
+}
+
+// ClearGuestInviteCode clears the value of the "guest_invite_code" field.
+func (_u *OrderUpdate) ClearGuestInviteCode() *OrderUpdate {
+	_u.mutation.ClearGuestInviteCode()
+	return _u
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_u *OrderUpdate) SetSubscribeID(v int64) *OrderUpdate {
 	_u.mutation.ResetSubscribeID()
@@ -743,6 +783,11 @@ func (_u *OrderUpdate) check() error {
 			return &ValidationError{Name: "guest_identifier", err: fmt.Errorf(`ent: validator failed for field "Order.guest_identifier": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GuestPasswordHash(); ok {
+		if err := order.GuestPasswordHashValidator(v); err != nil {
+			return &ValidationError{Name: "guest_password_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_password_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SubscribeToken(); ok {
 		if err := order.SubscribeTokenValidator(v); err != nil {
 			return &ValidationError{Name: "subscribe_token", err: fmt.Errorf(`ent: validator failed for field "Order.subscribe_token": %w`, err)}
@@ -912,6 +957,18 @@ func (_u *OrderUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.GuestIdentifier(); ok {
 		_spec.SetField(order.FieldGuestIdentifier, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GuestPasswordHash(); ok {
+		_spec.SetField(order.FieldGuestPasswordHash, field.TypeString, value)
+	}
+	if _u.mutation.GuestPasswordHashCleared() {
+		_spec.ClearField(order.FieldGuestPasswordHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.GuestInviteCode(); ok {
+		_spec.SetField(order.FieldGuestInviteCode, field.TypeString, value)
+	}
+	if _u.mutation.GuestInviteCodeCleared() {
+		_spec.ClearField(order.FieldGuestInviteCode, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)
@@ -1497,6 +1554,46 @@ func (_u *OrderUpdateOne) SetNillableGuestIdentifier(v *string) *OrderUpdateOne 
 	return _u
 }
 
+// SetGuestPasswordHash sets the "guest_password_hash" field.
+func (_u *OrderUpdateOne) SetGuestPasswordHash(v string) *OrderUpdateOne {
+	_u.mutation.SetGuestPasswordHash(v)
+	return _u
+}
+
+// SetNillableGuestPasswordHash sets the "guest_password_hash" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableGuestPasswordHash(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetGuestPasswordHash(*v)
+	}
+	return _u
+}
+
+// ClearGuestPasswordHash clears the value of the "guest_password_hash" field.
+func (_u *OrderUpdateOne) ClearGuestPasswordHash() *OrderUpdateOne {
+	_u.mutation.ClearGuestPasswordHash()
+	return _u
+}
+
+// SetGuestInviteCode sets the "guest_invite_code" field.
+func (_u *OrderUpdateOne) SetGuestInviteCode(v string) *OrderUpdateOne {
+	_u.mutation.SetGuestInviteCode(v)
+	return _u
+}
+
+// SetNillableGuestInviteCode sets the "guest_invite_code" field if the given value is not nil.
+func (_u *OrderUpdateOne) SetNillableGuestInviteCode(v *string) *OrderUpdateOne {
+	if v != nil {
+		_u.SetGuestInviteCode(*v)
+	}
+	return _u
+}
+
+// ClearGuestInviteCode clears the value of the "guest_invite_code" field.
+func (_u *OrderUpdateOne) ClearGuestInviteCode() *OrderUpdateOne {
+	_u.mutation.ClearGuestInviteCode()
+	return _u
+}
+
 // SetSubscribeID sets the "subscribe_id" field.
 func (_u *OrderUpdateOne) SetSubscribeID(v int64) *OrderUpdateOne {
 	_u.mutation.ResetSubscribeID()
@@ -1685,6 +1782,11 @@ func (_u *OrderUpdateOne) check() error {
 			return &ValidationError{Name: "guest_identifier", err: fmt.Errorf(`ent: validator failed for field "Order.guest_identifier": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.GuestPasswordHash(); ok {
+		if err := order.GuestPasswordHashValidator(v); err != nil {
+			return &ValidationError{Name: "guest_password_hash", err: fmt.Errorf(`ent: validator failed for field "Order.guest_password_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.SubscribeToken(); ok {
 		if err := order.SubscribeTokenValidator(v); err != nil {
 			return &ValidationError{Name: "subscribe_token", err: fmt.Errorf(`ent: validator failed for field "Order.subscribe_token": %w`, err)}
@@ -1871,6 +1973,18 @@ func (_u *OrderUpdateOne) sqlSave(ctx context.Context) (_node *Order, err error)
 	}
 	if value, ok := _u.mutation.GuestIdentifier(); ok {
 		_spec.SetField(order.FieldGuestIdentifier, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.GuestPasswordHash(); ok {
+		_spec.SetField(order.FieldGuestPasswordHash, field.TypeString, value)
+	}
+	if _u.mutation.GuestPasswordHashCleared() {
+		_spec.ClearField(order.FieldGuestPasswordHash, field.TypeString)
+	}
+	if value, ok := _u.mutation.GuestInviteCode(); ok {
+		_spec.SetField(order.FieldGuestInviteCode, field.TypeString, value)
+	}
+	if _u.mutation.GuestInviteCodeCleared() {
+		_spec.ClearField(order.FieldGuestInviteCode, field.TypeString)
 	}
 	if value, ok := _u.mutation.SubscribeID(); ok {
 		_spec.SetField(order.FieldSubscribeID, field.TypeInt64, value)

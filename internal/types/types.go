@@ -3327,6 +3327,10 @@ type V2CreateOrderRequest struct {
 	Guest           *V2GuestOrderRequest `json:"guest,omitempty"`
 }
 
+type V2ReconcileOrderRequest struct {
+	CheckoutToken string `json:"checkout_token,omitempty"`
+}
+
 type V2EventTicketRequest struct {
 	CheckoutToken string `json:"checkout_token,omitempty"`
 }

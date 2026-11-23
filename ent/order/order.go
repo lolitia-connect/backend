@@ -69,6 +69,10 @@ const (
 	FieldGuestAuthType = "guest_auth_type"
 	// FieldGuestIdentifier holds the string denoting the guest_identifier field in the database.
 	FieldGuestIdentifier = "guest_identifier"
+	// FieldGuestPasswordHash holds the string denoting the guest_password_hash field in the database.
+	FieldGuestPasswordHash = "guest_password_hash"
+	// FieldGuestInviteCode holds the string denoting the guest_invite_code field in the database.
+	FieldGuestInviteCode = "guest_invite_code"
 	// FieldSubscribeID holds the string denoting the subscribe_id field in the database.
 	FieldSubscribeID = "subscribe_id"
 	// FieldSubscribeToken holds the string denoting the subscribe_token field in the database.
@@ -116,6 +120,8 @@ var Columns = []string{
 	FieldGuestCheckoutTokenHash,
 	FieldGuestAuthType,
 	FieldGuestIdentifier,
+	FieldGuestPasswordHash,
+	FieldGuestInviteCode,
 	FieldSubscribeID,
 	FieldSubscribeToken,
 	FieldUserSubscribeID,
@@ -199,6 +205,8 @@ var (
 	DefaultGuestIdentifier string
 	// GuestIdentifierValidator is a validator for the "guest_identifier" field. It is called by the builders before save.
 	GuestIdentifierValidator func(string) error
+	// GuestPasswordHashValidator is a validator for the "guest_password_hash" field. It is called by the builders before save.
+	GuestPasswordHashValidator func(string) error
 	// DefaultSubscribeID holds the default value on creation for the "subscribe_id" field.
 	DefaultSubscribeID int64
 	// SubscribeTokenValidator is a validator for the "subscribe_token" field. It is called by the builders before save.
@@ -361,6 +369,16 @@ func ByGuestAuthType(opts ...sql.OrderTermOption) OrderOption {
 // ByGuestIdentifier orders the results by the guest_identifier field.
 func ByGuestIdentifier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGuestIdentifier, opts...).ToFunc()
+}
+
+// ByGuestPasswordHash orders the results by the guest_password_hash field.
+func ByGuestPasswordHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuestPasswordHash, opts...).ToFunc()
+}
+
+// ByGuestInviteCode orders the results by the guest_invite_code field.
+func ByGuestInviteCode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGuestInviteCode, opts...).ToFunc()
 }
 
 // BySubscribeID orders the results by the subscribe_id field.

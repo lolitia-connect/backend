@@ -73,6 +73,10 @@ type Order struct {
 	GuestAuthType string `json:"guest_auth_type,omitempty"`
 	// GuestIdentifier holds the value of the "guest_identifier" field.
 	GuestIdentifier string `json:"guest_identifier,omitempty"`
+	// GuestPasswordHash holds the value of the "guest_password_hash" field.
+	GuestPasswordHash *string `json:"-"`
+	// GuestInviteCode holds the value of the "guest_invite_code" field.
+	GuestInviteCode *string `json:"guest_invite_code,omitempty"`
 	// SubscribeID holds the value of the "subscribe_id" field.
 	SubscribeID int64 `json:"subscribe_id,omitempty"`
 	// SubscribeToken holds the value of the "subscribe_token" field.
@@ -97,7 +101,7 @@ func (*Order) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case order.FieldID, order.FieldParentID, order.FieldUserID, order.FieldType, order.FieldQuantity, order.FieldPrice, order.FieldAmount, order.FieldDiscount, order.FieldCouponDiscount, order.FieldPaymentID, order.FieldFeeAmount, order.FieldGiftAmount, order.FieldCommission, order.FieldCommissionRefererID, order.FieldPaymentAmount, order.FieldStatus, order.FieldStateVersion, order.FieldSubscribeID, order.FieldUserSubscribeID:
 			values[i] = new(sql.NullInt64)
-		case order.FieldOrderNo, order.FieldCoupon, order.FieldMethod, order.FieldTradeNo, order.FieldPaymentCurrency, order.FieldPaymentSession, order.FieldIdempotencyKey, order.FieldIdempotencyHash, order.FieldGuestCheckoutTokenHash, order.FieldGuestAuthType, order.FieldGuestIdentifier, order.FieldSubscribeToken:
+		case order.FieldOrderNo, order.FieldCoupon, order.FieldMethod, order.FieldTradeNo, order.FieldPaymentCurrency, order.FieldPaymentSession, order.FieldIdempotencyKey, order.FieldIdempotencyHash, order.FieldGuestCheckoutTokenHash, order.FieldGuestAuthType, order.FieldGuestIdentifier, order.FieldGuestPasswordHash, order.FieldGuestInviteCode, order.FieldSubscribeToken:
 			values[i] = new(sql.NullString)
 		case order.FieldCreatedAt, order.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -296,6 +300,20 @@ func (_m *Order) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.GuestIdentifier = value.String
 			}
+		case order.FieldGuestPasswordHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guest_password_hash", values[i])
+			} else if value.Valid {
+				_m.GuestPasswordHash = new(string)
+				*_m.GuestPasswordHash = value.String
+			}
+		case order.FieldGuestInviteCode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field guest_invite_code", values[i])
+			} else if value.Valid {
+				_m.GuestInviteCode = new(string)
+				*_m.GuestInviteCode = value.String
+			}
 		case order.FieldSubscribeID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field subscribe_id", values[i])
@@ -464,6 +482,13 @@ func (_m *Order) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("guest_identifier=")
 	builder.WriteString(_m.GuestIdentifier)
+	builder.WriteString(", ")
+	builder.WriteString("guest_password_hash=<sensitive>")
+	builder.WriteString(", ")
+	if v := _m.GuestInviteCode; v != nil {
+		builder.WriteString("guest_invite_code=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("subscribe_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.SubscribeID))

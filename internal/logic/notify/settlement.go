@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/payment"
+	"github.com/perfect-panel/server/internal/orderstream"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/queue/types"
@@ -87,8 +89,24 @@ func enqueueActivation(ctx context.Context, service *svc.ServiceContext, orderNo
 	if err != nil {
 		return err
 	}
-	_, err = service.Queue.EnqueueContext(ctx, asynq.NewTask(types.ForthwithActivateOrder, payload, asynq.MaxRetry(5)))
-	return err
+	enqueueCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	_, err = service.Queue.EnqueueContext(enqueueCtx, asynq.NewTask(
+		types.ForthwithActivateOrder,
+		payload,
+		asynq.MaxRetry(5),
+		asynq.Unique(5*time.Minute),
+	))
+	if errors.Is(err, asynq.ErrDuplicateTask) {
+		err = nil
+	}
+	if err != nil {
+		return err
+	}
+	if service.Redis != nil {
+		orderstream.Wake(ctx, service.Redis, orderNo)
+	}
+	return nil
 }
 
 func SettleConfirmedPayment(ctx context.Context, service *svc.ServiceContext, method *payment.Payment, orderNo, tradeNo string, amount int64, currency string) error {
@@ -101,6 +119,20 @@ func SettleConfirmedPayment(ctx context.Context, service *svc.ServiceContext, me
 
 func EnqueuePaidOrder(ctx context.Context, service *svc.ServiceContext, orderNo string) error {
 	return enqueueActivation(ctx, service, orderNo)
+}
+
+func EnqueueStripeCloseCheck(ctx context.Context, service *svc.ServiceContext, orderNo string) error {
+	payload, err := json.Marshal(types.DeferCloseOrderPayload{OrderNo: orderNo})
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	_, err = service.Queue.EnqueueContext(ctx, asynq.NewTask(types.DeferCloseOrder, payload), asynq.MaxRetry(0), asynq.Unique(5*time.Minute))
+	if errors.Is(err, asynq.ErrDuplicateTask) {
+		return nil
+	}
+	return err
 }
 
 func configCurrency(configured, fallback string) string {

@@ -142,23 +142,25 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		checkoutToken = random.KeyNew(32, 1)
 	}
 	orderInfo := &order.Order{
-		OrderNo:         tool.GenerateTradeNo(),
-		Type:            1,
-		Quantity:        req.Quantity,
-		Price:           price,
-		Amount:          amount,
-		Discount:        discountAmount,
-		GiftAmount:      0,
-		Coupon:          req.Coupon,
-		CouponDiscount:  couponAmount,
-		PaymentId:       req.Payment,
-		Method:          paymentConfig.Platform,
-		FeeAmount:       feeAmount,
-		Status:          1,
-		IsNew:           true,
-		SubscribeId:     req.SubscribeId,
-		GuestAuthType:   req.AuthType,
-		GuestIdentifier: req.Identifier,
+		OrderNo:           tool.GenerateTradeNo(),
+		Type:              1,
+		Quantity:          req.Quantity,
+		Price:             price,
+		Amount:            amount,
+		Discount:          discountAmount,
+		GiftAmount:        0,
+		Coupon:            req.Coupon,
+		CouponDiscount:    couponAmount,
+		PaymentId:         req.Payment,
+		Method:            paymentConfig.Platform,
+		FeeAmount:         feeAmount,
+		Status:            1,
+		IsNew:             true,
+		SubscribeId:       req.SubscribeId,
+		GuestAuthType:     req.AuthType,
+		GuestIdentifier:   req.Identifier,
+		GuestPasswordHash: tool.EncodePassWord(req.Password),
+		GuestInviteCode:   req.InviteCode,
 	}
 	// The durable half of the guest checkout capability. Only the caller ever
 	// holds the token itself, so the order row can prove a later status query
@@ -167,20 +169,19 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 	orderflow.ApplyIdempotency(l.ctx, orderInfo)
 	// save order
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		// save guest order and user information
-		tempOrder := constant.TemporaryOrderInfo{
-			OrderNo:       orderInfo.OrderNo,
-			CheckoutToken: checkoutToken,
-			Identifier:    req.Identifier,
-			AuthType:      req.AuthType,
-			Password:      req.Password,
-			InviteCode:    req.InviteCode,
-		}
-		content, _ := tempOrder.Marshal()
-
-		if _, err = l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf(constant.TempOrderCacheKey, orderInfo.OrderNo), string(content), 24*time.Hour).Result(); err != nil {
-			l.Logger.Errorw("[Purchase] Redis set error", zap.Any("error", err.Error()), zap.Any("order_no", orderInfo.OrderNo))
-			return err
+		// V2 creation replays have a shorter authorization window than fulfillment.
+		if orderInfo.IdempotencyKey != "" {
+			replay := constant.TemporaryOrderInfo{
+				OrderNo: orderInfo.OrderNo, AuthType: req.AuthType, Identifier: req.Identifier,
+				PasswordHash: orderInfo.GuestPasswordHash,
+			}
+			content, err := replay.Marshal()
+			if err != nil {
+				return err
+			}
+			if err := l.svcCtx.Redis.Set(l.ctx, fmt.Sprintf(constant.TempOrderCacheKey, orderInfo.OrderNo), content, 24*time.Hour).Err(); err != nil {
+				return err
+			}
 		}
 		l.Logger.Infow("[Purchase] Guest order", zap.Any("order_no", orderInfo.OrderNo), zap.Any("identifier", req.Identifier))
 

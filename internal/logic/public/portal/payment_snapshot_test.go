@@ -13,6 +13,16 @@ import (
 	"github.com/perfect-panel/server/pkg/requestmeta"
 )
 
+func TestStripeReturnURLsIdentifyTheOrderWithoutLeakingTheCapability(t *testing.T) {
+	success, cancel, err := stripeReturnURLs("https://portal.example/payment?lang=en&order_no=old&stripe_return=1&checkout_token=private#summary", "new order")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if success != "https://portal.example/payment?lang=en&order_no=new+order&stripe_return=1#summary" || cancel != "https://portal.example/payment?lang=en&order_no=new+order#summary" {
+		t.Fatalf("success %q, cancel %q", success, cancel)
+	}
+}
+
 func TestPaymentNotifyURLUsesConfiguredOrigin(t *testing.T) {
 	for _, test := range []struct {
 		domain  string

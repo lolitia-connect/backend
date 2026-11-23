@@ -36,6 +36,9 @@ func (m *defaultOrderModel) orderCreate(data *Order) *ent.OrderCreate {
 		SetNillableSubscribeToken(nilIfEmpty(data.SubscribeToken)).
 		SetUserSubscribeID(data.UserSubscribeId).
 		SetIsNew(data.IsNew)
+	if data.GuestPasswordHash != "" {
+		create.SetGuestPasswordHash(data.GuestPasswordHash).SetNillableGuestInviteCode(nilIfEmpty(data.GuestInviteCode))
+	}
 	if data.Id > 0 {
 		create.SetID(data.Id)
 	}

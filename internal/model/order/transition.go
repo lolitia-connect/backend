@@ -26,14 +26,13 @@ import (
 // every existing caller relies on (a late payment on a closed order still
 // completes it). Only a write that actually moved the status appends an event.
 func (m *customOrderModel) UpdateOrderStatus(ctx context.Context, orderNo string, status uint8) error {
-	affected, err := m.db.Order.Update().
-		Where(
-			entorder.OrderNo(orderNo),
-			entorder.StatusNEQ(status),
-		).
-		SetStatus(status).
-		AddStateVersion(1).
-		Save(ctx)
+	update := m.db.Order.Update().
+		Where(entorder.OrderNo(orderNo), entorder.StatusNEQ(status)).
+		SetStatus(status).AddStateVersion(1)
+	if status == StatusFinished || status == StatusClosed || status == StatusFailed {
+		update.ClearGuestPasswordHash().ClearGuestInviteCode()
+	}
+	affected, err := update.Save(ctx)
 	if err != nil {
 		return err
 	}
@@ -77,6 +76,7 @@ func (m *customOrderModel) ClosePendingOrder(ctx context.Context, orderNo string
 	affected, err := m.db.Order.Update().
 		Where(entorder.OrderNo(orderNo), entorder.Status(StatusPending)).
 		SetStatus(StatusClosed).
+		ClearGuestPasswordHash().ClearGuestInviteCode().
 		SetCouponReserved(false).
 		AddStateVersion(1).
 		Save(ctx)
@@ -95,7 +95,7 @@ func (m *customOrderModel) ClosePendingOrder(ctx context.Context, orderNo string
 
 func (m *customOrderModel) ClosePaidOrder(ctx context.Context, orderNo string) (bool, error) {
 	affected, err := m.db.Order.Update().Where(entorder.OrderNo(orderNo), entorder.Status(StatusPaid)).
-		SetStatus(StatusClosed).SetCouponReserved(false).AddStateVersion(1).Save(ctx)
+		SetStatus(StatusClosed).ClearGuestPasswordHash().ClearGuestInviteCode().SetCouponReserved(false).AddStateVersion(1).Save(ctx)
 	if err != nil || affected == 0 {
 		return false, err
 	}
@@ -168,6 +168,7 @@ func (m *customOrderModel) FinishOrder(ctx context.Context, orderNo string) (boo
 			entorder.Status(StatusPaid),
 		).
 		SetStatus(StatusFinished).
+		ClearGuestPasswordHash().ClearGuestInviteCode().
 		AddStateVersion(1).
 		Save(ctx)
 	if err != nil {

@@ -47,7 +47,11 @@ func reservesPlanInventory(orderInfo *order.Order) bool {
 
 func (l *CloseOrderLogic) ExpireOrder(req *types.CloseOrderRequest) error {
 	l.expiry = true
-	return l.CloseOrder(req)
+	err := l.CloseOrder(req)
+	if errors.Is(err, stripe.ErrPaymentProcessing) {
+		return nil // The Stripe recovery scan will check again after clearing.
+	}
+	return err
 }
 
 func (l *CloseOrderLogic) CloseOrder(req *types.CloseOrderRequest) error {

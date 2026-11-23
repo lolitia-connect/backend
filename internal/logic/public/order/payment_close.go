@@ -46,22 +46,56 @@ func (l *CloseOrderLogic) closeGateway(current *order.Order) error {
 	}
 	switch platform {
 	case paymentutil.Stripe:
-		if current.TradeNo == "" {
-			return fmt.Errorf("Stripe checkout creation has not been confirmed")
-		}
 		var config payment.StripeConfig
 		if err := json.Unmarshal([]byte(method.Config), &config); err != nil {
+			if current.TradeNo == "" {
+				return fmt.Errorf("Stripe checkout creation has not been confirmed")
+			}
 			return err
 		}
 		client := stripe.NewClient(stripe.Config{SecretKey: config.SecretKey})
+		if current.TradeNo == "" {
+			recovered, err := client.FindCheckoutSession(l.ctx, current.OrderNo, current.CreatedAt.Add(-5*time.Minute))
+			if err != nil {
+				return fmt.Errorf("Stripe checkout reconciliation failed: %w", err)
+			}
+			if recovered == nil {
+				return fmt.Errorf("Stripe checkout creation has not been confirmed")
+			}
+			expectedAmount, expectedCurrency := current.PaymentAmount, current.PaymentCurrency
+			if expectedCurrency == "" {
+				expectedAmount, expectedCurrency = current.Amount, method.CurrencyUnit
+			}
+			amount := stripe.FromStripeAmount(recovered.AmountTotal, string(recovered.Currency))
+			if amount != expectedAmount || !strings.EqualFold(string(recovered.Currency), expectedCurrency) {
+				return fmt.Errorf("Stripe checkout does not match order payment expectation")
+			}
+			if string(recovered.PaymentStatus) == "paid" {
+				return settle(current.OrderNo, recovered.ID, amount, string(recovered.Currency))
+			}
+			claimed, err := l.svcCtx.Store.Order().ClaimPaymentSession(l.ctx, current.OrderNo, recovered.ID, "")
+			if err != nil {
+				return err
+			}
+			if !claimed {
+				return fmt.Errorf("Stripe checkout was recovered after the order changed")
+			}
+			current.TradeNo = recovered.ID
+		}
 		receipt, err := client.QueryPayment(l.ctx, current.TradeNo)
 		if err != nil {
 			return err
+		}
+		if receipt.TradeNo != current.TradeNo || receipt.OrderNo != current.OrderNo {
+			return fmt.Errorf("Stripe payment does not match the order")
 		}
 		if receipt.Paid {
 			return settle(receipt.OrderNo, receipt.TradeNo, receipt.Amount, receipt.Currency)
 		}
 		if err := client.CancelCheckout(l.ctx, current.TradeNo); err != nil {
+			if errors.Is(err, stripe.ErrPaymentProcessing) {
+				return err
+			}
 			receipt, queryErr := client.QueryPayment(l.ctx, current.TradeNo)
 			if queryErr == nil && receipt.Paid {
 				return settle(receipt.OrderNo, receipt.TradeNo, receipt.Amount, receipt.Currency)

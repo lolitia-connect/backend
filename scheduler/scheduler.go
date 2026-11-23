@@ -87,6 +87,11 @@ func (m *Service) Run() error {
 		zap.S().Errorf("register publish order events task failed: %s", err.Error())
 	}
 
+	if _, err := m.server.Register("@every 1m", asynq.NewTask(types.RecoverStripeOrders, nil), asynq.Unique(time.Minute)); err != nil {
+		m.mu.Unlock()
+		return err
+	}
+
 	// schedule order event cleanup: every day at 03:30
 	cleanupOrderEventsTask := asynq.NewTask(types.CleanupOrderEvents, nil)
 	if _, err := m.server.Register("30 3 * * *", cleanupOrderEventsTask, asynq.MaxRetry(2)); err != nil {

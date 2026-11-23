@@ -168,7 +168,7 @@ func TestStripeAsyncSuccessReachesOrderSettlement(t *testing.T) {
 		now := time.Now()
 		request.Header.Set("Stripe-Signature", fmt.Sprintf("t=%d,v1=%x", now.Unix(), webhook.ComputeSignature(now, payload, "signing-secret")))
 		err = NewStripeNotifyLogic(ctx, &svc.ServiceContext{Store: store}).StripeNotify(request, httptest.NewRecorder())
-		if orders.reads != 2 {
+		if orders.reads == 0 {
 			t.Fatal("async success was filtered before order settlement")
 		}
 		if (err != nil) != (amount != 100) {

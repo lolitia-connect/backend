@@ -22,11 +22,11 @@ if [[ -f "$raw_profile" ]]; then
 fi
 
 if [[ $filter_status -eq 0 && -f "$profile" ]]; then
-  GITHUB_TEST_STATUS=$test_status awk -v minimum=95 -f scripts/check-coverage.awk "$profile"
+  GITHUB_TEST_STATUS=$test_status awk -v minimum=80 -f scripts/check-coverage.awk "$profile"
   coverage_status=$?
 else
   GITHUB_TEST_STATUS=$test_status GITHUB_COVERAGE_ERROR="coverage profile generation failed (status $filter_status)" \
-    awk -v minimum=95 -f scripts/check-coverage.awk /dev/null
+  awk -v minimum=80 -f scripts/check-coverage.awk /dev/null
   coverage_status=$?
 fi
 

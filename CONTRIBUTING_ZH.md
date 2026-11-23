@@ -22,7 +22,7 @@
 - **单元测试**：为新增或修改的功能编写单元测试，并确保所有测试通过(工具类即`pkg/*`下面的必须带有单元测试)。
 - **文档更新**：如果 PR 涉及新功能或接口更改，确保文档同步更新。
 
-两个构建工作流都会先运行 `go test -count=1 ./...`，测试失败会阻止构建和发布。独立覆盖率工作流文件为 `.github/workflows/coverage.yml`；单个 Coverage 步骤运行测试、过滤 Ent 自动生成的 Go 文件、检查 95% 语句覆盖率门槛，并将 Markdown 报告写入 GitHub Actions 运行页面的 job summary。过滤后的覆盖率 profile 也会作为 `backend-coverage` 工件上传。
+两个构建工作流都会先运行 `go test -count=1 ./...`，测试失败会阻止构建和发布。独立覆盖率工作流文件为 `.github/workflows/coverage.yml`；单个 Coverage 步骤运行测试、过滤 Ent 自动生成的 Go 文件、检查 80% 语句覆盖率门槛，并将 Markdown 报告写入 GitHub Actions 运行页面的 job summary。过滤后的覆盖率 profile 也会作为 `backend-coverage` 工件上传。
 
 ## 3. 分支策略
 

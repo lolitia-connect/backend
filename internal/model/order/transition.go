@@ -161,7 +161,7 @@ func (m *customOrderModel) SetCommission(ctx context.Context, id, amount, refere
 // FinishOrder completes a paid order after its activation has been committed.
 // It is conditional on the order still being Paid, so a retried activation
 // task cannot emit a second `order.fulfilled`.
-func (m *customOrderModel) FinishOrder(ctx context.Context, orderNo string) (bool, error) {
+func (m *customOrderModel) FinishOrder(ctx context.Context, orderNo string, recalculateGroup bool) (bool, error) {
 	affected, err := m.db.Order.Update().
 		Where(
 			entorder.OrderNo(orderNo),
@@ -181,7 +181,11 @@ func (m *customOrderModel) FinishOrder(ctx context.Context, orderNo string) (boo
 	if err != nil {
 		return false, err
 	}
-	if err := m.insertEvent(ctx, data, EventOrderFulfilled); err != nil {
+	event, err := newEventFor(data, EventOrderFulfilled, recalculateGroup)
+	if err != nil {
+		return false, err
+	}
+	if err := newEventModel(m.db).Insert(ctx, event); err != nil {
 		return false, err
 	}
 	return true, nil

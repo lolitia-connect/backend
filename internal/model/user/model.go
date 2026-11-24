@@ -50,8 +50,7 @@ type customUserLogicModel interface {
 	FindUserSubscribesByStatus(ctx context.Context, status ...int64) ([]*Subscribe, error)
 	FindUserSubscribesWithNodeGroup(ctx context.Context) ([]*Subscribe, error)
 	FindUserSubscribesByUserAndStatus(ctx context.Context, userId int64, status ...int64) ([]*Subscribe, error)
-	FindUnlockedUserSubscribesByStatus(ctx context.Context, status ...int64) ([]*Subscribe, error)
-	FindUnlockedUserSubscribesStatusNotIn(ctx context.Context, status ...int64) ([]*Subscribe, error)
+	FindUnlockedSubscribesForGroupUpdate(ctx context.Context, status ...int64) ([]*Subscribe, error)
 	UpdateUserSubscribeNodeGroup(ctx context.Context, id, nodeGroupId int64) error
 	ActivatePendingSubscribesBySubscribeId(ctx context.Context, subscribeId int64) error
 	CountUserSubscribesByUserAndSubscribe(ctx context.Context, userId, subscribeId int64) (int64, error)

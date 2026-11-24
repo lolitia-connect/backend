@@ -72,6 +72,14 @@
   流量明细使用本地日历日边界 `[开始日零点, 结束日次日零点)`，未提供日期时仍默认查询今日。
   单个用户订阅流量接口的 `start_time` / `end_time` 使用 Unix 毫秒时间戳，包含开始时刻、不包含结束时刻。
 
+### 分组重算与数据库事务
+
+新购或兑换实际变更订阅后，订单完成事件会携带重算标记。事件发布器先投递 Asynq 任务，再标记事件已发布。订单触发的任务使用配置的分组模式，定时任务只在流量模式下执行。
+
+重算与重置共用可续期的 Redis 锁。重算事务按订阅 ID 顺序锁定符合条件的订阅，将分配结果、历史明细和完成状态一起提交。运行中的历史记录单独创建，重算失败时可记录原始错误。数据库写入失败会立即返回，队列任务由 Asynq 重试。
+
+将 `PPANEL_GROUP_TEST_MYSQL_DSN` 或 `PPANEL_GROUP_TEST_POSTGRES_DSN` 指向一次性空测试数据库，执行 `go test -count=1 ./internal/logic/admin/group -run TestGroupingLocksSubscriptionAgainstConcurrentWriter` 可验证实际行锁行为。
+
 ### 订阅节点名称
 
 普通订阅下载与管理端模板预览共用 `adapter.Client.Build`。本次渲染的有效节点先按

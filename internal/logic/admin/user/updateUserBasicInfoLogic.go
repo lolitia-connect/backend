@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/internal/usersession"
@@ -32,19 +33,27 @@ func NewUpdateUserBasicInfoLogic(ctx context.Context, svcCtx *svc.ServiceContext
 }
 
 func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasiceInfoRequest) error {
-	userInfo, err := l.svcCtx.Store.User().FindOne(l.ctx, req.UserId)
-	if err != nil {
-		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Find User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
-		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find User Error")
+	err := l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error { return l.updateAccount(store, req) })
+	if err == nil && req.Password != "" && req.Password != "***" {
+		_, err = usersession.Rotate(l.ctx, l.svcCtx.Redis, req.UserId)
 	}
+	return err
+}
+
+func (l *UpdateUserBasicInfoLogic) updateAccount(store repository.Store, req *types.UpdateUserBasiceInfoRequest) error {
 	// Money lives in the billing-owned wallet; an account without a row reads
 	// as zero values.
-	walletInfo, err := l.svcCtx.Store.Wallet().FindOne(l.ctx, req.UserId)
+	walletInfo, err := store.Wallet().FindOneForUpdate(l.ctx, req.UserId)
 	if err != nil {
 		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Find Wallet Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find Wallet Error")
 	}
 
+	userInfo, err := store.User().FindOne(l.ctx, req.UserId)
+	if err != nil {
+		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Find User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Find User Error")
+	}
 	isDemo := strings.ToLower(os.Getenv("PPANEL_MODE")) == "demo"
 
 	// OAuth avatars may be URLs; only validate newly submitted image data.
@@ -63,7 +72,7 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		}
 		content, _ := balanceLog.Marshal()
 
-		err = l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
+		err = store.Log().Insert(l.ctx, &log.SystemLog{
 			Type:     log.TypeBalance.Uint8(),
 			Date:     time.Now().Format(time.DateOnly),
 			ObjectID: userInfo.Id,
@@ -93,7 +102,7 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 			}
 			content, _ := giftLog.Marshal()
 			// Add gift amount change log
-			err = l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
+			err = store.Log().Insert(l.ctx, &log.SystemLog{
 				Type:     log.TypeGift.Uint8(),
 				Date:     time.Now().Format(time.DateOnly),
 				ObjectID: userInfo.Id,
@@ -115,7 +124,7 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		}
 
 		content, _ := commentLog.Marshal()
-		err = l.svcCtx.Store.Log().Insert(l.ctx, &log.SystemLog{
+		err = store.Log().Insert(l.ctx, &log.SystemLog{
 			Type:     log.TypeCommission.Uint8(),
 			Date:     time.Now().Format(time.DateOnly),
 			ObjectID: userInfo.Id,
@@ -147,15 +156,10 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 		userInfo.Salt = ""
 	}
 
-	err = l.svcCtx.Store.User().Update(l.ctx, userInfo)
+	err = store.User().Update(l.ctx, userInfo)
 	if err != nil {
 		l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update User Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update User Error")
-	}
-	if req.Password != "" && req.Password != "***" {
-		if _, err := usersession.Rotate(l.ctx, l.svcCtx.Redis, userInfo.Id); err != nil {
-			return err
-		}
 	}
 
 	balanceChanged := walletInfo.Balance != req.Balance || walletInfo.GiftAmount != req.GiftAmount
@@ -167,20 +171,20 @@ func (l *UpdateUserBasicInfoLogic) UpdateUserBasicInfo(req *types.UpdateUserBasi
 	walletInfo.GiftAmount = req.GiftAmount
 	walletInfo.Commission = req.Commission
 	if walletInfo.Id == 0 {
-		if err = l.svcCtx.Store.Wallet().Insert(l.ctx, walletInfo); err != nil {
+		if err = store.Wallet().Insert(l.ctx, walletInfo); err != nil {
 			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Insert Wallet Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Insert Wallet Error")
 		}
 		return nil
 	}
 	if balanceChanged {
-		if err = l.svcCtx.Store.Wallet().UpdateBalanceFields(l.ctx, walletInfo); err != nil {
+		if err = store.Wallet().UpdateBalanceFields(l.ctx, walletInfo); err != nil {
 			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update Wallet Balance Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update Wallet Balance Error")
 		}
 	}
 	if commissionChanged {
-		if err = l.svcCtx.Store.Wallet().UpdateCommission(l.ctx, walletInfo); err != nil {
+		if err = store.Wallet().UpdateCommission(l.ctx, walletInfo); err != nil {
 			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update Wallet Commission Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update Wallet Commission Error")
 		}

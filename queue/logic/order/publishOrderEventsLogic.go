@@ -2,14 +2,18 @@ package orderLogic
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
 
+	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/orderstream"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/queue/types"
 )
 
 // PublishOrderEventsLogic drains the durable order event outbox into Redis.
@@ -33,6 +37,13 @@ func (l *PublishOrderEventsLogic) ProcessTask(ctx context.Context, _ *asynq.Task
 	}
 	published := 0
 	for _, event := range events {
+		if event.EventType == order.EventOrderFulfilled && order.ParseEventPayload(event.Payload).RecalculateGroup {
+			id := fmt.Sprintf("group:order-event:%d", event.Id)
+			_, err := l.svcCtx.Queue.EnqueueContext(ctx, asynq.NewTask(types.OrderRecalculateGroup, nil), asynq.TaskID(id), asynq.Retention(24*time.Hour), asynq.MaxRetry(3))
+			if err != nil && !errors.Is(err, asynq.ErrTaskIDConflict) {
+				return err
+			}
+		}
 		// The message is only a wake-up hint carrying the event id; subscribers
 		// read the durable row themselves.
 		if err := l.svcCtx.Redis.Publish(ctx, orderstream.Channel(event.OrderNo), strconv.FormatInt(event.Id, 10)).Err(); err != nil {

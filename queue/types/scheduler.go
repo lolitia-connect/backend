@@ -7,6 +7,7 @@ type TrafficLogCleanup struct {
 }
 
 const (
+	OrderRecalculateGroup      = "order:recalculate:group"
 	CleanupTrafficLogs         = "traffic:cleanup:logs"
 	SchedulerCheckSubscription = "scheduler:check:subscription"
 	SchedulerTotalServerData   = "scheduler:total:server"

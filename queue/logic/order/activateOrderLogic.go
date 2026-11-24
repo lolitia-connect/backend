@@ -12,8 +12,6 @@ import (
 
 	"github.com/perfect-panel/server/ent"
 	entsubscriptionperiod "github.com/perfect-panel/server/ent/subscriptionperiod"
-	entsystem "github.com/perfect-panel/server/ent/system"
-	"github.com/perfect-panel/server/internal/logic/admin/group"
 	"github.com/perfect-panel/server/internal/model/entitlement"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/orderstream"
@@ -31,7 +29,6 @@ import (
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
-	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/authmethod"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/uuidx"
@@ -66,9 +63,10 @@ var (
 
 // ActivateOrderLogic handles the activation and processing of paid orders
 type ActivateOrderLogic struct {
-	svc        *svc.ServiceContext // Service context containing dependencies
-	postCommit *[]func()
-	committed  *ActivateOrderLogic
+	svc              *svc.ServiceContext // Service context containing dependencies
+	postCommit       *[]func()
+	committed        *ActivateOrderLogic
+	recalculateGroup bool
 }
 
 type activationStore struct {
@@ -298,7 +296,7 @@ func (l *ActivateOrderLogic) finalizeCouponAndOrder(ctx context.Context, orderIn
 				return err
 			}
 		}
-		changed, err := store.Order().FinishOrder(ctx, current.OrderNo)
+		changed, err := store.Order().FinishOrder(ctx, current.OrderNo, l.recalculateGroup)
 		if err != nil {
 			return err
 		}
@@ -331,8 +329,7 @@ func (l *ActivateOrderLogic) NewPurchase(ctx context.Context, orderInfo *order.O
 		return err
 	}
 
-	// Trigger user group recalculation (runs in background)
-	l.triggerUserGroupRecalculation(ctx, userInfo.Id)
+	l.recalculateGroup = true
 
 	// Clear cache
 	l.clearServerCache(ctx, sub)
@@ -640,63 +637,6 @@ func (l *ActivateOrderLogic) clearServerCache(ctx context.Context, sub *subscrib
 	if err := l.svc.Store.Subscribe().ClearCache(ctx, sub.Id); err != nil {
 		zap.S().Error("[Order Queue] Clear subscribe cache failed", zap.Any("error", err.Error()))
 	}
-}
-
-// triggerUserGroupRecalculation triggers user group recalculation after subscription changes
-// This runs asynchronously in background to avoid blocking the main order processing flow
-func (l *ActivateOrderLogic) triggerUserGroupRecalculation(ctx context.Context, userId int64) {
-	if l.postCommit != nil {
-		*l.postCommit = append(*l.postCommit, func() { l.committed.triggerUserGroupRecalculation(ctx, userId) })
-		return
-	}
-	go func() {
-		// Use a new context with timeout for group recalculation
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		// Check if group management is enabled
-		groupEnabled, err := l.svc.Ent.System.Query().
-			Where(entsystem.Category("group"), entsystem.Key("enabled")).
-			Only(ctx)
-		if err != nil || groupEnabled.Value != "true" && groupEnabled.Value != "1" {
-			zap.S().Debugf("[Group Trigger] Group management not enabled, skipping recalculation")
-			return
-		}
-
-		// Get the configured grouping mode
-		groupMode, err := l.svc.Ent.System.Query().
-			Where(entsystem.Category("group"), entsystem.Key("mode")).
-			Only(ctx)
-		if err != nil {
-			zap.S().Errorw("[Group Trigger] Failed to get group mode", zap.Any("error", err.Error()))
-			return
-		}
-
-		// Validate group mode
-		if groupMode.Value != "average" && groupMode.Value != "subscribe" && groupMode.Value != "traffic" {
-			zap.S().Debugf("[Group Trigger] Invalid group mode (current: %s), skipping", groupMode.Value)
-			return
-		}
-
-		// Trigger group recalculation with the configured mode
-		logic := group.NewRecalculateGroupLogic(ctx, l.svc)
-		req := &types.RecalculateGroupRequest{
-			Mode: groupMode.Value,
-		}
-
-		if err := logic.RecalculateGroup(req); err != nil {
-			zap.S().Errorw("[Group Trigger] Failed to recalculate user group",
-				zap.Any("user_id", userId),
-				zap.Any("error", err.Error()),
-			)
-			return
-		}
-
-		zap.S().Infow("[Group Trigger] Successfully recalculated user group",
-			zap.Any("user_id", userId),
-			zap.Any("mode", groupMode.Value),
-		)
-	}()
 }
 
 // Renewal handles subscription renewal including subscription extension,
@@ -1151,41 +1091,43 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 
 	// 4. 幂等性检查：查询是否已有兑换记录
 	existingRecords, err := l.svc.Store.RedemptionRecord().FindByUserId(ctx, userInfo.Id)
-	if err == nil {
-		for _, record := range existingRecords {
-			if record.RedemptionCodeId == redemptionData.RedemptionCodeId {
-				zap.S().Info("Redemption already processed, skip",
-					zap.Any("order_no", orderInfo.OrderNo),
-					zap.Any("user_id", userInfo.Id),
-					zap.Any("redemption_code_id", redemptionData.RedemptionCodeId),
-				)
-				// 已处理过，直接返回成功（幂等性保护）
-				return nil
-			}
+	if err != nil {
+		return err
+	}
+	for _, record := range existingRecords {
+		if record.RedemptionCodeId == redemptionData.RedemptionCodeId {
+			zap.S().Info("Redemption already processed, skip",
+				zap.Any("order_no", orderInfo.OrderNo),
+				zap.Any("user_id", userInfo.Id),
+				zap.Any("redemption_code_id", redemptionData.RedemptionCodeId),
+			)
+			// 已处理过，直接返回成功（幂等性保护）
+			return nil
 		}
 	}
 
 	// 5. 查找用户现有订阅
 	var existingSubscribe *user.Subscribe
 	userSubscribes, err := l.svc.Store.User().QueryUserSubscribe(ctx, userInfo.Id, 0, 1)
-	if err == nil {
-		for _, us := range userSubscribes {
-			if us.SubscribeId == orderInfo.SubscribeId {
-				existingSubscribe = &user.Subscribe{
-					Id:          us.Id,
-					UserId:      us.UserId,
-					SubscribeId: us.SubscribeId,
-					ExpireTime:  us.ExpireTime,
-					Status:      us.Status,
-					Traffic:     us.Traffic,
-					Download:    us.Download,
-					Upload:      us.Upload,
-					NodeGroupId: us.NodeGroupId,
-					Token:       us.Token,
-					UUID:        us.UUID,
-				}
-				break
+	if err != nil {
+		return err
+	}
+	for _, us := range userSubscribes {
+		if us.SubscribeId == orderInfo.SubscribeId {
+			existingSubscribe = &user.Subscribe{
+				Id:          us.Id,
+				UserId:      us.UserId,
+				SubscribeId: us.SubscribeId,
+				ExpireTime:  us.ExpireTime,
+				Status:      us.Status,
+				Traffic:     us.Traffic,
+				Download:    us.Download,
+				Upload:      us.Upload,
+				NodeGroupId: us.NodeGroupId,
+				Token:       us.Token,
+				UUID:        us.UUID,
 			}
+			break
 		}
 	}
 
@@ -1328,8 +1270,7 @@ func (l *ActivateOrderLogic) RedemptionActivate(ctx context.Context, orderInfo *
 		return err
 	}
 
-	// Trigger user group recalculation (runs in background)
-	l.triggerUserGroupRecalculation(ctx, userInfo.Id)
+	l.recalculateGroup = true
 
 	// 7. 清理缓存（关键步骤：让节点获取最新订阅）
 	l.clearServerCache(ctx, sub)

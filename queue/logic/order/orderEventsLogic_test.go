@@ -14,6 +14,7 @@ import (
 	"github.com/perfect-panel/server/internal/orderstream"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/queue/types"
 )
 
 // fakeEventModel is an in-memory outbox. The publisher only needs the ordered
@@ -180,5 +181,30 @@ func TestCleanupOrderEventsUsesTheReplayRetentionWindow(t *testing.T) {
 	}
 	if orderEventRetention != 30*24*time.Hour {
 		t.Fatalf("retention = %v, want 30 days", orderEventRetention)
+	}
+}
+
+func TestPublishCommittedGroupRequestSurvivesRedisFailureAndReplay(t *testing.T) {
+	events := &fakeEventModel{unpublished: []*orderModel.Event{{Id: 51, OrderNo: "order-group", EventType: orderModel.EventOrderFulfilled, Payload: `{"recalculate_group":true}`}}}
+	service, _, server := newPublishTestContext(t, events)
+	opts := asynq.RedisClientOpt{Addr: server.Addr()}
+	service.Queue = asynq.NewClient(opts)
+	_ = service.Queue.Close()
+	publisher := NewPublishOrderEventsLogic(service)
+	if err := publisher.ProcessTask(t.Context(), nil); err == nil || len(events.marked) != 0 {
+		t.Fatalf("unavailable queue: marks=%v err=%v", events.marked, err)
+	}
+	service.Queue = asynq.NewClient(opts)
+	defer service.Queue.Close()
+	for i := 0; i < 2; i++ {
+		if err := publisher.ProcessTask(t.Context(), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inspector := asynq.NewInspector(opts)
+	defer inspector.Close()
+	pending, err := inspector.ListPendingTasks("default")
+	if err != nil || len(pending) != 1 || pending[0].Type != types.OrderRecalculateGroup {
+		t.Fatalf("pending tasks=%+v err=%v", pending, err)
 	}
 }

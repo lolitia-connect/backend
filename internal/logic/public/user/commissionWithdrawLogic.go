@@ -37,16 +37,6 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
 
-	walletInfo, err := l.svcCtx.Store.Wallet().FindOne(l.ctx, u.Id)
-	if err != nil {
-		l.Logger.Errorf("Failed to read wallet for user %d: %v", u.Id, err)
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Failed to read wallet for user %d: %v", u.Id, err)
-	}
-	if walletInfo.Commission < req.Amount {
-		l.Logger.Debug("Insufficient commission for withdrawal")
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.UserCommissionNotEnough), "User %d has insufficient commission balance", u.Id)
-	}
-
 	// create withdrawal log
 	// Use a negative amount to reflect the balance decrease, so that
 	// SumAmountByTypeAndObjectID produces the correct net total.
@@ -65,7 +55,7 @@ func (l *CommissionWithdrawLogic) CommissionWithdraw(req *types.CommissionWithdr
 	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
 		// Re-read inside the transaction so a concurrent credit is not lost by
 		// writing back a stale snapshot.
-		walletInfo, err = store.Wallet().FindOne(l.ctx, u.Id)
+		walletInfo, err := store.Wallet().FindOneForUpdate(l.ctx, u.Id)
 		if err != nil {
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Failed to read wallet for user %d: %v", u.Id, err)
 		}

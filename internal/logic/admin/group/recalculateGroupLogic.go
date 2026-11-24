@@ -3,14 +3,17 @@ package group
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	modelgroup "github.com/perfect-panel/server/internal/model/group"
 	modelsubscribe "github.com/perfect-panel/server/internal/model/subscribe"
+	usermodel "github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
-	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
@@ -35,103 +38,75 @@ func (l *RecalculateGroupLogic) RecalculateGroup(req *types.RecalculateGroupRequ
 		return errors.New("invalid mode, must be one of: average, subscribe, traffic")
 	}
 
-	// 创建 GroupHistory 记录（state=pending）
-	triggerType := req.TriggerType
-	if triggerType == "" {
-		triggerType = "manual" // 默认为手动触发
-	}
-
-	now := time.Now()
-	var history *modelgroup.GroupHistory
-
-	// 使用 Store Transaction 执行分组重算
-	err := l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		// 创建历史记录
-		var err error
-		history, err = store.Group().CreateGroupHistory(l.ctx, &modelgroup.GroupHistory{
-			GroupMode:    req.Mode,
-			TriggerType:  triggerType,
-			State:        "pending",
-			TotalUsers:   0,
-			SuccessCount: 0,
-			FailedCount:  0,
-			StartTime:    &now,
-		})
-		if err != nil {
-			l.Logger.Errorw("failed to create group history", zap.Any("error", err.Error()))
-			return err
-		}
-
-		// 更新状态为 running
-		if err := store.Group().UpdateGroupHistoryRunning(l.ctx, history.Id); err != nil {
-			l.Logger.Errorw("failed to update history state to running", zap.Any("error", err.Error()))
-			return err
-		}
-
-		// 根据 mode 执行不同的分组算法
-		var affectedCount int
-
-		switch req.Mode {
-		case "average":
-			affectedCount, err = l.executeAverageGrouping(store, history.Id)
-			if err != nil {
-				l.Logger.Errorw("failed to execute average grouping", zap.Any("error", err.Error()))
-				return err
-			}
-		case "subscribe":
-			affectedCount, err = l.executeSubscribeGrouping(store, history.Id)
-			if err != nil {
-				l.Logger.Errorw("failed to execute subscribe grouping", zap.Any("error", err.Error()))
-				return err
-			}
-		case "traffic":
-			affectedCount, err = l.executeTrafficGrouping(store, history.Id)
-			if err != nil {
-				l.Logger.Errorw("failed to execute traffic grouping", zap.Any("error", err.Error()))
-				return err
-			}
-		}
-
-		// 更新 GroupHistory 记录（state=completed, 统计成功/失败数）
-		endTime := time.Now()
-		if err := store.Group().CompleteGroupHistory(l.ctx, history.Id, affectedCount, affectedCount, 0, endTime); err != nil {
-			l.Logger.Errorw("failed to update history state to completed", zap.Any("error", err.Error()))
-			return err
-		}
-
-		l.Logger.Infof("group recalculation completed: mode=%s, affected_users=%d", req.Mode, affectedCount)
-		return nil
+	return withGroupLock(l.ctx, l.svcCtx, func(ctx context.Context) error {
+		run := *l
+		run.ctx = ctx
+		return run.recalculate(req)
 	})
+}
 
+func (l *RecalculateGroupLogic) recalculate(req *types.RecalculateGroupRequest) error {
+	trigger := req.TriggerType
+	if trigger == "" {
+		trigger = "manual"
+	}
+	now := time.Now()
+	history, err := l.svcCtx.Store.Group().CreateGroupHistory(l.ctx, &modelgroup.GroupHistory{
+		GroupMode: req.Mode, TriggerType: trigger, State: "running", StartTime: &now,
+	})
 	if err != nil {
-		// 如果失败，更新历史记录状态为 failed
-		if history != nil {
-			updateErr := l.svcCtx.Store.Group().FailGroupHistory(l.ctx, history.Id, err.Error(), time.Now())
-			if updateErr != nil {
-				l.Logger.Errorw("failed to update history state to failed", zap.Any("error", updateErr.Error()))
-			}
-		}
 		return err
 	}
+	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		var affected int
+		var err error
+		switch req.Mode {
+		case "average":
+			affected, err = l.executeAverageGrouping(store, history.Id)
+		case "subscribe":
+			affected, err = l.executeSubscribeGrouping(store, history.Id)
+		case "traffic":
+			affected, err = l.executeTrafficGrouping(store, history.Id)
+		}
+		if err != nil {
+			return err
+		}
+		return store.Group().CompleteGroupHistory(l.ctx, history.Id, affected, affected, 0, time.Now())
+	})
+	if err != nil {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(l.ctx), 5*time.Second)
+		defer cancel()
+		if failErr := l.svcCtx.Store.Group().FailGroupHistory(ctx, history.Id, err.Error(), time.Now()); failErr != nil {
+			return errors.Join(err, fmt.Errorf("record failed group history %d: %w", history.Id, failErr))
+		}
+	}
+	return err
+}
 
+func (l *RecalculateGroupLogic) getUserEmail(store repository.Store, userId int64) (string, error) {
+	auth, err := store.User().FindFirstUserAuthMethodByTypes(l.ctx, userId, "email", "6")
+	if ent.IsNotFound(err) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return auth.AuthIdentifier, nil
+}
+
+func (l *RecalculateGroupLogic) assignGroup(store repository.Store, sub *usermodel.Subscribe, target int64) error {
+	if sub.NodeGroupId == target {
+		return nil
+	}
+	if err := store.User().UpdateUserSubscribeNodeGroup(l.ctx, sub.Id, target); err != nil {
+		return fmt.Errorf("assign group %d to user_subscribe %d: %w", target, sub.Id, err)
+	}
 	return nil
 }
 
-// getUserEmail 查询用户的邮箱
-func (l *RecalculateGroupLogic) getUserEmail(store repository.Store, userId int64) string {
-	authMethod, err := store.User().FindFirstUserAuthMethodByTypes(l.ctx, userId, "email", "6")
-	if err != nil {
-		return ""
-	}
-
-	return authMethod.AuthIdentifier
-}
-
-// executeAverageGrouping 实现平均分组算法（随机分配节点组到用户订阅）
-// 新逻辑：获取所有有效用户订阅，从订阅的节点组ID中随机选择一个，设置到用户订阅的 node_group_id 字段
 func (l *RecalculateGroupLogic) executeAverageGrouping(store repository.Store, historyId int64) (int, error) {
 	// 1. 查询所有有效且未锁定的用户订阅（status IN (0, 1)）
-	userSubscribes, err := store.User().FindUnlockedUserSubscribesByStatus(l.ctx, 0, 1)
+	userSubscribes, err := store.User().FindUnlockedSubscribesForGroupUpdate(l.ctx, 0, 1)
 	if err != nil {
 		return 0, err
 	}
@@ -218,18 +193,6 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(store repository.Store, h
 			}
 		}
 
-		// 如果没有节点组ID,跳过
-		if len(nodeGroupIds) == 0 {
-			l.Logger.Debugf("no valid node_group_ids for subscribe_id=%d, setting to 0", subInfo.Id)
-			if err := store.User().UpdateUserSubscribeNodeGroup(l.ctx, us.Id, 0); err != nil {
-				l.Logger.Errorw("failed to update user_subscribe node_group_id",
-					zap.Any("user_subscribe_id", us.Id),
-					zap.Any("error", err.Error()))
-				failedCount++
-				continue
-			}
-		}
-
 		// 按序选择节点组ID（循环轮询分配）
 		selectedNodeGroupId := int64(0)
 		if len(nodeGroupIds) > 0 {
@@ -245,18 +208,17 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(store repository.Store, h
 		}
 
 		// 更新 user_subscribe 的 node_group_id 字段（单个ID）
-		if err := store.User().UpdateUserSubscribeNodeGroup(l.ctx, us.Id, selectedNodeGroupId); err != nil {
-			l.Logger.Errorw("failed to update user_subscribe node_group_id",
-				zap.Any("user_subscribe_id", us.Id),
-				zap.Any("error", err.Error()))
-			failedCount++
-			continue
+		if err := l.assignGroup(store, us, selectedNodeGroupId); err != nil {
+			return 0, err
 		}
 
 		// 只统计有节点组的用户
 		if selectedNodeGroupId > 0 {
 			// 查询用户邮箱，用于保存到历史记录
-			email := l.getUserEmail(store, us.UserId)
+			email, err := l.getUserEmail(store, us.UserId)
+			if err != nil {
+				return 0, err
+			}
 			groupUsersMap[selectedNodeGroupId] = append(groupUsersMap[selectedNodeGroupId], struct {
 				Id    int64  `json:"id"`
 				Email string `json:"email"`
@@ -285,9 +247,7 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(store repository.Store, h
 			var err error
 			nodeCount64, err := store.Group().CountNodesByNodeGroupId(l.ctx, nodeGroupId)
 			if err != nil {
-				l.Logger.Errorw("failed to count nodes",
-					zap.Any("node_group_id", nodeGroupId),
-					zap.Any("error", err.Error()))
+				return 0, fmt.Errorf("count nodes in group %d: %w", nodeGroupId, err)
 			}
 			nodeCount = int(nodeCount64)
 		}
@@ -311,9 +271,7 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(store repository.Store, h
 			NodeCount:   nodeCount,
 			UserData:    userDataJSON,
 		}); err != nil {
-			l.Logger.Errorw("failed to create group history detail",
-				zap.Any("node_group_id", nodeGroupId),
-				zap.Any("error", err.Error()))
+			return 0, fmt.Errorf("write history detail for group %d: %w", nodeGroupId, err)
 		}
 
 		l.Logger.Infof("Average Group (node_group_id=%d): users=%d, nodes=%d",
@@ -328,14 +286,19 @@ func (l *RecalculateGroupLogic) executeAverageGrouping(store repository.Store, h
 // 订阅过期的用户 → 设置 node_group_id 为 0
 func (l *RecalculateGroupLogic) executeSubscribeGrouping(store repository.Store, historyId int64) (int, error) {
 	// 1. 查询所有有效且未锁定的用户订阅（status IN (0, 1), group_locked = 0）
-	userSubscribes, err := store.User().FindUnlockedUserSubscribesByStatus(l.ctx, 0, 1)
+	all, err := store.User().FindUnlockedSubscribesForGroupUpdate(l.ctx)
 	if err != nil {
-		l.Logger.Errorw("failed to query user subscribes", zap.Any("error", err.Error()))
 		return 0, err
 	}
-
+	var userSubscribes, expired []*usermodel.Subscribe
+	for _, sub := range all {
+		if sub.Status == 0 || sub.Status == 1 {
+			userSubscribes = append(userSubscribes, sub)
+		} else {
+			expired = append(expired, sub)
+		}
+	}
 	if len(userSubscribes) == 0 {
-		l.Logger.Infof("subscribe grouping: no valid and unlocked user subscribes found")
 		return 0, nil
 	}
 
@@ -424,18 +387,17 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(store repository.Store,
 			us.Id, us.SubscribeId, selectedNodeGroupId, len(nodeGroupIds))
 
 		// 更新 user_subscribe 的 node_group_id 字段
-		if err := store.User().UpdateUserSubscribeNodeGroup(l.ctx, us.Id, selectedNodeGroupId); err != nil {
-			l.Logger.Errorw("failed to update user_subscribe node_group_id",
-				zap.Any("user_subscribe_id", us.Id),
-				zap.Any("error", err.Error()))
-			failedCount++
-			continue
+		if err := l.assignGroup(store, us, selectedNodeGroupId); err != nil {
+			return 0, err
 		}
 
 		// 只统计有节点组的用户
 		if selectedNodeGroupId > 0 {
 			// 查询用户邮箱，用于保存到历史记录
-			email := l.getUserEmail(store, us.UserId)
+			email, err := l.getUserEmail(store, us.UserId)
+			if err != nil {
+				return 0, err
+			}
 			groupUsersMap[selectedNodeGroupId] = append(groupUsersMap[selectedNodeGroupId], UserInfo{
 				Id:    us.UserId,
 				Email: email,
@@ -450,27 +412,10 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(store repository.Store,
 
 	// 4. 处理订阅过期/失效的用户，设置 node_group_id 为 0
 	// 查询所有没有有效订阅且未锁定的用户订阅记录
-	expiredUserSubscribes, err := store.User().FindUnlockedUserSubscribesStatusNotIn(l.ctx, 0, 1)
-	if err != nil {
-		l.Logger.Errorw("failed to query expired user subscribes", zap.Any("error", err.Error()))
-		// 继续处理，不因为过期用户查询失败而影响
-	} else {
-		l.Logger.Infof("found %d expired user subscribes for subscribe-based grouping, will set node_group_id to 0", len(expiredUserSubscribes))
-
-		expiredAffectedCount := 0
-		for _, eu := range expiredUserSubscribes {
-			// 更新 user_subscribe 表的 node_group_id 字段到 0
-			if err := store.User().UpdateUserSubscribeNodeGroup(l.ctx, eu.Id, 0); err != nil {
-				l.Logger.Errorw("failed to update expired user subscribe node_group_id",
-					zap.Any("user_subscribe_id", eu.Id),
-					zap.Any("error", err.Error()))
-				continue
-			}
-
-			expiredAffectedCount++
+	for _, sub := range expired {
+		if err := l.assignGroup(store, sub, 0); err != nil {
+			return 0, err
 		}
-
-		l.Logger.Infof("expired user subscribes grouping completed: affected=%d", expiredAffectedCount)
 	}
 
 	// 5. 创建分组历史详情记录（按节点组ID统计）
@@ -485,9 +430,7 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(store repository.Store,
 		if nodeGroupId > 0 {
 			nodeCount64, err := store.Group().CountNodesByNodeGroupId(l.ctx, nodeGroupId)
 			if err != nil {
-				l.Logger.Errorw("failed to count nodes",
-					zap.Any("node_group_id", nodeGroupId),
-					zap.Any("error", err.Error()))
+				return 0, fmt.Errorf("count nodes in group %d: %w", nodeGroupId, err)
 			}
 			nodeCount = int(nodeCount64)
 		}
@@ -511,9 +454,7 @@ func (l *RecalculateGroupLogic) executeSubscribeGrouping(store repository.Store,
 			NodeCount:   nodeCount,
 			UserData:    userDataJSON,
 		}); err != nil {
-			l.Logger.Errorw("failed to create group history detail",
-				zap.Any("node_group_id", nodeGroupId),
-				zap.Any("error", err.Error()))
+			return 0, fmt.Errorf("write history detail for group %d: %w", nodeGroupId, err)
 		}
 
 		l.Logger.Infof("Subscribe Group (node_group_id=%d): users=%d, nodes=%d",
@@ -549,7 +490,7 @@ func (l *RecalculateGroupLogic) executeTrafficGrouping(store repository.Store, h
 		zap.Any("node_groups_count", len(nodeGroups)))
 
 	// 2. 查询所有有效且未锁定的用户订阅及其已用流量
-	userSubscribes, err := store.User().FindUnlockedUserSubscribesByStatus(l.ctx, 0, 1)
+	userSubscribes, err := store.User().FindUnlockedSubscribesForGroupUpdate(l.ctx, 0, 1)
 	if err != nil {
 		l.Logger.Errorw("failed to query user subscribes", zap.Any("error", err.Error()))
 		return 0, err
@@ -589,18 +530,17 @@ func (l *RecalculateGroupLogic) executeTrafficGrouping(store repository.Store, h
 		// 如果没有匹配到任何范围，targetNodeGroupId 保持为 0（不分配节点组）
 
 		// 更新 user_subscribe 的 node_group_id 字段
-		if err := store.User().UpdateUserSubscribeNodeGroup(l.ctx, us.Id, targetNodeGroupId); err != nil {
-			l.Logger.Errorw("failed to update user subscribe node_group_id",
-				zap.Any("user_subscribe_id", us.Id),
-				zap.Any("target_node_group_id", targetNodeGroupId),
-				zap.Any("error", err.Error()))
-			continue
+		if err := l.assignGroup(store, us, targetNodeGroupId); err != nil {
+			return 0, err
 		}
 
 		// 只有分配了节点组的用户才记录到历史
 		if targetNodeGroupId > 0 {
 			// 查询用户邮箱，用于保存到历史记录
-			email := l.getUserEmail(store, us.UserId)
+			email, err := l.getUserEmail(store, us.UserId)
+			if err != nil {
+				return 0, err
+			}
 			userInfo := UserInfo{
 				Id:    us.UserId,
 				Email: email,
@@ -642,10 +582,7 @@ func (l *RecalculateGroupLogic) executeTrafficGrouping(store repository.Store, h
 			NodeCount:   nodeGroupCount[nodeGroupId],
 			UserData:    string(userDataJSON),
 		}); err != nil {
-			l.Logger.Errorw("failed to create group history detail",
-				zap.Any("history_id", historyId),
-				zap.Any("node_group_id", nodeGroupId),
-				zap.Any("error", err.Error()))
+			return 0, fmt.Errorf("write history detail for group %d: %w", nodeGroupId, err)
 		}
 	}
 

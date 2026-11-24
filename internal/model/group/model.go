@@ -2,13 +2,14 @@ package group
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/grouphistory"
 	"github.com/perfect-panel/server/ent/grouphistorydetail"
+	"github.com/perfect-panel/server/ent/node"
 	entnodegroup "github.com/perfect-panel/server/ent/nodegroup"
 	"github.com/perfect-panel/server/ent/predicate"
 )
@@ -238,7 +239,9 @@ func (m *customGroupModel) CompleteGroupHistory(ctx context.Context, id int64, t
 }
 
 func (m *customGroupModel) FailGroupHistory(ctx context.Context, id int64, errorMessage string, endTime time.Time) error {
-	return m.db.GroupHistory.UpdateOneID(id).SetState("failed").SetErrorMessage(errorMessage).SetEndTime(endTime).Exec(ctx)
+	// A failed commit can have an unknown outcome. Never overwrite a committed success.
+	_, err := m.db.GroupHistory.Update().Where(grouphistory.ID(id), grouphistory.State("running")).SetState("failed").SetErrorMessage(errorMessage).SetEndTime(endTime).Save(ctx)
+	return err
 }
 
 func (m *customGroupModel) ClearGroupHistories(ctx context.Context) error {
@@ -262,7 +265,7 @@ func (m *customGroupModel) ClearGroupHistoryDetails(ctx context.Context) error {
 
 func nodeGroupContains(id int64) predicate.Node {
 	return predicate.Node(func(s *sql.Selector) {
-		s.Where(sql.ExprP("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", id)))
+		s.Where(sqljson.ValueContains(node.FieldNodeGroupIds, id))
 	})
 }
 

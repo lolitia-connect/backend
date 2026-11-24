@@ -2,7 +2,8 @@ package group
 
 import (
 	"context"
-	"time"
+	"github.com/perfect-panel/server/ent"
+	queueTypes "github.com/perfect-panel/server/queue/types"
 
 	entsystem "github.com/perfect-panel/server/ent/system"
 	"github.com/perfect-panel/server/internal/logic/admin/group"
@@ -24,12 +25,15 @@ func NewRecalculateGroupLogic(svc *svc.ServiceContext) *RecalculateGroupLogic {
 }
 
 func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) error {
-	zap.S().Infof("[RecalculateGroup] Starting scheduled group recalculation: %s", time.Now().Format("2006-01-02 15:04:05"))
+	orderTriggered := t.Type() == queueTypes.OrderRecalculateGroup
 
 	// 1. Check if group management is enabled
 	enabledConfig, err := l.svc.Ent.System.Query().
 		Where(entsystem.Category("group"), entsystem.Key("enabled")).
 		Only(ctx)
+	if orderTriggered && ent.IsNotFound(err) {
+		return nil
+	}
 	if err != nil {
 		zap.S().Errorw("[RecalculateGroup] Failed to read group enabled config", zap.Any("error", err.Error()))
 		return err
@@ -51,30 +55,14 @@ func (l *RecalculateGroupLogic) ProcessTask(ctx context.Context, t *asynq.Task) 
 	}
 
 	mode := modeConfig.Value
-	if mode == "" {
-		mode = "average" // default mode
-	}
-
-	// 3. Only execute if mode is "traffic"
-	if mode != "traffic" {
-		zap.S().Debugf("[RecalculateGroup] Group mode is not 'traffic' (current: %s), skipping", mode)
+	trigger := "scheduled"
+	if orderTriggered {
+		if mode != "average" && mode != "subscribe" && mode != "traffic" {
+			return nil
+		}
+		trigger = "manual" // Preserve the history label for order-triggered runs.
+	} else if mode != "traffic" {
 		return nil
 	}
-
-	// 4. Execute traffic-based grouping
-	zap.S().Infof("[RecalculateGroup] Executing traffic-based grouping")
-
-	logic := group.NewRecalculateGroupLogic(ctx, l.svc)
-	req := &types.RecalculateGroupRequest{
-		Mode:        "traffic",
-		TriggerType: "scheduled",
-	}
-
-	if err := logic.RecalculateGroup(req); err != nil {
-		zap.S().Errorw("[RecalculateGroup] Failed to execute traffic grouping", zap.Any("error", err.Error()))
-		return err
-	}
-
-	zap.S().Infof("[RecalculateGroup] Successfully completed traffic-based grouping: %s", time.Now().Format("2006-01-02 15:04:05"))
-	return nil
+	return group.NewRecalculateGroupLogic(ctx, l.svc).RecalculateGroup(&types.RecalculateGroupRequest{Mode: mode, TriggerType: trigger})
 }

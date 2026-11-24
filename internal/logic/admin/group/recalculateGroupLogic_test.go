@@ -3,8 +3,14 @@ package group
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/go-sql-driver/mysql"
+	"github.com/redis/go-redis/v9"
+	"strings"
 	"testing"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -26,8 +32,10 @@ func newRecalculationFixture(t *testing.T) (context.Context, *ent.Client, *Recal
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
 	client := enttest.NewClient(t, enttest.WithOptions(ent.Driver(entsql.OpenDB(dialect.SQLite, db))))
-	store := repository.NewStore(client, nil)
-	logic := NewRecalculateGroupLogic(ctx, &svc.ServiceContext{Store: store})
+	cache := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+	t.Cleanup(func() { _ = cache.Close() })
+	store := repository.NewStore(client, cache)
+	logic := NewRecalculateGroupLogic(ctx, &svc.ServiceContext{Store: store, Redis: cache})
 	return ctx, client, logic
 }
 
@@ -204,5 +212,100 @@ func TestRecalculateTrafficGroupingUsesLeftClosedRightOpenRanges(t *testing.T) {
 	}
 	if details := client.GroupHistoryDetail.Query().AllX(ctx); len(details) != 2 {
 		t.Fatalf("traffic history details = %d, want only assigned groups", len(details))
+	}
+}
+
+func TestGroupingConflictRollsBackAndRetainsCause(t *testing.T) {
+	for _, mode := range []string{"average", "subscribe", "traffic"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, db, logic := newRecalculationFixture(t)
+			group := db.NodeGroup.Create().SetName("eligible").SetForCalculation(true).SetMinTrafficGB(0).SetMaxTrafficGB(10).SaveX(ctx)
+			plan := db.Subscribe.Create().SetName("plan").SetNodeGroupIds([]int64{group.ID}).SaveX(ctx)
+			first := addGroupingSubscription(t, ctx, db, plan.ID, 1, false, 1)
+			second := addGroupingSubscription(t, ctx, db, plan.ID, 1, false, 1)
+			conflict := &mysql.MySQLError{Number: 1020, Message: "record changed"}
+			db.UserSubscribe.Use(func(next ent.Mutator) ent.Mutator {
+				return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+					if id, ok := m.(*ent.UserSubscribeMutation).ID(); ok && id == second {
+						return nil, conflict
+					}
+					return next.Mutate(ctx, m)
+				})
+			})
+			err := logic.RecalculateGroup(&types.RecalculateGroupRequest{Mode: mode})
+			h := db.GroupHistory.Query().OnlyX(ctx)
+			if !errors.Is(err, conflict) || h.State != "failed" || h.EndTime == nil || !strings.Contains(h.ErrorMessage, conflict.Error()) {
+				t.Fatalf("result: %v, history: %+v", err, h)
+			}
+			if db.UserSubscribe.GetX(ctx, first).NodeGroupID != 99 || db.GroupHistoryDetail.Query().CountX(ctx) != 0 {
+				t.Fatal("failed run committed a partial assignment")
+			}
+		})
+	}
+}
+
+func TestGroupResetCannotOverlapRecalculation(t *testing.T) {
+	ctx, db, logic := newRecalculationFixture(t)
+	group := db.NodeGroup.Create().SetName("preserved").SaveX(ctx)
+	entered, release := make(chan struct{}), make(chan struct{})
+	db.GroupHistory.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if m.Op().Is(ent.OpCreate) {
+				close(entered)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	result := make(chan error, 1)
+	go func() { result <- logic.RecalculateGroup(&types.RecalculateGroupRequest{Mode: "average"}) }()
+	defer func() {
+		close(release)
+		if err := <-result; err != nil {
+			t.Error(err)
+		}
+	}()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("recalculation did not start")
+	}
+	if err := NewResetGroupsLogic(ctx, logic.svcCtx).ResetGroups(); !errors.Is(err, errGroupBusy) {
+		t.Fatalf("overlapping reset: %v", err)
+	}
+	if !db.NodeGroup.Query().ExistX(ctx) {
+		t.Fatalf("reset deleted group %d", group.ID)
+	}
+}
+
+func TestGroupConfigAndResetRollBackOnLateFailure(t *testing.T) {
+	ctx, db, logic := newRecalculationFixture(t)
+	node := db.NodeGroup.Create().SetName("keep").SaveX(ctx)
+	plan := db.Subscribe.Create().SetName("keep").SetNodeGroupIds([]int64{node.ID}).SaveX(ctx)
+	original := db.System.Create().SetCategory("group").SetKey("enabled").SetValue("true").SetDesc("enabled").SetType("string").SaveX(ctx)
+	injected := errors.New("failed settings write")
+	db.System.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if m.Op().Is(ent.OpCreate | ent.OpDelete) {
+				return nil, injected
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	if err := NewUpdateGroupConfigLogic(ctx, logic.svcCtx).UpdateGroupConfig(&types.UpdateGroupConfigRequest{Enabled: false, Mode: "average"}); !errors.Is(err, injected) {
+		t.Fatalf("config: %v", err)
+	}
+	if got := db.System.GetX(ctx, original.ID).Value; got != "true" {
+		t.Fatalf("partial config: %q", got)
+	}
+	if err := NewResetGroupsLogic(ctx, logic.svcCtx).ResetGroups(); !errors.Is(err, injected) {
+		t.Fatalf("reset: %v", err)
+	}
+	if !db.NodeGroup.Query().ExistX(ctx) || len(db.Subscribe.GetX(ctx, plan.ID).NodeGroupIds) != 1 {
+		t.Fatal("partial group reset")
 	}
 }

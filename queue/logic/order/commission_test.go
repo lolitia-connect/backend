@@ -118,7 +118,7 @@ func (model *activationOrders) Update(_ context.Context, current *order.Order) e
 	return nil
 }
 
-func (model *activationOrders) FinishOrder(_ context.Context, number string) (bool, error) {
+func (model *activationOrders) FinishOrder(_ context.Context, number string, _ bool) (bool, error) {
 	if model.finishErr != nil {
 		return false, model.finishErr
 	}

@@ -21,6 +21,6 @@ func (m *customUserModel) FindSubscribesByIds(ctx context.Context, ids []int64) 
 	if len(ids) == 0 {
 		return subscribes, nil
 	}
-	items, err := m.db.UserSubscribe.Query().Where(entsub.IDIn(ids...)).All(ctx)
+	items, err := m.db.UserSubscribe.Query().Where(entsub.IDIn(ids...)).Order(entsub.ByID()).All(ctx)
 	return entSubscribesToModels(items), err
 }

@@ -92,6 +92,7 @@ type Event struct {
 // snapshot as of the event, so a client that missed earlier events can still
 // derive its local state from the newest one it received.
 type EventPayload struct {
+	RecalculateGroup  bool   `json:"recalculate_group,omitempty"`
 	OrderNo           string `json:"order_no"`
 	StateVersion      int64  `json:"state_version"`
 	PaymentStatus     string `json:"payment_status"`
@@ -101,7 +102,12 @@ type EventPayload struct {
 // NewEventFor builds the outbox row for one state change of an order. The
 // caller must persist it in the same transaction as the status write.
 func NewEventFor(data *Order, eventType string) (*Event, error) {
+	return newEventFor(data, eventType, false)
+}
+
+func newEventFor(data *Order, eventType string, recalculateGroup bool) (*Event, error) {
 	payload, err := json.Marshal(EventPayload{
+		RecalculateGroup:  recalculateGroup,
 		OrderNo:           data.OrderNo,
 		StateVersion:      data.StateVersion,
 		PaymentStatus:     PaymentStatus(data.Status),

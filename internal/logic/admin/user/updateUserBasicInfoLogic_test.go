@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -90,5 +91,26 @@ func TestUpdateUserBasicInfoValidatesOnlyChangedAvatar(t *testing.T) {
 				t.Fatal("valid avatar and account status update was not persisted")
 			}
 		})
+	}
+}
+
+func TestWalletAdjustmentFailureRollsBackProfileAndAudit(t *testing.T) {
+	logic, client, req := basicInfoFixture(t, "")
+	req.ReferCode = "new-code"
+	req.Balance++
+	req.Commission++
+	client.UserWallet.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if _, ok := m.(*ent.UserWalletMutation).Commission(); ok {
+				return nil, errors.New("commission write failed")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	if err := logic.UpdateUserBasicInfo(&req); err == nil {
+		t.Fatal("adjustment unexpectedly succeeded")
+	}
+	if client.SystemLog.Query().CountX(t.Context()) != 0 || client.User.GetX(t.Context(), 7).ReferCode != "referral" || client.UserWallet.GetX(t.Context(), 9).Balance != 1200 {
+		t.Fatal("partial wallet adjustment escaped rollback")
 	}
 }

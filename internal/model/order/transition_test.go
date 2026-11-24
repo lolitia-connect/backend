@@ -30,10 +30,10 @@ func TestOrderPaymentAndFulfillmentTransitionsAreIdempotent(t *testing.T) {
 	if len(events) != 1 || events[0].EventType != EventOrderPaymentPaid {
 		t.Fatalf("payment events = %+v", events)
 	}
-	if ok, err := model.FinishOrder(ctx, current.OrderNo); err != nil || !ok {
+	if ok, err := model.FinishOrder(ctx, current.OrderNo, true); err != nil || !ok {
 		t.Fatalf("finish transition: %t, %v", ok, err)
 	}
-	if ok, err := model.FinishOrder(ctx, current.OrderNo); err != nil || ok {
+	if ok, err := model.FinishOrder(ctx, current.OrderNo, true); err != nil || ok {
 		t.Fatalf("duplicate finish transition: %t, %v", ok, err)
 	}
 	events = client.OrderEvent.Query().Order(orderevent.ByID()).AllX(ctx)
@@ -41,7 +41,7 @@ func TestOrderPaymentAndFulfillmentTransitionsAreIdempotent(t *testing.T) {
 		t.Fatalf("events after finish = %+v", events)
 	}
 	payload := ParseEventPayload(events[1].Payload)
-	if payload.OrderNo != current.OrderNo || payload.StateVersion != 2 || payload.PaymentStatus != "paid" || payload.FulfillmentStatus != "finished" {
+	if !payload.RecalculateGroup || payload.OrderNo != current.OrderNo || payload.StateVersion != 2 || payload.PaymentStatus != "paid" || payload.FulfillmentStatus != "finished" {
 		t.Fatalf("unexpected fulfillment payload: %+v", payload)
 	}
 

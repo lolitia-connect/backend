@@ -56,5 +56,7 @@ func RegisterHandlers(mux *asynq.ServeMux, serverCtx *svc.ServiceContext) {
 	mux.Handle(types.SchedulerExchangeRate, task.NewRateLogic(serverCtx))
 
 	// SchedulerRecalculateGroup
-	mux.Handle(types.SchedulerRecalculateGroup, groupLogic.NewRecalculateGroupLogic(serverCtx))
+	groupHandler := groupLogic.NewRecalculateGroupLogic(serverCtx)
+	mux.Handle(types.SchedulerRecalculateGroup, groupHandler)
+	mux.Handle(types.OrderRecalculateGroup, groupHandler)
 }

@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/ads"
@@ -201,9 +203,15 @@ func (s *StoreImpl) InTx(ctx context.Context, fn func(store Store) error) error 
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			_ = entTx.Rollback()
+			panic(r)
+		}
+	}()
 	if err := fn(NewStore(entTx.Client(), s.redis)); err != nil {
-		if rbErr := entTx.Rollback(); rbErr != nil {
-			return rbErr
+		if rbErr := entTx.Rollback(); rbErr != nil && !errors.Is(rbErr, sql.ErrTxDone) {
+			return errors.Join(err, rbErr)
 		}
 		return err
 	}

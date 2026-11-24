@@ -301,7 +301,7 @@ func TestGuestRegistrationSurvivesLostCacheAndReadsLegacyOrders(t *testing.T) {
 		if !tool.VerifyPassWord("guest password", account.Password) {
 			t.Fatal("stored registration did not produce the correct account credentials")
 		}
-		ok, err := service.Store.Order().FinishOrder(ctx, source)
+		ok, err := service.Store.Order().FinishOrder(ctx, source, false)
 		if !ok || err != nil {
 			t.Fatalf("finish = %t, %v", ok, err)
 		}

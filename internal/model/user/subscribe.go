@@ -247,19 +247,14 @@ func (m *defaultUserModel) FindUserSubscribesByUserAndStatus(ctx context.Context
 	return entSubscribesToModels(items), err
 }
 
-func (m *defaultUserModel) FindUnlockedUserSubscribesByStatus(ctx context.Context, status ...int64) ([]*Subscribe, error) {
-	q := m.db.UserSubscribe.Query().Where(entsub.GroupLocked(false))
+// FindUnlockedSubscribesForGroupUpdate reads candidates in subscription ID order inside the assignment transaction.
+func (m *defaultUserModel) FindUnlockedSubscribesForGroupUpdate(ctx context.Context, status ...int64) ([]*Subscribe, error) {
+	q := m.db.UserSubscribe.Query().Where(entsub.GroupLocked(false)).Order(entsub.ByID())
 	if len(status) > 0 {
 		q = q.Where(entsub.StatusIn(int64ToUint8(status)...))
 	}
-	items, err := q.All(ctx)
-	return entSubscribesToModels(items), err
-}
-
-func (m *defaultUserModel) FindUnlockedUserSubscribesStatusNotIn(ctx context.Context, status ...int64) ([]*Subscribe, error) {
-	q := m.db.UserSubscribe.Query().Where(entsub.GroupLocked(false))
-	if len(status) > 0 {
-		q = q.Where(entsub.StatusNotIn(int64ToUint8(status)...))
+	if m.db.Driver().Dialect() != dialect.SQLite {
+		q = q.Where(func(s *entsql.Selector) { s.ForUpdate() })
 	}
 	items, err := q.All(ctx)
 	return entSubscribesToModels(items), err

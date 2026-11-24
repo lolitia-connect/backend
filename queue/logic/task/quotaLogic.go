@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/perfect-panel/server/internal/model/wallet"
+	"maps"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
+	enttask "github.com/perfect-panel/server/ent/task"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/task"
 	"github.com/perfect-panel/server/internal/model/user"
@@ -100,7 +104,10 @@ func (l *QuotaTaskLogic) getTaskInfo(ctx context.Context, taskID int64) (*task.T
 			zap.Any("error", err.Error()),
 			zap.Any("taskID", taskID),
 		)
-		return nil, asynq.SkipRetry
+		if ent.IsNotFound(err) {
+			return nil, asynq.SkipRetry
+		}
+		return nil, err
 	}
 	return taskInfo, nil
 }
@@ -138,11 +145,35 @@ func (l *QuotaTaskLogic) getSubscribes(ctx context.Context, subscriberIDs []int6
 
 func (l *QuotaTaskLogic) processSubscribes(ctx context.Context, subscribes []*user.Subscribe, content task.QuotaContent, taskInfo *task.Task) error {
 	return l.svcCtx.Store.InTx(ctx, func(store repository.Store) error {
+		// Claim within the grant transaction so duplicate deliveries cannot apply it twice.
+		claimed, err := store.Ent().Task.Update().Where(enttask.ID(taskInfo.Id), enttask.TypeEQ(int8(task.TypeQuota)), enttask.StatusEQ(0)).SetStatus(1).Save(ctx)
+		if err != nil || claimed == 0 {
+			return err
+		}
 		var errors []ErrorInfo
 		now := time.Now()
 
+		wallets := make(map[int64]*wallet.Wallet)
+		if content.GiftValue > 0 && (content.GiftType == 1 || content.GiftType == 2) {
+			for _, sub := range subscribes {
+				if sub != nil && sub.EntitlementSource == "" {
+					wallets[sub.UserId] = nil
+				}
+			}
+			// Billing flows lock wallets before subscriptions. Sort owners to avoid reversing that order between grants.
+			for _, id := range slices.Sorted(maps.Keys(wallets)) {
+				w, err := store.Wallet().FindOneForUpdate(ctx, id)
+				if ent.IsNotFound(err) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				wallets[id] = w
+			}
+		}
 		for _, sub := range subscribes {
-			if err := l.processSubscription(ctx, store, sub, content, now, &errors); err != nil {
+			if err := l.processSubscription(ctx, store, sub, wallets, content, now, &errors); err != nil {
 				return err
 			}
 		}
@@ -168,9 +199,7 @@ func (l *QuotaTaskLogic) processSubscribes(ctx context.Context, subscribes []*us
 			taskInfo.Errors = string(errs)
 		}
 
-		taskInfo.Current = uint64(len(subscribes))
-		taskInfo.Status = status
-		if err := store.Task().Update(ctx, taskInfo); err != nil {
+		if err := store.Ent().Task.UpdateOneID(taskInfo.Id).SetCurrent(uint64(len(subscribes))).SetStatus(status).SetErrors(taskInfo.Errors).Exec(ctx); err != nil {
 			zap.S().Error("[QuotaTaskLogic.processSubscribes] update task status error",
 				zap.Any("error", err.Error()),
 				zap.Any("taskID", taskInfo.Id),
@@ -189,7 +218,7 @@ func (l *QuotaTaskLogic) processSubscribes(ctx context.Context, subscribes []*us
 // snapshot collected before the transaction must not be saved back: it predates
 // any traffic settlement, credential rotation or admin edit that happened in
 // between, so a whole-row write would silently revert them.
-func (l *QuotaTaskLogic) processSubscription(ctx context.Context, store repository.Store, sub *user.Subscribe, content task.QuotaContent, now time.Time, errors *[]ErrorInfo) error {
+func (l *QuotaTaskLogic) processSubscription(ctx context.Context, store repository.Store, sub *user.Subscribe, wallets map[int64]*wallet.Wallet, content task.QuotaContent, now time.Time, errors *[]ErrorInfo) error {
 	// 验证订阅数据
 	if sub == nil {
 		*errors = append(*errors, ErrorInfo{
@@ -275,7 +304,7 @@ func (l *QuotaTaskLogic) processSubscription(ctx context.Context, store reposito
 
 	// 处理赠送金
 	if content.GiftValue != 0 {
-		if err := l.processGift(ctx, store, current, content, now, errors); err != nil {
+		if err := l.processGift(ctx, store, current, wallets[current.UserId], content, now, errors); err != nil {
 			return err
 		}
 	}
@@ -283,7 +312,7 @@ func (l *QuotaTaskLogic) processSubscription(ctx context.Context, store reposito
 	return nil
 }
 
-func (l *QuotaTaskLogic) processGift(ctx context.Context, store repository.Store, sub *user.Subscribe, content task.QuotaContent, now time.Time, errors *[]ErrorInfo) error {
+func (l *QuotaTaskLogic) processGift(ctx context.Context, store repository.Store, sub *user.Subscribe, walletInfo *wallet.Wallet, content task.QuotaContent, now time.Time, errors *[]ErrorInfo) error {
 	// 验证赠送类型
 	if content.GiftType != 1 && content.GiftType != 2 {
 		*errors = append(*errors, ErrorInfo{
@@ -293,23 +322,10 @@ func (l *QuotaTaskLogic) processGift(ctx context.Context, store repository.Store
 		return nil
 	}
 
-	userInfo, err := store.User().FindOne(ctx, sub.UserId)
-	if err != nil {
-		*errors = append(*errors, ErrorInfo{
-			UserSubscribeId: sub.Id,
-			Error:           "find user error: " + err.Error(),
-		})
+	if walletInfo == nil {
+		*errors = append(*errors, ErrorInfo{UserSubscribeId: sub.Id, Error: "gift recipient no longer exists"})
 		return nil
 	}
-	walletInfo, err := store.Wallet().FindOne(ctx, sub.UserId)
-	if err != nil {
-		*errors = append(*errors, ErrorInfo{
-			UserSubscribeId: sub.Id,
-			Error:           "find wallet error: " + err.Error(),
-		})
-		return nil
-	}
-
 	var giftAmount int64
 	switch content.GiftType {
 	case 1:
@@ -332,23 +348,9 @@ func (l *QuotaTaskLogic) processGift(ctx context.Context, store repository.Store
 	if giftAmount > 0 {
 		walletInfo.GiftAmount += giftAmount
 		if err := store.Wallet().UpdateBalanceFields(ctx, walletInfo); err != nil {
-			*errors = append(*errors, ErrorInfo{
-				UserSubscribeId: sub.Id,
-				Error:           "update wallet gift amount error: " + err.Error(),
-			})
-			return nil
+			return err
 		}
-
-		if err := l.createGiftLog(ctx, store, sub.Id, userInfo.Id, giftAmount, walletInfo.GiftAmount, now); err != nil {
-			*errors = append(*errors, ErrorInfo{
-				UserSubscribeId: sub.Id,
-				Error:           "create gift log error: " + err.Error(),
-			})
-			// 回滚赠送金更新
-			walletInfo.GiftAmount -= giftAmount
-			_ = store.Wallet().UpdateBalanceFields(ctx, walletInfo)
-			return nil
-		}
+		return l.createGiftLog(ctx, store, sub.Id, sub.UserId, giftAmount, walletInfo.GiftAmount, now)
 	}
 
 	return nil

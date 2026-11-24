@@ -3,6 +3,8 @@ package group
 import (
 	"context"
 	"encoding/json"
+	"github.com/perfect-panel/server/internal/repository"
+	"strconv"
 
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
@@ -33,47 +35,33 @@ func (l *UpdateGroupConfigLogic) UpdateGroupConfig(req *types.UpdateGroupConfigR
 		}
 	}
 
-	enabledValue := "false"
-	if req.Enabled {
-		enabledValue = "true"
-	}
-	err := l.upsertGroupConfig("enabled", enabledValue, "Group Feature Enabled")
-	if err == nil && req.Mode != "" {
-		err = l.upsertGroupConfig("mode", req.Mode, "Group Mode")
-	}
-	if err == nil && req.Config != nil {
-		configDescs := map[string]string{
-			"average_config":   "Average Group Config",
-			"subscribe_config": "Subscribe Group Config",
-			"traffic_config":   "Traffic Group Config",
+	return l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		upsert := func(key, value, desc string) error {
+			return store.System().UpsertByCategoryKey(l.ctx, "group", key, value, "string", desc)
 		}
-		for key, desc := range configDescs {
-			config, ok := req.Config[key]
+		if err := upsert("enabled", strconv.FormatBool(req.Enabled), "Group Feature Enabled"); err != nil {
+			return err
+		}
+		if req.Mode != "" {
+			if err := upsert("mode", req.Mode, "Group Mode"); err != nil {
+				return err
+			}
+		}
+		for _, setting := range []struct{ key, desc string }{
+			{"average_config", "Average Group Config"}, {"subscribe_config", "Subscribe Group Config"}, {"traffic_config", "Traffic Group Config"},
+		} {
+			config, ok := req.Config[setting.key]
 			if !ok {
 				continue
 			}
-			jsonBytes, marshalErr := json.Marshal(config)
-			if marshalErr != nil {
-				l.Logger.Errorw("failed to marshal "+key, zap.Any("error", marshalErr.Error()))
-				err = errors.Wrap(marshalErr, "failed to marshal "+key)
-				break
-			}
-			err = l.upsertGroupConfig(key, string(jsonBytes), desc)
+			data, err := json.Marshal(config)
 			if err != nil {
-				break
+				return errors.Wrap(err, "marshal "+setting.key)
+			}
+			if err := upsert(setting.key, string(data), setting.desc); err != nil {
+				return err
 			}
 		}
-	}
-
-	if err != nil {
-		l.Logger.Errorw("failed to update group config", zap.Any("error", err.Error()))
-		return err
-	}
-
-	l.Logger.Infof("group config updated successfully: enabled=%v, mode=%s", req.Enabled, req.Mode)
-	return nil
-}
-
-func (l *UpdateGroupConfigLogic) upsertGroupConfig(key, value, desc string) error {
-	return l.svcCtx.Store.System().UpsertByCategoryKey(l.ctx, "group", key, value, "string", desc)
+		return nil
+	})
 }

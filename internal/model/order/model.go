@@ -32,7 +32,7 @@ type customOrderLogicModel interface {
 	ClaimPaymentSession(ctx context.Context, orderNo, tradeNo, session string) (bool, error)
 	SetCommission(ctx context.Context, id, amount, refererID int64) error
 	HasCommissionedOrder(ctx context.Context, userID int64, excludingOrderNo string) (bool, error)
-	FinishOrder(ctx context.Context, orderNo string) (bool, error)
+	FinishOrder(ctx context.Context, orderNo string, recalculateGroup bool) (bool, error)
 	CountUserCouponUsage(ctx context.Context, userID int64, coupon string) (int64, error)
 	CountGuestCouponUsage(ctx context.Context, authType, identifier, coupon string) (int64, error)
 	QueryOrderListByPage(ctx context.Context, page, size int, status uint8, user, subscribe int64, search string) (int64, []*Details, error)

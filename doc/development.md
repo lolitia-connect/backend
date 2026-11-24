@@ -78,6 +78,14 @@ hand-written SQL migrations under `initialize/migrate/database/`.
   The per-user subscription traffic endpoint accepts Unix-millisecond `start_time` / `end_time`
   bounds, including the start and excluding the end.
 
+### Group recalculation and database transactions
+
+New purchases and redemptions that change a subscription request recalculation through the order fulfillment event. The event publisher enqueues an Asynq job before marking the event published. Order-triggered jobs use the configured grouping mode. Scheduled jobs run in traffic mode only.
+
+Recalculation and group reset share a renewable Redis lock. Recalculation reads eligible subscriptions under database row locks in ID order. Assignments, history details and the completed state commit together. The running history is created separately so a failed transaction can record its original error. A conflicting database write returns to the caller on the first failure. Queue workers use Asynq retries.
+
+For the real database lock test, point `PPANEL_GROUP_TEST_MYSQL_DSN` or `PPANEL_GROUP_TEST_POSTGRES_DSN` at an empty disposable test database and run `go test -count=1 ./internal/logic/admin/group -run TestGroupingLocksSubscriptionAgainstConcurrentWriter`.
+
 ### Subscription node names
 
 Subscription downloads and admin template previews share `adapter.Client.Build`. Valid nodes

@@ -407,6 +407,8 @@ SMTP 中继设置保存在数据库中（系统设置 → 邮件），在面板�
 - **Stripe Checkout Sessions。** Stripe 支付方式使用托管的 Checkout Session
   （`CreateCheckoutSession`），包括异步成功处理。凭据在面板中按支付方式配置。
 - **EPay V1/V2。** EPay 支付方式同时支持两个协议版本；V2 API 端点可使用站点相对路径。在面板中按支付方式配置。
+- **支付账单描述。** 支付方式的 `BillDesc` 支持 `{order_no}`、`{item_name}`、`{amount}`、`{trade_no}`。
+  `{item_name}` 在充值订单中为“充值”，订阅相关订单使用套餐名称；`{amount}` 为订单金额，保留两位小数。
 
 ## 5. 首次启动与环境变量
 

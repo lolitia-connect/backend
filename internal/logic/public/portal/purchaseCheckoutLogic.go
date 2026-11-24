@@ -698,7 +698,9 @@ func (l *PurchaseCheckoutLogic) resolveBillDesc(template string, info *order.Ord
 	}
 
 	itemName := ""
-	if info.SubscribeId > 0 {
+	if info.Type == order.TypeRecharge {
+		itemName = "充值"
+	} else if info.SubscribeId > 0 {
 		sub, err := l.svcCtx.Store.Subscribe().FindOne(l.ctx, info.SubscribeId)
 		if err == nil && sub != nil {
 			itemName = sub.Name

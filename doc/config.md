@@ -529,6 +529,10 @@ them because the panel manages them at runtime. Their defaults are in section 2.
   credentials are configured per payment method in the panel.
 - **EPay V1/V2.** The EPay method supports both protocol versions; V2 API
   endpoints may be site-relative. Configured in the panel, per payment method.
+- **Payment billing descriptions.** A payment method's `BillDesc` supports
+  `{order_no}`, `{item_name}`, `{amount}`, and `{trade_no}`. For recharge orders,
+  `{item_name}` is `充值`; subscription-related orders use the plan name.
+  `{amount}` is the order amount formatted to two decimal places.
 
 ## 5. First start and environment variables
 

@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const consoleUserStatisticsCacheKey = "console:user_statistics:v2"
+const consoleUserStatisticsCacheKey = "console:user_statistics:v3"
 const consoleUserStatisticsCacheTTL = 60 * time.Second
 
 type QueryUserStatisticsLogic struct {
@@ -54,12 +54,13 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 		resp.Today.Register = todayUserResisterCount
 	}
 	// query today user purchase count
-	newToday, renewalToday, redemptionToday, err := l.svcCtx.Store.Order().QueryDateUserCounts(l.ctx, now)
+	newToday, renewalToday, rechargeToday, redemptionToday, err := l.svcCtx.Store.Order().QueryDateUserCounts(l.ctx, now)
 	if err != nil {
 		l.Logger.Errorw("[QueryUserStatisticsLogic] QueryDateUserCounts error", zap.Any("error", err.Error()))
 	} else {
 		resp.Today.NewOrderUsers = newToday
 		resp.Today.RenewalOrderUsers = renewalToday
+		resp.Today.RechargeOrderUsers = rechargeToday
 		resp.Today.RedemptionOrderUsers = redemptionToday
 	}
 	// query month user register count
@@ -70,12 +71,13 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 		resp.Monthly.Register = monthUserResisterCount
 	}
 	// query month user purchase count
-	newMonth, renewalMonth, redemptionMonth, err := l.svcCtx.Store.Order().QueryMonthlyUserCounts(l.ctx, now)
+	newMonth, renewalMonth, rechargeMonth, redemptionMonth, err := l.svcCtx.Store.Order().QueryMonthlyUserCounts(l.ctx, now)
 	if err != nil {
 		l.Logger.Errorw("[QueryUserStatisticsLogic] QueryMonthlyUserCounts error", zap.Any("error", err.Error()))
 	} else {
 		resp.Monthly.NewOrderUsers = newMonth
 		resp.Monthly.RenewalOrderUsers = renewalMonth
+		resp.Monthly.RechargeOrderUsers = rechargeMonth
 		resp.Monthly.RedemptionOrderUsers = redemptionMonth
 	}
 
@@ -92,6 +94,7 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 				Register:             data.Register,
 				NewOrderUsers:        data.NewOrderUsers,
 				RenewalOrderUsers:    data.RenewalOrderUsers,
+				RechargeOrderUsers:   data.RechargeOrderUsers,
 				RedemptionOrderUsers: data.RedemptionOrderUsers,
 			}
 		}
@@ -107,12 +110,13 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 	}
 
 	// query all user order counts
-	allNewOrderUsers, allRenewalOrderUsers, allRedemptionOrderUsers, err := l.svcCtx.Store.Order().QueryTotalUserCounts(l.ctx)
+	allNewOrderUsers, allRenewalOrderUsers, allRechargeOrderUsers, allRedemptionOrderUsers, err := l.svcCtx.Store.Order().QueryTotalUserCounts(l.ctx)
 	if err != nil {
 		l.Logger.Errorw("[QueryUserStatisticsLogic] QueryTotalUserCounts error", zap.Any("error", err.Error()))
 	} else {
 		resp.All.NewOrderUsers = allNewOrderUsers
 		resp.All.RenewalOrderUsers = allRenewalOrderUsers
+		resp.All.RechargeOrderUsers = allRechargeOrderUsers
 		resp.All.RedemptionOrderUsers = allRedemptionOrderUsers
 	}
 
@@ -129,6 +133,7 @@ func (l *QueryUserStatisticsLogic) QueryUserStatistics() (resp *types.UserStatis
 				Register:             data.Register,
 				NewOrderUsers:        data.NewOrderUsers,
 				RenewalOrderUsers:    data.RenewalOrderUsers,
+				RechargeOrderUsers:   data.RechargeOrderUsers,
 				RedemptionOrderUsers: data.RedemptionOrderUsers,
 			}
 		}

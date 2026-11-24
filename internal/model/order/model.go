@@ -41,9 +41,9 @@ type customOrderLogicModel interface {
 	QueryMonthlyOrders(ctx context.Context, date time.Time) (OrdersTotal, error)
 	QueryDateOrders(ctx context.Context, date time.Time) (OrdersTotal, error)
 	QueryTotalOrders(ctx context.Context) (OrdersTotal, error)
-	QueryMonthlyUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, error)
-	QueryDateUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, error)
-	QueryTotalUserCounts(ctx context.Context) (int64, int64, int64, error)
+	QueryMonthlyUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, int64, error)
+	QueryDateUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, int64, error)
+	QueryTotalUserCounts(ctx context.Context) (int64, int64, int64, int64, error)
 	IsUserEligibleForNewOrder(ctx context.Context, userID int64) (bool, error)
 	QueryDailyOrdersList(ctx context.Context, date time.Time) ([]OrdersTotalWithDate, error)
 	QueryMonthlyOrdersList(ctx context.Context, date time.Time) ([]OrdersTotalWithDate, error)
@@ -162,19 +162,19 @@ func (m *customOrderModel) QueryTotalOrders(ctx context.Context) (OrdersTotal, e
 	return m.queryOrdersTotal(ctx)
 }
 
-func (m *customOrderModel) QueryMonthlyUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, error) {
+func (m *customOrderModel) QueryMonthlyUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, int64, error) {
 	firstDay := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, date.Location())
 	nextMonth := firstDay.AddDate(0, 1, 0)
 	return m.queryUserCounts(ctx, entorder.CreatedAtGTE(firstDay), entorder.CreatedAtLT(nextMonth))
 }
 
-func (m *customOrderModel) QueryDateUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, error) {
+func (m *customOrderModel) QueryDateUserCounts(ctx context.Context, date time.Time) (int64, int64, int64, int64, error) {
 	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	nextDay := start.Add(24 * time.Hour)
 	return m.queryUserCounts(ctx, entorder.CreatedAtGTE(start), entorder.CreatedAtLT(nextDay))
 }
 
-func (m *customOrderModel) QueryTotalUserCounts(ctx context.Context) (int64, int64, int64, error) {
+func (m *customOrderModel) QueryTotalUserCounts(ctx context.Context) (int64, int64, int64, int64, error) {
 	return m.queryUserCounts(ctx)
 }
 
@@ -209,6 +209,8 @@ func (m *customOrderModel) queryOrdersTotal(ctx context.Context, predicates ...p
 		result.AmountTotal += item.Amount
 		if item.Type == TypeRedemption {
 			result.RedemptionOrderAmount += item.Amount
+		} else if item.Type == TypeRecharge {
+			result.RechargeOrderAmount += item.Amount
 		} else if item.IsNew {
 			result.NewOrderAmount += item.Amount
 		} else {
@@ -218,24 +220,27 @@ func (m *customOrderModel) queryOrdersTotal(ctx context.Context, predicates ...p
 	return result, nil
 }
 
-func (m *customOrderModel) queryUserCounts(ctx context.Context, predicates ...predicate.Order) (int64, int64, int64, error) {
+func (m *customOrderModel) queryUserCounts(ctx context.Context, predicates ...predicate.Order) (int64, int64, int64, int64, error) {
 	list, err := m.paidNonBalanceOrders(ctx, predicates...).Select(entorder.FieldUserID, entorder.FieldIsNew, entorder.FieldType).All(ctx)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
 	newUsers := make(map[int64]struct{})
 	renewalUsers := make(map[int64]struct{})
+	rechargeUsers := make(map[int64]struct{})
 	redemptionUsers := make(map[int64]struct{})
 	for _, item := range list {
 		if item.Type == TypeRedemption {
 			redemptionUsers[item.UserID] = struct{}{}
+		} else if item.Type == TypeRecharge {
+			rechargeUsers[item.UserID] = struct{}{}
 		} else if item.IsNew {
 			newUsers[item.UserID] = struct{}{}
 		} else {
 			renewalUsers[item.UserID] = struct{}{}
 		}
 	}
-	return int64(len(newUsers)), int64(len(renewalUsers)), int64(len(redemptionUsers)), nil
+	return int64(len(newUsers)), int64(len(renewalUsers)), int64(len(rechargeUsers)), int64(len(redemptionUsers)), nil
 }
 
 func (m *customOrderModel) queryOrdersList(ctx context.Context, bucket string, start, end time.Time) ([]OrdersTotalWithDate, error) {
@@ -254,6 +259,8 @@ func (m *customOrderModel) queryOrdersList(ctx context.Context, bucket string, s
 		total.AmountTotal += item.Amount
 		if item.Type == TypeRedemption {
 			total.RedemptionOrderAmount += item.Amount
+		} else if item.Type == TypeRecharge {
+			total.RechargeOrderAmount += item.Amount
 		} else if item.IsNew {
 			total.NewOrderAmount += item.Amount
 		} else {

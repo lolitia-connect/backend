@@ -67,6 +67,7 @@ func (m *customUserModel) queryUserStatistics(ctx context.Context, start, end ti
 	}
 	newUsers := make(map[string]map[int64]struct{})
 	renewalUsers := make(map[string]map[int64]struct{})
+	rechargeUsers := make(map[string]map[int64]struct{})
 	redemptionUsers := make(map[string]map[int64]struct{})
 	for _, item := range orders {
 		key := formatUserBucket(item.CreatedAt, bucket)
@@ -76,6 +77,8 @@ func (m *customUserModel) queryUserStatistics(ctx context.Context, start, end ti
 		categoryUsers := renewalUsers
 		if item.Type == order.TypeRedemption {
 			categoryUsers = redemptionUsers
+		} else if item.Type == order.TypeRecharge {
+			categoryUsers = rechargeUsers
 		} else if item.IsNew {
 			categoryUsers = newUsers
 		}
@@ -88,6 +91,7 @@ func (m *customUserModel) queryUserStatistics(ctx context.Context, start, end ti
 	for key, item := range items {
 		item.NewOrderUsers = int64(len(newUsers[key]))
 		item.RenewalOrderUsers = int64(len(renewalUsers[key]))
+		item.RechargeOrderUsers = int64(len(rechargeUsers[key]))
 		item.RedemptionOrderUsers = int64(len(redemptionUsers[key]))
 		results = append(results, *item)
 	}

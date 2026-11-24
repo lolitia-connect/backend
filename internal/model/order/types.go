@@ -43,6 +43,7 @@ type OrdersTotalWithDate struct {
 	AmountTotal           int64
 	NewOrderAmount        int64
 	RenewalOrderAmount    int64
+	RechargeOrderAmount   int64
 	RedemptionOrderAmount int64
 }
 

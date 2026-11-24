@@ -1721,6 +1721,7 @@ type OrdersStatistics struct {
 	AmountTotal           int64              `json:"amount_total"`
 	NewOrderAmount        int64              `json:"new_order_amount"`
 	RenewalOrderAmount    int64              `json:"renewal_order_amount"`
+	RechargeOrderAmount   int64              `json:"recharge_order_amount"`
 	RedemptionOrderAmount int64              `json:"redemption_order_amount"`
 	List                  []OrdersStatistics `json:"list,omitempty"`
 }
@@ -3185,6 +3186,7 @@ type UserStatistics struct {
 	Register             int64            `json:"register"`
 	NewOrderUsers        int64            `json:"new_order_users"`
 	RenewalOrderUsers    int64            `json:"renewal_order_users"`
+	RechargeOrderUsers   int64            `json:"recharge_order_users"`
 	RedemptionOrderUsers int64            `json:"redemption_order_users"`
 	List                 []UserStatistics `json:"list,omitempty"`
 }

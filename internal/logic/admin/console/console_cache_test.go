@@ -49,7 +49,7 @@ func TestConsoleStatisticsReturnCachedResponses(t *testing.T) {
 	}
 }
 
-func TestConsoleStatisticsSeparateRedemptionOrders(t *testing.T) {
+func TestConsoleStatisticsSeparateRechargeAndRedemptionOrders(t *testing.T) {
 	t.Setenv("PPANEL_MODE", "production")
 	db, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)")
 	if err != nil {
@@ -76,6 +76,11 @@ func TestConsoleStatisticsSeparateRedemptionOrders(t *testing.T) {
 		{2, order.TypeRedemption, true, 30, order.StatusFinished},
 		{3, order.TypeSubscribe, true, 100, order.StatusFinished},
 		{4, order.TypeRenewal, false, 200, order.StatusPaid},
+		{6, order.TypeRecharge, false, 40, order.StatusPaid},
+		{6, order.TypeRecharge, true, 60, order.StatusFinished},
+		{3, order.TypeRecharge, true, 70, order.StatusFinished},
+		{5, order.TypeRecharge, false, 400, order.StatusPending},
+		{5, order.TypeRecharge, true, 500, order.StatusClosed},
 		{5, order.TypeRedemption, true, 400, order.StatusPending},
 		{6, order.TypeRedemption, false, 500, order.StatusClosed},
 	} {
@@ -87,9 +92,14 @@ func TestConsoleStatisticsSeparateRedemptionOrders(t *testing.T) {
 	client.Order.Create().SetOrderNo("kpi-previous-month").SetUserID(7).
 		SetType(order.TypeRedemption).SetIsNew(true).SetStatus(order.StatusFinished).
 		SetCreatedAt(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, 0, -1)).SaveX(ctx)
-	// Old cache entries must not preserve the previous new-purchase classification.
-	cache.Set(ctx, "console:user_statistics", `{"today":{"new_order_users":99}}`, time.Minute)
-	cache.Set(ctx, "console:revenue_statistics", `{"today":{"new_order_amount":99}}`, time.Minute)
+	client.Order.Create().SetOrderNo("kpi-previous-month-recharge").SetUserID(8).
+		SetType(order.TypeRecharge).SetIsNew(true).SetAmount(80).SetStatus(order.StatusFinished).
+		SetCreatedAt(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, 0, -1)).SaveX(ctx)
+	// Ignore caches produced before recharge and redemption had separate categories.
+	for _, suffix := range []string{"", ":v2"} {
+		cache.Set(ctx, "console:user_statistics"+suffix, `{"today":{"renewal_order_users":99}}`, time.Minute)
+		cache.Set(ctx, "console:revenue_statistics"+suffix, `{"today":{"renewal_order_amount":99}}`, time.Minute)
+	}
 
 	users, err := NewQueryUserStatisticsLogic(ctx, service).QueryUserStatistics()
 	if err != nil {
@@ -98,9 +108,10 @@ func TestConsoleStatisticsSeparateRedemptionOrders(t *testing.T) {
 	for _, period := range []struct {
 		name        string
 		data        types.UserStatistics
+		recharges   int64
 		redemptions int64
-	}{{"today", users.Today, 2}, {"monthly", users.Monthly, 2}, {"all", users.All, 3}} {
-		if period.data.NewOrderUsers != 1 || period.data.RenewalOrderUsers != 1 || period.data.RedemptionOrderUsers != period.redemptions {
+	}{{"today", users.Today, 2, 2}, {"monthly", users.Monthly, 2, 2}, {"all", users.All, 3, 3}} {
+		if period.data.NewOrderUsers != 1 || period.data.RenewalOrderUsers != 1 || period.data.RechargeOrderUsers != period.recharges || period.data.RedemptionOrderUsers != period.redemptions {
 			t.Fatalf("%s users = %+v", period.name, period.data)
 		}
 	}
@@ -109,7 +120,7 @@ func TestConsoleStatisticsSeparateRedemptionOrders(t *testing.T) {
 		for _, bucket := range list {
 			if bucket.Date == now.Format("2006-01-02") || bucket.Date == now.Format("2006-01") {
 				found = true
-				if bucket.Register != 0 || bucket.NewOrderUsers != 1 || bucket.RenewalOrderUsers != 1 || bucket.RedemptionOrderUsers != 2 {
+				if bucket.Register != 0 || bucket.NewOrderUsers != 1 || bucket.RenewalOrderUsers != 1 || bucket.RechargeOrderUsers != 2 || bucket.RedemptionOrderUsers != 2 {
 					t.Fatalf("user chart bucket = %+v", bucket)
 				}
 			}
@@ -122,9 +133,12 @@ func TestConsoleStatisticsSeparateRedemptionOrders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, period := range []types.OrdersStatistics{revenue.Today, revenue.Monthly, revenue.All} {
-		if period.AmountTotal != 330 || period.NewOrderAmount != 100 || period.RenewalOrderAmount != 200 || period.RedemptionOrderAmount != 30 {
-			t.Fatalf("revenue = %+v", period)
+	for _, period := range []struct {
+		data     types.OrdersStatistics
+		recharge int64
+	}{{revenue.Today, 170}, {revenue.Monthly, 170}, {revenue.All, 250}} {
+		if period.data.AmountTotal != 330+period.recharge || period.data.NewOrderAmount != 100 || period.data.RenewalOrderAmount != 200 || period.data.RechargeOrderAmount != period.recharge || period.data.RedemptionOrderAmount != 30 {
+			t.Fatalf("revenue = %+v", period.data)
 		}
 	}
 	for _, list := range [][]types.OrdersStatistics{revenue.Monthly.List, revenue.All.List} {
@@ -132,7 +146,7 @@ func TestConsoleStatisticsSeparateRedemptionOrders(t *testing.T) {
 		for _, bucket := range list {
 			if bucket.Date == now.Format("2006-01-02") || bucket.Date == now.Format("2006-01") {
 				found = true
-				if bucket.AmountTotal != 330 || bucket.NewOrderAmount != 100 || bucket.RenewalOrderAmount != 200 || bucket.RedemptionOrderAmount != 30 {
+				if bucket.AmountTotal != 500 || bucket.NewOrderAmount != 100 || bucket.RenewalOrderAmount != 200 || bucket.RechargeOrderAmount != 170 || bucket.RedemptionOrderAmount != 30 {
 					t.Fatalf("revenue chart bucket = %+v", bucket)
 				}
 			}

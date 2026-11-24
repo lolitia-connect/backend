@@ -14,7 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
-const consoleRevenueStatisticsCacheKey = "console:revenue_statistics:v2"
+const consoleRevenueStatisticsCacheKey = "console:revenue_statistics:v3"
 const consoleRevenueStatisticsCacheTTL = 60 * time.Second
 
 type QueryRevenueStatisticsLogic struct {
@@ -58,6 +58,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 			AmountTotal:           todayData.AmountTotal,
 			NewOrderAmount:        todayData.NewOrderAmount,
 			RenewalOrderAmount:    todayData.RenewalOrderAmount,
+			RechargeOrderAmount:   todayData.RechargeOrderAmount,
 			RedemptionOrderAmount: todayData.RedemptionOrderAmount,
 		}
 	}
@@ -71,6 +72,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 			AmountTotal:           monthlyData.AmountTotal,
 			NewOrderAmount:        monthlyData.NewOrderAmount,
 			RenewalOrderAmount:    monthlyData.RenewalOrderAmount,
+			RechargeOrderAmount:   monthlyData.RechargeOrderAmount,
 			RedemptionOrderAmount: monthlyData.RedemptionOrderAmount,
 			List:                  make([]types.OrdersStatistics, 0),
 		}
@@ -89,6 +91,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 				AmountTotal:           data.AmountTotal,
 				NewOrderAmount:        data.NewOrderAmount,
 				RenewalOrderAmount:    data.RenewalOrderAmount,
+				RechargeOrderAmount:   data.RechargeOrderAmount,
 				RedemptionOrderAmount: data.RedemptionOrderAmount,
 			}
 		}
@@ -105,6 +108,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 			AmountTotal:           allData.AmountTotal,
 			NewOrderAmount:        allData.NewOrderAmount,
 			RenewalOrderAmount:    allData.RenewalOrderAmount,
+			RechargeOrderAmount:   allData.RechargeOrderAmount,
 			RedemptionOrderAmount: allData.RedemptionOrderAmount,
 			List:                  make([]types.OrdersStatistics, 0),
 		}
@@ -123,6 +127,7 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 				AmountTotal:           data.AmountTotal,
 				NewOrderAmount:        data.NewOrderAmount,
 				RenewalOrderAmount:    data.RenewalOrderAmount,
+				RechargeOrderAmount:   data.RechargeOrderAmount,
 				RedemptionOrderAmount: data.RedemptionOrderAmount,
 			}
 		}

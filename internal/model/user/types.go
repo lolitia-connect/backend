@@ -210,5 +210,6 @@ type UserStatisticsWithDate struct {
 	Register             int64
 	NewOrderUsers        int64
 	RenewalOrderUsers    int64
+	RechargeOrderUsers   int64
 	RedemptionOrderUsers int64
 }

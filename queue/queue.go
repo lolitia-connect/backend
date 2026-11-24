@@ -68,7 +68,10 @@ func initService(svc *svc.ServiceContext) *asynq.Server {
 		asynq.Config{
 			Logger: logging.NewAsynqLogger(),
 			IsFailure: func(err error) bool {
-				zap.S().Error("consumer service error", zap.Any("error", err.Error()))
+				// IsFailure is called for every handler error while Asynq decides
+				// whether to retry. Logging at error level here turns expected
+				// transient payment reconciliation failures into Sentry issues.
+				zap.S().Warnw("consumer service retry", "error", err.Error())
 				return true
 			},
 			Concurrency: 20,

@@ -497,10 +497,13 @@ func (l *V2OrderLogic) guestCheckoutToken(idempotencyKey string, orderInfo *orde
 }
 
 func validateV2CreateRequest(req *types.V2CreateOrderRequest, currentUser *user.User) error {
-	if req == nil || req.PaymentID <= 0 {
-		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "payment_id is required")
+	if req == nil || req.PaymentID == 0 || req.PaymentID < -1 {
+		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "invalid payment_id")
 	}
 	req.Type = strings.ToLower(strings.TrimSpace(req.Type))
+	if req.PaymentID == -1 && (currentUser == nil || req.Type == v2OrderTypeRecharge) {
+		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "balance payment requires a signed-in subscription order")
+	}
 	switch req.Type {
 	case v2OrderTypePurchase:
 		if req.SubscribeID <= 0 || req.Quantity <= 0 || req.Quantity > MaxQuantity || req.UserSubscribeID != 0 || req.Amount != 0 {

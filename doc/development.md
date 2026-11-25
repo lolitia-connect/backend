@@ -78,6 +78,10 @@ hand-written SQL migrations under `initialize/migrate/database/`.
   The per-user subscription traffic endpoint accepts Unix-millisecond `start_time` / `end_time`
   bounds, including the start and excluding the end.
 
+### V2 order payment methods
+
+`POST /v2/public/orders` accepts `payment_id` as a JSON integer. Positive values identify payment channels; `-1` selects balance payment for signed-in purchases, renewals, and traffic resets. Guest purchases and wallet recharges require a positive channel ID. Zero and other negative values are invalid. Balance checkout uses the existing wallet debit and order status transaction, with `Idempotency-Key` preventing duplicate debits on retries.
+
 ### Group recalculation and database transactions
 
 New purchases and redemptions that change a subscription request recalculation through the order fulfillment event. The event publisher enqueues an Asynq job before marking the event published. Order-triggered jobs use the configured grouping mode. Scheduled jobs run in traffic mode only.

@@ -61,6 +61,12 @@ type Order struct {
 	UpdatedAt              time.Time
 }
 
+func (o *Order) IsFullyCoveredByGift() bool {
+	return o.UserId > 0 && o.Amount == 0 && o.GiftAmount > 0 &&
+		(o.Type == TypeSubscribe || o.Type == TypeRenewal || o.Type == TypeResetTraffic) &&
+		o.PaymentAmount == 0 && o.PaymentCurrency == "" && o.TradeNo == "" && o.PaymentSession == ""
+}
+
 type OrdersTotal struct {
 	AmountTotal           int64
 	NewOrderAmount        int64

@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	paymentnotify "github.com/perfect-panel/server/internal/logic/notify"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/repository"
+	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/exchangeRate"
 	"github.com/perfect-panel/server/pkg/requestmeta"
 	"github.com/perfect-panel/server/pkg/tasklock"
@@ -77,8 +79,18 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.OrderNotExist), "order not exist: %v", req.OrderNo)
 	}
 
-	// Verify order is in pending payment status (status = 1)
-	if orderInfo.Status != 1 {
+	if orderInfo.IsFullyCoveredByGift() {
+		customer, _ := l.ctx.Value(constant.CtxKeyUser).(*user.User)
+		if customer == nil || customer.Id != orderInfo.UserId {
+			return nil, xerr.NewErrCode(xerr.InvalidAccess)
+		}
+		if err := l.settleReservedGift(orderInfo); err != nil {
+			return nil, err
+		}
+		return &types.CheckoutOrderResponse{Type: "balance"}, nil
+	}
+
+	if orderInfo.Status != order.StatusPending {
 		l.Logger.Error("[PurchaseCheckout] Order status error", zap.Any("status", orderInfo.Status))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.OrderStatusError), "order status error: %v", orderInfo.Status)
 	}
@@ -199,6 +211,35 @@ func (l *PurchaseCheckoutLogic) PurchaseCheckout(req *types.CheckoutOrderRequest
 		}
 	}
 	return
+}
+
+func (l *PurchaseCheckoutLogic) settleReservedGift(invoice *order.Order) error {
+	fulfill := false
+	err := l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		current, err := store.Order().FindOneByOrderNoForUpdate(l.ctx, invoice.OrderNo)
+		if err != nil {
+			return err
+		}
+		if current.UserId != invoice.UserId || !current.IsFullyCoveredByGift() {
+			return xerr.NewErrCode(xerr.OrderStatusError)
+		}
+		switch current.Status {
+		case order.StatusPending:
+			fulfill = true
+			return store.Order().UpdateOrderStatus(l.ctx, current.OrderNo, order.StatusPaid)
+		case order.StatusPaid:
+			fulfill = true
+			return nil
+		case order.StatusFinished:
+			return nil
+		default:
+			return xerr.NewErrCode(xerr.OrderStatusError)
+		}
+	})
+	if err != nil || !fulfill {
+		return err
+	}
+	return paymentnotify.EnqueuePaidOrder(l.ctx, l.svcCtx, invoice.OrderNo)
 }
 
 // alipayF2fPayment processes Alipay Face-to-Face payment by generating a QR code

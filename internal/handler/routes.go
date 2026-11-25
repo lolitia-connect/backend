@@ -871,7 +871,7 @@ func RegisterHandlers(router *hertzx.Engine, serverCtx *svc.ServiceContext) {
 
 	{
 		// Purchase Checkout
-		publicPortalGroupRouter.POST("/order/checkout", publicPortal.PurchaseCheckoutHandler(serverCtx))
+		publicPortalGroupRouter.POST("/order/checkout", middleware.OptionalAuthMiddleware(serverCtx), publicPortal.PurchaseCheckoutHandler(serverCtx))
 
 		// Query Purchase Order
 		publicPortalGroupRouter.GET("/order/status", publicPortal.QueryPurchaseOrderHandler(serverCtx))

@@ -9,12 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
+	worker "github.com/perfect-panel/server/queue/logic/order"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/stretchr/testify/require"
 )
@@ -273,6 +275,48 @@ func TestQuotesAndOrdersRecoverWhenBillingInputsBecomeReadable(t *testing.T) {
 	funds := f.client.UserWallet.GetX(ctx, wallet.ID)
 	require.Equal(t, wallet.Balance, funds.Balance)
 	require.Zero(t, funds.GiftAmount)
+}
+
+func TestLegacyCheckoutFulfillsPurchaseCoveredByReservedGift(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	inspector := f.startQueue()
+	owner, session := f.account(false)
+	_, other := f.account(false)
+	wallet := f.client.UserWallet.Create().SetUserID(owner.ID).SetBalance(200).SetGiftAmount(800).SaveX(ctx)
+	plan := f.client.Subscribe.Create().SetName("Monthly").SetUnitPrice(500).SetUnitTime("Day").SetSell(true).SetInventory(1).SaveX(ctx)
+	method := f.client.Payment.Create().SetPlatform("Stripe").SetConfig("invalid gateway config").SetEnable(true).
+		SetFeeMode(3).SetFeePercent(3).SetFeeAmount(30).SaveX(ctx)
+	var created types.PurchaseOrderResponse
+	purchase := fmt.Sprintf(`{"subscribe_id":"%d","quantity":1,"payment":"%d"}`, plan.ID, method.ID)
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, "/v1/public/order/purchase", session, purchase, http.StatusOK), &created))
+	const checkoutPath = "/v1/public/portal/order/checkout"
+	checkout := fmt.Sprintf(`{"orderNo":%q}`, created.OrderNo)
+	for _, token := range []string{"", other} {
+		f.request(http.MethodPost, checkoutPath, token, checkout, xerr.InvalidAccess)
+	}
+	invoice := f.client.Order.Query().OnlyX(ctx)
+	require.Equal(t, order.StatusPending, invoice.Status)
+	require.Zero(t, invoice.Amount)
+	require.EqualValues(t, 545, invoice.GiftAmount)
+
+	var result types.CheckoutOrderResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, checkoutPath, session, checkout, http.StatusOK), &result))
+	require.Equal(t, "balance", result.Type)
+	require.Empty(t, result.CheckoutUrl)
+	require.Equal(t, order.StatusPaid, f.client.Order.GetX(ctx, invoice.ID).Status)
+	tasks, err := inspector.ListPendingTasks("default")
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	require.Equal(t, queue.ForthwithActivateOrder, tasks[0].Type)
+	require.NoError(t, worker.NewActivateOrderLogic(f.service).ProcessTask(ctx, asynq.NewTask(tasks[0].Type, tasks[0].Payload)))
+
+	f.request(http.MethodPost, checkoutPath, session, checkout, http.StatusOK)
+	require.Equal(t, order.StatusFinished, f.client.Order.GetX(ctx, invoice.ID).Status)
+	require.Equal(t, invoice.ID, f.client.UserSubscribe.Query().OnlyX(ctx).OrderID)
+	funds := f.client.UserWallet.GetX(ctx, wallet.ID)
+	require.EqualValues(t, 200, funds.Balance)
+	require.EqualValues(t, 255, funds.GiftAmount)
 }
 
 func TestMemberOrderCanRetryAfterBillingStorageRecovers(t *testing.T) {

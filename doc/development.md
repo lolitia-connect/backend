@@ -86,7 +86,7 @@ hand-written SQL migrations under `initialize/migrate/database/`.
 
 ### V2 order payment methods
 
-`POST /v2/public/orders` accepts `payment_id` as a JSON integer. Positive values identify payment channels; `-1` selects balance payment for signed-in purchases, renewals, and traffic resets. Guest purchases and wallet recharges require a positive channel ID. Zero and other negative values are invalid. Balance checkout uses the existing wallet debit and order status transaction, with `Idempotency-Key` preventing duplicate debits on retries.
+`POST /v2/public/orders` accepts `payment_id` as a JSON integer. Positive values identify payment channels; `-1` selects balance payment for signed-in purchases, renewals, and traffic resets. Guest purchases and wallet recharges require a positive channel ID. Zero and other negative values are invalid. Balance checkout uses the existing wallet debit and order status transaction, with `Idempotency-Key` preventing duplicate debits on retries. If reserved gift credit leaves zero due on a signed-in purchase, renewal, or traffic reset, the order owner can check out in either API version. The server records the order as paid and queues fulfillment without contacting the selected provider or debiting the wallet again.
 
 ### Group recalculation and database transactions
 

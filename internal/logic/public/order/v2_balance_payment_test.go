@@ -20,6 +20,7 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/xerr"
+	queuetypes "github.com/perfect-panel/server/queue/types"
 	"github.com/redis/go-redis/v9"
 	_ "modernc.org/sqlite"
 )
@@ -54,6 +55,77 @@ func TestValidateV2CreateRequestBalancePayment(t *testing.T) {
 			var code *xerr.CodeError
 			if !errors.As(err, &code) || code.GetErrCode() != xerr.InvalidParams {
 				t.Fatalf("validation error = %v, want InvalidParams", err)
+			}
+		})
+	}
+}
+
+func TestV2CheckoutSettlesOrdersCoveredByReservedGift(t *testing.T) {
+	for _, orderType := range []string{"purchase", "renewal", "reset_traffic"} {
+		t.Run(orderType, func(t *testing.T) {
+			service, client, _, queueOptions := newPurchaseLifecycleFixture(t)
+			ctx := t.Context()
+			account := client.User.Create().SetPassword("fixture").SaveX(ctx)
+			owner := context.WithValue(ctx, constant.CtxKeyUser, &user.User{Id: account.ID})
+			wallet := client.UserWallet.Create().SetUserID(account.ID).SetBalance(1200).SetGiftAmount(1500).SaveX(ctx)
+			plan := client.Subscribe.Create().SetName("Monthly").SetSell(true).
+				SetInventory(2).SetUnitPrice(1000).SetReplacement(1000).SaveX(ctx)
+			method := client.Payment.Create().SetPlatform("Stripe").SetEnable(true).SetConfig("invalid gateway config").SaveX(ctx)
+			request := types.V2CreateOrderRequest{Type: orderType, PaymentID: method.ID}
+			if orderType == "purchase" {
+				request.SubscribeID = plan.ID
+				request.Quantity = 1
+			} else {
+				subscription := client.UserSubscribe.Create().SetUserID(account.ID).SetOrderID(1).
+					SetSubscribeID(plan.ID).SetStatus(1).SaveX(ctx)
+				request.UserSubscribeID = subscription.ID
+				if orderType == "renewal" {
+					request.Quantity = 1
+				}
+			}
+
+			logic := NewV2OrderLogic(owner, service)
+			const key = "gift-payment-replay"
+			if orderType == "renewal" {
+				availableQueue := service.Queue
+				closedQueue := asynq.NewClient(queueOptions)
+				if err := closedQueue.Close(); err != nil {
+					t.Fatal(err)
+				}
+				service.Queue = closedQueue
+				failed, err := logic.CreateAndCheckout(&request, key)
+				service.Queue = availableQueue
+				if err == nil || failed != nil || client.Order.Query().OnlyX(ctx).Status != modelorder.StatusPaid {
+					t.Fatalf("checkout with unavailable activation queue = %+v, %v", failed, err)
+				}
+			}
+
+			first, err := logic.CreateAndCheckout(&request, key)
+			if err != nil || first == nil || first.Order.Amount != 0 || first.Order.PaymentStatus != "paid" {
+				t.Fatalf("gift checkout = %+v, %v", first, err)
+			}
+			if orderType != "renewal" && (first.Payment == nil || first.Payment.Type != "balance" || first.Payment.CheckoutURL != "" || first.Payment.PaymentStatus != "paid") {
+				t.Fatalf("gift checkout payment = %+v", first.Payment)
+			}
+			replayed, err := logic.CreateAndCheckout(&request, key)
+			if err != nil || replayed == nil || replayed.Order != first.Order || replayed.Payment != nil {
+				t.Fatalf("replayed gift checkout = %+v, %v", replayed, err)
+			}
+			invoice := client.Order.Query().OnlyX(ctx)
+			if invoice.PaymentID != method.ID || invoice.Amount != 0 || invoice.GiftAmount != 1000 || invoice.PaymentAmount != 0 || invoice.TradeNo != nil || invoice.PaymentSession != nil {
+				t.Fatalf("unexpected gift invoice: %+v", invoice)
+			}
+			if funds := client.UserWallet.GetX(ctx, wallet.ID); funds.Balance != 1200 || funds.GiftAmount != 500 {
+				t.Fatalf("wallet after gift checkout and retry = %+v", funds)
+			}
+			if count := client.OrderEvent.Query().Where(orderevent.OrderIDEQ(invoice.ID), orderevent.EventTypeEQ(modelorder.EventOrderPaymentPaid)).CountX(ctx); count != 1 {
+				t.Fatalf("gift payment events = %d, want one", count)
+			}
+			inspector := asynq.NewInspector(queueOptions)
+			t.Cleanup(func() { _ = inspector.Close() })
+			tasks, err := inspector.ListPendingTasks("default")
+			if err != nil || len(tasks) != 1 || tasks[0].Type != queuetypes.ForthwithActivateOrder {
+				t.Fatalf("gift checkout activation tasks = %+v, %v", tasks, err)
 			}
 		})
 	}

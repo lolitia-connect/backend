@@ -152,7 +152,7 @@ func (l *V2OrderLogic) Checkout(orderNo string, req *types.V2CheckoutOrderReques
 	if err := l.authorizeOrder(orderInfo, req.CheckoutToken); err != nil {
 		return nil, err
 	}
-	if orderInfo.Status != order.StatusPending {
+	if orderInfo.Status != order.StatusPending && !isPaidGiftOrder(orderInfo) {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.OrderStatusError), "order is not pending")
 	}
 	return l.checkoutResponse(orderInfo, req.CheckoutToken, req.ReturnURL)
@@ -273,25 +273,29 @@ func (l *V2OrderLogic) createOrder(ctx context.Context, req *types.V2CreateOrder
 	}
 }
 
+func isPaidGiftOrder(invoice *order.Order) bool {
+	return invoice.Status == order.StatusPaid && invoice.IsFullyCoveredByGift()
+}
+
 func (l *V2OrderLogic) checkoutResponse(orderInfo *order.Order, checkoutToken, returnURL string) (*types.V2OrderResponse, error) {
 	var paymentResp *types.V2OrderPayment
-	if orderInfo.Status == order.StatusPending {
+	pending := orderInfo.Status == order.StatusPending
+	if pending || isPaidGiftOrder(orderInfo) {
 		checkout, err := portal.NewPurchaseCheckoutLogic(l.ctx, l.svcCtx).PurchaseCheckout(&types.CheckoutOrderRequest{
 			OrderNo: orderInfo.OrderNo, ReturnUrl: returnURL,
 		})
 		if err != nil {
 			return nil, err
 		}
-		paymentResp = &types.V2OrderPayment{
-			Type: checkout.Type, CheckoutURL: checkout.CheckoutUrl,
-			PaymentStatus: order.PaymentStatus(orderInfo.Status),
-		}
-		// A balance payment completes inside checkout, so the payment leg is
-		// re-read instead of assumed.
-		latest, err := l.svcCtx.Store.Order().FindOneByOrderNo(l.ctx, orderInfo.OrderNo)
-		if err == nil {
+		// Checkout can settle wallet payments immediately.
+		if latest, err := l.svcCtx.Store.Order().FindOneByOrderNo(l.ctx, orderInfo.OrderNo); err == nil {
 			orderInfo = latest
-			paymentResp.PaymentStatus = order.PaymentStatus(orderInfo.Status)
+		}
+		if pending {
+			paymentResp = &types.V2OrderPayment{
+				Type: checkout.Type, CheckoutURL: checkout.CheckoutUrl,
+				PaymentStatus: order.PaymentStatus(orderInfo.Status),
+			}
 		}
 	}
 	ticket, expiresAt, err := l.mintEventTicket(orderInfo, checkoutToken)

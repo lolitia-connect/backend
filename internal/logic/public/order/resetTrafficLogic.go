@@ -89,10 +89,9 @@ func (l *ResetTrafficLogic) ResetTraffic(req *types.ResetTrafficOrderRequest) (r
 		l.Logger.Errorw("[ResetTraffic] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(err, "find payment error: %v", err.Error())
 	}
-	var feeAmount int64
-	// Calculate the handling fee
-	if amount > 0 {
-		feeAmount = calculateFee(amount, payment)
+	feeAmount, err := payment.HandlingFee(amount)
+	if err != nil {
+		return nil, err
 	}
 	// create order
 	orderInfo := order.Order{

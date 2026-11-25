@@ -166,7 +166,10 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 	var feeAmount int64
 	// Calculate the handling fee
 	if amount > 0 {
-		feeAmount = calculateFee(amount, payment)
+		feeAmount, err = payment.HandlingFee(amount)
+		if err != nil {
+			return nil, err
+		}
 		amount += feeAmount
 
 		// Final validation after adding fee

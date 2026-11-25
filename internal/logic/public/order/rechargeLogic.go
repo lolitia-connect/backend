@@ -70,7 +70,10 @@ func (l *RechargeLogic) Recharge(req *types.RechargeOrderRequest) (resp *types.R
 		return nil, errors.Wrapf(err, "find payment error: %v", err.Error())
 	}
 	// Calculate the handling fee
-	feeAmount := calculateFee(req.Amount, payment)
+	feeAmount, err := payment.HandlingFee(req.Amount)
+	if err != nil {
+		return nil, err
+	}
 	totalAmount := req.Amount + feeAmount
 
 	// Validate total amount after adding fee

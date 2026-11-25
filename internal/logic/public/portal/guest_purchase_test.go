@@ -26,7 +26,14 @@ func TestGuestPurchaseReservesInventoryAndSchedulesOrderClose(t *testing.T) {
 	t.Cleanup(func() { _ = service.Queue.Close(); _ = inspector.Close() })
 	plan := db.Subscribe.Create().SetName("Guest plan").SetSell(true).SetInventory(1).
 		SetUnitPrice(1000).SetDiscount(`[{"quantity":2,"discount":80}]`).SaveX(ctx)
-	method := db.Payment.Create().SetPlatform("Stripe").SetConfig(`{}`).SetFeeMode(2).SetFeeAmount(30).SetEnable(true).SaveX(ctx)
+	method := db.Payment.Create().SetPlatform("Stripe").SetConfig(`{}`).SetFeeMode(3).
+		SetFeePercent(29).SetFeeAmount(30).SetEnable(true).SaveX(ctx)
+	quote, err := NewPrePurchaseOrderLogic(ctx, service).PrePurchaseOrder(&types.PrePurchaseOrderRequest{
+		SubscribeId: plan.ID, Quantity: 2, Payment: method.ID,
+	})
+	if err != nil || quote.FeeAmount != 494 || quote.Amount != 2094 {
+		t.Fatalf("guest purchase quote = %+v, err = %v", quote, err)
+	}
 
 	logic := NewPurchaseLogic(ctx, service)
 	request := types.PortalPurchaseRequest{
@@ -39,7 +46,7 @@ func TestGuestPurchaseReservesInventoryAndSchedulesOrderClose(t *testing.T) {
 	}
 	stored := db.Order.Query().Where(entorder.OrderNo(created.OrderNo)).OnlyX(ctx)
 	if stored.Status != order.StatusPending || stored.UserID != 0 || stored.SubscribeID != plan.ID || stored.PaymentID != method.ID ||
-		stored.Price != 2000 || stored.Amount != 1600 || stored.Discount != 400 || stored.FeeAmount != 30 ||
+		stored.Price != 2000 || stored.Amount != quote.Amount || stored.Discount != 400 || stored.FeeAmount != quote.FeeAmount ||
 		stored.GuestIdentifier != "guest@example.test" || stored.GuestCheckoutTokenHash == nil || *stored.GuestCheckoutTokenHash != constant.CheckoutTokenHash(created.CheckoutToken) ||
 		stored.GuestPasswordHash == nil || !tool.VerifyPassWord(request.Password, *stored.GuestPasswordHash) {
 		t.Fatal("stored order does not match the guest identity and quoted price")
@@ -57,7 +64,7 @@ func TestGuestPurchaseReservesInventoryAndSchedulesOrderClose(t *testing.T) {
 	}
 	audit := db.SystemLog.Query().OnlyX(ctx)
 	var event log.OrderCreated
-	if err := event.Unmarshal([]byte(audit.Content)); err != nil || audit.Type != log.TypeOrderCreated.Uint8() || event.OrderNo != stored.OrderNo || event.Source != "guest" || event.Amount != 1600 {
+	if err := event.Unmarshal([]byte(audit.Content)); err != nil || audit.Type != log.TypeOrderCreated.Uint8() || event.OrderNo != stored.OrderNo || event.Source != "guest" || event.Amount != stored.Amount {
 		t.Fatalf("guest order audit event = %+v, %v", event, err)
 	}
 	tasks, err := inspector.ListScheduledTasks("default")

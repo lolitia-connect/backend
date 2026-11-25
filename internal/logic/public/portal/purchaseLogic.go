@@ -131,10 +131,9 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.PaymentMethodNotFound), "balance error")
 	}
 
-	var feeAmount int64
-	// Calculate the handling fee
-	if amount > 0 {
-		feeAmount = calculateFee(amount, paymentConfig)
+	feeAmount, err := paymentConfig.HandlingFee(amount)
+	if err != nil {
+		return nil, err
 	}
 	// create order
 	checkoutToken := orderflow.GuestCheckoutToken(l.ctx)
@@ -146,7 +145,7 @@ func (l *PurchaseLogic) Purchase(req *types.PortalPurchaseRequest) (resp *types.
 		Type:              1,
 		Quantity:          req.Quantity,
 		Price:             price,
-		Amount:            amount,
+		Amount:            amount + feeAmount,
 		Discount:          discountAmount,
 		GiftAmount:        0,
 		Coupon:            req.Coupon,

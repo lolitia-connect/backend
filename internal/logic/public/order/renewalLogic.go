@@ -160,10 +160,9 @@ func (l *RenewalLogic) Renewal(req *types.RenewalOrderRequest) (resp *types.Rene
 		deductionAmount, amount = walletInfo.Reserve(amount)
 	}
 
-	var feeAmount int64
-	// Calculate the handling fee
-	if amount > 0 {
-		feeAmount = calculateFee(amount, payment)
+	feeAmount, err := payment.HandlingFee(amount)
+	if err != nil {
+		return nil, err
 	}
 
 	amount += feeAmount

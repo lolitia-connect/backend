@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -47,6 +48,8 @@ func TestRechargePersistsPendingInvoiceAndAppearsInCustomerHistory(t *testing.T)
 	wallet := client.UserWallet.Create().SetUserID(account.ID).SetBalance(400).SaveX(ctx)
 	method := client.Payment.Create().SetName("Card").SetPlatform("Stripe").SetConfig(`{}`).
 		SetEnable(true).SetFeeMode(3).SetFeePercent(2).SetFeeAmount(30).SaveX(ctx)
+	overflowMethod := client.Payment.Create().SetPlatform("Stripe").SetConfig(`{}`).SetToken("overflow-fee").SetEnable(true).
+		SetFeeMode(3).SetFeePercent(2).SetFeeAmount(math.MaxInt64 - 100).SaveX(ctx)
 	first := client.Order.Create().SetOrderNo("previous-order").SetUserID(account.ID).SetPrice(1000).
 		SetAmount(1000).SetCommission(50).SetStatus(modelorder.StatusFinished).SaveX(ctx)
 	other := client.User.Create().SetPassword("fixture").SaveX(ctx)
@@ -59,7 +62,9 @@ func TestRechargePersistsPendingInvoiceAndAppearsInCustomerHistory(t *testing.T)
 	}{
 		{types.RechargeOrderRequest{Amount: 0, Payment: method.ID}, xerr.InvalidParams},
 		{types.RechargeOrderRequest{Amount: MaxRechargeAmount + 1, Payment: method.ID}, xerr.InvalidParams},
-		{types.RechargeOrderRequest{Amount: 5000, Payment: method.ID + 1}, xerr.PaymentMethodNotFound},
+		{types.RechargeOrderRequest{Amount: 5000, Payment: overflowMethod.ID + 1}, xerr.PaymentMethodNotFound},
+		{types.RechargeOrderRequest{Amount: 5000, Payment: overflowMethod.ID}, xerr.InvalidParams},
+		{types.RechargeOrderRequest{Amount: 5100, Payment: overflowMethod.ID}, xerr.InvalidParams},
 	} {
 		resp, err := logic.Recharge(&tc.req)
 		var code *xerr.CodeError

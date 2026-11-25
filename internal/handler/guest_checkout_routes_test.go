@@ -136,6 +136,7 @@ func TestGuestCheckoutDeliversSubscriptionAndAccountSession(t *testing.T) {
 	plan := f.client.Subscribe.Create().SetName("One day").SetSell(true).SetInventory(2).
 		SetUnitPrice(250).SetUnitTime("Hour").SetTraffic(1024).SaveX(ctx)
 	method := f.client.Payment.Create().SetPlatform("EPay").SetEnable(true).SetCurrencyUnit("CNY").SetExchangeRate(1).
+		SetFeeMode(3).SetFeePercent(3).SetFeeAmount(30).
 		SetConfig(`{"pid":"1001","key":"fixture-key","url":"https://cashier.example.test","type":"alipay"}`).SaveX(ctx)
 	checkout := types.V2CreateOrderRequest{Type: "purchase", PaymentID: method.ID, SubscribeID: plan.ID, Quantity: 24,
 		ReturnURL: "https://store.example.test/return", Guest: &types.V2GuestOrderRequest{AuthType: "email", Identifier: "buyer@example.test", Password: "guest-purchase-fixture"}}
@@ -158,12 +159,12 @@ func TestGuestCheckoutDeliversSubscriptionAndAccountSession(t *testing.T) {
 	require.NotEmpty(t, created.CheckoutToken)
 	require.NotEmpty(t, created.Order.OrderNo)
 	require.Equal(t, "pending_payment", created.Order.Status)
-	require.Equal(t, int64(6000), created.Order.Amount)
+	require.Equal(t, int64(6210), created.Order.Amount)
 	require.NotNil(t, created.Payment)
 	redirect, err := url.Parse(created.Payment.CheckoutURL)
 	require.NoError(t, err)
 	require.Equal(t, "cashier.example.test", redirect.Host)
-	require.Equal(t, "60.00", redirect.Query().Get("money"))
+	require.Equal(t, "62.10", redirect.Query().Get("money"))
 	require.Equal(t, created.Order.OrderNo, redirect.Query().Get("out_trade_no"))
 	retry := create(checkout, http.StatusOK, http.StatusOK)
 	require.Equal(t, created.Order.OrderNo, retry.Order.OrderNo)

@@ -2,6 +2,10 @@ package payment
 
 import (
 	"encoding/json"
+	"math"
+	"math/big"
+
+	"github.com/perfect-panel/server/pkg/xerr"
 )
 
 type Payment struct {
@@ -21,6 +25,33 @@ type Payment struct {
 	CurrencyUnit string
 	ExchangeRate float64
 	BillDesc     string
+}
+
+func (p *Payment) HandlingFee(amount int64) (int64, error) {
+	if amount <= 0 {
+		return 0, nil
+	}
+
+	var fee int64
+	switch p.FeeMode {
+	case 1:
+		fee = int64(float64(amount) * (float64(p.FeePercent) / 100))
+	case 2:
+		fee = p.FeeAmount
+	case 3:
+		var combined big.Int
+		combined.Mul(big.NewInt(amount), big.NewInt(p.FeePercent))
+		combined.Quo(&combined, big.NewInt(100))
+		combined.Add(&combined, big.NewInt(p.FeeAmount))
+		if !combined.IsInt64() {
+			return 0, xerr.NewErrCodeMsg(xerr.InvalidParams, "payment fee exceeds supported amount")
+		}
+		fee = combined.Int64()
+	}
+	if fee > math.MaxInt64-amount {
+		return 0, xerr.NewErrCodeMsg(xerr.InvalidParams, "payment total exceeds supported amount")
+	}
+	return fee, nil
 }
 
 type Filter struct {

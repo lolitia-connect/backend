@@ -119,10 +119,11 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 			return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
 		}
 		// Calculate the handling fee
-		if amount > 0 {
-			feeAmount = calculateFee(amount, payment)
-			amount += feeAmount
+		feeAmount, err = payment.HandlingFee(amount)
+		if err != nil {
+			return nil, err
 		}
+		amount += feeAmount
 	}
 	// Calculate gift amount deduction after fee calculation
 	walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)

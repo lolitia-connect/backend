@@ -32,7 +32,10 @@ func NewCreateQuotaTaskLogic(ctx context.Context, svcCtx *svc.ServiceContext) *C
 }
 
 func (l *CreateQuotaTaskLogic) CreateQuotaTask(req *types.CreateQuotaTaskRequest) error {
-	subscribeIDs := tool.StringSliceToInt64Slice(req.Subscribers)
+	subscribeIDs, err := tool.ParsePositiveIDs(req.Subscribers)
+	if err != nil {
+		return xerr.NewErrCodeMsg(xerr.InvalidParams, "invalid subscribers: "+err.Error())
+	}
 	subIds, err := l.svcCtx.Store.User().QuerySubscribeIdsByFilter(l.ctx, &user.SubscribeFilter{
 		Subscribers: subscribeIDs,
 		IsActive:    req.IsActive,

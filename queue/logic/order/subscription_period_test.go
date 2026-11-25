@@ -3,6 +3,7 @@ package orderLogic
 import (
 	"context"
 	stdsql "database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -66,6 +68,73 @@ func TestRecordLocalSubscriptionPeriods(t *testing.T) {
 	if second.OrderID != renewal.Id || second.PlanID != renewal.SubscribeId || !second.TrafficReset || !second.StartAt.Equal(renewalStart) || !second.EndAt.Equal(subscription.ExpireTime) {
 		t.Fatalf("unexpected renewal period: %+v", second)
 	}
+}
+
+func TestPaidReferralPurchaseCommitsGrantAndCommissionTogether(t *testing.T) {
+	service, _ := stripeTestService(t)
+	ctx, db := t.Context(), service.Ent
+	referrer := db.User.Create().SetPassword("fixture").SetReferralPercentage(25).SaveX(ctx)
+	wallet := db.UserWallet.Create().SetUserID(referrer.ID).SetCommission(70).SaveX(ctx)
+	buyer := db.User.Create().SetPassword("fixture").SetRefererID(referrer.ID).SaveX(ctx)
+	db.UserWallet.Create().SetUserID(buyer.ID).SaveX(ctx)
+	plan := db.Subscribe.Create().SetName("Monthly").SetUnitTime("Day").SetTraffic(500).SaveX(ctx)
+	coupon := db.Coupon.Create().SetCode("LEGACY").SaveX(ctx)
+	invoice := db.Order.Create().SetOrderNo("paid-referral").SetUserID(buyer.ID).SetSubscribeID(plan.ID).
+		SetType(order.TypeSubscribe).SetStatus(order.StatusPaid).SetQuantity(30).SetPrice(1000).
+		SetAmount(850).SetFeeAmount(50).SetIsNew(true).SetCoupon(coupon.Code).SaveX(ctx)
+	activation := asynq.NewTask("activate", []byte(`{"order_no":"paid-referral"}`))
+	logic := NewActivateOrderLogic(service)
+
+	var failedWrite string
+	unavailable := errors.New("fulfillment storage unavailable")
+	db.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, mutation ent.Mutation) (ent.Value, error) {
+			if mutation.Type() == failedWrite {
+				return nil, unavailable
+			}
+			return next.Mutate(ctx, mutation)
+		})
+	})
+	for _, failedWrite = range []string{ent.TypeUserSubscribe, ent.TypeSubscriptionPeriod, ent.TypeUserWallet, ent.TypeOrder, ent.TypeSystemLog, ent.TypeCoupon, ent.TypeOrderEvent} {
+		require.ErrorIs(t, logic.ProcessTask(ctx, activation), unavailable, failedWrite)
+		current := db.Order.GetX(ctx, invoice.ID)
+		require.Equal(t, invoice.Status, current.Status)
+		require.Equal(t, invoice.StateVersion, current.StateVersion)
+		require.Zero(t, current.Commission)
+		require.EqualValues(t, 70, db.UserWallet.GetX(ctx, wallet.ID).Commission)
+		require.Zero(t, db.Coupon.GetX(ctx, coupon.ID).UsedCount)
+		require.Zero(t, db.UserSubscribe.Query().CountX(ctx))
+		require.Zero(t, db.SubscriptionPeriod.Query().CountX(ctx))
+		require.Zero(t, db.SystemLog.Query().CountX(ctx))
+		require.Zero(t, db.OrderEvent.Query().CountX(ctx))
+	}
+	failedWrite = ""
+	for range 2 {
+		require.NoError(t, logic.ProcessTask(ctx, activation))
+	}
+	current := db.Order.GetX(ctx, invoice.ID)
+	require.EqualValues(t, order.StatusFinished, current.Status)
+	require.Equal(t, invoice.StateVersion+1, current.StateVersion)
+	require.Equal(t, referrer.ID, current.CommissionRefererID)
+	require.EqualValues(t, 200, current.Commission)
+	require.EqualValues(t, 270, db.UserWallet.GetX(ctx, wallet.ID).Commission)
+	require.EqualValues(t, 1, db.Coupon.GetX(ctx, coupon.ID).UsedCount)
+	subscription := db.UserSubscribe.Query().OnlyX(ctx)
+	period := db.SubscriptionPeriod.Query().OnlyX(ctx)
+	require.Equal(t, buyer.ID, subscription.UserID)
+	require.Equal(t, subscription.ID, period.UserSubscribeID)
+	require.Equal(t, invoice.OrderNo, period.TransactionKey)
+	require.True(t, period.StartAt.AddDate(0, 0, 30).Equal(period.EndAt))
+	event := db.OrderEvent.Query().OnlyX(ctx)
+	require.Equal(t, order.EventOrderFulfilled, event.EventType)
+	require.Equal(t, invoice.OrderNo, event.OrderNo)
+	audit := db.SystemLog.Query().OnlyX(ctx)
+	require.Equal(t, referrer.ID, audit.ObjectID)
+	var receipt log.Commission
+	require.NoError(t, receipt.Unmarshal([]byte(audit.Content)))
+	require.Equal(t, invoice.OrderNo, receipt.OrderNo)
+	require.EqualValues(t, 200, receipt.Amount)
+	require.EqualValues(t, 270, receipt.Balance)
 }
 
 func TestPaidSubscriptionOrdersFulfillOnceOnRedelivery(t *testing.T) {

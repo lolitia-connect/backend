@@ -9,8 +9,10 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/orderevent"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -166,14 +168,7 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 		IsNew:          false,
 	}
 
-	// 保存Order到数据库
-	err = l.svcCtx.Store.Order().Insert(l.ctx, orderInfo)
-	if err != nil {
-		l.Logger.Errorw("[RedeemCode] Create order failed", zap.Any("error", err.Error()))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create order failed")
-	}
-
-	// 缓存兑换码信息到Redis（供队列任务使用）
+	// Stage the worker payload before announcing the order.
 	cacheKey := fmt.Sprintf("redemption_order:%s", orderInfo.OrderNo)
 	cacheData := map[string]interface{}{
 		"redemption_code_id": redemptionCode.Id,
@@ -184,13 +179,16 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	err = l.svcCtx.Redis.Set(l.ctx, cacheKey, jsonData, 2*time.Hour).Err()
 	if err != nil {
 		l.Logger.Errorw("[RedeemCode] Cache redemption data failed", zap.Any("error", err.Error()))
-		// 缓存失败，删除已创建的Order避免孤儿记录
-		if delErr := l.svcCtx.Store.Order().Delete(l.ctx, orderInfo.Id); delErr != nil {
-			l.Logger.Errorw("[RedeemCode] Delete order failed after cache error",
-				zap.Any("order_id", orderInfo.Id),
-				zap.Any("error", delErr.Error()))
-		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "cache redemption data failed")
+	}
+
+	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		return store.Order().Insert(l.ctx, orderInfo)
+	})
+	if err != nil {
+		l.svcCtx.Redis.Del(l.ctx, cacheKey)
+		l.Logger.Errorw("[RedeemCode] Create order failed", "error", err)
+		return nil, errors.Wrap(xerr.NewErrCode(xerr.DatabaseInsertError), "create order failed")
 	}
 
 	// 触发队列任务
@@ -202,12 +200,22 @@ func (l *RedeemCodeLogic) RedeemCode(req *types.RedeemCodeRequest) (resp *types.
 	_, err = l.svcCtx.Queue.EnqueueContext(l.ctx, task)
 	if err != nil {
 		l.Logger.Errorw("[RedeemCode] Enqueue task failed", zap.Any("error", err.Error()))
-		// 入队失败，删除Order和Redis缓存
-		l.svcCtx.Redis.Del(l.ctx, cacheKey)
-		if delErr := l.svcCtx.Store.Order().Delete(l.ctx, orderInfo.Id); delErr != nil {
-			l.Logger.Errorw("[RedeemCode] Delete order failed after enqueue error",
-				zap.Any("order_id", orderInfo.Id),
-				zap.Any("error", delErr.Error()))
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(l.ctx), 5*time.Second)
+		defer cancel()
+		delErr := l.svcCtx.Store.InTx(cleanup, func(store repository.Store) error {
+			current, err := store.Order().FindOneByOrderNoForUpdate(cleanup, orderInfo.OrderNo)
+			if err != nil || current.Status != order.StatusPaid {
+				return err
+			}
+			if _, err := store.Ent().OrderEvent.Delete().Where(orderevent.OrderID(current.Id)).Exec(cleanup); err != nil {
+				return err
+			}
+			return store.Order().Delete(cleanup, current.Id)
+		})
+		if delErr != nil {
+			l.Logger.Errorw("[RedeemCode] Delete order failed after enqueue error", "order_id", orderInfo.Id, "error", delErr)
+		} else {
+			l.svcCtx.Redis.Del(cleanup, cacheKey)
 		}
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "enqueue task failed")
 	}

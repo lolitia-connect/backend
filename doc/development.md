@@ -61,6 +61,12 @@ hand-written SQL migrations under `initialize/migrate/database/`.
   of an invalid request. Parameter errors retain the existing HTTP 200 envelope with business code `400`.
 - GET/HEAD bind query parameters even with `Content-Type: application/json`; write requests still
   follow their content type. Explicit `false` and `0` values must survive binding.
+- For bulk removal of coupons, documents, redemption codes, plans, plan groups, and users, send
+  `ids` as an array of strings containing positive 64-bit integers. An invalid ID rejects the entire
+  selection with business code `400` before any records are removed.
+- Quota campaign preview and creation apply the same positive 64-bit ID check to `subscribers`.
+  An empty list selects all plans matching the remaining filters. The queued grant uses the subscriptions saved at creation time.
+- The referral dashboard totals all commission entries for the member, including debits. A ledger read failure returns a database error.
 - Create accounts, login identities, and opening wallets in one transaction. The ent user `Insert`
   does not persist `AuthMethods` automatically: call `InsertUserAuthMethods` explicitly, using E.164
   phone identifiers. `/v1/auth/register/telephone` uses the phone registration flow, with the actual
@@ -88,7 +94,7 @@ New purchases and redemptions that change a subscription request recalculation t
 
 Recalculation and group reset share a renewable Redis lock. Recalculation reads eligible subscriptions under database row locks in ID order. Assignments, history details and the completed state commit together. The running history is created separately so a failed transaction can record its original error. A conflicting database write returns to the caller on the first failure. Queue workers use Asynq retries.
 
-For the real database lock test, point `PPANEL_GROUP_TEST_MYSQL_DSN` or `PPANEL_GROUP_TEST_POSTGRES_DSN` at an empty disposable test database and run `go test -count=1 ./internal/logic/admin/group -run TestGroupingLocksSubscriptionAgainstConcurrentWriter`.
+Run `go test -count=1 ./internal/logic/admin/group -run TestGroupingLocksSubscriptionAgainstConcurrentWriter` to exercise row locks. With `PPANEL_TEST_MYSQL_DSN` or `PPANEL_TEST_POSTGRES_DSN` configured, the test creates and drops a database on each configured instance. To use a pre-created empty database, set `PPANEL_GROUP_TEST_MYSQL_DSN` or `PPANEL_GROUP_TEST_POSTGRES_DSN` for that engine.
 
 ### Subscription node names
 

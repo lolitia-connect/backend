@@ -196,6 +196,85 @@ func TestRejectedPurchaseAndRenewalDoNotReserveCustomerFunds(t *testing.T) {
 	require.EqualValues(t, 120, invoice.GiftAmount)
 }
 
+func TestQuotesAndOrdersRecoverWhenBillingInputsBecomeReadable(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	queueInspector := f.startQueue()
+	member, token := f.account(false)
+	wallet := f.client.UserWallet.Create().SetUserID(member.ID).SetBalance(1200).SetGiftAmount(100).SaveX(ctx)
+	plan := f.client.Subscribe.Create().SetName("Quarterly").SetSell(true).SetUnitPrice(500).SetInventory(2).SetQuota(2).SaveX(ctx)
+	coupon := f.client.Coupon.Create().SetCode("SPRING").SetCount(1).SetType(2).SetDiscount(80).
+		SetExpireTime(time.Now().Add(time.Hour).UnixMilli()).SaveX(ctx)
+	method := f.client.Payment.Create().SetPlatform("Stripe").SetEnable(true).SetConfig(`{}`).SetFeeMode(2).SetFeeAmount(30).SaveX(ctx)
+	body := fmt.Sprintf(`{"subscribe_id":"%d","payment":"%d","coupon":"SPRING","quantity":2}`, plan.ID, method.ID)
+	var unavailable string
+	f.client.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, query ent.Query) (ent.Value, error) {
+			var source string
+			switch query.(type) {
+			case *ent.SubscribeQuery:
+				source = "plan"
+			case *ent.PaymentQuery:
+				source = "payment method"
+			case *ent.CouponQuery:
+				source = "coupon"
+			case *ent.OrderQuery:
+				source = "order history"
+			case *ent.UserSubscribeQuery:
+				source = "subscription quota"
+			case *ent.UserWalletQuery:
+				source = "wallet"
+			}
+			if unavailable != "" && source == unavailable {
+				return nil, errors.New("billing input is unavailable")
+			}
+			return next.Query(ctx, query)
+		})
+	}))
+	const memberQuote = "/v1/public/order/pre"
+	const guestQuote = "/v1/public/portal/pre"
+	const purchase = "/v1/public/order/purchase"
+	for _, unavailable = range []string{"plan", "payment method", "coupon", "order history", "subscription quota", "wallet"} {
+		require.Empty(t, f.request(http.MethodPost, memberQuote, token, body, xerr.DatabaseQueryError), unavailable)
+		if unavailable == "plan" || unavailable == "payment method" || unavailable == "coupon" {
+			require.Empty(t, f.request(http.MethodPost, guestQuote, "", body, xerr.DatabaseQueryError), unavailable)
+		}
+		code := xerr.DatabaseQueryError
+		if unavailable == "wallet" {
+			code = xerr.DatabaseInsertError
+		}
+		require.Empty(t, f.request(http.MethodPost, purchase, token, body, code), unavailable)
+	}
+	unavailable = ""
+	require.Zero(t, f.client.Order.Query().CountX(ctx))
+	require.Zero(t, f.client.OrderEvent.Query().CountX(ctx))
+	require.Zero(t, f.client.SystemLog.Query().CountX(ctx))
+	require.EqualValues(t, 2, f.client.Subscribe.GetX(ctx, plan.ID).Inventory)
+	require.Zero(t, f.client.Coupon.GetX(ctx, coupon.ID).UsedCount)
+	require.EqualValues(t, 100, f.client.UserWallet.GetX(ctx, wallet.ID).GiftAmount)
+	queues, err := queueInspector.Queues()
+	require.NoError(t, err)
+	require.Empty(t, queues)
+	var guest types.PrePurchaseOrderResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, guestQuote, "", body, http.StatusOK), &guest))
+	require.EqualValues(t, 950, guest.Amount)
+	var quote types.PreOrderResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, memberQuote, token, body, http.StatusOK), &quote))
+	require.EqualValues(t, 100, quote.GiftAmount)
+	require.EqualValues(t, 850, quote.Amount)
+	var placed types.PurchaseOrderResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, purchase, token, body, http.StatusOK), &placed))
+	invoice := f.client.Order.Query().OnlyX(ctx)
+	require.Equal(t, placed.OrderNo, invoice.OrderNo)
+	require.Equal(t, quote.Amount, invoice.Amount)
+	require.Equal(t, quote.GiftAmount, invoice.GiftAmount)
+	require.EqualValues(t, 1, f.client.Subscribe.GetX(ctx, plan.ID).Inventory)
+	require.EqualValues(t, 1, f.client.Coupon.GetX(ctx, coupon.ID).UsedCount)
+	funds := f.client.UserWallet.GetX(ctx, wallet.ID)
+	require.Equal(t, wallet.Balance, funds.Balance)
+	require.Zero(t, funds.GiftAmount)
+}
+
 func TestMemberOrderCanRetryAfterBillingStorageRecovers(t *testing.T) {
 	for _, tc := range []struct {
 		path    string

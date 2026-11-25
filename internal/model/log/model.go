@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/perfect-panel/server/ent"
 	entsystemlog "github.com/perfect-panel/server/ent/systemlog"
+	"go.uber.org/zap"
 )
 
 func NewModel(db *ent.Client) Model {
@@ -71,6 +72,7 @@ func (f *FilterParams) ResolveDateRange() (DateRangeMode, string, string) {
 type customSystemLogLogicModel interface {
 	RecordUnmatchedPayment(ctx context.Context, userID int64, payment UnmatchedPayment) error
 	FilterSystemLog(ctx context.Context, filter *FilterParams) ([]*SystemLog, int64, error)
+	SumUserCommission(ctx context.Context, userID int64) (int64, error)
 	FindFirstByDateType(ctx context.Context, date string, typ uint8) (*SystemLog, error)
 	FindByDatesType(ctx context.Context, dates []string, typ uint8) ([]*SystemLog, error)
 }
@@ -161,6 +163,35 @@ func (m *customSystemLogModel) FilterSystemLog(ctx context.Context, filter *Filt
 		logs = append(logs, logFromEnt(item))
 	}
 	return logs, int64(total), nil
+}
+
+func (m *customSystemLogModel) SumUserCommission(ctx context.Context, userID int64) (int64, error) {
+	const batchSize = 100
+	query := m.db.SystemLog.Query().Where(entsystemlog.TypeEQ(TypeCommission.Uint8()), entsystemlog.ObjectIDEQ(userID)).
+		Order(ent.Desc(entsystemlog.FieldID)).Limit(batchSize)
+	var sum, beforeID int64
+	for {
+		page := query.Clone()
+		if beforeID != 0 {
+			page.Where(entsystemlog.IDLT(beforeID))
+		}
+		rows, err := page.Select(entsystemlog.FieldID, entsystemlog.FieldContent).All(ctx)
+		if err != nil {
+			return 0, err
+		}
+		for _, row := range rows {
+			var entry Commission
+			if err := entry.Unmarshal([]byte(row.Content)); err != nil {
+				zap.L().Warn("invalid commission log", zap.Int64("log_id", row.ID), zap.Error(err))
+				continue
+			}
+			sum += entry.Amount
+		}
+		if len(rows) < batchSize {
+			return sum, nil
+		}
+		beforeID = rows[len(rows)-1].ID
+	}
 }
 
 func (m *customSystemLogModel) FindFirstByDateType(ctx context.Context, date string, typ uint8) (*SystemLog, error) {

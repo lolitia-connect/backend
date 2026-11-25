@@ -183,6 +183,40 @@ func TestAccountStatementsRecoverAfterPartialPageReadFailure(t *testing.T) {
 	}
 }
 
+func TestReferralDashboardReportsTheWholeLedgerAfterStorageRecovers(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	referrer, session := f.account(false)
+	member := f.client.User.Create().SetRefererID(referrer.ID).SetPassword("fixture").SaveX(ctx)
+	log := func(owner, amount int64) {
+		t.Helper()
+		f.client.SystemLog.Create().SetType(modellog.TypeCommission.Uint8()).SetObjectID(owner).
+			SetContent(fmt.Sprintf(`{"amount":%d}`, amount)).SaveX(ctx)
+	}
+	log(referrer.ID, 5000)
+	log(referrer.ID, -200)
+	for range 105 {
+		log(referrer.ID, 7)
+	}
+	log(member.ID, 900)
+	unavailable := true
+	f.client.SystemLog.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, query ent.Query) (ent.Value, error) {
+			if unavailable {
+				return nil, errors.New("commission ledger offline")
+			}
+			return next.Query(ctx, query)
+		})
+	}))
+	const path = "/v1/public/user/affiliate/count"
+	require.Empty(t, f.request(http.MethodGet, path, session, "", xerr.DatabaseQueryError))
+	unavailable = false
+	var result types.QueryUserAffiliateCountResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, path, session, "", http.StatusOK), &result))
+	require.EqualValues(t, 1, result.Registers)
+	require.EqualValues(t, 5535, result.TotalCommission)
+}
+
 func TestWeeklyUsageReconcilesWithOperatorDetailsAcrossMidnight(t *testing.T) {
 	f := newRouteFixture(t)
 	ctx := t.Context()

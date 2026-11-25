@@ -2,11 +2,11 @@ package document
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -28,13 +28,13 @@ func NewBatchDeleteDocumentLogic(ctx context.Context, svcCtx *svc.ServiceContext
 }
 
 func (l *BatchDeleteDocumentLogic) BatchDeleteDocument(req *types.BatchDeleteDocumentRequest) error {
-	err := l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		for _, id := range req.Ids {
-			intID, err := strconv.ParseInt(id, 10, 64)
-			if err != nil {
-				return errors.Wrapf(err, "invalid document id: %v", id)
-			}
-			if err := store.Document().Delete(l.ctx, intID); err != nil {
+	ids, err := tool.ParsePositiveIDs(req.Ids)
+	if err != nil {
+		return xerr.NewErrCodeMsg(xerr.InvalidParams, err.Error())
+	}
+	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		for _, id := range ids {
+			if err := store.Document().Delete(l.ctx, id); err != nil {
 				return err
 			}
 		}

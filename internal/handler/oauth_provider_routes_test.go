@@ -176,7 +176,7 @@ func TestInvitedGitHubSignupKeepsItsTicketUntilTheTrialIsGranted(t *testing.T) {
 	f.service.Config.Register.TrialTimeUnit = "Day"
 	f.service.Config.Register.TrialTime = 2
 	referrer := f.client.User.Create().SetReferCode("INVITER").SetPassword("fixture").SaveX(ctx)
-	f.client.AuthMethod.Create().SetMethod("github").SetEnabled(true).SetConfig(`{"client_id":"fixture","client_secret":"fixture","redirect_url":"`+redirect+`"}`).SaveX(ctx)
+	f.client.AuthMethod.Create().SetMethod("github").SetEnabled(true).SetConfig(`{"client_id":"fixture","client_secret":"fixture","redirect_url":"` + redirect + `"}`).SaveX(ctx)
 	previous := http.DefaultTransport
 	t.Cleanup(func() { http.DefaultTransport = previous })
 	http.DefaultTransport = providerTransport(func(req *http.Request) (*http.Response, error) {
@@ -243,8 +243,17 @@ func TestOAuthLinkedIdentityCanSignInToTheSameAccount(t *testing.T) {
 			f.service.Config.JwtAuth.AccessExpire = 300
 			account, ownerSession := f.account(false)
 			ctx := t.Context()
-			f.client.AuthMethod.Create().SetMethod(provider.name).SetEnabled(true).
+			settings := f.client.AuthMethod.Create().SetMethod(provider.name).SetEnabled(true).
 				SetConfig(fmt.Sprintf(`{"client_id":"fixture-client","client_secret":"fixture-secret","redirect_url":%q}`, redirect)).SaveX(ctx)
+			configOffline := false
+			f.client.AuthMethod.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+				return ent.QuerierFunc(func(ctx context.Context, query ent.Query) (ent.Value, error) {
+					if configOffline {
+						return nil, fmt.Errorf("provider configuration unavailable")
+					}
+					return next.Query(ctx, query)
+				})
+			}))
 
 			var exchanges, profiles, rejected int
 			var unavailableMethod string
@@ -294,6 +303,26 @@ func TestOAuthLinkedIdentityCanSignInToTheSameAccount(t *testing.T) {
 			}
 			checkOutage := func(beginPath, endPath, session string) {
 				t.Helper()
+				begin := fmt.Sprintf(`{"method":%q,"redirect":%q}`, provider.name, redirect)
+				for _, fault := range []struct {
+					name string
+					code uint32
+				}{{"unavailable", xerr.DatabaseQueryError}, {"unreadable", xerr.ERROR}} {
+					payload := start(beginPath, session)
+					beforeExchange, beforeProfile := exchanges, profiles
+					if fault.name == "unavailable" {
+						configOffline = true
+					} else {
+						f.client.AuthMethod.UpdateOneID(settings.ID).SetConfig(`{"client_id":`).ExecX(ctx)
+					}
+					require.Empty(t, f.request(http.MethodPost, beginPath, session, begin, xerr.ERROR))
+					require.Empty(t, f.request(http.MethodPost, endPath, session, payload, fault.code))
+					configOffline = false
+					f.client.AuthMethod.UpdateOneID(settings.ID).SetConfig(settings.Config).ExecX(ctx)
+					require.Empty(t, f.request(http.MethodPost, endPath, session, payload, xerr.ERROR))
+					require.Equal(t, beforeExchange, exchanges, fault.name)
+					require.Equal(t, beforeProfile, profiles, fault.name)
+				}
 				for _, method := range []string{http.MethodPost, http.MethodGet} {
 					unavailableMethod = method
 					before := rejected

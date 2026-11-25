@@ -7,6 +7,7 @@ import (
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/tool"
+	"github.com/perfect-panel/server/pkg/xerr"
 	"go.uber.org/zap"
 )
 
@@ -26,8 +27,12 @@ func NewQueryQuotaTaskPreCountLogic(ctx context.Context, svcCtx *svc.ServiceCont
 }
 
 func (l *QueryQuotaTaskPreCountLogic) QueryQuotaTaskPreCount(req *types.QueryQuotaTaskPreCountRequest) (resp *types.QueryQuotaTaskPreCountResponse, err error) {
+	subscribeIDs, err := tool.ParsePositiveIDs(req.Subscribers)
+	if err != nil {
+		return nil, xerr.NewErrCodeMsg(xerr.InvalidParams, "invalid subscribers: "+err.Error())
+	}
 	count, err := l.svcCtx.Store.User().CountSubscribesByFilter(l.ctx, &user.SubscribeFilter{
-		Subscribers: tool.StringSliceToInt64Slice(req.Subscribers),
+		Subscribers: subscribeIDs,
 		IsActive:    req.IsActive,
 		StartTime:   req.StartTime,
 		EndTime:     req.EndTime,

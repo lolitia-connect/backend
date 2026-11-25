@@ -24,6 +24,8 @@
 
 两个构建工作流都会先运行 `go test -count=1 ./...`，测试失败会阻止构建和发布。独立覆盖率工作流文件为 `.github/workflows/coverage.yml`；单个 Coverage 步骤运行测试、过滤 Ent 自动生成的 Go 文件、检查 80% 语句覆盖率门槛，并将 Markdown 报告写入 GitHub Actions 运行页面的 job summary。过滤后的覆盖率 profile 也会作为 `backend-coverage` 工件上传。
 
+本地复现 CI 覆盖率时，将 `PPANEL_TEST_MYSQL_DSN` 和 `PPANEL_TEST_POSTGRES_DSN` 指向一次性的 MariaDB 和 PostgreSQL 实例，在后端根目录运行 `bash scripts/run-coverage.sh`。安装及启动测试会创建并删除临时数据库。将 `GITHUB_STEP_SUMMARY` 设为本地文件路径即可保存与 Actions 相同的 Markdown 报告。
+
 只验证 HTTP 请求处理时，直接在进程内调用处理器。需要 TCP 监听器的测试应绑定回环地址，由系统分配临时端口，例如 `127.0.0.1:0`，以避免 Windows 防火墙授权弹窗和端口冲突。
 
 ## 3. 分支策略

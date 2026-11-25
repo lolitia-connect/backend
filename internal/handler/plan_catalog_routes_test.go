@@ -15,6 +15,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPlanGroupCatalogKeepsLastCommittedEdition(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	const editor = "/v1/admin/subscribe/group"
+	list := func() map[int64]string {
+		t.Helper()
+		var page types.GetSubscribeGroupListResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, editor+"/list", operator, "", http.StatusOK), &page))
+		require.EqualValues(t, len(page.List), page.Total)
+		groups := make(map[int64]string)
+		for _, g := range page.List {
+			groups[g.Id] = g.Name + ": " + g.Description
+		}
+		return groups
+	}
+	var readOnly bool
+	f.client.SubscribeGroup.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if readOnly {
+				return nil, errors.New("catalog storage is read-only")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	const draft = `{"name":"Monthly","description":"Billed monthly"}`
+	readOnly = true
+	f.request(http.MethodPost, editor, operator, draft, xerr.DatabaseInsertError)
+	require.Empty(t, list())
+	readOnly = false
+	f.request(http.MethodPost, editor, operator, draft, http.StatusOK)
+	monthly := f.client.SubscribeGroup.Query().OnlyX(ctx).ID
+	annual := f.client.SubscribeGroup.Create().SetName("Yearly").SetDescription("Billed yearly").SaveX(ctx).ID
+	keep := f.client.SubscribeGroup.Create().SetName("Special").SetDescription("Gift plans").SaveX(ctx).ID
+	original := map[int64]string{monthly: "Monthly: Billed monthly", annual: "Yearly: Billed yearly", keep: "Special: Gift plans"}
+	require.Equal(t, original, list())
+	edit := fmt.Sprintf(`{"id":"%d","name":"Legacy","description":"Closed to new customers"}`, monthly)
+	single := fmt.Sprintf(`{"id":"%d"}`, monthly)
+	selection := fmt.Sprintf(`{"ids":["%d","%d"]}`, monthly, annual)
+	readOnly = true
+	f.request(http.MethodPut, editor, operator, edit, xerr.DatabaseUpdateError)
+	f.request(http.MethodDelete, editor, operator, single, xerr.DatabaseDeletedError)
+	f.request(http.MethodDelete, editor+"/batch", operator, selection, xerr.DatabaseDeletedError)
+	require.Equal(t, original, list())
+	readOnly = false
+	f.request(http.MethodPut, editor, operator, edit, http.StatusOK)
+	original[monthly] = "Legacy: Closed to new customers"
+	require.Equal(t, original, list())
+	f.request(http.MethodDelete, editor+"/batch", operator, selection, http.StatusOK)
+	f.request(http.MethodDelete, editor, operator, single, http.StatusOK)
+	require.Equal(t, map[int64]string{keep: "Special: Gift plans"}, list())
+}
+
 func TestPublishedPlanOrderAndBatchRetirement(t *testing.T) {
 	f := newRouteFixture(t)
 	ctx := t.Context()

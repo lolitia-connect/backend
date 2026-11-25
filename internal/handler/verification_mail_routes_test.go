@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/quotedprintable"
@@ -75,25 +76,50 @@ func receiveVerificationMail(listener net.Listener) (verificationMail, error) {
 	}
 }
 
+func captureMail(t *testing.T, f *routeFixture) func() []verificationMail {
+	t.Helper()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	f.service.Config.Email.Platform = "smtp"
+	f.service.Config.Email.PlatformConfig = fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"from":"portal@example.test"}`, listener.Addr().(*net.TCPAddr).Port)
+	var inbox []verificationMail
+	var relayErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			delivery, err := receiveVerificationMail(listener)
+			if err != nil {
+				if !errors.Is(err, net.ErrClosed) {
+					relayErr = err
+				}
+				return
+			}
+			inbox = append(inbox, delivery)
+		}
+	}()
+	finish := func() []verificationMail {
+		t.Helper()
+		_ = listener.Close()
+		select {
+		case <-done:
+			require.NoError(t, relayErr)
+		case <-time.After(12 * time.Second):
+			t.Fatal("SMTP relay did not finish")
+		}
+		return inbox
+	}
+	t.Cleanup(func() { finish() })
+	return finish
+}
+
 func TestRegistrationCodeInDeliveredEmailCanBeVerified(t *testing.T) {
 	f := newRouteFixture(t)
 	ctx := t.Context()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
-	inbox := make(chan verificationMail, 1)
-	relayResult := make(chan error, 1)
-	go func() {
-		delivery, err := receiveVerificationMail(listener)
-		inbox <- delivery
-		relayResult <- err
-	}()
-
+	inbox := captureMail(t, f)
 	inspector := f.startQueue()
 	f.service.AuthLimiter = limit.NewPeriodLimit(86400, 10, f.service.Redis, "fixture:mail:")
 	f.service.Config.Site.SiteName = "Subscription portal"
-	f.service.Config.Email.Platform = "smtp"
-	f.service.Config.Email.PlatformConfig = fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"from":"portal@example.test"}`, listener.Addr().(*net.TCPAddr).Port)
 	f.service.Config.Email.VerifyEmailSubject = "{{.SiteName}} registration"
 	f.service.Config.Email.VerifyEmailTemplate = "Your registration code is {{.Code}}"
 	const address = "recipient@example.test"
@@ -107,13 +133,9 @@ func TestRegistrationCodeInDeliveredEmailCanBeVerified(t *testing.T) {
 	require.Len(t, jobs, 1)
 	require.Equal(t, queue.ForthwithSendEmail, jobs[0].Type)
 	require.NoError(t, emailworker.NewSendEmailLogic(f.service).ProcessTask(ctx, asynq.NewTask(jobs[0].Type, jobs[0].Payload)))
-	select {
-	case err := <-relayResult:
-		require.NoError(t, err)
-	case <-time.After(10 * time.Second):
-		t.Fatal("verification email was not delivered")
-	}
-	delivery := <-inbox
+	deliveries := inbox()
+	require.Len(t, deliveries, 1)
+	delivery := deliveries[0]
 	require.Equal(t, "<portal@example.test>", delivery.from)
 	require.Equal(t, "<"+address+">", delivery.to)
 	message, err := mail.ReadMessage(bytes.NewReader(delivery.message))

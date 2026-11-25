@@ -104,10 +104,11 @@ func (l *TelephoneLoginLogic) TelephoneLogin(req *types.TelephoneLoginRequest, r
 	if err != nil {
 		return nil, err
 	}
-	userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
-	if err != nil || userInfo == nil {
+	current, err := l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
+	if err != nil || current == nil {
 		return nil, xerr.NewErrCode(xerr.InvalidAccess)
 	}
+	userInfo = current
 	if userInfo.DeletedAt != nil || userInfo.Enable == nil || !*userInfo.Enable {
 		return nil, xerr.NewErrCode(xerr.UserDisabled)
 	}

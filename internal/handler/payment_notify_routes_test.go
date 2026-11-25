@@ -38,7 +38,7 @@ func TestAlipayF2FRechargeSettlesAgainstTheCashierReceipt(t *testing.T) {
 	config, err := json.Marshal(map[string]string{
 		"app_id": "fixture-shop", "invoice_name": "Wallet credit", "sandbox": "true",
 		"private_key": base64.StdEncoding.EncodeToString(x509.MarshalPKCS1PrivateKey(merchant)),
-		"public_key": base64.StdEncoding.EncodeToString(publicDER),
+		"public_key":  base64.StdEncoding.EncodeToString(publicDER),
 	})
 	require.NoError(t, err)
 	for _, scenario := range []string{"notification", "cancel unpaid QR", "payment during cancellation"} {
@@ -166,13 +166,68 @@ func TestAlipayPlusRechargeCreditsTheWalletOnceOnFinalNotification(t *testing.T)
 	publicDER, err := x509.MarshalPKIXPublicKey(&providerKey.PublicKey)
 	require.NoError(t, err)
 	const clientID = "fixture-cashier"
-	method := f.client.Payment.Create().SetPlatform("AlipayPlus").SetEnable(true).SetToken("cashier-notify").SetCurrencyUnit("USD").
-		SetFeeMode(2).SetFeeAmount(25).SetConfig(fmt.Sprintf(`{"client_id":%q,"alipay_public_key":%q}`, clientID, base64.StdEncoding.EncodeToString(publicDER))).SaveX(ctx)
+	const hosted = "https://cashier.example.test/checkout/april"
+	const callback = "/v1/notify/AlipayPlus/cashier-notify"
+	t.Setenv("GATEWAY_MODE", "false")
+	f.service.Config.Site.Host = "shop.example.test"
+	f.service.Config.Currency.Unit = "USD"
 	var recharge types.RechargeOrderResponse
+	requests := make(chan string, 3)
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			PaymentRequestID string                           `json:"paymentRequestId"`
+			PaymentAmount    struct{ Currency, Value string } `json:"paymentAmount"`
+			Notify           string                           `json:"paymentNotifyUrl"`
+			Redirect         string                           `json:"paymentRedirectUrl"`
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/ams/api/v1/payments/pay" || json.NewDecoder(r.Body).Decode(&req) != nil ||
+			req.PaymentAmount.Currency != "USD" || req.PaymentAmount.Value != "1225" || req.Notify != "https://shop.example.test"+callback || req.Redirect != "https://shop.example.test/receipt" {
+			http.Error(w, "incorrect cashier request", http.StatusBadRequest)
+			return
+		}
+		var result string
+		if len(requests) == 0 {
+			result = `{"result":{"resultCode":"MERCHANT_NOT_READY","resultStatus":"F","resultMessage":"Try again"}}`
+		} else {
+			result = fmt.Sprintf(`{"result":{"resultCode":"PAYMENT_IN_PROCESS","resultStatus":"U"},"paymentRequestId":%q,"normalUrl":%q}`, req.PaymentRequestID, hosted)
+		}
+		requests <- req.PaymentRequestID
+		stamp := fmt.Sprint(time.Now().UnixMilli())
+		signature, err := tools.GenSign(r.Method, r.URL.Path, clientID, stamp, result, base64.StdEncoding.EncodeToString(privateDER))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Client-Id", clientID)
+		w.Header().Set("Response-Time", stamp)
+		w.Header().Set("Signature", "algorithm=RSA256,keyVersion=1,signature="+signature)
+		_, _ = io.WriteString(w, result)
+	}))
+	t.Cleanup(gateway.Close)
+	cfg, err := json.Marshal(map[string]string{"client_id": clientID, "gateway_url": gateway.URL, "payment_method": "ALIPAY_HK", "private_key": base64.StdEncoding.EncodeToString(privateDER), "alipay_public_key": base64.StdEncoding.EncodeToString(publicDER)})
+	require.NoError(t, err)
+	method := f.client.Payment.Create().SetPlatform("AlipayPlus").SetEnable(true).SetToken("cashier-notify").SetCurrencyUnit("USD").
+		SetFeeMode(2).SetFeeAmount(25).SetConfig(string(cfg)).SaveX(ctx)
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, "/v1/public/order/recharge", customer, fmt.Sprintf(`{"amount":1200,"payment":"%d"}`, method.ID), http.StatusOK), &recharge))
 	invoice := f.client.Order.Query().OnlyX(ctx)
 	require.Equal(t, recharge.OrderNo, invoice.OrderNo)
 	require.EqualValues(t, 1225, invoice.Amount)
+	checkout := fmt.Sprintf(`{"orderNo":%q,"returnUrl":"https://shop.example.test/receipt"}`, recharge.OrderNo)
+	const pay = "/v1/public/portal/order/checkout"
+	f.request(http.MethodPost, pay, customer, checkout, xerr.ERROR)
+	unpaid := f.client.Order.GetX(ctx, invoice.ID)
+	require.Equal(t, order.StatusPending, unpaid.Status)
+	require.Nil(t, unpaid.PaymentSession)
+	require.EqualValues(t, 75, f.client.UserWallet.GetX(ctx, wallet.ID).Balance)
+	for range 2 {
+		var session types.CheckoutOrderResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodPost, pay, customer, checkout, http.StatusOK), &session))
+		require.Equal(t, types.CheckoutOrderResponse{Type: "url", CheckoutUrl: hosted}, session)
+	}
+	require.Len(t, requests, 2)
+	require.Equal(t, recharge.OrderNo, <-requests)
+	require.Equal(t, recharge.OrderNo, <-requests)
 
 	notify := func(kind string) {
 		t.Helper()

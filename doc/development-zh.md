@@ -60,6 +60,10 @@
   参数错误沿用 HTTP 200 响应包中的业务码 `400`。
 - GET/HEAD 从查询参数绑定，即使请求带有 `Content-Type: application/json`；写入请求继续按内容类型解析，
   显式的 `false` 和 `0` 不应丢失。
+- 批量删除优惠券、文档、兑换码、套餐、套餐分组或用户时，`ids` 应为字符串数组，每项表示一个 64 位正整数。
+  任意一项无效，接口都会在删除前拒绝整个批次，返回业务码 `400`。
+- 配额活动的预览和创建对 `subscribers` 使用相同的 64 位正整数校验。空列表匹配符合其他筛选条件的所有套餐，任务按创建时保存的订阅名单发放。
+- 推荐面板汇总该会员的全部佣金流水，包含扣减。流水读取失败时接口返回数据库错误。
 - 账号、登录方式及初始钱包应在同一事务中创建。ent 的用户 `Insert` 不会自动保存 `AuthMethods`，
   必须显式调用 `InsertUserAuthMethods`；手机号统一使用 E.164 格式。
   `/v1/auth/register/telephone` 复用手机号注册流程，并由 Handler 提供实际客户端 IP 和 User-Agent。
@@ -82,7 +86,7 @@
 
 重算与重置共用可续期的 Redis 锁。重算事务按订阅 ID 顺序锁定符合条件的订阅，将分配结果、历史明细和完成状态一起提交。运行中的历史记录单独创建，重算失败时可记录原始错误。数据库写入失败会立即返回，队列任务由 Asynq 重试。
 
-将 `PPANEL_GROUP_TEST_MYSQL_DSN` 或 `PPANEL_GROUP_TEST_POSTGRES_DSN` 指向一次性空测试数据库，执行 `go test -count=1 ./internal/logic/admin/group -run TestGroupingLocksSubscriptionAgainstConcurrentWriter` 可验证实际行锁行为。
+运行 `go test -count=1 ./internal/logic/admin/group -run TestGroupingLocksSubscriptionAgainstConcurrentWriter` 可验证实际行锁行为。使用 `PPANEL_TEST_MYSQL_DSN` 或 `PPANEL_TEST_POSTGRES_DSN` 时，测试会在相应实例上创建并删除临时数据库。如需使用预先创建的空数据库，可为对应引擎设置 `PPANEL_GROUP_TEST_MYSQL_DSN` 或 `PPANEL_GROUP_TEST_POSTGRES_DSN`。
 
 ### 订阅节点名称
 

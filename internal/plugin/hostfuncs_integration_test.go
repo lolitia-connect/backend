@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tetratelabs/wazero"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -24,16 +26,24 @@ func TestHostFunctionsEnforceCapabilitiesThroughWasmABI(t *testing.T) {
 	queue := asynq.NewClient(opts)
 	inspector := asynq.NewInspector(opts)
 	t.Cleanup(func() { _ = inspector.Close(); _ = queue.Close() })
+	database, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	database.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = database.Close() })
+	_, err = database.ExecContext(ctx, `CREATE TABLE document (id INTEGER PRIMARY KEY, title TEXT, "show" INTEGER);
+		INSERT INTO document VALUES (7, 'Getting started', 1), (8, 'Unpublished draft', 0)`)
+	require.NoError(t, err)
 	manager := NewManager(&HostEnv{
 		Config: config.Config{Site: config.SiteConfig{SiteName: "Fixture"}},
+		Store:  NewStoreAdapter(database, "sqlite"),
 		Redis:  NewRedisAdapter(redisClient),
 		Queue:  NewQueueAdapter(queue),
 	})
 	defer manager.Stop()
 
 	const pluginName = "host-fixture"
-	manifest := &PluginManifest{Permissions: []string{string(PermRedis), string(PermConfigRead), string(PermQueue)}}
-	names := []string{"host_config_get", "host_redis_get", "host_async_submit", "host_async_wait_any", "host_async_resolve", "host_enqueue_task"}
+	manifest := &PluginManifest{Permissions: []string{string(PermRedis), string(PermConfigRead), string(PermQueue), string(PermDatabaseRead)}}
+	names := []string{"host_config_get", "host_redis_get", "host_async_submit", "host_async_wait_any", "host_async_resolve", "host_enqueue_task", "host_db_query"}
 	manager.plugins[pluginName] = &PluginInstance{
 		Name:        pluginName,
 		Status:      StatusRunning,
@@ -92,7 +102,19 @@ func TestHostFunctionsEnforceCapabilitiesThroughWasmABI(t *testing.T) {
 	require.Equal(t, "Fixture", value.Value)
 	require.Equal(t, 30*time.Second, mini.TTL("plugin:"+pluginName+":site"))
 
-	payload, err := structpb.NewStruct(map[string]any{"site": value.Value})
+	published, err := structpb.NewStruct(map[string]any{"show": 1})
+	require.NoError(t, err)
+	var refused pluginv1.DbQueryResponse
+	call("host_db_query", &pluginv1.DbQueryRequest{Model: "document", Operation: "delete", Conditions: published}, &refused)
+	require.Contains(t, refused.Error, "database_write")
+	var catalog pluginv1.DbQueryResponse
+	call("host_db_query", &pluginv1.DbQueryRequest{Model: "document", Operation: "list", Conditions: published,
+		Fields: &fieldmaskpb.FieldMask{Paths: []string{"title"}}}, &catalog)
+	require.Empty(t, catalog.Error)
+	require.EqualValues(t, 1, catalog.Total)
+	require.Len(t, catalog.Rows, 1)
+	require.Equal(t, map[string]any{"title": "Getting started"}, catalog.Rows[0].AsMap())
+	payload, err := structpb.NewStruct(map[string]any{"site": value.Value, "featured": catalog.Rows[0].AsMap()})
 	require.NoError(t, err)
 	var accepted pluginv1.BoolResult
 	call("host_enqueue_task", &pluginv1.EnqueueTaskRequest{TaskName: "build-site-report", Payload: payload}, &accepted)
@@ -101,7 +123,7 @@ func TestHostFunctionsEnforceCapabilitiesThroughWasmABI(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
 	require.Equal(t, "build-site-report", jobs[0].Type)
-	require.JSONEq(t, `{"site":"Fixture"}`, string(jobs[0].Payload))
+	require.JSONEq(t, `{"site":"Fixture","featured":{"title":"Getting started"}}`, string(jobs[0].Payload))
 }
 
 // The guest forwards each protobuf request and returns the host's actual pointer and length.

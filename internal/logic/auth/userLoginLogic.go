@@ -92,10 +92,11 @@ func (l *UserLoginLogic) UserLogin(req *types.UserLoginRequest) (resp *types.Log
 	if err != nil {
 		return nil, err
 	}
-	userInfo, err = l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
-	if err != nil || userInfo == nil || userInfo.DeletedAt != nil {
+	current, err := l.svcCtx.Store.User().FindOne(l.ctx, userInfo.Id)
+	if err != nil || current == nil || current.DeletedAt != nil {
 		return nil, xerr.NewErrCode(xerr.InvalidAccess)
 	}
+	userInfo = current
 	if err := usersession.VerifyPassword(l.ctx, l.svcCtx.Redis, userInfo.Id, userInfo.Algo, userInfo.Salt, req.Password, userInfo.Password); err != nil {
 		return nil, err
 	}

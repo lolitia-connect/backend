@@ -27,8 +27,11 @@ func NewBatchDeleteCouponLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 }
 
 func (l *BatchDeleteCouponLogic) BatchDeleteCoupon(req *types.BatchDeleteCouponRequest) error {
-	// batch delete coupon by ids
-	err := l.svcCtx.Store.Coupon().BatchDelete(l.ctx, tool.StringSliceToInt64Slice(req.Ids))
+	ids, err := tool.ParsePositiveIDs(req.Ids)
+	if err != nil {
+		return xerr.NewErrCodeMsg(xerr.InvalidParams, err.Error())
+	}
+	err = l.svcCtx.Store.Coupon().BatchDelete(l.ctx, ids)
 	if err != nil {
 		l.Logger.Errorw("[BatchDeleteCoupon] Database Error", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "batch delete coupon error: %v", err.Error())

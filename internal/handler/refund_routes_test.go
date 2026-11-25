@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/order"
@@ -42,6 +45,40 @@ func TestRefundQuoteSettlesOriginalTenderAndReversesEarnedCommissionsOnce(t *tes
 	require.EqualValues(t, 1000, quote.DeductionAmount)
 	require.EqualValues(t, 1, f.client.UserSubscribe.GetX(ctx, sub.ID).Status)
 	require.EqualValues(t, 50, f.client.UserWallet.GetX(ctx, wallet.ID).Balance)
+	var entity string
+	var nth, hits int
+	f.client.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if m.Type() == entity {
+				hits++
+				if hits == nth {
+					return nil, errors.New("refund storage unavailable")
+				}
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	for _, fault := range []struct {
+		table  string
+		writes int
+	}{{ent.TypeUserSubscribe, 1}, {ent.TypeUserWallet, 3}, {ent.TypeSystemLog, 4}} {
+		entity = fault.table
+		for nth = 1; nth <= fault.writes; nth++ {
+			hits = 0
+			require.Empty(t, f.request(http.MethodPost, path, session, body, xerr.ERROR))
+			require.Equal(t, nth, hits, "%s write", entity)
+			current := f.client.UserSubscribe.GetX(ctx, sub.ID)
+			require.Equal(t, sub.Status, current.Status)
+			require.Nil(t, current.FinishedAt)
+			saved := f.client.UserWallet.GetX(ctx, wallet.ID)
+			require.Equal(t, wallet.Balance, saved.Balance)
+			require.Equal(t, wallet.GiftAmount, saved.GiftAmount)
+			require.Equal(t, purchaseCommission.Commission, f.client.UserWallet.GetX(ctx, purchaseCommission.ID).Commission)
+			require.Equal(t, renewalCommission.Commission, f.client.UserWallet.GetX(ctx, renewalCommission.ID).Commission)
+			require.Zero(t, f.client.SystemLog.Query().CountX(ctx))
+		}
+	}
+	entity = ""
 	f.request(http.MethodPost, path, session, body, http.StatusOK)
 	f.request(http.MethodPost, path, session, body, xerr.ERROR)
 	refunded := f.client.UserWallet.GetX(ctx, wallet.ID)

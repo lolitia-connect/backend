@@ -1,21 +1,106 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	entorder "github.com/perfect-panel/server/ent/order"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
 	worker "github.com/perfect-panel/server/queue/logic/order"
 	queue "github.com/perfect-panel/server/queue/types"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+type redemptionCacheFault struct{ unavailable bool }
+
+func (*redemptionCacheFault) DialHook(next redis.DialHook) redis.DialHook { return next }
+func (*redemptionCacheFault) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+func (fault *redemptionCacheFault) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if fault.unavailable && cmd.Name() == "set" && strings.HasPrefix(fmt.Sprint(cmd.Args()[1]), "redemption_order:") {
+			return errors.New("redemption cache unavailable")
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func TestUnissuedVoucherOrderCanRetryAfterServiceRecovery(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	inspector := f.startQueue()
+	owner, customer := f.account(false)
+	plan := f.client.Subscribe.Create().SetName("Welcome").SetSell(true).SetTraffic(512).SaveX(ctx)
+	code := f.client.RedemptionCode.Create().SetCode("WELCOME").SetSubscribePlan(plan.ID).SetUnitTime("day").SetQuantity(3).SetTotalCount(1).SaveX(ctx)
+	fault := new(redemptionCacheFault)
+	f.service.Redis.AddHook(fault)
+	var eventsUnavailable bool
+	f.client.OrderEvent.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if eventsUnavailable && m.Op().Is(ent.OpCreate) {
+				return nil, errors.New("order event storage unavailable")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	const url = "/v1/public/redemption/"
+	const body = `{"code":"WELCOME"}`
+	checkUnissued := func() {
+		t.Helper()
+		require.Zero(t, f.client.Order.Query().CountX(ctx))
+		require.Zero(t, f.client.OrderEvent.Query().CountX(ctx))
+		require.Zero(t, f.client.UserSubscribe.Query().CountX(ctx))
+		require.Zero(t, f.client.RedemptionRecord.Query().CountX(ctx))
+		require.Zero(t, f.client.RedemptionCode.GetX(ctx, code.ID).UsedCount)
+		keys, err := f.service.Redis.Keys(ctx, "redemption_*").Result()
+		require.NoError(t, err)
+		require.Empty(t, keys)
+		queues, err := inspector.Queues()
+		require.NoError(t, err)
+		require.Empty(t, queues)
+	}
+	eventsUnavailable = true
+	f.request(http.MethodPost, url, customer, body, xerr.DatabaseInsertError)
+	eventsUnavailable = false
+	checkUnissued()
+	fault.unavailable = true
+	f.request(http.MethodPost, url, customer, body, xerr.ERROR)
+	fault.unavailable = false
+	checkUnissued()
+	working := f.service.Queue
+	closed := asynq.NewClient(asynq.RedisClientOpt{Addr: f.service.Redis.Options().Addr})
+	require.NoError(t, closed.Close())
+	f.service.Queue = closed
+	f.request(http.MethodPost, url, customer, body, xerr.ERROR)
+	f.service.Queue = working
+	checkUnissued()
+	f.request(http.MethodPost, url, customer, body, http.StatusOK)
+	jobs, err := inspector.ListPendingTasks("default")
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	activation := asynq.NewTask(jobs[0].Type, jobs[0].Payload)
+	require.NoError(t, worker.NewActivateOrderLogic(f.service).ProcessTask(ctx, activation))
+	invoice := f.client.Order.Query().OnlyX(ctx)
+	require.EqualValues(t, order.StatusFinished, invoice.Status)
+	sub := f.client.UserSubscribe.Query().OnlyX(ctx)
+	require.Equal(t, invoice.ID, sub.OrderID)
+	require.Equal(t, owner.ID, sub.UserID)
+	require.True(t, sub.StartTime.AddDate(0, 0, 3).Equal(sub.ExpireTime))
+	require.Equal(t, code.ID, f.client.RedemptionRecord.Query().OnlyX(ctx).RedemptionCodeID)
+	require.EqualValues(t, 1, f.client.RedemptionCode.GetX(ctx, code.ID).UsedCount)
+}
 
 func TestRedeemingIssuedCodesGrantsAndExtendsOneSubscription(t *testing.T) {
 	f := newRouteFixture(t)
@@ -30,6 +115,16 @@ func TestRedeemingIssuedCodesGrantsAndExtendsOneSubscription(t *testing.T) {
 	var issued types.GetRedemptionCodeListResponse
 	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, adminPath+"/code/list?page=1&size=10", admin, "", http.StatusOK), &issued))
 	require.Len(t, issued.List, 2)
+	var unavailable string
+	writeFailure := errors.New("voucher storage temporarily unavailable")
+	f.client.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, mutation ent.Mutation) (ent.Value, error) {
+			if mutation.Type() == unavailable {
+				return nil, writeFailure
+			}
+			return next.Mutate(ctx, mutation)
+		})
+	})
 	var previousExpiry time.Time
 	var subscriptionID int64
 	for index, code := range issued.List {
@@ -59,6 +154,21 @@ func TestRedeemingIssuedCodesGrantsAndExtendsOneSubscription(t *testing.T) {
 		require.Zero(t, invoice.Amount)
 		activation := asynq.NewTask(job.Type, job.Payload)
 		logic := worker.NewActivateOrderLogic(f.service)
+		for _, unavailable = range []string{ent.TypeUserSubscribe, ent.TypeRedemptionCode, ent.TypeRedemptionRecord, ent.TypeOrderEvent} {
+			require.ErrorIs(t, logic.ProcessTask(ctx, activation), writeFailure, unavailable)
+			require.Equal(t, invoice.Status, f.client.Order.GetX(ctx, invoice.ID).Status)
+			require.Zero(t, f.client.RedemptionCode.GetX(ctx, code.Id).UsedCount)
+			require.Equal(t, index, f.client.RedemptionRecord.Query().CountX(ctx))
+			if index == 0 {
+				require.Zero(t, f.client.UserSubscribe.Query().CountX(ctx))
+			} else {
+				unchanged := f.client.UserSubscribe.GetX(ctx, subscriptionID)
+				require.True(t, previousExpiry.Equal(unchanged.ExpireTime))
+				require.EqualValues(t, 400, unchanged.Download)
+				require.EqualValues(t, 100, unchanged.Upload)
+			}
+		}
+		unavailable = ""
 		require.NoError(t, logic.ProcessTask(ctx, activation))
 		require.NoError(t, logic.ProcessTask(ctx, activation))
 		require.NoError(t, inspector.DeleteTask("default", job.ID))

@@ -3,7 +3,6 @@ package user
 import (
 	"context"
 
-	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/pkg/constant"
 
 	"github.com/perfect-panel/server/internal/model/user"
@@ -36,25 +35,13 @@ func (l *QueryUserAffiliateLogic) QueryUserAffiliate() (resp *types.QueryUserAff
 		zap.S().Error("current user is not found in context")
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidAccess), "Invalid Access")
 	}
-	var sum int64
 	total, err := l.svcCtx.Store.User().CountAffiliates(l.ctx, u.Id)
 	if err != nil {
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "Query User Affiliate failed: %v", err)
 	}
-	data, _, err := l.svcCtx.Store.Log().FilterSystemLog(l.ctx, &log.FilterParams{
-		Page:     1,
-		Size:     99999,
-		Type:     log.TypeCommission.Uint8(),
-		ObjectID: u.Id,
-	})
-
-	for _, datum := range data {
-		content := log.Commission{}
-		if err = content.Unmarshal([]byte(datum.Content)); err != nil {
-			l.Logger.Errorf("[QueryUserAffiliate] unmarshal comission log failed: %v", err.Error())
-			continue
-		}
-		sum += content.Amount
+	sum, err := l.svcCtx.Store.Log().SumUserCommission(l.ctx, u.Id)
+	if err != nil {
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "query affiliate commission: %v", err)
 	}
 
 	return &types.QueryUserAffiliateCountResponse{

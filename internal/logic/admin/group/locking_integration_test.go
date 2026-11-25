@@ -1,10 +1,14 @@
 package group
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -16,13 +20,57 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 )
 
+func groupLockDSN(t *testing.T, driver, specificEnv, commonEnv string) string {
+	t.Helper()
+	if dsn := os.Getenv(specificEnv); dsn != "" {
+		return dsn
+	}
+	dsn := os.Getenv(commonEnv)
+	if dsn == "" {
+		t.Skipf("set %s or %s to run the row lock test", commonEnv, specificEnv)
+	}
+	name := fmt.Sprintf("ppanel_group_test_%d", time.Now().UnixNano())
+	var isolated string
+	if driver == dialect.MySQL {
+		cfg, err := mysql.ParseDSN(dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg.DBName = name
+		isolated = cfg.FormatDSN()
+	} else {
+		u, err := url.Parse(dsn)
+		if err != nil || u.Host == "" {
+			t.Fatalf("%s must be a PostgreSQL URL", commonEnv)
+		}
+		u.Path = "/" + name
+		isolated = u.String()
+	}
+	admin, err := sql.Open(driver, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = admin.Close() })
+	if _, err := admin.ExecContext(t.Context(), "CREATE DATABASE "+name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		if _, err := admin.ExecContext(ctx, "DROP DATABASE "+name); err != nil {
+			t.Error(err)
+		}
+	})
+	return isolated
+}
+
 func TestGroupingLocksSubscriptionAgainstConcurrentWriter(t *testing.T) {
-	for _, tc := range []struct{ driver, env string }{{dialect.MySQL, "PPANEL_GROUP_TEST_MYSQL_DSN"}, {dialect.Postgres, "PPANEL_GROUP_TEST_POSTGRES_DSN"}} {
+	for _, tc := range []struct{ driver, groupEnv, commonEnv string }{
+		{dialect.MySQL, "PPANEL_GROUP_TEST_MYSQL_DSN", "PPANEL_TEST_MYSQL_DSN"},
+		{dialect.Postgres, "PPANEL_GROUP_TEST_POSTGRES_DSN", "PPANEL_TEST_POSTGRES_DSN"},
+	} {
 		t.Run(tc.driver, func(t *testing.T) {
-			dsn := os.Getenv(tc.env)
-			if dsn == "" {
-				t.Skip("set " + tc.env + " to an empty disposable database")
-			}
+			dsn := groupLockDSN(t, tc.driver, tc.groupEnv, tc.commonEnv)
 			db, err := sql.Open(tc.driver, dsn)
 			if err != nil {
 				t.Fatal(err)

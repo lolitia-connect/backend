@@ -2,9 +2,9 @@ package subscribe
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/perfect-panel/server/internal/repository"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 
@@ -31,12 +31,12 @@ func NewBatchDeleteSubscribeLogic(ctx context.Context, svcCtx *svc.ServiceContex
 var errorIsExistActiveUser = errors.New("subscription ID belongs to an active user subscription")
 
 func (l *BatchDeleteSubscribeLogic) BatchDeleteSubscribe(req *types.BatchDeleteSubscribeRequest) error {
-	err := l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
-		for _, idStr := range req.Ids {
-			id, err := strconv.ParseInt(idStr, 10, 64)
-			if err != nil {
-				return err
-			}
+	ids, err := tool.ParsePositiveIDs(req.Ids)
+	if err != nil {
+		return xerr.NewErrCodeMsg(xerr.InvalidParams, err.Error())
+	}
+	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		for _, id := range ids {
 			// Validate whether the subscription ID belongs to an active user subscription.
 			count, err := store.User().CountUserSubscribesBySubscribeIdAndStatus(l.ctx, id, 1)
 			if err != nil {

@@ -13,10 +13,14 @@ import (
 	"testing"
 	"time"
 
+	framework "entgo.io/ent"
 	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
+	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/stretchr/testify/require"
 )
@@ -85,6 +89,131 @@ func TestInterruptedRegistrationCanRetryWithoutAnOrphanedAccountOrTrial(t *testi
 			require.Equal(t, plan.ID, trial.SubscribeID)
 			require.Equal(t, profile.Id, trial.UserID)
 			require.Equal(t, plan.Traffic, trial.Traffic)
+		})
+	}
+}
+
+func TestPasswordRecoveryKeepsTheOldSessionUntilCredentialsAreSaved(t *testing.T) {
+	for _, tc := range []struct {
+		path, method, identity, fields, prefix string
+		writeError                             uint32
+	}{
+		{"/v1/auth/reset", "email", "reader@example.test", `"email":"reader@example.test"`, config.AuthCodeCacheKey, xerr.DatabaseUpdateError},
+		{"/v1/auth/admin/reset", "email", "operator@example.test", `"email":"operator@example.test"`, config.AuthCodeCacheKey, xerr.DatabaseUpdateError},
+		{"/v1/auth/reset/telephone", "mobile", "+12025550123", `"telephone_area_code":"1","telephone":"2025550123"`, config.AuthCodeTelephoneCacheKey, xerr.ERROR},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			f := newRouteFixture(t)
+			ctx := t.Context()
+			f.service.Config.JwtAuth.AccessExpire = 300
+			f.service.Config.Mobile.Enable = true
+			owner, previous := f.account(tc.path == "/v1/auth/admin/reset")
+			f.client.UserAuthMethod.Create().SetUserID(owner.ID).SetAuthType(tc.method).SetAuthIdentifier(tc.identity).SetVerified(true).SaveX(ctx)
+			var unavailable string
+			f.client.Intercept(framework.InterceptFunc(func(next framework.Querier) framework.Querier {
+				return framework.QuerierFunc(func(ctx context.Context, q framework.Query) (framework.Value, error) {
+					if framework.QueryFromContext(ctx).Type == unavailable {
+						return nil, fmt.Errorf("%s temporarily unavailable", unavailable)
+					}
+					return next.Query(ctx, q)
+				})
+			}))
+			f.client.User.Use(func(next ent.Mutator) ent.Mutator {
+				return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+					if unavailable == "password write" {
+						return nil, fmt.Errorf("account storage is read-only")
+					}
+					return next.Mutate(ctx, m)
+				})
+			})
+			reset := func(want uint32) json.RawMessage {
+				t.Helper()
+				key := fmt.Sprintf("%s:%s:%s", tc.prefix, constant.Security, tc.identity)
+				require.NoError(t, f.service.Redis.Set(ctx, key, `{"code":"681452"}`, time.Minute).Err())
+				body := `{` + tc.fields + `,"password":"recovered-password","code":"681452","identifier":"recovery-phone"}`
+				return f.request(http.MethodPost, tc.path, "", body, want)
+			}
+			const profile = "/v1/public/user/info"
+			for _, blocked := range []string{ent.TypeSystem, ent.TypeUserAuthMethod, ent.TypeUser, "password write"} {
+				unavailable = blocked
+				want := xerr.DatabaseQueryError
+				if blocked == "password write" {
+					want = tc.writeError
+				}
+				require.Empty(t, reset(want), blocked)
+				unavailable = ""
+				require.Equal(t, owner.Password, f.client.User.GetX(ctx, owner.ID).Password)
+				require.Zero(t, f.client.UserDevice.Query().CountX(ctx))
+				require.Zero(t, f.client.SystemLog.Query().CountX(ctx))
+				f.request(http.MethodGet, profile, previous, "", http.StatusOK)
+			}
+			var recovered types.LoginResponse
+			require.NoError(t, json.Unmarshal(reset(http.StatusOK), &recovered))
+			f.request(http.MethodGet, profile, previous, "", xerr.InvalidAccess)
+			var account types.User
+			require.NoError(t, json.Unmarshal(f.request(http.MethodGet, profile, recovered.Token, "", http.StatusOK), &account))
+			require.Equal(t, owner.ID, account.Id)
+			require.True(t, tool.VerifyPassWord("recovered-password", f.client.User.GetX(ctx, owner.ID).Password))
+			device := f.client.UserDevice.Query().OnlyX(ctx)
+			require.Equal(t, owner.ID, device.UserID)
+			require.Equal(t, "recovery-phone", device.Identifier)
+			var audit log.Login
+			require.NoError(t, json.Unmarshal([]byte(f.client.SystemLog.Query().Where(systemlog.Type(log.TypeLogin.Uint8()), systemlog.ObjectID(owner.ID)).OnlyX(ctx).Content), &audit))
+			require.True(t, audit.Success)
+			require.Equal(t, tc.method, audit.Method)
+		})
+	}
+}
+
+func TestLoginRetriesAfterAccountStorageRecovers(t *testing.T) {
+	for _, channel := range []struct{ path, method, identity, fields string }{
+		{"/v1/auth/login/telephone", "mobile", "+12025550123", `"telephone_area_code":"1","telephone":"2025550123"`},
+		{"/v1/auth/login", "email", "member@example.test", `"email":"member@example.test"`},
+		{"/v1/auth/admin/login", "email", "operator@example.test", `"email":"operator@example.test"`},
+	} {
+		t.Run(channel.path, func(t *testing.T) {
+			f := newRouteFixture(t)
+			ctx := t.Context()
+			f.service.Config.Mobile.Enable = true
+			f.service.Config.JwtAuth.AccessExpire = 300
+			owner := f.client.User.Create().SetPassword(tool.EncodePassWord("login-fixture")).SetAlgo(tool.PasswordAlgoArgon2id).
+				SetEnable(true).SetIsAdmin(channel.path == "/v1/auth/admin/login").SaveX(ctx)
+			f.client.UserAuthMethod.Create().SetUserID(owner.ID).SetAuthType(channel.method).SetAuthIdentifier(channel.identity).SetVerified(true).SaveX(ctx)
+			var reads, unavailableAt int
+			f.client.User.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+				return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+					reads++
+					if reads == unavailableAt {
+						return nil, fmt.Errorf("account temporarily unavailable")
+					}
+					return next.Query(ctx, q)
+				})
+			}))
+			login := func(want uint32) json.RawMessage {
+				t.Helper()
+				reads = 0
+				return f.request(http.MethodPost, channel.path, "", `{`+channel.fields+`,"password":"login-fixture"}`, want)
+			}
+			unavailableAt = 1
+			require.Empty(t, login(xerr.DatabaseQueryError))
+			require.Zero(t, f.client.SystemLog.Query().CountX(ctx))
+			unavailableAt = 2
+			require.Empty(t, login(xerr.InvalidAccess))
+			audits := f.client.SystemLog.Query().Where(systemlog.ObjectID(owner.ID), systemlog.Type(log.TypeLogin.Uint8()))
+			var denied log.Login
+			require.NoError(t, json.Unmarshal([]byte(audits.Clone().OnlyX(ctx).Content), &denied))
+			require.False(t, denied.Success)
+			require.Equal(t, channel.method, denied.Method)
+			unavailableAt = 0
+			var issued types.LoginResponse
+			require.NoError(t, json.Unmarshal(login(http.StatusOK), &issued))
+			var profile types.User
+			require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/public/user/info", issued.Token, "", http.StatusOK), &profile))
+			require.Equal(t, owner.ID, profile.Id)
+			require.Equal(t, 2, audits.Clone().CountX(ctx))
+			var accepted log.Login
+			require.NoError(t, json.Unmarshal([]byte(audits.Order(ent.Desc(systemlog.FieldID)).FirstX(ctx).Content), &accepted))
+			require.True(t, accepted.Success)
 		})
 	}
 }

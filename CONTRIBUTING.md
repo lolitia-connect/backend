@@ -24,6 +24,8 @@ To ensure the quality of the codebase and maintainability of the project, please
 
 Both build workflows run `go test -count=1 ./...` before building. A failing test blocks the build and release. The separate Coverage workflow file is `.github/workflows/coverage.yml`; its single Coverage step runs the tests, filters Ent-generated Go files, checks the 80% statement threshold and writes a Markdown report to the GitHub Actions job summary. The filtered coverage profile is also uploaded as `backend-coverage`.
 
+To reproduce the CI measurement locally, point `PPANEL_TEST_MYSQL_DSN` and `PPANEL_TEST_POSTGRES_DSN` at disposable MariaDB and PostgreSQL instances, then run `bash scripts/run-coverage.sh` from the backend root. The installation and startup tests create and drop temporary databases. Set `GITHUB_STEP_SUMMARY` to a local file to save the same Markdown report as Actions.
+
 Use in-process HTTP handlers for tests that only verify request handling. Tests that need a TCP listener should bind to loopback on an ephemeral port, such as `127.0.0.1:0`, to avoid Windows Firewall prompts and port conflicts.
 
 ## 3. Branch Strategy

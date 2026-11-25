@@ -27,7 +27,11 @@ func NewBatchDeleteSubscribeGroupLogic(ctx context.Context, svcCtx *svc.ServiceC
 }
 
 func (l *BatchDeleteSubscribeGroupLogic) BatchDeleteSubscribeGroup(req *types.BatchDeleteSubscribeGroupRequest) error {
-	err := l.svcCtx.Store.Subscribe().BatchDeleteGroup(l.ctx, tool.StringSliceToInt64Slice(req.Ids))
+	ids, err := tool.ParsePositiveIDs(req.Ids)
+	if err != nil {
+		return xerr.NewErrCodeMsg(xerr.InvalidParams, err.Error())
+	}
+	err = l.svcCtx.Store.Subscribe().BatchDeleteGroup(l.ctx, ids)
 	if err != nil {
 		l.Logger.Error("[BatchDeleteSubscribeGroup] Delete Database Error: ", zap.Any("error", err.Error()))
 		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseDeletedError), "batch delete subscribe group failed: %v", err.Error())

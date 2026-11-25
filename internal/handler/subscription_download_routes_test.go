@@ -90,7 +90,7 @@ func TestEdgeManifestReflectsTrafficExhaustionOnTheNextFetch(t *testing.T) {
 	plan := f.client.Subscribe.Create().SetName("Regional pass").SetNodes(fmt.Sprint(node.ID)).SaveX(ctx)
 	const token = "manifest-traffic-fixture"
 	sub := f.client.UserSubscribe.Create().SetUserID(member.ID).SetOrderID(1).SetSubscribeID(plan.ID).SetToken(token).
-		SetUUID("a6a03360-dae2-48da-8380-77793054ba39").SetExpireTime(time.Now().Add(24*time.Hour)).SetStatus(1).SetTraffic(1000).SetUpload(30).SetDownload(170).SaveX(ctx)
+		SetUUID("a6a03360-dae2-48da-8380-77793054ba39").SetExpireTime(time.Now().Add(24 * time.Hour)).SetStatus(1).SetTraffic(1000).SetUpload(30).SetDownload(170).SaveX(ctx)
 	fetch := func(id string) types.EdgeManifestResponse {
 		t.Helper()
 		const path = "/api/edge/v1/manifest"
@@ -122,6 +122,79 @@ func TestEdgeManifestReflectsTrafficExhaustionOnTheNextFetch(t *testing.T) {
 	require.EqualValues(t, 970, exhausted.Subscription.Download)
 	require.Empty(t, exhausted.Proxies)
 	require.NotEqual(t, active.Revision, exhausted.Revision)
+}
+
+func TestWildcardSubscriptionDownloadsRecoverWithoutServingPartialProfiles(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	f.service.Ent = f.client
+	f.service.Config.Subscribe.PanDomain = true
+	f.service.Config.Subscribe.SubscribePath = "/downloads"
+	f.service.Config.Subscribe.UserAgentLimit = true
+	f.service.Config.Subscribe.UserAgentList = "AtlasReader"
+	RegisterNativeHandlers(f.router.Hertz(), f.service)
+	owner, session := f.account(false)
+	plan := f.client.Subscribe.Create().SetName("Travel pass").SaveX(ctx)
+	expires := time.Now().AddDate(0, 0, 3).Truncate(time.Second)
+	sub := f.client.UserSubscribe.Create().SetUserID(owner.ID).SetOrderID(1).SetSubscribeID(plan.ID).
+		SetToken("wildcard-member").SetStatus(1).SetTraffic(900).SetDownload(150).SetExpireTime(expires).SaveX(ctx)
+	f.client.SubscribeApplication.Create().SetName("Atlas Reader").SetUserAgent("AtlasReader").SetDownloadLink("").
+		SetOutputFormat("json").SetSubscribeTemplate(`{{dict "plan" .SubscribeName "mode" .Params.mode | toJson}}`).SaveX(ctx)
+	var memberships types.QueryUserSubscribeListResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/public/user/subscribe", session, "", http.StatusOK), &memberships))
+	require.Len(t, memberships.List, 1)
+	issued := memberships.List[0]
+	require.Equal(t, sub.ID, issued.Id)
+	require.NotEmpty(t, issued.Short)
+	request := func(host, path, agent string, status int) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, path, nil)
+		req.Host = host
+		req.Header.Set("User-Agent", agent)
+		rec := httptest.NewRecorder()
+		f.router.ServeHTTP(rec, req)
+		require.Equal(t, status, rec.Code, rec.Body.String())
+		if status != http.StatusOK {
+			require.Empty(t, rec.Header().Get("subscription-userinfo"))
+			require.NotContains(t, rec.Body.String(), plan.Name)
+		}
+		return rec
+	}
+	host := issued.Short + ".plans.example.test"
+	path := "/downloads?mode=travel&token=" + issued.Token
+	rootHost := issued.Token + ".plans.example.test"
+	const reader = "AtlasReader/2"
+	request("retired.plans.example.test", path, reader, http.StatusForbidden)
+	request("localhost", "/", reader, http.StatusForbidden)
+	request(rootHost, "/", "RetiredReader", http.StatusForbidden)
+	var offline string
+	interrupt := func(entity string) ent.Interceptor {
+		return ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+			return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+				if entity == offline {
+					return nil, errors.New("download store unavailable")
+				}
+				return next.Query(ctx, q)
+			})
+		})
+	}
+	f.client.SubscribeApplication.Intercept(interrupt(ent.TypeSubscribeApplication))
+	f.client.UserSubscribe.Intercept(interrupt(ent.TypeUserSubscribe))
+	f.client.User.Intercept(interrupt(ent.TypeUser))
+	f.client.Subscribe.Intercept(interrupt(ent.TypeSubscribe))
+	for _, offline = range []string{ent.TypeSubscribeApplication, ent.TypeUserSubscribe, ent.TypeUser, ent.TypeSubscribe} {
+		request(host, path, reader, http.StatusInternalServerError)
+	}
+	offline = ""
+	for _, link := range []struct{ host, path string }{{host, path}, {rootHost, "/?mode=travel"}} {
+		profile := request(link.host, link.path, reader, http.StatusOK)
+		require.JSONEq(t, `{"plan":"Travel pass","mode":"travel"}`, profile.Body.String())
+		require.Equal(t, fmt.Sprintf("upload=0;download=150;total=900;expire=%d", expires.Unix()), profile.Header().Get("subscription-userinfo"))
+	}
+	f.client.User.UpdateOneID(owner.ID).SetEnable(false).ExecX(ctx)
+	request(rootHost, "/", reader, http.StatusForbidden)
+	f.client.UserSubscribe.DeleteOneID(sub.ID).ExecX(ctx)
+	request(host, path, reader, http.StatusNotFound)
 }
 
 func TestSubscriberDownloadsPublishedClientTemplate(t *testing.T) {

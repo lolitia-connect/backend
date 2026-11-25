@@ -62,19 +62,18 @@ func TestMigrateCopiesSelectedTablesAndPreservesData(t *testing.T) {
 	exec(target, "CREATE TABLE "+childDst+" (id BIGINT PRIMARY KEY, parent_id BIGINT NOT NULL REFERENCES "+parentDst+", name TEXT, normalized TEXT GENERATED ALWAYS AS (UPPER(name)) STORED)")
 	exec(target, "INSERT INTO "+parentDst+" (id, enabled) VALUES (7, TRUE)")
 
-	cfg := DefaultConfig()
-	cfg.MySQLDSN, cfg.PostgresDSN, cfg.Schema = mysqlDSN, postgresDSN, schema
-	cfg.Tables, cfg.Location, cfg.BatchSize = parent+","+child, "Asia/Shanghai", 1
-	cfg.DryRun, cfg.Truncate = true, true
-	if err := Migrate(ctx, cfg); err != nil {
+	args := []string{"--mysql", mysqlDSN, "--postgres", postgresDSN, "--schema", schema, "--tables", parent + "," + child, "--location", "Asia/Shanghai", "--batch-size", "1", "--truncate"}
+	if err := Run(ctx, args); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatal("an unconfirmed truncate did not require operator confirmation")
+	}
+	if err := Run(ctx, append(args, "--dry-run")); err != nil {
 		t.Fatal(err)
 	}
 	var id int64
 	if err := target.QueryRowContext(ctx, "SELECT id FROM "+parentDst).Scan(&id); err != nil || id != 7 {
 		t.Fatalf("dry run changed target rows: id=%d, err=%v", id, err)
 	}
-	cfg.DryRun, cfg.Yes = false, true
-	if err := Migrate(ctx, cfg); err != nil {
+	if err := Run(ctx, append(args, "--yes")); err != nil {
 		t.Fatal(err)
 	}
 	var count int
@@ -102,8 +101,7 @@ func TestMigrateCopiesSelectedTablesAndPreservesData(t *testing.T) {
 	exec(source, "INSERT INTO "+brokenSrc+" VALUES (1,'true'), (2,'unknown')")
 	exec(target, "CREATE TABLE "+brokenDst+" (id BIGINT PRIMARY KEY, enabled BOOLEAN)")
 	exec(target, "INSERT INTO "+brokenDst+" VALUES (3, FALSE)")
-	cfg.Tables, cfg.Truncate = broken, false
-	if err := Migrate(ctx, cfg); err == nil || !strings.Contains(err.Error(), broken+".enabled") {
+	if err := Run(ctx, []string{"--mysql", mysqlDSN, "--postgres", postgresDSN, "--schema", schema, "--tables", broken}); err == nil || !strings.Contains(err.Error(), broken+".enabled") {
 		t.Fatalf("copy of invalid boolean returned %v", err)
 	}
 	if err := target.QueryRowContext(ctx, "SELECT COUNT(*), MIN(id) FROM "+brokenDst).Scan(&count, &id); err != nil || count != 1 || id != 3 {

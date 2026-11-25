@@ -28,6 +28,18 @@ func StringSliceToInt64Slice(slice []string) []int64 {
 	return int64Slice
 }
 
+func ParsePositiveIDs(values []string) ([]int64, error) {
+	ids := make([]int64, len(values))
+	for index, value := range values {
+		id, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("ids[%d] must be a positive 64-bit integer", index)
+		}
+		ids[index] = id
+	}
+	return ids, nil
+}
+
 func StringToInt64Slice(s string) []int64 {
 
 	stringSlice := strings.Split(s, ",")

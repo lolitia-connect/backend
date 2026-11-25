@@ -111,6 +111,13 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 	}
 	amount -= couponAmount
 
+	walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)
+	if err != nil {
+		l.Logger.Errorw("[PreCreateOrder] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
+		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find wallet error: %v", err.Error())
+	}
+	deductionAmount, amount := walletInfo.Reserve(amount)
+
 	var feeAmount int64
 	if req.Payment != 0 {
 		payment, err := store.Payment().FindOne(l.ctx, req.Payment)
@@ -124,16 +131,6 @@ func (l *PreCreateOrderLogic) PreCreateOrder(req *types.PurchaseOrderRequest) (r
 			return nil, err
 		}
 		amount += feeAmount
-	}
-	// Calculate gift amount deduction after fee calculation
-	walletInfo, err := store.Wallet().FindOne(l.ctx, u.Id)
-	if err != nil {
-		l.Logger.Errorw("[PreCreateOrder] Database query error", zap.Any("error", err.Error()), zap.Any("user_id", u.Id))
-		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find wallet error: %v", err.Error())
-	}
-	var deductionAmount int64
-	if walletInfo.GiftAmount > 0 && amount > 0 {
-		deductionAmount, amount = walletInfo.Reserve(amount)
 	}
 
 	resp = &types.PreOrderResponse{

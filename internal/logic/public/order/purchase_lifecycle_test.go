@@ -64,7 +64,7 @@ func TestPurchasePreviewAppliesDiscountsAndFeesWithoutReservingFunds(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.Price != 2000 || preview.Discount != 400 || preview.CouponDiscount != 400 || preview.FeeAmount != 90 || preview.GiftAmount != 200 || preview.Amount != 1090 {
+	if preview.Price != 2000 || preview.Discount != 400 || preview.CouponDiscount != 400 || preview.FeeAmount != 80 || preview.GiftAmount != 200 || preview.Amount != 1080 {
 		t.Fatalf("unexpected checkout quote: %+v", preview)
 	}
 	if got := client.UserWallet.GetX(ctx, wallet.ID); got.Balance != 1200 || got.GiftAmount != 200 {

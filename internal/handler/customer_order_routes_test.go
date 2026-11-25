@@ -207,7 +207,8 @@ func TestQuotesAndOrdersRecoverWhenBillingInputsBecomeReadable(t *testing.T) {
 	plan := f.client.Subscribe.Create().SetName("Quarterly").SetSell(true).SetUnitPrice(500).SetInventory(2).SetQuota(2).SaveX(ctx)
 	coupon := f.client.Coupon.Create().SetCode("SPRING").SetCount(1).SetType(2).SetDiscount(80).
 		SetExpireTime(time.Now().Add(time.Hour).UnixMilli()).SaveX(ctx)
-	method := f.client.Payment.Create().SetPlatform("Stripe").SetEnable(true).SetConfig(`{}`).SetFeeMode(2).SetFeeAmount(30).SaveX(ctx)
+	method := f.client.Payment.Create().SetPlatform("Stripe").SetEnable(true).SetConfig(`{}`).
+		SetFeeMode(3).SetFeePercent(5).SetFeeAmount(30).SaveX(ctx)
 	body := fmt.Sprintf(`{"subscribe_id":"%d","payment":"%d","coupon":"SPRING","quantity":2}`, plan.ID, method.ID)
 	var unavailable string
 	f.client.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
@@ -259,16 +260,19 @@ func TestQuotesAndOrdersRecoverWhenBillingInputsBecomeReadable(t *testing.T) {
 	require.Empty(t, queues)
 	var guest types.PrePurchaseOrderResponse
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, guestQuote, "", body, http.StatusOK), &guest))
-	require.EqualValues(t, 950, guest.Amount)
+	require.EqualValues(t, 76, guest.FeeAmount)
+	require.EqualValues(t, 996, guest.Amount)
 	var quote types.PreOrderResponse
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, memberQuote, token, body, http.StatusOK), &quote))
 	require.EqualValues(t, 100, quote.GiftAmount)
-	require.EqualValues(t, 850, quote.Amount)
+	require.EqualValues(t, 71, quote.FeeAmount)
+	require.EqualValues(t, 891, quote.Amount)
 	var placed types.PurchaseOrderResponse
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, purchase, token, body, http.StatusOK), &placed))
 	invoice := f.client.Order.Query().OnlyX(ctx)
 	require.Equal(t, placed.OrderNo, invoice.OrderNo)
 	require.Equal(t, quote.Amount, invoice.Amount)
+	require.Equal(t, quote.FeeAmount, invoice.FeeAmount)
 	require.Equal(t, quote.GiftAmount, invoice.GiftAmount)
 	require.EqualValues(t, 1, f.client.Subscribe.GetX(ctx, plan.ID).Inventory)
 	require.EqualValues(t, 1, f.client.Coupon.GetX(ctx, coupon.ID).UsedCount)
@@ -283,10 +287,21 @@ func TestLegacyCheckoutFulfillsPurchaseCoveredByReservedGift(t *testing.T) {
 	inspector := f.startQueue()
 	owner, session := f.account(false)
 	_, other := f.account(false)
-	wallet := f.client.UserWallet.Create().SetUserID(owner.ID).SetBalance(200).SetGiftAmount(800).SaveX(ctx)
+	wallet := f.client.UserWallet.Create().SetUserID(owner.ID).SetBalance(200).SetGiftAmount(520).SaveX(ctx)
 	plan := f.client.Subscribe.Create().SetName("Monthly").SetUnitPrice(500).SetUnitTime("Day").SetSell(true).SetInventory(1).SaveX(ctx)
 	method := f.client.Payment.Create().SetPlatform("Stripe").SetConfig("invalid gateway config").SetEnable(true).
 		SetFeeMode(3).SetFeePercent(3).SetFeeAmount(30).SaveX(ctx)
+	fixedMethod := f.client.Payment.Create().SetPlatform("EPay").SetToken("fixed-fee").SetConfig(`{}`).SetEnable(true).
+		SetFeeMode(2).SetFeeAmount(50).SaveX(ctx)
+	freeMethod := f.client.Payment.Create().SetPlatform("EPay").SetToken("no-fee").SetConfig(`{}`).SetEnable(true).SaveX(ctx)
+	for _, paymentID := range []int64{method.ID, fixedMethod.ID, freeMethod.ID} {
+		body := fmt.Sprintf(`{"subscribe_id":"%d","quantity":1,"payment":"%d"}`, plan.ID, paymentID)
+		var quote types.PreOrderResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodPost, "/v1/public/order/pre", session, body, http.StatusOK), &quote))
+		require.EqualValues(t, 500, quote.GiftAmount)
+		require.Zero(t, quote.FeeAmount)
+		require.Zero(t, quote.Amount)
+	}
 	var created types.PurchaseOrderResponse
 	purchase := fmt.Sprintf(`{"subscribe_id":"%d","quantity":1,"payment":"%d"}`, plan.ID, method.ID)
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, "/v1/public/order/purchase", session, purchase, http.StatusOK), &created))
@@ -298,7 +313,8 @@ func TestLegacyCheckoutFulfillsPurchaseCoveredByReservedGift(t *testing.T) {
 	invoice := f.client.Order.Query().OnlyX(ctx)
 	require.Equal(t, order.StatusPending, invoice.Status)
 	require.Zero(t, invoice.Amount)
-	require.EqualValues(t, 545, invoice.GiftAmount)
+	require.Zero(t, invoice.FeeAmount)
+	require.EqualValues(t, 500, invoice.GiftAmount)
 
 	var result types.CheckoutOrderResponse
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, checkoutPath, session, checkout, http.StatusOK), &result))
@@ -316,7 +332,7 @@ func TestLegacyCheckoutFulfillsPurchaseCoveredByReservedGift(t *testing.T) {
 	require.Equal(t, invoice.ID, f.client.UserSubscribe.Query().OnlyX(ctx).OrderID)
 	funds := f.client.UserWallet.GetX(ctx, wallet.ID)
 	require.EqualValues(t, 200, funds.Balance)
-	require.EqualValues(t, 255, funds.GiftAmount)
+	require.EqualValues(t, 20, funds.GiftAmount)
 }
 
 func TestMemberOrderCanRetryAfterBillingStorageRecovers(t *testing.T) {

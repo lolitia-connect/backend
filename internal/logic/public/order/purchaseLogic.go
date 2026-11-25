@@ -152,7 +152,6 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		}
 		coupon = calculateCoupon(amount, couponInfo)
 	}
-	// Calculate the handling fee
 	amount -= coupon
 	// find payment method
 	payment, err := store.Payment().FindOne(l.ctx, req.Payment)
@@ -163,28 +162,6 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", err.Error()), zap.Any("payment", req.Payment))
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.DatabaseQueryError), "find payment method error: %v", err.Error())
 	}
-	var feeAmount int64
-	// Calculate the handling fee
-	if amount > 0 {
-		feeAmount, err = payment.HandlingFee(amount)
-		if err != nil {
-			return nil, err
-		}
-		amount += feeAmount
-
-		// Final validation after adding fee
-		if amount > MaxOrderAmount {
-			l.Logger.Debugw("[Purchase] Final order amount exceeds maximum limit after fee",
-				zap.Any("amount", amount),
-				zap.Any("max", MaxOrderAmount),
-				zap.Any("user_id", u.Id))
-			return nil, errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
-		}
-	}
-
-	// Gift credit is reserved inside the transaction, against a wallet row
-	// read there, so two concurrent orders cannot spend the same balance.
-
 	// query user is new purchase or renewal
 	isNew, err := store.Order().IsUserEligibleForNewOrder(l.ctx, u.Id)
 	if err != nil {
@@ -198,14 +175,11 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 		Type:           1,
 		Quantity:       req.Quantity,
 		Price:          price,
-		Amount:         amount,
 		Discount:       discountAmount,
-		GiftAmount:     0,
 		Coupon:         req.Coupon,
 		CouponDiscount: coupon,
 		PaymentId:      payment.Id,
 		Method:         payment.Platform,
-		FeeAmount:      feeAmount,
 		Status:         1,
 		IsNew:          isNew,
 		SubscribeId:    req.SubscribeId,
@@ -224,15 +198,23 @@ func (l *PurchaseLogic) Purchase(req *types.PurchaseOrderRequest) (resp *types.P
 			}
 		}
 
-		// Reserve gift credit under the fresh wallet read: the fee was already
-		// calculated on the full external payable amount by design.
 		walletInfo, e := txStore.Wallet().FindOneForUpdate(l.ctx, u.Id)
 		if e != nil {
 			l.Logger.Errorw("[Purchase] Database query error", zap.Any("error", e.Error()), zap.Any("user_id", u.Id))
 			return e
 		}
-		if walletInfo.GiftAmount > 0 && orderInfo.Amount > 0 {
-			orderInfo.GiftAmount, orderInfo.Amount = walletInfo.Reserve(orderInfo.Amount)
+		orderInfo.GiftAmount, orderInfo.Amount = walletInfo.Reserve(amount)
+		orderInfo.FeeAmount, e = payment.HandlingFee(orderInfo.Amount)
+		if e != nil {
+			return e
+		}
+		orderInfo.Amount += orderInfo.FeeAmount
+		if orderInfo.Amount > MaxOrderAmount {
+			l.Logger.Debugw("[Purchase] Final order amount exceeds maximum limit after fee",
+				zap.Any("amount", orderInfo.Amount),
+				zap.Any("max", MaxOrderAmount),
+				zap.Any("user_id", u.Id))
+			return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "order amount exceeds maximum limit")
 		}
 		// update wallet deduction && Pre deduction ,Return after canceling the order
 		if orderInfo.GiftAmount > 0 {

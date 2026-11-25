@@ -30,23 +30,19 @@ type Response struct {
 }
 
 func GetExchangeRete(form, to, access string, amount float64) (float64, error) {
-	client := resty.New()
-	client.SetRetryCount(3)
-	client.SetTimeout(5 * time.Second)
-	client.SetBaseURL(Url)
-	// amount  to string
-	amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+	client := resty.New().SetBaseURL(Url).SetRetryCount(3).SetTimeout(5 * time.Second)
+	return convert(client, form, to, access, amount)
+}
 
-	client.SetQueryParams(map[string]string{
-		"from":   form,
+func convert(client *resty.Client, from, to, access string, amount float64) (float64, error) {
+	amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+	result := new(Response)
+	resp, err := client.R().SetQueryParams(map[string]string{
+		"from":   from,
 		"to":     to,
 		"amount": amountStr,
-	})
-	result := new(Response)
-	resp, err := client.R().SetHeader("apikey", access).SetResult(result).Get("/currency_data/convert")
-
+	}).SetHeader("apikey", access).SetResult(result).Get("/currency_data/convert")
 	if err != nil {
-
 		return 0, err
 	}
 	if !result.Success {

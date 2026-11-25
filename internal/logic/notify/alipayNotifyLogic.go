@@ -2,7 +2,6 @@ package notify
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -39,7 +38,7 @@ func (l *AlipayNotifyLogic) AlipayNotify(r *http.Request) error {
 		return fmt.Errorf("payment config not found")
 	}
 	var config payment.AlipayF2FConfig
-	if err := json.Unmarshal([]byte(data.Config), &config); err != nil {
+	if err := config.Unmarshal([]byte(data.Config)); err != nil {
 		l.Logger.Error("[AlipayNotify] Unmarshal config failed", zap.Any("error", err.Error()))
 		return err
 	}

@@ -18,8 +18,7 @@ func ReserveCoupon(ctx context.Context, store repository.Store, current *order.O
 	if err != nil {
 		return err
 	}
-	now := time.Now().Unix()
-	if !coupon.IsEnabled() || coupon.StartTime > now || (coupon.ExpireTime > 0 && coupon.ExpireTime < now) {
+	if !coupon.ReservableAt(time.Now()) {
 		return xerr.NewErrCodeMsg(xerr.InvalidParams, "coupon is unavailable")
 	}
 	plans := tool.StringToInt64Slice(coupon.Subscribe)

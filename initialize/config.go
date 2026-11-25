@@ -333,10 +333,11 @@ func HandleDatabaseTest(c *hertzx.Context) {
 	if tx != nil {
 		defer tx.Close()
 	}
-	if err := tx.Ping(); err != nil {
+	if err := tx.PingContext(c.Request.Context()); err != nil {
 		zap.S().Errorf("ping database failed, err: %v\n", err.Error())
 		status = false
 		message = "Database connection failed"
+		goto result
 	}
 
 	tables, err = listDatabaseTables(tx, driverName)

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/perfect-panel/server/pkg/email"
@@ -22,6 +23,10 @@ type AppleAuthConfig struct {
 	ClientId     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 	RedirectURL  string `json:"redirect_url"`
+}
+
+func (l *AppleAuthConfig) CallbackURL() string {
+	return strings.TrimRight(l.RedirectURL, "/") + "/v1/auth/oauth/callback/apple"
 }
 
 func (l *AppleAuthConfig) Marshal() string {

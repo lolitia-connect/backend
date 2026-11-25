@@ -2,7 +2,9 @@ package console
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -11,6 +13,8 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/enttest"
+	modellog "github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/model/node"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
@@ -46,6 +50,83 @@ func TestConsoleStatisticsReturnCachedResponses(t *testing.T) {
 	servers, err := NewQueryServerTotalDataLogic(ctx, service).QueryServerTotalData()
 	if err != nil || servers.OnlineUsers != 12 {
 		t.Fatalf("cached server statistics = %+v, %v", servers, err)
+	}
+}
+
+func TestServerDashboardAggregatesLiveTrafficAndArchive(t *testing.T) {
+	t.Setenv("PPANEL_MODE", "production")
+	ctx := t.Context()
+	db, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	client := enttest.NewClient(t, enttest.WithOptions(ent.Driver(entsql.OpenDB(dialect.SQLite, db))))
+	t.Cleanup(func() { _ = client.Close() })
+	cache := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+	t.Cleanup(func() { _ = cache.Close() })
+	service := &svc.ServiceContext{Store: repository.NewStore(client, cache), Redis: cache}
+
+	now := time.Now()
+	yesterday := now.AddDate(0, 0, -1)
+	online := client.Server.Create().SetName("Primary").SetLastReportedAt(now).SaveX(ctx)
+	offline := client.Server.Create().SetName("Backup").SetLastReportedAt(now.Add(-time.Hour)).SaveX(ctx)
+	client.Server.Create().SetName("Never reported").SaveX(ctx)
+	if err := cache.ZAdd(ctx, node.OnlineUserSubscribeCacheKeyWithGlobal,
+		redis.Z{Score: float64(now.Add(time.Minute).Unix()), Member: "101"},
+		redis.Z{Score: float64(now.Add(-time.Minute).Unix()), Member: "102"},
+	).Err(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cache.Set(ctx, consoleServerTotalDataCacheKey, "{invalid", time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	addTraffic := func(server, subscription, upload, download int64, at time.Time) {
+		t.Helper()
+		client.TrafficLog.Create().SetServerID(server).SetUserID(subscription).SetSubscribeID(subscription).
+			SetUpload(upload).SetDownload(download).SetTimestamp(at).SaveX(ctx)
+	}
+	addTraffic(online.ID, 101, 10, 200, now)
+	addTraffic(online.ID, 101, 20, 90, now)
+	addTraffic(offline.ID, 102, 40, 30, now)
+	addTraffic(offline.ID, 102, 50, 150, yesterday)
+	monthlyUpload, monthlyDownload := int64(70), int64(320)
+	if yesterday.Month() == now.Month() {
+		client.SystemLog.Create().SetDate(yesterday.Format(time.DateOnly)).SetType(modellog.TypeTrafficStat.Uint8()).
+			SetContent(`{"upload":60,"download":180}`).SaveX(ctx)
+		monthlyUpload += 60
+		monthlyDownload += 180
+	}
+	logic := NewQueryServerTotalDataLogic(ctx, service)
+	got, err := logic.QueryServerTotalData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.OnlineUsers != 1 || got.OnlineServers != 1 || got.OfflineServers != 2 || got.TodayUpload != 70 ||
+		got.TodayDownload != 320 || got.MonthlyUpload != monthlyUpload || got.MonthlyDownload != monthlyDownload {
+		t.Fatalf("dashboard totals = %+v", got)
+	}
+	if servers := got.ServerTrafficRankingToday; len(servers) != 2 || servers[0].ServerId != online.ID ||
+		servers[0].Name != "Primary" || servers[0].Upload != 30 || servers[0].Download != 290 || servers[1].ServerId != offline.ID {
+		t.Fatalf("today's server rankings = %+v", servers)
+	}
+	if servers := got.ServerTrafficRankingYesterday; len(servers) != 1 || servers[0].ServerId != offline.ID ||
+		servers[0].Name != "Backup" || servers[0].Download != 150 {
+		t.Fatalf("yesterday's server rankings = %+v", servers)
+	}
+	if users := got.UserTrafficRankingToday; len(users) != 2 || users[0].SID != 101 || users[0].Download != 290 || users[1].SID != 102 {
+		t.Fatalf("today's user rankings = %+v", users)
+	}
+	if users := got.UserTrafficRankingYesterday; len(users) != 1 || users[0].SID != 102 || users[0].Upload != 50 {
+		t.Fatalf("yesterday's user rankings = %+v", users)
+	}
+	raw, err := cache.Get(ctx, consoleServerTotalDataCacheKey).Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cached types.ServerTotalDataResponse
+	if err := json.Unmarshal(raw, &cached); err != nil || !reflect.DeepEqual(&cached, got) {
+		t.Fatalf("dashboard cache does not match the computed summary: %v", err)
 	}
 }
 

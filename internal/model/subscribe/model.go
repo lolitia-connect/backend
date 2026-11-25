@@ -2,14 +2,15 @@ package subscribe
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/predicate"
 	entsubscribe "github.com/perfect-panel/server/ent/subscribe"
 	entsubscribegroup "github.com/perfect-panel/server/ent/subscribegroup"
+	"github.com/perfect-panel/server/pkg/orm"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/redis/go-redis/v9"
 )
@@ -257,16 +258,13 @@ func (m *customSubscribeModel) FilterListByNodeGroups(ctx context.Context, param
 func subscribeCommaSeparatedContainsAny(field string, values []string) predicate.Subscribe {
 	predicates := make([]predicate.Subscribe, 0, len(values))
 	for _, value := range values {
-		v := value
-		predicates = append(predicates, predicate.Subscribe(func(s *sql.Selector) {
-			s.Where(sql.ExprP(fmt.Sprintf("FIND_IN_SET(?, %s)", field), v))
-		}))
+		predicates = append(predicates, orm.CSVMember(field, value))
 	}
 	return entsubscribe.Or(predicates...)
 }
 
 func subscribeJSONContains(field string, id int64) predicate.Subscribe {
 	return predicate.Subscribe(func(s *sql.Selector) {
-		s.Where(sql.ExprP(fmt.Sprintf("JSON_CONTAINS(%s, ?)", field), fmt.Sprintf("%d", id)))
+		s.Where(sqljson.ValueContains(field, id))
 	})
 }

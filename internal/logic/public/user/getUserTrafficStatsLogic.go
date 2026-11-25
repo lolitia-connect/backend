@@ -83,7 +83,7 @@ func (l *GetUserTrafficStatsLogic) GetUserTrafficStats(req *types.GetUserTraffic
 	for i := 0; i < req.Days; i++ {
 		currentDate := startDate.AddDate(0, 0, i)
 		dayStart := time.Date(currentDate.Year(), currentDate.Month(), currentDate.Day(), 0, 0, 0, 0, time.Local)
-		dayEnd := dayStart.Add(24 * time.Hour).Add(-time.Nanosecond)
+		dayEnd := dayStart.AddDate(0, 0, 1)
 
 		dailyTraffic, err := l.svcCtx.Store.TrafficLog().SumByUserSubscribeAndTimeRange(l.ctx, u.Id, userSubscribeId, dayStart, dayEnd)
 		if err != nil {

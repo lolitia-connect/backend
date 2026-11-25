@@ -25,6 +25,7 @@ type (
 		DeleteServer(ctx context.Context, id int64) error
 		FindServerConfigOverride(ctx context.Context, serverId int64) (*ServerConfigOverride, error)
 		SaveServerConfigOverride(ctx context.Context, data *ServerConfigOverride) error
+		ReplaceServerConfigOverride(ctx context.Context, data *ServerConfigOverride) error
 		DeleteServerConfigOverride(ctx context.Context, serverId int64) error
 		QueryServerList(ctx context.Context, ids []int64) (servers []*Server, err error)
 	}

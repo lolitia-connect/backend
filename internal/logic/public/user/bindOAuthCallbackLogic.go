@@ -311,7 +311,7 @@ func (l *BindOAuthCallbackLogic) apple(req *types.BindOAuthCallbackRequest) erro
 		TeamID:       appleCfg.TeamID,
 		KeyID:        appleCfg.KeyID,
 		ClientSecret: appleCfg.ClientSecret,
-		RedirectURI:  appleCfg.RedirectURL,
+		RedirectURI:  appleCfg.CallbackURL(),
 	})
 	if err != nil {
 		l.Logger.Errorw("[BindOAuthCallbackLogic] New apple client error", zap.Any("error", err.Error()))

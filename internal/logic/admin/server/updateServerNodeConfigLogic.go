@@ -41,7 +41,7 @@ func (l *UpdateServerNodeConfigLogic) UpdateServerNodeConfig(req *types.UpdateSe
 	if allInherited {
 		err = nodeStore.DeleteServerConfigOverride(l.ctx, req.ServerID)
 	} else {
-		err = nodeStore.SaveServerConfigOverride(l.ctx, data)
+		err = nodeStore.ReplaceServerConfigOverride(l.ctx, data)
 	}
 	if err != nil {
 		l.Logger.Errorf("[UpdateServerNodeConfig] SaveServerConfigOverride Error: %v", err.Error())

@@ -3,7 +3,9 @@ package google
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net/http"
 
 	"go.uber.org/zap"
 	"golang.org/x/oauth2"
@@ -50,6 +52,9 @@ func (c *Client) GetUserInfo(token string) (*UserInfo, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("google profile request returned HTTP %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

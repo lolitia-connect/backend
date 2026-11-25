@@ -68,6 +68,9 @@ func (l *TelegramLogic) takeAction(adminID int64, token string) (adminAction, er
 
 func expandAdminCommand(command, arguments string) (string, string) {
 	for _, prefix := range []string{"user_sub", "user_log", "tickets", "tk", "rp", "close", "reopen", "user", "reset", "toggle", "ban"} {
+		if command == prefix {
+			return command, strings.TrimSpace(arguments)
+		}
 		if value, ok := strings.CutPrefix(command, prefix+"_"); ok && value != "waiting" {
 			return prefix, strings.TrimSpace(value + " " + arguments)
 		}

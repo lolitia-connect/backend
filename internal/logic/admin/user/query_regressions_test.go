@@ -118,6 +118,114 @@ func TestUserSubscribeTrafficLogsApplyTimeWindow(t *testing.T) {
 	}
 }
 
+func TestAdminUserListCombinesIdentityWalletAndActiveSubscriptionFilters(t *testing.T) {
+	fixture, client, _ := basicInfoFixture(t, "")
+	ctx := t.Context()
+	const memberID int64 = 7
+	plan := client.Subscribe.Create().SetName("Membership").SaveX(ctx)
+	membership := client.UserSubscribe.Create().SetUserID(memberID).SetSubscribeID(plan.ID).SetOrderID(1).SetStatus(1).SaveX(ctx)
+	client.UserAuthMethod.Create().SetUserID(memberID).SetAuthType("email").SetAuthIdentifier("team_member@example.test").SaveX(ctx)
+	client.UserAuthMethod.Create().SetUserID(memberID).SetAuthType("mobile").SetAuthIdentifier("+12025550123").SaveX(ctx)
+	expired := client.User.Create().SetPassword("fixture").SaveX(ctx)
+	client.UserAuthMethod.Create().SetUserID(expired.ID).SetAuthType("email").SetAuthIdentifier("teamXmember@example.test").SaveX(ctx)
+	client.UserSubscribe.Create().SetUserID(expired.ID).SetSubscribeID(plan.ID).SetOrderID(2).SetStatus(3).SaveX(ctx)
+
+	list := NewGetUserListLogic(ctx, fixture.svcCtx)
+	for _, query := range []types.GetUserListRequest{
+		{Page: 1, Size: 1, Search: "team_"},
+		{Page: 1, Size: 1, SubscribeId: &plan.ID},
+		{Page: 1, Size: 1, UserSubscribeId: &membership.ID},
+	} {
+		result, err := list.GetUserList(&query)
+		if err != nil || result.Total != 1 || len(result.List) != 1 || result.List[0].Id != memberID {
+			t.Fatalf("filtered admin account list = %+v, %v", result, err)
+		}
+		member := result.List[0]
+		methods := make(map[string]string)
+		for _, m := range member.AuthMethods {
+			methods[m.AuthType] = m.AuthIdentifier
+		}
+		if member.Balance != 1200 || member.GiftAmount != 300 || member.Commission != 500 || methods["email"] != "team_member@example.test" || methods["mobile"] != "+1 202-555-0123" {
+			t.Fatalf("account projection = %+v", member)
+		}
+	}
+	detail, err := NewGetUserDetailLogic(ctx, fixture.svcCtx).GetUserDetail(&types.GetDetailRequest{Id: memberID})
+	if err != nil || detail.Id != memberID || detail.Balance != 1200 || detail.ReferCode != "referral" {
+		t.Fatalf("admin user detail = %+v, %v", detail, err)
+	}
+
+	if err := NewDeleteUserLogic(ctx, fixture.svcCtx).DeleteUser(&types.GetDetailRequest{Id: memberID}); err != nil {
+		t.Fatal(err)
+	}
+	archived := client.User.GetX(ctx, memberID)
+	if archived.DeletedAt == nil {
+		t.Fatal("user was not soft-deleted")
+	}
+	for _, unscoped := range []bool{false, true} {
+		result, err := list.GetUserList(&types.GetUserListRequest{Page: 1, Size: 1, Search: "team_", Unscoped: unscoped})
+		want := 0
+		if unscoped {
+			want = 1
+		}
+		if err != nil || result.Total != int64(want) || len(result.List) != want {
+			t.Fatalf("admin account list (unscoped = %t) = %+v, %v", unscoped, result, err)
+		}
+	}
+}
+
+func TestAdminSubscriptionGrantPauseAndUpdate(t *testing.T) {
+	fixture, client, _ := basicInfoFixture(t, "")
+	service := fixture.svcCtx
+	service.Config.Subscribe.SingleModel = true
+	ctx := t.Context()
+	group := client.NodeGroup.Create().SetName("Members").SaveX(ctx)
+	plan := client.Subscribe.Create().SetName("Monthly").SetNodeGroupID(group.ID).SaveX(ctx)
+	upgraded := client.Subscribe.Create().SetName("Premium").SaveX(ctx)
+	now := time.Now()
+	grant := NewCreateUserSubscribeLogic(ctx, service)
+	request := &types.CreateUserSubscribeRequest{UserId: 7, SubscribeId: plan.ID, ExpiredAt: now.Add(24 * time.Hour).UnixMilli(), Traffic: 4096}
+	if err := grant.CreateUserSubscribe(request); err != nil {
+		t.Fatal(err)
+	}
+	if err := grant.CreateUserSubscribe(request); err == nil {
+		t.Fatal("single-plan account accepted a second subscription")
+	}
+	original := client.UserSubscribe.Query().OnlyX(ctx)
+	if original.UserID != request.UserId || original.SubscribeID != plan.ID || original.NodeGroupID != group.ID || original.Traffic != 4096 || original.Token == "" || original.UUID == "" || original.Status != 1 {
+		t.Fatal("grant did not persist the requested plan, quota, and credentials")
+	}
+	toggle := NewToggleUserSubscribeStatusLogic(ctx, service)
+	for _, want := range []uint8{5, 1} {
+		if err := toggle.ToggleUserSubscribeStatus(&types.ToggleUserSubscribeStatusRequest{UserSubscribeId: original.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if got := client.UserSubscribe.GetX(ctx, original.ID).Status; got != want {
+			t.Fatalf("subscription state = %d, want %d", got, want)
+		}
+	}
+
+	expiredAt := now.Add(-time.Hour).UnixMilli()
+	if err := NewUpdateUserSubscribeLogic(ctx, service).UpdateUserSubscribe(&types.UpdateUserSubscribeRequest{
+		UserSubscribeId: original.ID, SubscribeId: upgraded.ID, ExpiredAt: expiredAt, Traffic: 8192, Upload: 120, Download: 340,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	current := client.UserSubscribe.GetX(ctx, original.ID)
+	if current.SubscribeID != upgraded.ID || current.ExpireTime.UnixMilli() != expiredAt || current.Status != 3 ||
+		current.Traffic != 8192 || current.Upload != 120 || current.Download != 340 || current.Token != original.Token {
+		t.Fatal("changing plan and expiry incorrectly affected subscription state")
+	}
+	if err := toggle.ToggleUserSubscribeStatus(&types.ToggleUserSubscribeStatusRequest{UserSubscribeId: current.ID}); err == nil {
+		t.Fatal("expired subscription was toggled to an active state")
+	}
+	if err := NewDeleteUserSubscribeLogic(ctx, service).DeleteUserSubscribe(&types.DeleteUserSubscribeRequest{UserSubscribeId: current.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if count := client.UserSubscribe.Query().CountX(ctx); count != 0 {
+		t.Fatalf("subscription count after deletion = %d", count)
+	}
+}
+
 func TestUserSubscriptionsRespectPagination(t *testing.T) {
 	fixture, client, _ := basicInfoFixture(t, "")
 	ctx := context.Background()

@@ -132,7 +132,7 @@ func (l *BindOAuthLogic) apple(req *types.BindOAuthRequest) (string, error) {
 		l.Logger.Errorw("error save state code to redis: %v", zap.Any("code", code), zap.Any("error", err.Error()))
 		return "", err
 	}
-	return fmt.Sprintf(uri, url.QueryEscape(cfg.ClientId), url.QueryEscape(fmt.Sprintf("%s/v1/auth/oauth/callback/apple", cfg.RedirectURL)), code), nil
+	return fmt.Sprintf(uri, url.QueryEscape(cfg.ClientId), url.QueryEscape(cfg.CallbackURL()), code), nil
 }
 func (l *BindOAuthLogic) github(req *types.BindOAuthRequest) (string, error) {
 	authMethod, err := l.svcCtx.Store.Auth().FindOneByMethod(l.ctx, "github")

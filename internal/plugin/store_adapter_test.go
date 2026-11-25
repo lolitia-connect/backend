@@ -193,6 +193,55 @@ func TestStoreAdapterTicketReplyRequiresCreate(t *testing.T) {
 	}
 }
 
+func TestStoreAdapterDocumentCatalogRespectsProjectionAndPagination(t *testing.T) {
+	database, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	database.SetMaxOpenConns(1)
+	if _, err := database.Exec(`CREATE TABLE document (id INTEGER PRIMARY KEY, title TEXT, content TEXT, "show" INTEGER NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	adapter := NewStoreAdapter(database, "sqlite")
+	for _, fixture := range []map[string]interface{}{
+		{"id": 1, "title": "Getting started", "content": "Setup instructions", "show": 1},
+		{"id": 2, "title": "Using the panel", "content": "Account instructions", "show": 1},
+		{"id": 3, "title": "Draft", "content": "Internal notes", "show": 0},
+	} {
+		out, affected, err := adapter.Query("document", "create", fixture, nil, 0, 0)
+		if err != nil || affected != 1 || len(out) != 1 || out[0]["affected"] != int64(1) {
+			t.Fatalf("create affected %d rows: %v, %v", affected, out, err)
+		}
+	}
+	published := map[string]interface{}{"show": 1}
+	seen := map[interface{}]string{}
+	for offset := range int32(2) {
+		page, total, err := adapter.Query("document", "list", published, []string{"id", "title"}, 1, offset)
+		if err != nil || total != 2 || len(page) != 1 || len(page[0]) != 2 {
+			t.Fatalf("document page %d = %v, total = %d, %v", offset, page, total, err)
+		}
+		name, ok := page[0]["title"].(string)
+		if !ok {
+			t.Fatalf("document title = %v", page[0]["title"])
+		}
+		seen[page[0]["id"]] = name
+	}
+	if seen[int64(1)] != "Getting started" || seen[int64(2)] != "Using the panel" {
+		t.Fatalf("published document list = %v", seen)
+	}
+	if _, _, err := adapter.Query("document", "delete", nil, nil, 0, 0); err == nil {
+		t.Fatal("a document delete without a filter succeeded")
+	}
+	if _, affected, err := adapter.Query("document", "delete", map[string]interface{}{"id": 2}, nil, 0, 0); err != nil || affected != 1 {
+		t.Fatalf("delete document affected %d rows: %v", affected, err)
+	}
+	remaining, total, err := adapter.Query("document", "find", published, []string{"id"}, 1, 0)
+	if err != nil || total != 1 || len(remaining) != 1 || remaining[0]["id"] != int64(1) {
+		t.Fatalf("published catalog after deletion = %v, total = %d, %v", remaining, total, err)
+	}
+}
+
 func TestStoreAdapterTicketReplySafetyAndRollback(t *testing.T) {
 	database, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

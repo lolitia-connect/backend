@@ -3,7 +3,30 @@ package orm
 import (
 	"fmt"
 	"strings"
+
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 )
+
+// CSVMember matches one complete value in a legacy comma-separated column.
+func CSVMember(field, value string) func(*sql.Selector) {
+	return func(s *sql.Selector) {
+		if strings.Contains(value, ",") {
+			s.Where(sql.False())
+			return
+		}
+		s.Where(sql.P(func(b *sql.Builder) {
+			switch s.Dialect() {
+			case dialect.MySQL:
+				b.WriteString("FIND_IN_SET(").Arg(value).Comma().Ident(field).WriteString(") > 0")
+			case dialect.Postgres:
+				b.Arg(value).WriteString(" = ANY(string_to_array(").Ident(field).WriteString(", ','))")
+			default:
+				b.WriteString("instr(',' || ").Ident(field).WriteString(" || ',', ").Arg("," + value + ",").WriteString(") > 0")
+			}
+		}))
+	}
+}
 
 func CommaSeparatedContainsCondition(driver, field string, values []string) (string, []any) {
 	values = removeEmpty(values)

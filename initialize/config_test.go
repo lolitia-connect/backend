@@ -3,7 +3,9 @@ package initialize
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -13,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/pkg/conf"
 	"github.com/perfect-panel/server/pkg/hertzx"
@@ -112,7 +115,40 @@ func TestSetupAdministratorValidation(t *testing.T) {
 	}
 }
 
+func TestSetupRedisCheckReportsAuthenticationFailure(t *testing.T) {
+	cache := miniredis.RunT(t)
+	cache.RequireAuth("fixture-password")
+	engine := hertzx.New()
+	engine.POST("/init/redis/test", HandleRedisTest)
+	host, port, err := net.SplitHostPort(cache.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		password string
+		want     bool
+	}{
+		{"fixture-password", true},
+		{"wrong-password", false},
+	} {
+		request := engine.Hertz().NewContext()
+		request.Request.SetRequestURI("/init/redis/test")
+		request.Request.Header.SetMethod(http.MethodPost)
+		request.Request.Header.Set("Content-Type", "application/json")
+		request.Request.SetBodyString(fmt.Sprintf(`{"host":%q,"port":%q,"password":%q}`, host, port, tc.password))
+		engine.Hertz().ServeHTTP(t.Context(), request)
+		var result struct {
+			Status *bool `json:"status"`
+		}
+		err := json.Unmarshal(request.Response.Body(), &result)
+		if request.Response.StatusCode() != http.StatusOK || err != nil || result.Status == nil || *result.Status != tc.want {
+			t.Fatalf("Redis check = HTTP %d, body %s, decode error %v, want status %v", request.Response.StatusCode(), request.Response.Body(), err, tc.want)
+		}
+	}
+}
+
 func TestSetupUsesConfiguredPortAndReportsBindFailure(t *testing.T) {
+	t.Setenv("GATEWAY_MODE", "false")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

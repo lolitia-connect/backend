@@ -3,7 +3,6 @@ package node
 import (
 	"context"
 	"database/sql/driver"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	entnode "github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/predicate"
 	entserver "github.com/perfect-panel/server/ent/server"
+	"github.com/perfect-panel/server/pkg/orm"
 )
 
 type customServerLogicModel interface {
@@ -208,7 +208,7 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 	query := m.db.Node.Query()
 	if params.Search != "" {
 		search := strings.TrimSpace(params.Search)
-		predicates := []predicate.Node{entnode.NameContains(search), entnode.AddressContains(search), commaSeparatedContains(entnode.FieldTags, search)}
+		predicates := []predicate.Node{entnode.NameContains(search), entnode.AddressContains(search), orm.CSVMember(entnode.FieldTags, search)}
 		if port, err := strconv.ParseUint(search, 10, 16); err == nil {
 			predicates = append(predicates, entnode.Port(uint16(port)))
 		}
@@ -225,11 +225,8 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 	}
 	if len(params.NodeGroupIds) > 0 {
 		predicates := make([]predicate.Node, 0, len(params.NodeGroupIds))
-		for _, gid := range params.NodeGroupIds {
-			id := gid
-			predicates = append(predicates, predicate.Node(func(s *sql.Selector) {
-				s.Where(sql.ExprP("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", id)))
-			}))
+		for _, id := range params.NodeGroupIds {
+			predicates = append(predicates, nodeGroupContains(id))
 		}
 		query = query.Where(entnode.Or(predicates...))
 	}
@@ -266,9 +263,7 @@ func (m *customServerModel) FilterNodeList(ctx context.Context, params *FilterNo
 }
 
 func (m *customServerModel) CountByNodeGroupId(ctx context.Context, nodeGroupId int64) (int64, error) {
-	count, err := m.db.Node.Query().Where(predicate.Node(func(s *sql.Selector) {
-		s.Where(sql.ExprP("JSON_CONTAINS(node_group_ids, ?)", fmt.Sprintf("[%d]", nodeGroupId)))
-	})).Count(ctx)
+	count, err := m.db.Node.Query().Where(nodeGroupContains(nodeGroupId)).Count(ctx)
 	return int64(count), err
 }
 

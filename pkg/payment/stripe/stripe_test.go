@@ -3,7 +3,9 @@ package stripe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -137,6 +139,63 @@ func TestFindCheckoutSessionByOrderReference(t *testing.T) {
 	}
 	if result == nil || result.ID != "cs_order" {
 		t.Fatalf("checkout session = %#v, want cs_order", result)
+	}
+}
+
+type stripeTestTransport func(*http.Request) (*http.Response, error)
+
+func (f stripeTestTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestCancelCheckoutRespectsProviderPaymentState(t *testing.T) {
+	for _, test := range []struct {
+		name, reference, fetchPath, state, mutation string
+		processing, settled                         bool
+	}{
+		{"open checkout expires", "cs_open", "/v1/checkout/sessions/cs_open", `{"status":"open","payment_status":"unpaid"}`, "/expire", false, false},
+		{"paid checkout is preserved", "cs_paid", "/v1/checkout/sessions/cs_paid", `{"status":"complete","payment_status":"paid"}`, "", false, true},
+		{"async checkout stays reserved", "cs_pending", "/v1/checkout/sessions/cs_pending", `{"status":"complete","payment_status":"unpaid","payment_intent":{"status":"processing"}}`, "", true, false},
+		{"definitively failed checkout releases", "cs_failed", "/v1/checkout/sessions/cs_failed", `{"status":"complete","payment_status":"unpaid","payment_intent":{"status":"requires_payment_method"}}`, "", false, false},
+		{"expired checkout needs no mutation", "cs_expired", "/v1/checkout/sessions/cs_expired", `{"status":"expired","payment_status":"unpaid"}`, "", false, false},
+		{"unconfirmed intent cancels", "pi_new", "/v1/payment_intents/pi_new", `{"status":"requires_confirmation"}`, "/cancel", false, false},
+		{"processing intent stays reserved", "pi_pending", "/v1/payment_intents/pi_pending", `{"status":"processing"}`, "", true, false},
+		{"settled intent is preserved", "pi_paid", "/v1/payment_intents/pi_paid", `{"status":"succeeded"}`, "", false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var calls []string
+			transport := stripeTestTransport(func(req *http.Request) (*http.Response, error) {
+				calls = append(calls, req.Method+" "+req.URL.Path)
+				if req.Method == http.MethodGet && strings.HasPrefix(test.reference, "cs_") && req.URL.Query().Get("expand[0]") != "payment_intent" {
+					t.Error("checkout did not request the payment intent status")
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(test.state))}, nil
+			})
+			client := NewClient(Config{SecretKey: "fixture-key"})
+			client.backend = stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{HTTPClient: &http.Client{Transport: transport}, MaxNetworkRetries: stripe.Int64(0)})
+			err := client.CancelCheckout(t.Context(), test.reference)
+			switch {
+			case test.processing:
+				if !errors.Is(err, ErrPaymentProcessing) {
+					t.Fatalf("processing payment returned %v", err)
+				}
+			case test.settled:
+				if err == nil || !strings.Contains(err.Error(), "settled") {
+					t.Fatalf("settled payment returned %v", err)
+				}
+			default:
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			want := "GET " + test.fetchPath
+			if test.mutation != "" {
+				want += ",POST " + test.fetchPath + test.mutation
+			}
+			if got := strings.Join(calls, ","); got != want {
+				t.Fatalf("provider requests = %s, want %s", got, want)
+			}
+		})
 	}
 }
 

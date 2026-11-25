@@ -11,9 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// FreePort returns a free TCP port by opening a listener on port 0.
+// FreePort returns a free TCP port on the gateway module's IPv4 loopback interface.
 func FreePort() (int, error) {
-	l, err := net.Listen("tcp", ":0")
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return 0, err
 	}

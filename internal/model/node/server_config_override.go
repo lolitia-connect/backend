@@ -31,6 +31,15 @@ func (m *defaultServerModel) FindServerConfigOverride(ctx context.Context, serve
 }
 
 func (m *defaultServerModel) SaveServerConfigOverride(ctx context.Context, data *ServerConfigOverride) error {
+	return m.saveServerConfigOverride(ctx, data, false)
+}
+
+// ReplaceServerConfigOverride restores inheritance for fields absent from the submitted configuration.
+func (m *defaultServerModel) ReplaceServerConfigOverride(ctx context.Context, data *ServerConfigOverride) error {
+	return m.saveServerConfigOverride(ctx, data, true)
+}
+
+func (m *defaultServerModel) saveServerConfigOverride(ctx context.Context, data *ServerConfigOverride, replace bool) error {
 	old, err := m.FindServerConfigOverride(ctx, data.ServerId)
 	if err != nil {
 		return err
@@ -38,12 +47,26 @@ func (m *defaultServerModel) SaveServerConfigOverride(ctx context.Context, data 
 	if old != nil {
 		data.Id = old.Id
 		data.CreatedAt = old.CreatedAt
-		return m.db.ServerConfigOverride.UpdateOneID(old.Id).
+		update := m.db.ServerConfigOverride.UpdateOneID(old.Id).
 			SetNillableIPStrategy(data.IPStrategy).
 			SetNillableDNS(data.DNS).
 			SetNillableBlock(data.Block).
-			SetNillableOutbound(data.Outbound).
-			Exec(ctx)
+			SetNillableOutbound(data.Outbound)
+		if replace {
+			if data.IPStrategy == nil {
+				update.ClearIPStrategy()
+			}
+			if data.DNS == nil {
+				update.ClearDNS()
+			}
+			if data.Block == nil {
+				update.ClearBlock()
+			}
+			if data.Outbound == nil {
+				update.ClearOutbound()
+			}
+		}
+		return update.Exec(ctx)
 	}
 	created, err := m.db.ServerConfigOverride.Create().
 		SetServerID(data.ServerId).

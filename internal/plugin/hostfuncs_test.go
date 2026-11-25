@@ -39,13 +39,12 @@ func TestIsURLAllowed(t *testing.T) {
 		url     string
 		allowed bool
 	}{
-		// Allowed
-		{"https://google.com/", true},
-		{"https://www.google.com/", true},
-		// Blocked — loopback
-		{"http://localhost:8080/health", false},
+		{"https://192.0.2.10/", true},
+		{"https://[2001:db8::10]/", true},
 		{"http://127.0.0.1:3000/test", false},
-		{"http://127.0.0.1/", false},
+		{"http://[::1]/", false},
+		{"http://10.0.0.1/", false},
+		{"ftp://192.0.2.10/", false},
 		// Blocked — metadata endpoints
 		{"https://metadata.google.internal/", false},
 		{"http://169.254.169.254/latest/meta-data", false},

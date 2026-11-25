@@ -2,11 +2,11 @@ package node
 
 import (
 	"context"
-	"fmt"
-
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 	entnode "github.com/perfect-panel/server/ent/node"
 	"github.com/perfect-panel/server/ent/predicate"
+	"github.com/perfect-panel/server/pkg/orm"
 )
 
 func (m *customServerModel) preloadNodeServers(ctx context.Context, nodes []*Node) error {
@@ -28,16 +28,16 @@ func (m *customServerModel) preloadNodeServers(ctx context.Context, nodes []*Nod
 	return nil
 }
 
-func commaSeparatedContains(field string, value string) predicate.Node {
-	return predicate.Node(func(s *sql.Selector) {
-		s.Where(sql.ExprP(fmt.Sprintf("FIND_IN_SET(?, %s)", field), value))
-	})
+func nodeGroupContains(id int64) predicate.Node {
+	return func(s *sql.Selector) {
+		s.Where(sqljson.ValueContains(entnode.FieldNodeGroupIds, id))
+	}
 }
 
 func commaSeparatedContainsAny(field string, values []string) predicate.Node {
 	predicates := make([]predicate.Node, 0, len(values))
 	for _, value := range values {
-		predicates = append(predicates, commaSeparatedContains(field, value))
+		predicates = append(predicates, orm.CSVMember(field, value))
 	}
 	return entnode.Or(predicates...)
 }

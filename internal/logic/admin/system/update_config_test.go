@@ -11,12 +11,16 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/enttest"
+	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/logic/common"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/requestmeta"
+	"github.com/redis/go-redis/v9"
 	_ "modernc.org/sqlite"
 )
 
@@ -59,6 +63,72 @@ func TestSettingsAuditFailureRollsBackValues(t *testing.T) {
 	}
 	if client.System.Query().CountX(ctx) != 0 {
 		t.Fatal("settings committed without their audit")
+	}
+}
+
+func TestSiteAndLegalUpdatesReachPublicSettingsAndInvalidateCache(t *testing.T) {
+	service, db := settingsFixture(t)
+	ctx := requestmeta.WithActor(t.Context(), 7)
+	cache := miniredis.RunT(t)
+	redisClient := redis.NewClient(&redis.Options{Addr: cache.Addr()})
+	t.Cleanup(func() { _ = redisClient.Close() })
+	service.Redis = redisClient
+	for _, key := range []string{config.SiteConfigKey, config.GlobalConfigKey, config.TosConfigKey} {
+		if err := cache.Set(key, "previous settings"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db.System.Create().SetCategory("ad").SetKey("WebAD").SetValue("false").SetType("bool").SetDesc("fixture").SaveX(ctx)
+	want := &types.SiteConfig{Host: "https://panel.example.test", SiteName: "Example Panel", SiteDesc: "Account portal"}
+	if err := NewUpdateSiteConfigLogic(ctx, service).UpdateSiteConfig(want); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := NewGetSiteConfigLogic(ctx, service).GetSiteConfig(); err != nil || *got != *want {
+		t.Fatalf("admin site config = %+v, %v", got, err)
+	}
+	if cache.Exists(config.SiteConfigKey) || cache.Exists(config.GlobalConfigKey) {
+		t.Fatal("site update retained stale settings in Redis")
+	}
+	if got, err := common.NewGetGlobalConfigLogic(ctx, service).GetGlobalConfig(); err != nil || got.Site != *want {
+		t.Fatalf("public site config = %+v, %v", got, err)
+	}
+	if err := NewUpdateTosConfigLogic(ctx, service).UpdateTosConfig(&types.TosConfig{TosContent: "New terms"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewUpdatePrivacyPolicyConfigLogic(ctx, service).UpdatePrivacyPolicyConfig(&types.PrivacyPolicyConfig{PrivacyPolicy: "New policy"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := common.NewGetTosLogic(ctx, service).GetTos(); err != nil || got.TosContent != "New terms" {
+		t.Fatalf("public terms = %+v, %v", got, err)
+	}
+	if got, err := common.NewGetPrivacyPolicyLogic(ctx, service).GetPrivacyPolicy(); err != nil || got.PrivacyPolicy != "New policy" {
+		t.Fatalf("public privacy policy = %+v, %v", got, err)
+	}
+	if cache.Exists(config.TosConfigKey) {
+		t.Fatal("legal updates retained stale settings in Redis")
+	}
+}
+
+func TestRegistrationSettingsRefreshRuntimeAndPreserveNumericValues(t *testing.T) {
+	service, _ := settingsFixture(t)
+	ctx := t.Context()
+	wantRegister := &types.RegisterConfig{StopRegister: true, EnableTrial: true, TrialSubscribe: 42, TrialTime: 15,
+		TrialTimeUnit: "day", EnableIpRegisterLimit: true, IpRegisterLimit: 3, IpRegisterLimitDuration: 30, DeviceLimit: 2}
+	if err := NewUpdateRegisterConfigLogic(ctx, service).UpdateRegisterConfig(wantRegister); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := NewGetRegisterConfigLogic(ctx, service).GetRegisterConfig(); err != nil || *got != *wantRegister {
+		t.Fatalf("stored registration config = %+v, %v", got, err)
+	}
+	if got := service.Config.Register; !got.StopRegister || !got.EnableTrial || got.TrialSubscribe != 42 || !got.EnableIpRegisterLimit || got.IpRegisterLimit != 3 {
+		t.Fatalf("live registration config = %+v", got)
+	}
+	wantCode := &types.VerifyCodeConfig{VerifyCodeExpireTime: 300, VerifyCodeLimit: 11, VerifyCodeInterval: 75}
+	if err := NewUpdateVerifyCodeConfigLogic(ctx, service).UpdateVerifyCodeConfig(wantCode); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := NewGetVerifyCodeConfigLogic(ctx, service).GetVerifyCodeConfig(); err != nil || *got != *wantCode {
+		t.Fatalf("verification code policy = %+v, %v", got, err)
 	}
 }
 

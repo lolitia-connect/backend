@@ -73,9 +73,12 @@ func (m *customCouponModel) UpdateCount(ctx context.Context, code string) error 
 }
 
 func (m *customCouponModel) ReserveUsage(ctx context.Context, code string) error {
-	now := time.Now().Unix()
-	affected, err := m.db.Coupon.Update().Where(entcoupon.Code(code), entcoupon.Enable(true),
-		entcoupon.StartTimeLTE(now), entcoupon.Or(entcoupon.ExpireTime(0), entcoupon.ExpireTimeGTE(now)),
+	now := time.Now()
+	started := entcoupon.Or(entcoupon.StartTimeLTE(now.Unix()),
+		entcoupon.And(entcoupon.StartTimeGTE(millisecondTimestampFloor), entcoupon.StartTimeLTE(now.UnixMilli())))
+	unexpired := entcoupon.Or(entcoupon.ExpireTime(0), entcoupon.ExpireTimeGTE(now.UnixMilli()),
+		entcoupon.And(entcoupon.ExpireTimeLT(millisecondTimestampFloor), entcoupon.ExpireTimeGTE(now.Unix())))
+	affected, err := m.db.Coupon.Update().Where(entcoupon.Code(code), entcoupon.Enable(true), started, unexpired,
 		func(selector *entsql.Selector) {
 			selector.Where(entsql.Or(entsql.EQ(selector.C(entcoupon.FieldCount), 0),
 				entsql.ColumnsLT(selector.C(entcoupon.FieldUsedCount), selector.C(entcoupon.FieldCount))))

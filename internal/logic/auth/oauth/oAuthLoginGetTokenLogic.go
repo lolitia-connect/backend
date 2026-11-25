@@ -323,7 +323,7 @@ func (l *OAuthLoginGetTokenLogic) apple(req *types.OAuthLoginGetTokenRequest, re
 		TeamID:       cfg.TeamID,
 		KeyID:        cfg.KeyID,
 		ClientSecret: cfg.ClientSecret,
-		RedirectURI:  cfg.RedirectURL,
+		RedirectURI:  cfg.CallbackURL(),
 	})
 	if err != nil {
 		l.Logger.Errorw("failed to create apple client",
@@ -367,7 +367,7 @@ func (l *OAuthLoginGetTokenLogic) apple(req *types.OAuthLoginGetTokenRequest, re
 		return nil, errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "get apple unique id failed: %v", err)
 	}
 
-	appleUserInfo, err := apple.GetClaims(resp.AccessToken)
+	appleUserInfo, err := apple.GetClaims(resp.IDToken)
 	if err != nil {
 		l.Logger.Errorw("failed to get apple user claims",
 			zap.Any("request_id", requestID),

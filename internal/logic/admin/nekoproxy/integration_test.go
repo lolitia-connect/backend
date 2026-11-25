@@ -38,7 +38,7 @@ type fixture struct {
 	deletes      int
 }
 
-func setupIntegration(t *testing.T) *fixture {
+func newIntegrationClient(t *testing.T) *ent.Client {
 	t.Helper()
 	db, err := sql.Open("sqlite", fmt.Sprintf("file:nekoproxy-%d?mode=memory&cache=shared&_pragma=foreign_keys(1)", fixtureID.Add(1)))
 	if err != nil {
@@ -46,6 +46,12 @@ func setupIntegration(t *testing.T) *fixture {
 	}
 	client := enttest.NewClient(t, enttest.WithOptions(ent.Driver(entsql.OpenDB(dialect.SQLite, db))))
 	t.Cleanup(func() { _ = client.Close() })
+	return client
+}
+
+func setupIntegration(t *testing.T) *fixture {
+	t.Helper()
+	client := newIntegrationClient(t)
 	ctx := context.Background()
 	client.Node.Create().SetID(1).SetName("existing").SetAddress("old.example.com").SetPort(443).SetServerID(99).SetProtocol("vless").SetProtocolID("2").SetSort(1).SaveX(ctx)
 	client.Node.Create().SetID(2).SetName("other").SetSort(2).SaveX(ctx)

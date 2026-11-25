@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -11,9 +12,12 @@ import (
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/enttest"
+	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/xerr"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -96,21 +100,60 @@ func TestUpdateUserBasicInfoValidatesOnlyChangedAvatar(t *testing.T) {
 
 func TestWalletAdjustmentFailureRollsBackProfileAndAudit(t *testing.T) {
 	logic, client, req := basicInfoFixture(t, "")
+	ctx := t.Context()
 	req.ReferCode = "new-code"
-	req.Balance++
-	req.Commission++
-	client.UserWallet.Use(func(next ent.Mutator) ent.Mutator {
+	req.Balance, req.GiftAmount, req.Commission = 1400, 180, 540
+	var blocked string
+	client.Use(func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-			if _, ok := m.(*ent.UserWalletMutation).Commission(); ok {
-				return nil, errors.New("commission write failed")
+			operation := m.Type()
+			switch change := m.(type) {
+			case *ent.SystemLogMutation:
+				kind, _ := change.GetType()
+				operation = map[log.Type]string{log.TypeBalance: "balance audit", log.TypeGift: "gift audit", log.TypeCommission: "commission audit"}[log.Type(kind)]
+			case *ent.UserWalletMutation:
+				if _, ok := change.Commission(); ok {
+					operation = "commission update"
+				}
+			}
+			if blocked != "" && operation == blocked {
+				return nil, errors.New("adjustment storage unavailable")
 			}
 			return next.Mutate(ctx, m)
 		})
 	})
-	if err := logic.UpdateUserBasicInfo(&req); err == nil {
-		t.Fatal("adjustment unexpectedly succeeded")
+	for _, test := range []struct {
+		operation string
+		code      uint32
+	}{
+		{"balance audit", xerr.DatabaseInsertError}, {"gift audit", xerr.DatabaseInsertError}, {"commission audit", xerr.DatabaseInsertError},
+		{ent.TypeUser, xerr.DatabaseUpdateError}, {ent.TypeUserWallet, xerr.DatabaseUpdateError}, {"commission update", xerr.DatabaseUpdateError},
+	} {
+		blocked = test.operation
+		var failure *xerr.CodeError
+		require.ErrorAs(t, logic.UpdateUserBasicInfo(&req), &failure, blocked)
+		require.Equal(t, test.code, failure.GetErrCode(), blocked)
+		require.Zero(t, client.SystemLog.Query().CountX(ctx), blocked)
+		require.Equal(t, "referral", client.User.GetX(ctx, req.UserId).ReferCode, blocked)
+		wallet := client.UserWallet.GetX(ctx, 9)
+		require.Equal(t, [3]int64{1200, 300, 500}, [3]int64{wallet.Balance, wallet.GiftAmount, wallet.Commission}, blocked)
 	}
-	if client.SystemLog.Query().CountX(t.Context()) != 0 || client.User.GetX(t.Context(), 7).ReferCode != "referral" || client.UserWallet.GetX(t.Context(), 9).Balance != 1200 {
-		t.Fatal("partial wallet adjustment escaped rollback")
+	blocked = ""
+	require.NoError(t, logic.UpdateUserBasicInfo(&req))
+	require.Equal(t, req.ReferCode, client.User.GetX(ctx, req.UserId).ReferCode)
+	wallet := client.UserWallet.GetX(ctx, 9)
+	require.Equal(t, [3]int64{1400, 180, 540}, [3]int64{wallet.Balance, wallet.GiftAmount, wallet.Commission})
+	require.NoError(t, logic.UpdateUserBasicInfo(&req))
+	entries := client.SystemLog.Query().AllX(ctx)
+	require.Len(t, entries, 3)
+	amounts := make(map[log.Type]int64)
+	for _, entry := range entries {
+		require.Equal(t, req.UserId, entry.ObjectID)
+		var receipt struct {
+			Amount int64 `json:"amount"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(entry.Content), &receipt))
+		amounts[log.Type(entry.Type)] = receipt.Amount
 	}
+	require.Equal(t, map[log.Type]int64{log.TypeBalance: 200, log.TypeGift: -120, log.TypeCommission: 40}, amounts)
 }

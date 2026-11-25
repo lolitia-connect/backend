@@ -132,7 +132,10 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 	result = append(result, csvData...)
 
 	// 生成文件名
-	filename := fmt.Sprintf("group_result_%d.csv", req.HistoryId)
+	filename := "group_result.csv"
+	if req.HistoryId != nil {
+		filename = fmt.Sprintf("group_result_%d.csv", *req.HistoryId)
+	}
 
 	return result, filename, nil
 }

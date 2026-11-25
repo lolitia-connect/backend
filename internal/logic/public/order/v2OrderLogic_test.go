@@ -108,6 +108,12 @@ func TestValidateV2CreateRequestEnforcesAPerTypeShape(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "renewal cannot select another plan",
+			req:     &types.V2CreateOrderRequest{Type: "renewal", PaymentID: 1, UserSubscribeID: 3, SubscribeID: 2, Quantity: 1},
+			user:    &user.User{Id: 7},
+			wantErr: true,
+		},
+		{
 			name: "traffic reset without a coupon",
 			req:  &types.V2CreateOrderRequest{Type: "reset_traffic", PaymentID: 1, UserSubscribeID: 3},
 			user: &user.User{Id: 7},

@@ -8,9 +8,12 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
+	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/enttest"
+	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/internal/model/entitlement"
+	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/user"
 	"github.com/perfect-panel/server/internal/svc"
@@ -62,5 +65,72 @@ func TestRecordLocalSubscriptionPeriods(t *testing.T) {
 	}
 	if second.OrderID != renewal.Id || second.PlanID != renewal.SubscribeId || !second.TrafficReset || !second.StartAt.Equal(renewalStart) || !second.EndAt.Equal(subscription.ExpireTime) {
 		t.Fatalf("unexpected renewal period: %+v", second)
+	}
+}
+
+func TestPaidSubscriptionOrdersFulfillOnceOnRedelivery(t *testing.T) {
+	service, _ := stripeTestService(t)
+	ctx, db := t.Context(), service.Ent
+	buyer := db.User.Create().SetPassword("fixture").SaveX(ctx)
+	db.UserWallet.Create().SetUserID(buyer.ID).SaveX(ctx)
+	plan := db.Subscribe.Create().SetName("Paid plan").SetUnitTime("Hour").SetTraffic(1000).
+		SetQuota(1).SetRenewalReset(true).SaveX(ctx)
+	logic := NewActivateOrderLogic(service)
+	activate := func(current *ent.Order) {
+		t.Helper()
+		task := asynq.NewTask("activate", []byte(`{"order_no":"`+current.OrderNo+`"}`))
+		for attempt := range 2 {
+			if err := logic.ProcessTask(ctx, task); err != nil {
+				t.Fatalf("activate %s, attempt %d: %v", current.OrderNo, attempt+1, err)
+			}
+		}
+		if state := db.Order.GetX(ctx, current.ID).Status; state != order.StatusFinished {
+			t.Fatalf("%s status = %d, want finished", current.OrderNo, state)
+		}
+	}
+	purchase := db.Order.Create().SetOrderNo("paid-purchase").SetUserID(buyer.ID).SetSubscribeID(plan.ID).
+		SetType(order.TypeSubscribe).SetStatus(order.StatusPaid).SetQuantity(24).SaveX(ctx)
+	activate(purchase)
+	subscription := db.UserSubscribe.Query().OnlyX(ctx)
+	if subscription.UserID != buyer.ID || subscription.OrderID != purchase.ID || subscription.SubscribeID != plan.ID ||
+		subscription.Status != 1 || subscription.Traffic != 1000 || subscription.Token == "" ||
+		subscription.ExpireTime.Sub(subscription.StartTime) != 24*time.Hour {
+		t.Fatalf("purchased subscription = %+v", subscription)
+	}
+	first := db.SubscriptionPeriod.GetX(ctx, entitlement.LocalPeriodID(purchase.OrderNo))
+	if first.UserSubscribeID != subscription.ID || first.OrderID != purchase.ID || !first.EndAt.Equal(subscription.ExpireTime) || first.TrafficReset {
+		t.Fatalf("purchase period = %+v", first)
+	}
+
+	db.UserSubscribe.UpdateOneID(subscription.ID).SetDownload(300).SetUpload(200).SetExpiredDownload(25).SetExpiredUpload(50).SaveX(ctx)
+	renewal := db.Order.Create().SetOrderNo("paid-renewal").SetUserID(buyer.ID).SetSubscribeID(plan.ID).
+		SetUserSubscribeID(subscription.ID).SetType(order.TypeRenewal).SetStatus(order.StatusPaid).SetQuantity(48).SaveX(ctx)
+	activate(renewal)
+	renewed := db.UserSubscribe.GetX(ctx, subscription.ID)
+	wantExpiry := subscription.ExpireTime.Add(48 * time.Hour)
+	if !renewed.ExpireTime.Equal(wantExpiry) || renewed.Download != 0 || renewed.Upload != 0 || renewed.ExpiredDownload != 0 || renewed.ExpiredUpload != 0 {
+		t.Fatalf("renewed subscription = %+v, want expiry %v with cleared usage", renewed, wantExpiry)
+	}
+	second := db.SubscriptionPeriod.GetX(ctx, entitlement.LocalPeriodID(renewal.OrderNo))
+	if second.OrderID != renewal.ID || second.UserSubscribeID != subscription.ID || !second.StartAt.Equal(first.EndAt) || !second.EndAt.Equal(wantExpiry) || !second.TrafficReset {
+		t.Fatalf("renewal period = %+v", second)
+	}
+
+	db.UserSubscribe.UpdateOneID(subscription.ID).SetDownload(400).SetUpload(350).SaveX(ctx)
+	reset := db.Order.Create().SetOrderNo("paid-reset").SetUserID(buyer.ID).SetSubscribeID(plan.ID).
+		SetUserSubscribeID(subscription.ID).SetType(order.TypeResetTraffic).SetStatus(order.StatusPaid).SaveX(ctx)
+	activate(reset)
+	cleared := db.UserSubscribe.GetX(ctx, subscription.ID)
+	if cleared.Download != 0 || cleared.Upload != 0 || cleared.Traffic != 1000 || !cleared.ExpireTime.Equal(wantExpiry) {
+		t.Fatalf("reset subscription = %+v", cleared)
+	}
+	if count := db.SubscriptionPeriod.Query().CountX(ctx); count != 2 {
+		t.Fatalf("entitlement periods = %d, want 2", count)
+	}
+	audit := db.SystemLog.Query().Where(systemlog.Type(log.TypeResetSubscribe.Uint8())).OnlyX(ctx)
+	var event log.ResetSubscribe
+	if err := event.Unmarshal([]byte(audit.Content)); err != nil || audit.ObjectID != subscription.ID ||
+		event.Type != log.ResetSubscribeTypePaid || event.UserId != buyer.ID || event.OrderNo != reset.OrderNo {
+		t.Fatalf("traffic reset audit = %+v, %v", audit, err)
 	}
 }

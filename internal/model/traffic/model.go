@@ -192,7 +192,7 @@ func (m *customTrafficModel) DeleteBefore(ctx context.Context, end time.Time) er
 
 func dayRange(date time.Time) (time.Time, time.Time) {
 	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
-	return start, start.Add(24 * time.Hour)
+	return start, start.AddDate(0, 0, 1)
 }
 
 func monthRange(date time.Time) (time.Time, time.Time) {

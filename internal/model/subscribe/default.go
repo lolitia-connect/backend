@@ -11,6 +11,7 @@ import (
 	"github.com/perfect-panel/server/ent/predicate"
 	entsubscribe "github.com/perfect-panel/server/ent/subscribe"
 	"github.com/perfect-panel/server/internal/model/node"
+	"github.com/perfect-panel/server/pkg/orm"
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/redis/go-redis/v9"
 )
@@ -90,11 +91,16 @@ func (m *defaultSubscribeModel) getUserSubscribeCacheKeys(ctx context.Context, s
 
 func (m *defaultSubscribeModel) Insert(ctx context.Context, data *Subscribe) error {
 	if data.Sort == 0 {
-		maxSort, err := m.db.Subscribe.Query().Aggregate(ent.Max(entsubscribe.FieldSort)).Int(ctx)
+		var last []int64
+		err := m.db.Subscribe.Query().Order(entsubscribe.BySort(sql.OrderDesc())).Limit(1).
+			Select(entsubscribe.FieldSort).Scan(ctx, &last)
 		if err != nil {
 			return err
 		}
-		data.Sort = int64(maxSort) + 1
+		data.Sort = 1
+		if len(last) > 0 {
+			data.Sort = last[0] + 1
+		}
 	}
 	created, err := m.subscribeCreate(data).Save(ctx)
 	if err != nil {
@@ -222,10 +228,7 @@ func serverUserListKeys(nodes []*ent.Node) []string {
 func nodeTagsContainAny(tags []string) predicate.Node {
 	predicates := make([]predicate.Node, 0, len(tags))
 	for _, tag := range tags {
-		value := tag
-		predicates = append(predicates, predicate.Node(func(s *sql.Selector) {
-			s.Where(sql.ExprP("FIND_IN_SET(?, tags)", value))
-		}))
+		predicates = append(predicates, orm.CSVMember(entnode.FieldTags, tag))
 	}
 	return entnode.Or(predicates...)
 }

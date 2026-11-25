@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/perfect-panel/server/ent"
 )
 
 // TestUpdateServerKeepsNewerHeartbeat is the regression test for the
@@ -99,5 +101,48 @@ func TestInsertServerStillAcceptsLastReportedAt(t *testing.T) {
 	stored := client.Server.GetX(ctx, server.Id)
 	if stored.LastReportedAt == nil || !stored.LastReportedAt.Equal(reported) {
 		t.Fatalf("InsertServer dropped last_reported_at: %v, want %v", stored.LastReportedAt, reported)
+	}
+}
+
+func TestServerHeartbeatBatchKeepsLatestReportAcrossBatches(t *testing.T) {
+	ctx := t.Context()
+	client := deletionClient(t)
+	model := NewModel(client, nil)
+	cutoff := time.Date(2026, time.January, 2, 12, 0, 0, 0, time.UTC)
+	older, newer := cutoff.Add(-time.Minute), cutoff.Add(time.Minute)
+
+	creates := make([]*ent.ServerCreate, 0, 202)
+	reports := make(map[int64]time.Time)
+	for id := int64(1); id <= 201; id++ {
+		creates = append(creates, client.Server.Create().SetID(id))
+		reports[id] = newer
+	}
+	creates[0].SetLastReportedAt(newer)
+	reports[1] = older
+	creates[1].SetLastReportedAt(cutoff)
+	reports[2] = cutoff
+	creates = append(creates, client.Server.Create().SetID(202))
+	if _, err := client.Server.CreateBulk(creates...).Save(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := model.UpdateServerLastReportedAtBatch(ctx, reports); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct {
+		id   int64
+		want time.Time
+	}{{1, newer}, {2, cutoff}, {3, newer}, {200, newer}, {201, newer}} {
+		stored := client.Server.GetX(ctx, check.id)
+		if stored.LastReportedAt == nil || !stored.LastReportedAt.Equal(check.want) {
+			t.Fatalf("server %d last report = %v; want %v", check.id, stored.LastReportedAt, check.want)
+		}
+	}
+	if stored := client.Server.GetX(ctx, 202); stored.LastReportedAt != nil {
+		t.Fatalf("server without a report acquired timestamp %v", stored.LastReportedAt)
+	}
+	online, offline, err := model.CountServersByReportStatus(ctx, cutoff)
+	if err != nil || online != 200 || offline != 2 {
+		t.Fatalf("server counts = %d online, %d offline, %v; want 200 online and 2 offline", online, offline, err)
 	}
 }

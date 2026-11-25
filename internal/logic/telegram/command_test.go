@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/alicebob/miniredis/v2"
+	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/enttest"
@@ -94,6 +98,80 @@ func bindingFixture(t *testing.T) (*TelegramLogic, *ent.Client, *redis.Client, *
 	client.User.Create().SetID(7).SetPassword("fixture-password").SetEnable(true).SaveX(context.Background())
 	service := &svc.ServiceContext{Store: repository.NewStore(client, cache), Redis: cache}
 	return NewTelegramLogic(context.Background(), service), client, cache, mini
+}
+
+type botRequestFunc func(*http.Request) (*http.Response, error)
+
+func (f botRequestFunc) Do(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestTelegramWebhookBindsPrivateChatAndShowsOnlyItsTraffic(t *testing.T) {
+	logic, client, cache, _ := bindingFixture(t)
+	ctx := t.Context()
+	type reply struct{ chat, text, mode string }
+	var replies []reply
+	bot, err := tgbot.New("123456:fixture", tgbot.WithSkipGetMe(), tgbot.WithHTTPClient(time.Second, botRequestFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodPost || !strings.HasSuffix(request.URL.Path, "/sendMessage") {
+			t.Fatalf("unexpected bot request: %s %s", request.Method, request.URL.Path)
+		}
+		if err := request.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		defer request.MultipartForm.RemoveAll()
+		replies = append(replies, reply{request.FormValue("chat_id"), request.FormValue("text"), request.FormValue("parse_mode")})
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":1}}`))}, nil
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logic.svcCtx.TelegramBot = bot
+	owner := client.User.GetX(ctx, 7)
+	other := client.User.Create().SetPassword("fixture").SaveX(ctx)
+	plan := client.Subscribe.Create().SetName("Regional plan").SaveX(ctx)
+	otherPlan := client.Subscribe.Create().SetName("Other account plan").SaveX(ctx)
+	for i, item := range []struct{ ownerID, planID int64 }{{owner.ID, plan.ID}, {other.ID, otherPlan.ID}} {
+		client.UserSubscribe.Create().SetUserID(item.ownerID).SetSubscribeID(item.planID).SetOrderID(int64(i + 1)).
+			SetStatus(1).SetExpireTime(time.Now().Add(24 * time.Hour)).SetTraffic(8 << 30).
+			SetUpload(1 << 30).SetDownload(2 << 30).SetToken(fmt.Sprintf("subscription-%d", i)).SaveX(ctx)
+	}
+	const chatID = 104
+	const key = config.TelegramBindKey + ":webhook-fixture"
+	if err := cache.Set(ctx, key, owner.ID, time.Minute).Err(); err != nil {
+		t.Fatal(err)
+	}
+	update := func(chatType, text string, commandLength int) {
+		t.Helper()
+		body := fmt.Sprintf(`{"message":{"chat":{"id":%d,"type":%q},"from":{"id":%d},"text":%q,"entities":[{"type":"bot_command","offset":0,"length":%d}]}}`, chatID, chatType, chatID, text, commandLength)
+		if err := logic.HandleUpdatePayload([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	update("group", "/bind webhook-fixture", 5)
+	if len(replies) != 0 || cache.Exists(ctx, key).Val() != 1 {
+		t.Fatal("a non-private chat consumed the bind token or received a reply")
+	}
+	update("private", "/traffic", 8)
+	update("private", "/start webhook-fixture", 6)
+	update("private", "/traffic", 8)
+	update("private", "/bind webhook-fixture", 5)
+	if len(replies) != 4 {
+		t.Fatalf("received %d bot replies, want four", len(replies))
+	}
+	for _, response := range replies {
+		if response.chat != "104" {
+			t.Fatalf("reply sent to chat %q", response.chat)
+		}
+	}
+	if replies[0].text != "Please bind an enabled account first." || replies[1].mode == "" ||
+		!strings.Contains(replies[2].text, "Regional plan") || !strings.Contains(replies[2].text, "3.00 / 8.00 GiB") ||
+		strings.Contains(replies[2].text, "Other account plan") || replies[3].text != "Bind failed!" {
+		t.Fatalf("unexpected bind and traffic replies: %+v", replies)
+	}
+	binding, err := logic.svcCtx.Store.User().FindUserAuthMethodByOpenID(ctx, "telegram", "104")
+	if err != nil || binding == nil || !binding.Verified || binding.UserId != owner.ID {
+		t.Fatalf("webhook did not verify the chat's account binding: %v", err)
+	}
 }
 
 func TestBindTokenCanOnlyBeRedeemedOnce(t *testing.T) {

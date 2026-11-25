@@ -169,8 +169,8 @@ func (l *UpdateUserBasicInfoLogic) updateAccount(store repository.Store, req *ty
 	}
 	walletInfo.Balance = req.Balance
 	walletInfo.GiftAmount = req.GiftAmount
-	walletInfo.Commission = req.Commission
 	if walletInfo.Id == 0 {
+		walletInfo.Commission = req.Commission
 		if err = store.Wallet().Insert(l.ctx, walletInfo); err != nil {
 			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Insert Wallet Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "Insert Wallet Error")
@@ -184,6 +184,7 @@ func (l *UpdateUserBasicInfoLogic) updateAccount(store repository.Store, req *ty
 		}
 	}
 	if commissionChanged {
+		walletInfo.Commission = req.Commission
 		if err = store.Wallet().UpdateCommission(l.ctx, walletInfo); err != nil {
 			l.Logger.Errorw("[UpdateUserBasicInfoLogic] Update Wallet Commission Error:", zap.Any("err", err.Error()), zap.Any("userId", req.UserId))
 			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseUpdateError), "Update Wallet Commission Error")

@@ -57,14 +57,14 @@ func (l *SendSmsLogic) ProcessTask(ctx context.Context, task *asynq.Task) error 
 
 	if err != nil {
 		zap.S().Error("[SendSmsLogic] Send sms failed", zap.Any("error", err.Error()), zap.Any("payload", payload))
-		if l.svcCtx.Config.Model != constant.DevMode {
-			createSms.Status = 2
-		} else {
+		if l.svcCtx.Config.Model == constant.DevMode {
 			return nil
 		}
+		createSms.Status = 2
+	} else {
+		createSms.Status = 1
+		zap.S().Info("[SendSmsLogic] Send sms", zap.Any("telephone", payload.Telephone), zap.Any("content", createSms.Content))
 	}
-	createSms.Status = 1
-	zap.S().Info("[SendSmsLogic] Send sms", zap.Any("telephone", payload.Telephone), zap.Any("content", createSms.Content))
 
 	content, _ := createSms.Marshal()
 	err = l.svcCtx.Store.Log().Insert(ctx, &log.SystemLog{

@@ -1,69 +1,53 @@
 package syncx
 
 import (
-	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestTimeoutCondWait(t *testing.T) {
-	var wait sync.WaitGroup
-	cond := NewCond()
-	wait.Add(2)
-	go func() {
-		cond.Wait()
-		wait.Done()
-	}()
-	time.Sleep(time.Duration(50) * time.Millisecond)
-	go func() {
+	synctest.Test(t, func(t *testing.T) {
+		cond := NewCond()
+		done := make(chan struct{})
+		go func() {
+			cond.Wait()
+			close(done)
+		}()
+		synctest.Wait()
 		cond.Signal()
-		wait.Done()
-	}()
-	wait.Wait()
+		<-done
+	})
 }
 
 func TestTimeoutCondWaitTimeout(t *testing.T) {
-	var wait sync.WaitGroup
-	cond := NewCond()
-	wait.Add(1)
-	go func() {
-		cond.WaitWithTimeout(time.Duration(500) * time.Millisecond)
-		wait.Done()
-	}()
-	wait.Wait()
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = 500 * time.Millisecond
+		start := time.Now()
+		remaining, signaled := NewCond().WaitWithTimeout(timeout)
+		if elapsed := time.Since(start); signaled || remaining != 0 || elapsed != timeout {
+			t.Fatalf("wait without signal returned remaining=%v, signaled=%v after %v", remaining, signaled, elapsed)
+		}
+	})
 }
 
 func TestTimeoutCondWaitTimeoutRemain(t *testing.T) {
-	var wait sync.WaitGroup
-	cond := NewCond()
-	wait.Add(2)
-	ch := make(chan time.Duration, 1)
-	defer close(ch)
-	timeout := time.Duration(2000) * time.Millisecond
-	go func() {
-		remainTimeout, _ := cond.WaitWithTimeout(timeout)
-		ch <- remainTimeout
-		wait.Done()
-	}()
-	sleep(200)
-	go func() {
-		cond.Signal()
-		wait.Done()
-	}()
-	wait.Wait()
-	remainTimeout := <-ch
-	assert.True(t, remainTimeout < timeout, "expect remainTimeout %v < %v", remainTimeout, timeout)
-	assert.True(t, remainTimeout >= time.Duration(200)*time.Millisecond,
-		"expect remainTimeout %v >= 200 millisecond", remainTimeout)
+	synctest.Test(t, func(t *testing.T) {
+		const timeout = 2 * time.Second
+		const elapsed = 200 * time.Millisecond
+		cond := NewCond()
+		go func() {
+			time.Sleep(elapsed)
+			cond.Signal()
+		}()
+		remaining, signaled := cond.WaitWithTimeout(timeout)
+		if !signaled || remaining != timeout-elapsed {
+			t.Fatalf("wait returned remaining=%v, signaled=%v, want %v and true", remaining, signaled, timeout-elapsed)
+		}
+	})
 }
 
 func TestSignalNoWait(t *testing.T) {
 	cond := NewCond()
 	cond.Signal()
-}
-
-func sleep(millisecond int) {
-	time.Sleep(time.Duration(millisecond) * time.Millisecond)
 }

@@ -111,7 +111,11 @@ func writeSubscribeResponse(c context.Context, ctx *app.RequestContext, svcCtx *
 		ctx.Header(key, value)
 	}
 	ctx.Header("subscription-userinfo", resp.Header)
-	ctx.Data(consts.StatusOK, "text/plain; charset=utf-8", resp.Config)
+	contentType := resp.Headers["Content-Type"]
+	if contentType == "" {
+		contentType = "text/plain; charset=utf-8"
+	}
+	ctx.Data(consts.StatusOK, contentType, resp.Config)
 }
 
 // supportedProtocols 已支持的协议类型集合

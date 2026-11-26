@@ -1,15 +1,69 @@
 package group
 
 import (
+	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/stretchr/testify/require"
 )
+
+func TestGroupExportRecoversFromInterruptedGroupLookups(t *testing.T) {
+	ctx, db, fixture := newRecalculationFixture(t)
+	active := db.NodeGroup.Create().SetName("Active region").SaveX(ctx)
+	retired := db.NodeGroup.Create().SetName("Retired region").SaveX(ctx)
+	member := db.User.Create().SetPassword("fixture").SaveX(ctx)
+	plan := db.Subscribe.Create().SetName("Regional pass").SaveX(ctx)
+	history := db.GroupHistory.Create().SetGroupMode("average").SetTriggerType("manual").SetState("completed").SaveX(ctx)
+	for _, group := range []*ent.NodeGroup{active, retired} {
+		db.UserSubscribe.Create().SetUserID(member.ID).SetOrderID(group.ID).SetSubscribeID(plan.ID).SetNodeGroupID(group.ID).SaveX(ctx)
+		db.GroupHistoryDetail.Create().SetHistoryID(history.ID).SetNodeGroupID(group.ID).SetUserCount(1).
+			SetUserData(fmt.Sprintf(`[{"id":%d}]`, member.ID)).SaveX(ctx)
+	}
+	db.NodeGroup.DeleteOneID(retired.ID).ExecX(ctx)
+	unavailable := errors.New("group catalog temporarily unavailable")
+	var offline bool
+	db.NodeGroup.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if offline {
+				return nil, unavailable
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	export := NewExportGroupResultLogic(ctx, fixture.svcCtx)
+	activeRow := []string{fmt.Sprint(member.ID), fmt.Sprint(active.ID), active.Name}
+	for _, tc := range []struct {
+		name string
+		id   *int64
+		want [][]string
+	}{
+		{"current", nil, [][]string{activeRow}},
+		{"historical", &history.ID, [][]string{activeRow, {fmt.Sprint(member.ID), fmt.Sprint(retired.ID), ""}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &types.ExportGroupResultRequest{HistoryId: tc.id}
+			offline = true
+			data, _, err := export.ExportGroupResult(req)
+			require.ErrorIs(t, err, unavailable)
+			require.Empty(t, data)
+			offline = false
+			data, _, err = export.ExportGroupResult(req)
+			require.NoError(t, err)
+			rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(data), "\ufeff"))).ReadAll()
+			require.NoError(t, err)
+			require.NotEmpty(t, rows)
+			require.ElementsMatch(t, tc.want, rows[1:])
+		})
+	}
+}
 
 func TestGroupingHistoryAndExportReflectPersistedAssignments(t *testing.T) {
 	ctx, db, fixture := newRecalculationFixture(t)

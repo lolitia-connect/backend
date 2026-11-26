@@ -74,7 +74,7 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 	}
 
 	// 获取重算状态
-	state, err := l.getRecalculationState()
+	state, err := NewGetRecalculationStatusLogic(l.ctx, l.svcCtx).GetRecalculationStatus()
 	if err != nil {
 		l.Logger.Errorw("failed to get recalculation state", zap.Any("error", err.Error()))
 		// 继续执行，不影响配置获取
@@ -93,27 +93,4 @@ func (l *GetGroupConfigLogic) GetGroupConfig(req *types.GetGroupConfigRequest) (
 	}
 
 	return resp, nil
-}
-
-// getRecalculationState 获取重算状态
-func (l *GetGroupConfigLogic) getRecalculationState() (*types.RecalculationState, error) {
-	history, err := l.svcCtx.Store.Group().FindLatestGroupHistory(l.ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return &types.RecalculationState{
-				State:    "idle",
-				Progress: 0,
-				Total:    0,
-			}, nil
-		}
-		return nil, err
-	}
-
-	state := &types.RecalculationState{
-		State:    history.State,
-		Progress: history.TotalUsers,
-		Total:    history.TotalUsers,
-	}
-
-	return state, nil
 }

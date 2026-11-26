@@ -125,10 +125,18 @@ func (model *closePlans) RestoreInventory(context.Context, int64) error {
 
 type closePayments struct {
 	payment.Model
-	method payment.Payment
+	method   payment.Payment
+	findErr  error
+	nilMatch bool
 }
 
 func (model *closePayments) FindOne(context.Context, int64) (*payment.Payment, error) {
+	if model.findErr != nil {
+		return nil, model.findErr
+	}
+	if model.nilMatch {
+		return nil, nil
+	}
 	return &model.method, nil
 }
 
@@ -230,6 +238,42 @@ func TestEPayCloseRequiresConfirmedUnpaidStateForExpiry(t *testing.T) {
 			err = logic.closeGateway(&order.Order{OrderNo: "cancel", Method: "EPay", CreatedAt: time.Now().Add(-test.age)})
 			if (err != nil) != test.wantErr {
 				t.Fatalf("close error = %v; want error %t", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestCloseGatewayRejectsUnverifiablePaymentConfiguration(t *testing.T) {
+	lookupErr := errors.New("payment lookup unavailable")
+	for _, tc := range []struct {
+		name    string
+		method  string
+		config  string
+		trade   string
+		findErr error
+		wantErr bool
+	}{
+		{name: "balance is already settled", method: "balance", wantErr: false},
+		{name: "unstarted Stripe checkout", method: "Stripe", wantErr: false},
+		{name: "payment lookup failure", method: "Stripe", trade: "cs_fixture", findErr: lookupErr, wantErr: true},
+		{name: "missing payment method", method: "Stripe", trade: "cs_fixture", wantErr: true},
+		{name: "invalid Stripe configuration", method: "Stripe", config: "{", trade: "cs_fixture", wantErr: true},
+		{name: "invalid Alipay configuration", method: "AlipayF2F", config: "{", wantErr: true},
+		{name: "invalid Alipay Plus configuration", method: "AlipayPlus", config: "{", wantErr: true},
+		{name: "invalid Cryptomus configuration", method: "Cryptomus", config: "{", trade: "invoice", wantErr: true},
+		{name: "invalid EPay configuration", method: "EPay", config: "{", wantErr: true},
+		{name: "invalid CryptoSaaS configuration", method: "CryptoSaaS", config: "{", wantErr: true},
+		{name: "unsupported platform", method: "unknown", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &closeStore{payments: closePayments{method: payment.Payment{Config: tc.config}, findErr: tc.findErr, nilMatch: tc.name == "missing payment method"}}
+			logic := NewCloseOrderLogic(context.Background(), &svc.ServiceContext{Store: store})
+			err := logic.closeGateway(&order.Order{OrderNo: "close-fixture", Method: tc.method, TradeNo: tc.trade})
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("closeGateway error = %v, want error %t", err, tc.wantErr)
+			}
+			if tc.findErr != nil && !errors.Is(err, tc.findErr) {
+				t.Fatalf("closeGateway error = %v, want %v", err, tc.findErr)
 			}
 		})
 	}

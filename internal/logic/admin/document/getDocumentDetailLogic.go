@@ -37,6 +37,7 @@ func (l *GetDocumentDetailLogic) GetDocumentDetail(req *types.GetDocumentDetailR
 		Title:     data.Title,
 		Tags:      tool.StringMergeAndRemoveDuplicates(data.Tags),
 		Content:   data.Content,
+		Show:      data.Show != nil && *data.Show,
 		CreatedAt: data.CreatedAt.UnixMilli(),
 		UpdatedAt: data.UpdatedAt.UnixMilli(),
 	}

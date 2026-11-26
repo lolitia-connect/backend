@@ -112,16 +112,27 @@ func (u *Updater) compareVersions(newVersion, currentVersion string) bool {
 
 // Download downloads the appropriate binary for the current platform
 func (u *Updater) Download(release *Release) (string, error) {
-	assetName := u.getAssetName()
-
+	ext := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = ".zip"
+	}
+	assetName := platformArchiveDir() + ext
+	version := release.TagName
+	if version == "" {
+		version = u.CurrentVersion
+	}
 	var targetAsset *Asset
-	for _, asset := range release.Assets {
-		if asset.Name == assetName {
-			targetAsset = &asset
+	for _, name := range []string{assetName, legacyAssetName(version), legacyAssetName(strings.TrimPrefix(version, "v"))} {
+		for i := range release.Assets {
+			if release.Assets[i].Name == name {
+				targetAsset = &release.Assets[i]
+				break
+			}
+		}
+		if targetAsset != nil {
 			break
 		}
 	}
-
 	if targetAsset == nil {
 		return "", fmt.Errorf("no suitable asset found for %s", assetName)
 	}
@@ -153,7 +164,7 @@ func (u *Updater) Download(release *Release) (string, error) {
 	}
 
 	// Extract the binary
-	binaryPath, err := u.extractBinary(data, tempDir, assetName)
+	binaryPath, err := u.extractBinary(data, tempDir, targetAsset.Name)
 	if err != nil {
 		os.RemoveAll(tempDir)
 		return "", fmt.Errorf("failed to extract binary: %w", err)
@@ -162,8 +173,12 @@ func (u *Updater) Download(release *Release) (string, error) {
 	return binaryPath, nil
 }
 
-// getAssetName returns the expected asset name for the current platform
-func (u *Updater) getAssetName() string {
+func platformArchiveDir() string {
+	return fmt.Sprintf("ppanel-server-%s-%s", runtime.GOOS, runtime.GOARCH)
+}
+
+// Older GoReleaser archives included the release version in the file name.
+func legacyAssetName(version string) string {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 
@@ -185,7 +200,7 @@ func (u *Updater) getAssetName() string {
 		ext = "zip"
 	}
 
-	return fmt.Sprintf("ppanel-server-%s-%s-%s.%s", u.CurrentVersion, osName, archName, ext)
+	return fmt.Sprintf("ppanel-server-%s-%s-%s.%s", version, osName, archName, ext)
 }
 
 // extractBinary extracts the binary from the downloaded archive
@@ -194,6 +209,11 @@ func (u *Updater) extractBinary(data []byte, destDir, assetName string) (string,
 		return u.extractZip(data, destDir)
 	}
 	return u.extractTarGz(data, destDir)
+}
+
+// archiveExecutable accepts the flat legacy layout and the directory used by release.yml.
+func archiveExecutable(name, executable string) bool {
+	return name == executable || name == platformArchiveDir()+"/"+executable
 }
 
 // extractZip extracts a zip archive
@@ -206,9 +226,8 @@ func (u *Updater) extractZip(data []byte, destDir string) (string, error) {
 
 	var binaryPath string
 	for _, file := range zipReader.File {
-		// Look for the binary file
-		if strings.Contains(file.Name, "ppanel-server") && !strings.Contains(file.Name, "/") {
-			binaryPath = filepath.Join(destDir, filepath.Base(file.Name))
+		if file.Mode().IsRegular() && archiveExecutable(file.Name, "ppanel-server.exe") {
+			binaryPath = filepath.Join(destDir, "ppanel-server.exe")
 
 			rc, err := file.Open()
 			if err != nil {
@@ -254,9 +273,8 @@ func (u *Updater) extractTarGz(data []byte, destDir string) (string, error) {
 			return "", fmt.Errorf("failed to read tar: %w", err)
 		}
 
-		// Look for the binary file
-		if strings.Contains(header.Name, "ppanel-server") && !strings.Contains(header.Name, "/") {
-			binaryPath = filepath.Join(destDir, filepath.Base(header.Name))
+		if header.FileInfo().Mode().IsRegular() && archiveExecutable(header.Name, "ppanel-server") {
+			binaryPath = filepath.Join(destDir, "ppanel-server")
 
 			outFile, err := os.OpenFile(binaryPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
 			if err != nil {
@@ -283,8 +301,11 @@ func (u *Updater) Apply(newBinaryPath string) error {
 		return fmt.Errorf("failed to get current executable path: %w", err)
 	}
 
-	// Resolve symlinks
-	currentPath, err = filepath.EvalSymlinks(currentPath)
+	return u.applyTo(currentPath, newBinaryPath)
+}
+
+func (u *Updater) applyTo(installedPath, newBinaryPath string) error {
+	currentPath, err := filepath.EvalSymlinks(installedPath)
 	if err != nil {
 		return fmt.Errorf("failed to resolve symlinks: %w", err)
 	}
@@ -350,6 +371,10 @@ func (u *Updater) replaceFile(src, dst string) error {
 
 // Update performs the complete update process
 func (u *Updater) Update() error {
+	return u.update(u.Apply)
+}
+
+func (u *Updater) update(install func(string) error) error {
 	// Check for updates
 	release, hasUpdate, err := u.CheckForUpdates()
 	if err != nil {
@@ -373,7 +398,7 @@ func (u *Updater) Update() error {
 	fmt.Printf("Applying update...\n")
 
 	// Apply the update
-	if err := u.Apply(binaryPath); err != nil {
+	if err := install(binaryPath); err != nil {
 		return fmt.Errorf("failed to apply update: %w", err)
 	}
 

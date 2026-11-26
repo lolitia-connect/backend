@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	framework "entgo.io/ent"
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/perfect-panel/server/ent"
@@ -215,6 +216,54 @@ func TestRecalculateTrafficGroupingUsesLeftClosedRightOpenRanges(t *testing.T) {
 	}
 }
 
+func interruptGroupCatalog(db *ent.Client, offline *string) error {
+	fault := errors.New("group catalog temporarily unavailable")
+	db.Intercept(framework.InterceptFunc(func(next framework.Querier) framework.Querier {
+		return framework.QuerierFunc(func(ctx context.Context, q framework.Query) (framework.Value, error) {
+			if *offline != "" && framework.QueryFromContext(ctx).Type == *offline {
+				return nil, fault
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	return fault
+}
+
+func TestGroupRecalculationKeepsAssignmentsUntilItsCatalogCanBeRead(t *testing.T) {
+	for _, mode := range []string{"average", "subscribe", "traffic"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, db, logic := newRecalculationFixture(t)
+			region := db.NodeGroup.Create().SetName("West").SetForCalculation(true).SetMinTrafficGB(0).SetMaxTrafficGB(10).SaveX(ctx)
+			plan := db.Subscribe.Create().SetName("Regional pass").SetNodeGroupIds([]int64{region.ID}).SaveX(ctx)
+			member := addGroupingSubscription(t, ctx, db, plan.ID, 1, false, 3)
+			var offline string
+			fault := interruptGroupCatalog(db, &offline)
+			sources := []string{ent.TypeUserSubscribe, ent.TypeNodeGroup, ent.TypeUserAuthMethod}
+			if mode != "traffic" {
+				sources = append(sources, ent.TypeSubscribe, ent.TypeNode)
+			}
+			req := &types.RecalculateGroupRequest{Mode: mode}
+			for _, source := range sources {
+				offline = source
+				err := logic.RecalculateGroup(req)
+				offline = ""
+				h := db.GroupHistory.Query().Order(ent.Desc("id")).FirstX(ctx)
+				if !errors.Is(err, fault) || h.State != "failed" || !strings.Contains(h.ErrorMessage, fault.Error()) || db.UserSubscribe.GetX(ctx, member).NodeGroupID != 99 || db.GroupHistoryDetail.Query().ExistX(ctx) {
+					t.Fatalf("unavailable %s: err=%v, history=%+v", source, err, h)
+				}
+			}
+			if err := logic.RecalculateGroup(req); err != nil {
+				t.Fatal(err)
+			}
+			detail := db.GroupHistoryDetail.Query().OnlyX(ctx)
+			h := db.GroupHistory.GetX(ctx, detail.HistoryID)
+			if h.State != "completed" || h.SuccessCount != 1 || detail.NodeGroupID != region.ID || db.UserSubscribe.GetX(ctx, member).NodeGroupID != region.ID {
+				t.Fatalf("recovered assignment: history=%+v, detail=%+v", h, detail)
+			}
+		})
+	}
+}
+
 func TestGroupingConflictRollsBackAndRetainsCause(t *testing.T) {
 	for _, mode := range []string{"average", "subscribe", "traffic"} {
 		t.Run(mode, func(t *testing.T) {
@@ -239,6 +288,44 @@ func TestGroupingConflictRollsBackAndRetainsCause(t *testing.T) {
 			}
 			if db.UserSubscribe.GetX(ctx, first).NodeGroupID != 99 || db.GroupHistoryDetail.Query().CountX(ctx) != 0 {
 				t.Fatal("failed run committed a partial assignment")
+			}
+		})
+	}
+}
+
+func TestGroupAssignmentsCommitWithTheirHistoryDetails(t *testing.T) {
+	for _, mode := range []string{"average", "subscribe", "traffic"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx, db, logic := newRecalculationFixture(t)
+			region := db.NodeGroup.Create().SetName("Regional").SetForCalculation(true).SetMinTrafficGB(0).SetMaxTrafficGB(10).SaveX(ctx)
+			plan := db.Subscribe.Create().SetName("Monthly").SetNodeGroupIds([]int64{region.ID}).SaveX(ctx)
+			member := addGroupingSubscription(t, ctx, db, plan.ID, 1, false, 3)
+			fault := errors.New("assignment history temporarily unavailable")
+			unavailable := true
+			db.GroupHistoryDetail.Use(func(next ent.Mutator) ent.Mutator {
+				return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+					if unavailable && m.Op().Is(ent.OpCreate) {
+						return nil, fault
+					}
+					return next.Mutate(ctx, m)
+				})
+			})
+			req := &types.RecalculateGroupRequest{Mode: mode}
+			if err := logic.RecalculateGroup(req); !errors.Is(err, fault) {
+				t.Fatalf("writing assignment history: %v", err)
+			}
+			failed := db.GroupHistory.Query().OnlyX(ctx)
+			if failed.State != "failed" || !strings.Contains(failed.ErrorMessage, fault.Error()) || db.UserSubscribe.GetX(ctx, member).NodeGroupID != 99 || db.GroupHistoryDetail.Query().ExistX(ctx) {
+				t.Fatalf("incomplete assignment was published: history %+v", failed)
+			}
+			unavailable = false
+			if err := logic.RecalculateGroup(req); err != nil {
+				t.Fatal(err)
+			}
+			detail := db.GroupHistoryDetail.Query().OnlyX(ctx)
+			success := db.GroupHistory.GetX(ctx, detail.HistoryID)
+			if db.UserSubscribe.GetX(ctx, member).NodeGroupID != region.ID || detail.NodeGroupID != region.ID || detail.UserCount != 1 || success.State != "completed" || success.SuccessCount != 1 || success.ID == failed.ID || db.GroupHistory.GetX(ctx, failed.ID).State != "failed" {
+				t.Fatalf("retried assignment: history %+v, detail %+v", success, detail)
 			}
 		})
 	}

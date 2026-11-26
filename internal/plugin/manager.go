@@ -1395,12 +1395,14 @@ func (m *Manager) executeAsyncTask(task *asyncTask) {
 		req := &pluginv1.DbQueryRequest{}
 		if err := proto.Unmarshal(task.params, req); err != nil {
 			task.err = "decode db_query params: " + err.Error()
-		} else if m.hostEnv.Store != nil {
+		} else {
 			isWrite := req.Operation == "create" || req.Operation == "update" || req.Operation == "delete"
 			if isWrite && !m.HasPermission(task.pluginName, PermDatabaseWrite) {
 				task.err = "permission denied: missing database_write"
 			} else if !isWrite && !m.HasPermission(task.pluginName, PermDatabaseRead) && !m.HasPermission(task.pluginName, PermDatabaseWrite) {
 				task.err = "permission denied: missing database_read"
+			} else if m.hostEnv.Store == nil {
+				task.err = "database not available"
 			} else {
 				conditions := structToMap(req.Conditions)
 				fields := make([]string, 0)

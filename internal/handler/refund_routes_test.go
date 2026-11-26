@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	framework "entgo.io/ent"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/ent/systemlog"
 	"github.com/perfect-panel/server/internal/model/log"
@@ -40,6 +41,44 @@ func TestRefundQuoteSettlesOriginalTenderAndReversesEarnedCommissionsOnce(t *tes
 
 	const path = "/v1/public/user/unsubscribe"
 	body := fmt.Sprintf(`{"id":"%d"}`, sub.ID)
+	var offlineEntity string
+	var readNumber, reads int
+	f.client.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if framework.QueryFromContext(ctx).Type == offlineEntity {
+				reads++
+				if reads == readNumber {
+					return nil, errors.New("refund ledger unavailable")
+				}
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	checkUnsettled := func() {
+		t.Helper()
+		current := f.client.UserSubscribe.GetX(ctx, sub.ID)
+		require.Equal(t, sub.Status, current.Status)
+		require.Nil(t, current.FinishedAt)
+		saved := f.client.UserWallet.GetX(ctx, wallet.ID)
+		require.Equal(t, wallet.Balance, saved.Balance)
+		require.Equal(t, wallet.GiftAmount, saved.GiftAmount)
+		require.Equal(t, purchaseCommission.Commission, f.client.UserWallet.GetX(ctx, purchaseCommission.ID).Commission)
+		require.Equal(t, renewalCommission.Commission, f.client.UserWallet.GetX(ctx, renewalCommission.ID).Commission)
+		require.Zero(t, f.client.SystemLog.Query().CountX(ctx))
+	}
+	for _, fault := range []struct {
+		entity string
+		read   int
+	}{{ent.TypeSubscribe, 1}, {ent.TypeOrder, 1}, {ent.TypeOrder, 2}} {
+		offlineEntity, readNumber, reads = fault.entity, fault.read, 0
+		require.Empty(t, f.request(http.MethodPost, path+"/pre", session, body, xerr.DatabaseQueryError))
+		require.Equal(t, fault.read, reads)
+		reads = 0
+		require.Empty(t, f.request(http.MethodPost, path, session, body, xerr.ERROR))
+		require.Equal(t, fault.read, reads)
+		offlineEntity = ""
+		checkUnsettled()
+	}
 	var quote types.PreUnsubscribeResponse
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, path+"/pre", session, body, http.StatusOK), &quote))
 	require.EqualValues(t, 1000, quote.DeductionAmount)
@@ -67,15 +106,7 @@ func TestRefundQuoteSettlesOriginalTenderAndReversesEarnedCommissionsOnce(t *tes
 			hits = 0
 			require.Empty(t, f.request(http.MethodPost, path, session, body, xerr.ERROR))
 			require.Equal(t, nth, hits, "%s write", entity)
-			current := f.client.UserSubscribe.GetX(ctx, sub.ID)
-			require.Equal(t, sub.Status, current.Status)
-			require.Nil(t, current.FinishedAt)
-			saved := f.client.UserWallet.GetX(ctx, wallet.ID)
-			require.Equal(t, wallet.Balance, saved.Balance)
-			require.Equal(t, wallet.GiftAmount, saved.GiftAmount)
-			require.Equal(t, purchaseCommission.Commission, f.client.UserWallet.GetX(ctx, purchaseCommission.ID).Commission)
-			require.Equal(t, renewalCommission.Commission, f.client.UserWallet.GetX(ctx, renewalCommission.ID).Commission)
-			require.Zero(t, f.client.SystemLog.Query().CountX(ctx))
+			checkUnsettled()
 		}
 	}
 	entity = ""

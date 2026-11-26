@@ -1,11 +1,13 @@
 package group
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"testing"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/types"
 )
 
@@ -28,13 +30,14 @@ func TestPreviewUsesConfiguredGroupingAndKeepsDirectNodes(t *testing.T) {
 	db.Node.Create().SetName("Disabled node").SetTags("app").SetEnabled(false).SaveX(ctx)
 	plan := db.Subscribe.Create().SetName("Standard").SetNodeGroupID(defaultGroup.ID).SetNodeTags("app").
 		SetNodes(fmt.Sprintf("%d,%d,%d", direct.ID, direct.ID, hidden.ID)).SaveX(ctx)
-	db.UserSubscribe.Create().SetUserID(member.ID).SetSubscribeID(plan.ID).SetOrderID(1).SetNodeGroupID(assigned.ID).SetStatus(1).SaveX(ctx)
+	membership := db.UserSubscribe.Create().SetUserID(member.ID).SetSubscribeID(plan.ID).SetOrderID(1).SetNodeGroupID(assigned.ID).SetStatus(1).SaveX(ctx)
 
 	preview := NewPreviewUserNodesLogic(ctx, service)
-	check := func(want map[struct {
+	type section struct {
 		id   int64
 		name string
-	}][]int64) {
+	}
+	check := func(want map[section][]int64) {
 		t.Helper()
 		got, err := preview.PreviewUserNodes(&types.PreviewUserNodesRequest{UserId: member.ID})
 		if err != nil || got.UserId != member.ID || len(got.NodeGroups) != len(want) {
@@ -42,10 +45,7 @@ func TestPreviewUsesConfiguredGroupingAndKeepsDirectNodes(t *testing.T) {
 		}
 		remaining := maps.Clone(want)
 		for _, group := range got.NodeGroups {
-			key := struct {
-				id   int64
-				name string
-			}{group.Id, group.Name}
+			key := section{group.Id, group.Name}
 			var ids []int64
 			for _, item := range group.Nodes {
 				ids = append(ids, item.Id)
@@ -56,10 +56,20 @@ func TestPreviewUsesConfiguredGroupingAndKeepsDirectNodes(t *testing.T) {
 			delete(remaining, key)
 		}
 	}
-	check(map[struct {
-		id   int64
-		name string
-	}][]int64{{0, "app"}: {tagged.ID}, {-1, ""}: {direct.ID}})
+	var offline string
+	fault := interruptGroupCatalog(db, &offline)
+	checkOutages := func(sources ...string) {
+		t.Helper()
+		for _, offline = range sources {
+			result, err := preview.PreviewUserNodes(&types.PreviewUserNodesRequest{UserId: member.ID})
+			if result != nil || !errors.Is(err, fault) {
+				t.Fatalf("preview with %s unavailable = %+v, %v", offline, result, err)
+			}
+		}
+		offline = ""
+	}
+	checkOutages(ent.TypeUserSubscribe, ent.TypeSubscribe, ent.TypeNode)
+	check(map[section][]int64{{0, "app"}: {tagged.ID}, {-1, ""}: {direct.ID}})
 	update := NewUpdateGroupConfigLogic(ctx, service)
 	if err := update.UpdateGroupConfig(&types.UpdateGroupConfigRequest{Enabled: true, Mode: "unsupported"}); err == nil {
 		t.Fatal("invalid grouping mode was accepted")
@@ -79,8 +89,12 @@ func TestPreviewUsesConfiguredGroupingAndKeepsDirectNodes(t *testing.T) {
 	if cfg, ok := settings.Config["traffic_config"].(map[string]interface{}); !ok || cfg["threshold"] != float64(12) {
 		t.Fatalf("stored traffic config = %+v", settings.Config)
 	}
-	check(map[struct {
-		id   int64
-		name string
-	}][]int64{{assigned.ID, assigned.Name}: {assignedNode.ID}, {0, ""}: {public.ID}, {-1, ""}: {direct.ID}})
+	checkOutages(ent.TypeNode, ent.TypeNodeGroup)
+	check(map[section][]int64{{assigned.ID, assigned.Name}: {assignedNode.ID}, {0, ""}: {public.ID}, {-1, ""}: {direct.ID}})
+	db.UserSubscribe.UpdateOneID(membership.ID).SetNodeGroupID(0).ExecX(ctx)
+	check(map[section][]int64{{defaultGroup.ID, defaultGroup.Name}: {tagged.ID, direct.ID}, {0, ""}: {public.ID}, {-1, ""}: {direct.ID}})
+	db.Subscribe.UpdateOneID(plan.ID).SetNodeGroupID(0).SetNodeGroupIds([]int64{assigned.ID, defaultGroup.ID}).ExecX(ctx)
+	check(map[section][]int64{{assigned.ID, assigned.Name}: {assignedNode.ID}, {0, ""}: {public.ID}, {-1, ""}: {direct.ID}})
+	db.UserSubscribe.UpdateOneID(membership.ID).SetStatus(3).ExecX(ctx)
+	check(map[section][]int64{})
 }

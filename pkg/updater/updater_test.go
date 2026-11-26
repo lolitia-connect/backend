@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -62,28 +63,23 @@ func TestCheckForUpdatesHandlesReleaseAndProviderErrors(t *testing.T) {
 	}
 }
 
-func TestDownloadSelectsPlatformAssetAndExtractsBinary(t *testing.T) {
-	const content = "replacement program"
-	u := NewUpdater()
-	u.CurrentVersion = "v1.1.0"
-	name := u.getAssetName()
+func releaseArchive(t *testing.T, asset string, files ...string) []byte {
+	t.Helper()
 	var archive bytes.Buffer
-	var executable = "ppanel-server"
-	if strings.HasSuffix(name, ".zip") {
-		executable += ".exe"
+	if strings.HasSuffix(asset, ".zip") {
 		writer := zip.NewWriter(&archive)
-		for _, file := range []string{"README", "nested/" + executable, executable} {
+		for _, file := range files {
 			entry, err := writer.Create(file)
 			require.NoError(t, err)
-			_, err = io.WriteString(entry, content+file)
+			_, err = io.WriteString(entry, "release content of "+file)
 			require.NoError(t, err)
 		}
 		require.NoError(t, writer.Close())
 	} else {
 		compressed := gzip.NewWriter(&archive)
 		writer := tar.NewWriter(compressed)
-		for _, file := range []string{"README", "nested/" + executable, executable} {
-			body := content + file
+		for _, file := range files {
+			body := "release content of " + file
 			require.NoError(t, writer.WriteHeader(&tar.Header{Name: file, Mode: 0o755, Size: int64(len(body))}))
 			_, err := io.WriteString(writer, body)
 			require.NoError(t, err)
@@ -91,17 +87,31 @@ func TestDownloadSelectsPlatformAssetAndExtractsBinary(t *testing.T) {
 		require.NoError(t, writer.Close())
 		require.NoError(t, compressed.Close())
 	}
+	return archive.Bytes()
+}
+
+func TestDownloadSelectsPlatformAssetAndExtractsBinary(t *testing.T) {
+	u := NewUpdater()
+	u.CurrentVersion = "v1.1.0"
+	const targetVersion = "v1.2.0"
+	name := legacyAssetName(targetVersion)
+	executable := "ppanel-server"
+	if strings.HasSuffix(name, ".zip") {
+		executable += ".exe"
+	}
+	archive := releaseArchive(t, name, "README", "nested/"+executable, executable)
 	const assetURL = "https://releases.example.test/platform"
 	var requested []string
 	u.HTTPClient.Transport = updateTransport(func(req *http.Request) (*http.Response, error) {
 		requested = append(requested, req.URL.String())
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(archive.Bytes()))}, nil
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(archive))}, nil
 	})
 	_, err := u.Download(&Release{Assets: []Asset{{Name: "checksums.txt"}}})
 	require.ErrorContains(t, err, "no suitable asset")
 	require.Empty(t, requested)
-	binary, err := u.Download(&Release{Assets: []Asset{
+	binary, err := u.Download(&Release{TagName: targetVersion, Assets: []Asset{
 		{Name: "checksums.txt", BrowserDownloadURL: "https://releases.example.test/checksums"},
+		{Name: legacyAssetName(u.CurrentVersion), BrowserDownloadURL: "https://releases.example.test/old"},
 		{Name: name, BrowserDownloadURL: assetURL},
 	}})
 	require.NoError(t, err)
@@ -110,7 +120,36 @@ func TestDownloadSelectsPlatformAssetAndExtractsBinary(t *testing.T) {
 	require.Equal(t, executable, filepath.Base(binary))
 	data, err := os.ReadFile(binary)
 	require.NoError(t, err)
-	require.Equal(t, content+executable, string(data))
+	require.Equal(t, "release content of "+executable, string(data))
+}
+
+func TestDownloadReadsThePlatformArchivePublishedByReleaseCI(t *testing.T) {
+	u := NewUpdater()
+	u.CurrentVersion = "v1.1.0"
+	platform := "ppanel-server-" + runtime.GOOS + "-" + runtime.GOARCH
+	ext, executable := ".tar.gz", "ppanel-server"
+	if runtime.GOOS == "windows" {
+		ext, executable = ".zip", "ppanel-server.exe"
+	}
+	asset := platform + ext
+	packaged := platform + "/" + executable
+	archive := releaseArchive(t, asset, platform+"/LICENSE", "other-platform/"+executable, packaged)
+	const origin = "https://releases.example.test/v1.2.0/"
+	u.HTTPClient.Transport = updateTransport(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, origin+asset, req.URL.String())
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(archive))}, nil
+	})
+	binary, err := u.Download(&Release{TagName: "v1.2.0", Assets: []Asset{
+		{Name: asset + ".sha256", BrowserDownloadURL: origin + asset + ".sha256"},
+		{Name: "ppanel-server-other-platform.zip", BrowserDownloadURL: origin + "other.zip"},
+		{Name: asset, BrowserDownloadURL: origin + asset},
+	}})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(binary)) })
+	require.Equal(t, executable, filepath.Base(binary))
+	data, err := os.ReadFile(binary)
+	require.NoError(t, err)
+	require.Equal(t, "release content of "+packaged, string(data))
 }
 
 func TestNewUpdater(t *testing.T) {
@@ -170,12 +209,20 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
-func TestGetAssetName(t *testing.T) {
-	u := NewUpdater()
-	u.CurrentVersion = "v1.0.0"
-
-	assetName := u.getAssetName()
-	assert.NotEmpty(t, assetName)
-	assert.Contains(t, assetName, "ppanel-server")
-	assert.Contains(t, assetName, "v1.0.0")
+func TestLegacyReleasePackagesExtractOnlyTheRootExecutable(t *testing.T) {
+	for _, tc := range []struct{ asset, binary string }{
+		{"ppanel-server-v1.2.0-Windows-x86_64.zip", "ppanel-server.exe"},
+		{"ppanel-server-1.2.0-Linux-x86_64.tar.gz", "ppanel-server"},
+	} {
+		t.Run(tc.asset, func(t *testing.T) {
+			dest := t.TempDir()
+			archive := releaseArchive(t, tc.asset, "docs/"+tc.binary, tc.binary)
+			binary, err := NewUpdater().extractBinary(archive, dest, tc.asset)
+			require.NoError(t, err)
+			require.Equal(t, filepath.Join(dest, tc.binary), binary)
+			data, err := os.ReadFile(binary)
+			require.NoError(t, err)
+			require.Equal(t, "release content of "+tc.binary, string(data))
+		})
+	}
 }

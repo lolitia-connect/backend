@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"entgo.io/ent"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/stretchr/testify/require"
@@ -68,6 +70,67 @@ func TestOperatorCanTransferTheExpiredGroupAfterMovingItsNodes(t *testing.T) {
 	require.EqualValues(t, 1, remaining["Grace"].NodeCount)
 }
 
+func TestGroupSettingsAndStatusReportTheSameProgress(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, admin := f.account(true)
+	check := func(want types.RecalculationState) {
+		t.Helper()
+		var status types.RecalculationState
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/admin/group/recalculation/status", admin, "", http.StatusOK), &status))
+		require.Equal(t, want, status)
+		var settings types.GetGroupConfigResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/admin/group/config", admin, "", http.StatusOK), &settings))
+		require.Equal(t, status, settings.State)
+	}
+	check(types.RecalculationState{State: "idle"})
+	run := f.client.GroupHistory.Create().SetGroupMode("average").SetTriggerType("manual").SetState("running").
+		SetTotalUsers(10).SetSuccessCount(4).SetFailedCount(1).SaveX(ctx)
+	check(types.RecalculationState{State: "running", Progress: 5, Total: 10})
+	f.client.GroupHistory.UpdateOneID(run.ID).SetState("completed").SetSuccessCount(9).ExecX(ctx)
+	check(types.RecalculationState{State: "completed", Progress: 10, Total: 10})
+}
+
+func TestSwitchingGroupModesKeepsSavedRulesWhenHistoryIsUnavailable(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	const settingsPath = "/v1/admin/group/config"
+	read := func() types.GetGroupConfigResponse {
+		t.Helper()
+		var settings types.GetGroupConfigResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, settingsPath, operator, "", http.StatusOK), &settings))
+		return settings
+	}
+	f.request(http.MethodPut, settingsPath, operator, `{"enabled":true,"mode":"average","config":{"average_config":{"node_group_count":3}}}`, http.StatusOK)
+	f.request(http.MethodPut, settingsPath, operator, `{"enabled":true,"mode":"subscribe","config":{"subscribe_config":{"region":"East"}}}`, http.StatusOK)
+	f.request(http.MethodPut, settingsPath, operator, `{"enabled":true,"mode":"traffic","config":{"traffic_config":{"threshold":12}}}`, http.StatusOK)
+	rules := map[string]any{
+		"average_config":   map[string]any{"node_group_count": float64(3)},
+		"subscribe_config": map[string]any{"region": "East"},
+		"traffic_config":   map[string]any{"threshold": float64(12)},
+	}
+	f.client.GroupHistory.Create().SetGroupMode("traffic").SetTriggerType("manual").SetState("running").SetTotalUsers(8).SetSuccessCount(3).SaveX(ctx)
+	historyOffline := true
+	f.client.GroupHistory.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if historyOffline {
+				return nil, fmt.Errorf("assignment history unavailable")
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	saved := read()
+	require.True(t, saved.Enabled)
+	require.Equal(t, "traffic", saved.Mode)
+	require.Equal(t, rules, saved.Config)
+	require.Equal(t, types.RecalculationState{State: "idle"}, saved.State)
+	historyOffline = false
+	saved = read()
+	require.Equal(t, types.RecalculationState{State: "running", Progress: 3, Total: 8}, saved.State)
+	require.Equal(t, rules, saved.Config)
+}
+
 func TestGroupRecalculationProducesDownloadableAssignmentHistory(t *testing.T) {
 	f := newRouteFixture(t)
 	ctx := t.Context()
@@ -92,6 +155,9 @@ func TestGroupRecalculationProducesDownloadableAssignmentHistory(t *testing.T) {
 	get("/subscribe/mapping", &mapping)
 	require.Equal(t, []types.SubscribeGroupMappingItem{{SubscribeName: plan.Name, NodeGroupName: east.Name}}, mapping.List)
 	var want [][]string
+	for _, group := range groups.List {
+		f.client.Node.Create().SetName(group.Name + " gateway").SetNodeGroupIds([]int64{group.Id}).SetEnabled(true).SaveX(ctx)
+	}
 	for i, group := range groups.List {
 		member, _ := f.account(false)
 		f.client.UserSubscribe.Create().SetUserID(member.ID).SetOrderID(int64(i + 1)).SetSubscribeID(plan.ID).SetStatus(1).SaveX(ctx)
@@ -101,6 +167,17 @@ func TestGroupRecalculationProducesDownloadableAssignmentHistory(t *testing.T) {
 	var state types.RecalculationState
 	get("/recalculation/status", &state)
 	require.Equal(t, types.RecalculationState{State: "completed", Progress: 2, Total: 2}, state)
+	for _, assignment := range want {
+		var preview types.PreviewUserNodesResponse
+		get("/preview?user_id="+assignment[0], &preview)
+		require.Equal(t, assignment[0], fmt.Sprint(preview.UserId))
+		require.Len(t, preview.NodeGroups, 1)
+		region := preview.NodeGroups[0]
+		require.Equal(t, assignment[1], fmt.Sprint(region.Id))
+		require.Equal(t, assignment[2], region.Name)
+		require.Len(t, region.Nodes, 1)
+		require.Equal(t, region.Name+" gateway", region.Nodes[0].Name)
+	}
 	var history types.GetGroupHistoryResponse
 	get("/history?group_mode=average&trigger_type=manual", &history)
 	require.Len(t, history.List, 1)

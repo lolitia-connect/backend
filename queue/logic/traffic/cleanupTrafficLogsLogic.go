@@ -45,6 +45,12 @@ func (l *CleanupTrafficLogsLogic) ProcessTask(ctx context.Context, task *asynq.T
 		return fmt.Errorf("invalid traffic cleanup payload: %w", asynq.SkipRetry)
 	}
 	return withTrafficTaskLock(ctx, l.svc, "task:traffic:cleanup", func(ctx context.Context) error {
+		now := time.Now()
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+		currentCutoff := today.AddDate(0, 0, -int(l.svc.Config.Log.ClearDays))
+		if currentCutoff.Before(payload.Cutoff) {
+			payload.Cutoff = currentCutoff
+		}
 		return l.svc.Store.TrafficLog().DeleteBefore(ctx, payload.Cutoff)
 	})
 }

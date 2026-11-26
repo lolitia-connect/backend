@@ -341,6 +341,10 @@ func wrapHostAsyncWaitAny(pluginName string, m *Manager) api.GoModuleFunc {
 
 // doHTTP performs an actual outbound HTTP request (used by async HTTP tasks)
 func doHTTP(ctx context.Context, preq *pluginv1.HttpRequestRequest) (*pluginv1.HttpRequestResponse, error) {
+	return doHTTPWithDial(ctx, preq, (&net.Dialer{}).DialContext)
+}
+
+func doHTTPWithDial(ctx context.Context, preq *pluginv1.HttpRequestRequest, dial func(context.Context, string, string) (net.Conn, error)) (*pluginv1.HttpRequestResponse, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -374,10 +378,11 @@ func doHTTP(ctx context.Context, preq *pluginv1.HttpRequestRequest) (*pluginv1.H
 				if targetIP == nil {
 					return nil, fmt.Errorf("no safe public IP found for host %s", host)
 				}
-				return (&net.Dialer{}).DialContext(ctx, network, net.JoinHostPort(targetIP.String(), port))
+				return dial(ctx, network, net.JoinHostPort(targetIP.String(), port))
 			},
 		},
 	}
+	defer client.CloseIdleConnections()
 	var reqBody io.Reader
 	if len(preq.Body) > 0 {
 		reqBody = bytes.NewReader(preq.Body)
@@ -394,7 +399,10 @@ func doHTTP(ctx context.Context, preq *pluginv1.HttpRequestRequest) (*pluginv1.H
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 限制最大读取 10MB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	if err != nil {
+		return nil, fmt.Errorf("read plugin HTTP response: %w", err)
+	}
 	respHeaders := make(map[string]string)
 	for k, vs := range resp.Header {
 		if len(vs) > 0 {

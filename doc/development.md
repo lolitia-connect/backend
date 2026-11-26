@@ -54,6 +54,8 @@ The data layer is entgo: after editing `ent/schema/` run `go generate ./ent`, or
 `go run entgo.io/ent/cmd/ent generate ./ent/schema` directly. Schema changes still land as paired
 hand-written SQL migrations under `initialize/migrate/database/`.
 
+Plugin support replies commit the message and the ticket status together on MariaDB and PostgreSQL. A plugin HTTP request returns a read error if the peer disconnects before sending its declared response body.
+
 ### Request parsing and update semantics
 
 - Handlers must check errors from `ShouldBind`, `ShouldBindJSON`, and `ShouldBindQuery`, call
@@ -64,9 +66,13 @@ hand-written SQL migrations under `initialize/migrate/database/`.
 - For bulk removal of coupons, documents, redemption codes, plans, plan groups, and users, send
   `ids` as an array of strings containing positive 64-bit integers. An invalid ID rejects the entire
   selection with business code `400` before any records are removed.
+- Redemption codes are issued in one transaction per batch. A failed batch leaves zero new codes available for redemption.
+- The group configuration and recalculation status endpoints report progress as the number of successful plus failed assignments.
 - Quota campaign preview and creation apply the same positive 64-bit ID check to `subscribers`.
   An empty list selects all plans matching the remaining filters. The queued grant uses the subscriptions saved at creation time.
+  A temporary failure reading that audience leaves the grant pending for retry. The worker commits subscriber changes and campaign progress together.
 - The referral dashboard totals all commission entries for the member, including debits. A ledger read failure returns a database error.
+- The revenue dashboard returns available totals during a chart query failure. It caches a report only after both the daily and monthly charts load successfully, so refreshing after recovery restores the missing points.
 - Create accounts, login identities, and opening wallets in one transaction. The ent user `Insert`
   does not persist `AuthMethods` automatically: call `InsertUserAuthMethods` explicitly, using E.164
   phone identifiers. `/v1/auth/register/telephone` uses the phone registration flow, with the actual
@@ -87,6 +93,8 @@ hand-written SQL migrations under `initialize/migrate/database/`.
 ### V2 order payment methods
 
 `POST /v2/public/orders` accepts `payment_id` as a JSON integer. Positive values identify payment channels; `-1` selects balance payment for signed-in purchases, renewals, and traffic resets. Guest purchases and wallet recharges require a positive channel ID. Zero and other negative values are invalid. Balance checkout uses the existing wallet debit and order status transaction, with `Idempotency-Key` preventing duplicate debits on retries. If reserved gift credit leaves zero due on a signed-in purchase, renewal, or traffic reset, the order owner can check out in either API version. The server records the order as paid and queues fulfillment without contacting the selected provider or debiting the wallet again.
+
+Checkout stores the payment currency and amount on the order. A retry reuses that quote. New orders that settle in CNY use the rate for the current billing currency, even if a refresh for the previous currency finishes later.
 
 ### Group recalculation and database transactions
 

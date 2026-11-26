@@ -14,6 +14,7 @@ import (
 	"github.com/perfect-panel/server/ent"
 	entorder "github.com/perfect-panel/server/ent/order"
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/model/redemption"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
 	worker "github.com/perfect-panel/server/queue/logic/order"
@@ -22,19 +23,82 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type redemptionCacheFault struct{ unavailable bool }
+type cacheWriteFault struct {
+	prefix      string
+	unavailable bool
+}
 
-func (*redemptionCacheFault) DialHook(next redis.DialHook) redis.DialHook { return next }
-func (*redemptionCacheFault) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+func (*cacheWriteFault) DialHook(next redis.DialHook) redis.DialHook { return next }
+func (*cacheWriteFault) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
 	return next
 }
-func (fault *redemptionCacheFault) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+func (fault *cacheWriteFault) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
-		if fault.unavailable && cmd.Name() == "set" && strings.HasPrefix(fmt.Sprint(cmd.Args()[1]), "redemption_order:") {
-			return errors.New("redemption cache unavailable")
+		if fault.unavailable && cmd.Name() == "set" && strings.HasPrefix(fmt.Sprint(cmd.Args()[1]), fault.prefix) {
+			return errors.New("cache write unavailable")
 		}
 		return next(ctx, cmd)
 	}
+}
+
+func TestCorrectedRedemptionAppearsInBothMemberAndVoucherHistory(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	original, _ := f.account(false)
+	beneficiary, _ := f.account(false)
+	plan := f.client.Subscribe.Create().SetName("Annual access").SaveX(ctx)
+	issue := func(code string) int64 {
+		return f.client.RedemptionCode.Create().SetCode(code).SetSubscribePlan(plan.ID).SaveX(ctx).ID
+	}
+	oldCode, newCode := issue("APRIL"), issue("MAY")
+	ledger := f.service.Store.RedemptionRecord()
+	claim := &redemption.RedemptionRecord{RedemptionCodeId: oldCode, UserId: original.ID, SubscribeId: plan.ID,
+		UnitTime: "Year", Quantity: 1, RedeemedAt: time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)}
+	require.NoError(t, ledger.Insert(ctx, claim))
+	corrected := *claim
+	corrected.UserId, corrected.RedemptionCodeId, corrected.Quantity = beneficiary.ID, newCode, 2
+	fail := true
+	f.client.RedemptionRecord.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if fail && m.Op().Is(ent.OpUpdateOne) {
+				return nil, errors.New("ledger correction interrupted")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	check := func(want, absent *redemption.RedemptionRecord) {
+		t.Helper()
+		stored, err := ledger.FindOne(ctx, claim.Id)
+		require.NoError(t, err)
+		require.Equal(t, want.UserId, stored.UserId)
+		require.Equal(t, want.RedemptionCodeId, stored.RedemptionCodeId)
+		require.Equal(t, want.Quantity, stored.Quantity)
+		require.True(t, claim.RedeemedAt.Equal(stored.RedeemedAt))
+		for _, key := range []struct {
+			find             func(context.Context, int64) ([]*redemption.RedemptionRecord, error)
+			present, missing int64
+		}{{ledger.FindByUserId, want.UserId, absent.UserId}, {ledger.FindByCodeId, want.RedemptionCodeId, absent.RedemptionCodeId}} {
+			current, err := key.find(ctx, key.present)
+			require.NoError(t, err)
+			require.Equal(t, []*redemption.RedemptionRecord{stored}, current)
+			previous, err := key.find(ctx, key.missing)
+			require.NoError(t, err)
+			require.Empty(t, previous)
+		}
+		var page types.GetRedemptionRecordListResponse
+		url := fmt.Sprintf("/v1/admin/redemption/record/list?page=1&size=1&user_id=%d&code_id=%d", want.UserId, want.RedemptionCodeId)
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, url, operator, "", http.StatusOK), &page))
+		require.EqualValues(t, 1, page.Total)
+		require.Len(t, page.List, 1)
+		require.Equal(t, claim.Id, page.List[0].Id)
+		require.Equal(t, want.Quantity, page.List[0].Quantity)
+	}
+	require.Error(t, ledger.Update(ctx, &corrected))
+	check(claim, &corrected)
+	fail = false
+	require.NoError(t, ledger.Update(ctx, &corrected))
+	check(&corrected, claim)
 }
 
 func TestUnissuedVoucherOrderCanRetryAfterServiceRecovery(t *testing.T) {
@@ -44,7 +108,7 @@ func TestUnissuedVoucherOrderCanRetryAfterServiceRecovery(t *testing.T) {
 	owner, customer := f.account(false)
 	plan := f.client.Subscribe.Create().SetName("Welcome").SetSell(true).SetTraffic(512).SaveX(ctx)
 	code := f.client.RedemptionCode.Create().SetCode("WELCOME").SetSubscribePlan(plan.ID).SetUnitTime("day").SetQuantity(3).SetTotalCount(1).SaveX(ctx)
-	fault := new(redemptionCacheFault)
+	fault := &cacheWriteFault{prefix: "redemption_order:"}
 	f.service.Redis.AddHook(fault)
 	var eventsUnavailable bool
 	f.client.OrderEvent.Use(func(next ent.Mutator) ent.Mutator {
@@ -91,9 +155,31 @@ func TestUnissuedVoucherOrderCanRetryAfterServiceRecovery(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
 	activation := asynq.NewTask(jobs[0].Type, jobs[0].Payload)
-	require.NoError(t, worker.NewActivateOrderLogic(f.service).ProcessTask(ctx, activation))
 	invoice := f.client.Order.Query().OnlyX(ctx)
-	require.EqualValues(t, order.StatusFinished, invoice.Status)
+	cacheKey := "redemption_order:" + invoice.OrderNo
+	grant, err := f.service.Redis.Get(ctx, cacheKey).Result()
+	require.NoError(t, err)
+	logic := worker.NewActivateOrderLogic(f.service)
+	require.NoError(t, f.service.Redis.Del(ctx, cacheKey).Err())
+	checkPending := func() {
+		t.Helper()
+		require.EqualValues(t, order.StatusPaid, f.client.Order.GetX(ctx, invoice.ID).Status)
+		require.Zero(t, f.client.UserSubscribe.Query().CountX(ctx))
+		require.Zero(t, f.client.RedemptionRecord.Query().CountX(ctx))
+		require.Zero(t, f.client.RedemptionCode.GetX(ctx, code.ID).UsedCount)
+	}
+	require.ErrorIs(t, logic.ProcessTask(ctx, activation), redis.Nil)
+	checkPending()
+	require.NoError(t, f.service.Redis.Set(ctx, cacheKey, `{`, time.Minute).Err())
+	var truncated *json.SyntaxError
+	require.ErrorAs(t, logic.ProcessTask(ctx, activation), &truncated)
+	checkPending()
+	require.NoError(t, f.service.Redis.Set(ctx, cacheKey, grant, time.Minute).Err())
+	for range 2 {
+		require.NoError(t, logic.ProcessTask(ctx, activation))
+	}
+	require.ErrorIs(t, f.service.Redis.Get(ctx, cacheKey).Err(), redis.Nil)
+	require.EqualValues(t, order.StatusFinished, f.client.Order.GetX(ctx, invoice.ID).Status)
 	sub := f.client.UserSubscribe.Query().OnlyX(ctx)
 	require.Equal(t, invoice.ID, sub.OrderID)
 	require.Equal(t, owner.ID, sub.UserID)

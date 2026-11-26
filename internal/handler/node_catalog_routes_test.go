@@ -5,7 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +20,141 @@ import (
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOperatorCanRetryOneFailedForwardingEntry(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, admin := f.account(true)
+	_, member := f.account(false)
+	west := f.client.Node.Create().SetName("West").SetAddress("old-west.example.test").SetPort(1000).SaveX(ctx)
+	east := f.client.Node.Create().SetName("East").SetAddress("old-east.example.test").SetPort(1001).SaveX(ctx)
+	var revision atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/l4/services", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `[{"id":"west","enabled":true},{"id":"east","enabled":true}]`)
+	})
+	mux.HandleFunc("GET /api/v1/l4/services/{id}", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"id":%q,"enabled":true}`, r.PathValue("id"))
+	})
+	mux.HandleFunc("GET /api/v1/l4/sessions", func(w http.ResponseWriter, r *http.Request) {
+		version := revision.Load()
+		eastPort := 2400 + version
+		if version == 1 {
+			eastPort = 0
+		}
+		fmt.Fprintf(w, `{"rows":[{"sessionId":"w1","serviceId":"west","nodeHost":"west.example.test","allocatedPort":%d,"status":"active"},{"sessionId":"e1","serviceId":"east","nodeHost":"east.example.test","allocatedPort":%d,"status":"active"}]}`, 3400+version, eastPort)
+	})
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer nkp_local" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
+	t.Cleanup(provider.Close)
+	const base = "/v1/admin/server/nekoproxy"
+	f.request(http.MethodGet, base+"/config", member, "", xerr.InvalidAccess)
+	f.request(http.MethodPut, base+"/config", admin, fmt.Sprintf(`{"api_url":%q,"api_token":"nkp_local"}`, provider.URL), http.StatusOK)
+	require.JSONEq(t, fmt.Sprintf(`{"api_url":%q,"has_api_token":true}`, provider.URL), string(f.request(http.MethodGet, base+"/config", admin, "", http.StatusOK)))
+	bind := func(id int64, forward, session string) {
+		t.Helper()
+		f.request(http.MethodPut, base+"/binding", admin, fmt.Sprintf(`{"node_id":"%d","forward_id":%q,"session_id":%q}`, id, forward, session), http.StatusOK)
+	}
+	bind(west.ID, "west", "w1")
+	bind(east.ID, "east", "e1")
+	entry := func(id int64) types.NekoproxyNodeEntry {
+		t.Helper()
+		var result types.NekoproxyNodeEntry
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, fmt.Sprintf("%s/binding?node_id=%d", base, id), admin, "", http.StatusOK), &result))
+		return result
+	}
+	syncEntries := func(body string) types.NekoproxySyncResponse {
+		t.Helper()
+		var result types.NekoproxySyncResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodPost, base+"/sync", admin, body, http.StatusOK), &result))
+		return result
+	}
+	revision.Store(1)
+	partial := syncEntries(`{}`)
+	require.Equal(t, 1, partial.Updated)
+	require.Len(t, partial.Errors, 1)
+	require.Equal(t, east.ID, partial.Errors[0].NodeID)
+	require.NotEmpty(t, partial.Errors[0].Message)
+	require.EqualValues(t, 3401, entry(west.ID).Port)
+	original := entry(east.ID)
+	require.Equal(t, "east.example.test", original.Address)
+	require.EqualValues(t, 2400, original.Port)
+	require.NotNil(t, original.Binding)
+	require.Equal(t, "e1", original.Binding.SessionID)
+	revision.Store(2)
+	eastFilter := fmt.Sprintf(`{"node_id":"%d"}`, east.ID)
+	retried := syncEntries(eastFilter)
+	require.Equal(t, 1, retried.Updated)
+	require.Empty(t, retried.Errors)
+	require.EqualValues(t, 3401, entry(west.ID).Port)
+	require.EqualValues(t, 2402, entry(east.ID).Port)
+	f.request(http.MethodDelete, base+"/binding", admin, eastFilter, http.StatusOK)
+	require.Zero(t, syncEntries(eastFilter).Updated)
+	detached := entry(east.ID)
+	require.Nil(t, detached.Binding)
+	require.EqualValues(t, 2402, detached.Port)
+}
+
+func TestSubscriberMapFollowsTheServerAddress(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	member, session := f.account(false)
+	const first, second, unknown = "192.0.2.10", "198.51.100.10", "203.0.113.10"
+	var unavailable bool
+	transport := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = transport })
+	http.DefaultTransport = providerTransport(func(req *http.Request) (*http.Response, error) {
+		var body string
+		switch {
+		case unavailable:
+			return nil, errors.New("location service unavailable")
+		case strings.Contains(req.URL.Path, first):
+			body = `{"country_name":"Japan","city":"Osaka","loc":"34.69,135.50"}`
+		case strings.Contains(req.URL.Path, second):
+			body = `{"country":"GB","city":"Manchester","latitude":"53.48","longitude":"-2.24"}`
+		default:
+			return nil, fmt.Errorf("unexpected lookup %s", req.URL.Path)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	const base = "/v1/admin/server"
+	const fields = `"name":"Regional gateway","protocols":[{"id":"main","type":"vless","enable":true,"port":443}]`
+	f.request(http.MethodPost, base+"/create", operator, fmt.Sprintf(`{%s,"address":%q}`, fields, first), http.StatusOK)
+	server := f.client.Server.Query().OnlyX(ctx)
+	edge := f.client.Node.Create().SetServerID(server.ID).SetName("Member gateway").SetProtocol("vless").SetProtocolID("main").SetPort(443).SetAddress("entry.example.test").SetEnabled(true).SaveX(ctx)
+	plan := f.client.Subscribe.Create().SetName("Regional pass").SetNodes(fmt.Sprint(edge.ID)).SaveX(ctx)
+	f.client.UserSubscribe.Create().SetUserID(member.ID).SetOrderID(1).SetSubscribeID(plan.ID).SetStatus(1).SetUUID("2a8bed53-c140-4be8-ad02-c27b58d3ba22").SetExpireTime(time.Now().Add(time.Hour)).SaveX(ctx)
+	location := func() [6]string {
+		t.Helper()
+		var page types.QueryUserSubscribeNodeListResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/public/subscribe/node/list", session, "", http.StatusOK), &page))
+		require.Len(t, page.List, 1)
+		require.Len(t, page.List[0].Nodes, 1)
+		n := page.List[0].Nodes[0]
+		require.Equal(t, edge.ID, n.Id)
+		return [6]string{n.Country, n.City, n.Latitude, n.Longitude, n.LatitudeCenter, n.LongitudeCenter}
+	}
+	move := func(address string) {
+		t.Helper()
+		f.request(http.MethodPost, base+"/update", operator, fmt.Sprintf(`{%s,"id":"%d","address":%q}`, fields, server.ID, address), http.StatusOK)
+		require.Equal(t, address, f.client.Server.GetX(ctx, server.ID).Address)
+	}
+	require.Equal(t, [6]string{"Japan", "Osaka", "34.69", "135.50", "35.6762", "139.6503"}, location())
+	move(second)
+	manchester := [6]string{"GB", "Manchester", "53.48", "-2.24", "51.5074", "-0.1278"}
+	require.Equal(t, manchester, location())
+	unavailable = true
+	move(second)
+	require.Equal(t, manchester, location())
+	move(unknown)
+	require.Equal(t, [6]string{}, location(), "the previous address's map marker must not follow the server")
+}
 
 func TestServerDashboardReconcilesProtocolReportsWithSubscriptionUsage(t *testing.T) {
 	f := newRouteFixture(t)
@@ -214,6 +353,9 @@ func TestSubscriberCatalogFollowsPublishedNodesAndExpiryGroup(t *testing.T) {
 	createNode("regional", "region_1", nil)
 	createNode("unrelated", "regionX1", nil)
 	createNode("fallback", "grace", grace)
+	var choices types.QueryNodeTagResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, admin+"/node/tags", operator, "", http.StatusOK), &choices))
+	require.ElementsMatch(t, []string{"region_1", "regionX1", "grace"}, choices.Tags)
 	var nodes types.FilterNodeListResponse
 	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, admin+"/node/list?page=1&size=10", operator, "", http.StatusOK), &nodes))
 	require.Len(t, nodes.List, 4)

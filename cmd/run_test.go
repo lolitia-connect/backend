@@ -98,12 +98,22 @@ func TestEnvironmentInstallAtCustomPathPreservesSettings(t *testing.T) {
 	previousPath := startConfigPath
 	t.Cleanup(func() { startConfigPath = previousPath })
 	startConfigPath = filepath.Join(t.TempDir(), "custom.yaml")
-	initial := "Host: 127.0.0.2\nPort: 9090\nTLS:\n  Enable: true\n  CertFile: cert.pem\nEdgeSubscribe:\n  Enabled: true\nUnknownSetting: retained\n"
+	initial := "Host: 127.0.0.2\nPort: 9090\nMySQL: {}\nRedis: {Host: old-cache}\nJwtAuth: {AccessSecret: install-test-secret}\nTLS:\n  Enable: true\n  CertFile: cert.pem\nEdgeSubscribe:\n  Enabled: true\nUnknownSetting: retained\n"
 	if err := os.WriteFile(startConfigPath, []byte(initial), 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PPANEL_DB", "mysql://user:pass@localhost:3306/panel")
-	t.Setenv("PPANEL_REDIS", "redis://:redis-pass@localhost:6380/2")
+	const databaseURL = "mysql://user:pass@localhost:3306/panel"
+	const cacheURL = "redis://:redis-pass@localhost:6380/2"
+	for _, endpoints := range []struct{ db, cache string }{{databaseURL, ""}, {"incomplete-dsn", cacheURL}, {databaseURL, "redis://localhost/%zz"}} {
+		t.Setenv("PPANEL_DB", endpoints.db)
+		t.Setenv("PPANEL_REDIS", endpoints.cache)
+		require.True(t, initConfig(&config.Config{}), "invalid environment must fall back to setup")
+		content, err := os.ReadFile(startConfigPath)
+		require.NoError(t, err)
+		require.Equal(t, initial, string(content))
+	}
+	t.Setenv("PPANEL_DB", databaseURL)
+	t.Setenv("PPANEL_REDIS", cacheURL)
 	var settings config.Config
 	if initConfig(&settings) {
 		t.Fatal("environment installation launched setup for a custom path")
@@ -129,6 +139,8 @@ func TestEnvironmentInstallAtCustomPathPreservesSettings(t *testing.T) {
 	if values["UnknownSetting"] != "retained" {
 		t.Fatal("unknown configuration was dropped")
 	}
+	require.NotContains(t, values, "MySQL")
+	require.Equal(t, "install-test-secret", persisted.JwtAuth.AccessSecret)
 	secret := persisted.JwtAuth.AccessSecret
 	if initConfig(&persisted) || persisted.JwtAuth.AccessSecret != secret {
 		t.Fatal("existing installation regenerated its signing secret")

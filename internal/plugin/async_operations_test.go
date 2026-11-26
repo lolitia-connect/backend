@@ -8,9 +8,12 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	pluginv1 "github.com/perfect-panel/server/api/plugin/v1"
+	"github.com/perfect-panel/server/internal/model/ticket"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 	_ "modernc.org/sqlite"
 )
 
@@ -30,8 +33,9 @@ func TestAsyncPluginOperationsRespectPermissionsAndNamespace(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 	manager := NewManager(&HostEnv{Redis: NewRedisAdapter(client), Store: NewStoreAdapter(db, "sqlite")})
 	for name, permissions := range map[string][]string{
-		"reader": {string(PermRedis), string(PermDatabaseRead)},
-		"other":  {string(PermRedis)},
+		"reader":  {string(PermRedis), string(PermDatabaseRead)},
+		"support": {string(PermDatabaseWrite)},
+		"other":   {string(PermRedis)},
 	} {
 		manager.plugins[name] = &PluginInstance{Name: name, Status: StatusRunning, Manifest: &PluginManifest{Permissions: permissions},
 			AsyncNotify: make(chan uint64, 1), AsyncSem: make(chan struct{}, 1)}
@@ -93,4 +97,30 @@ func TestAsyncPluginOperationsRespectPermissionsAndNamespace(t *testing.T) {
 	if data, reason := run("other", "db_query", query); len(data) != 0 || !strings.Contains(reason, "database_read") {
 		t.Fatal("plugin without a database grant read the document")
 	}
+
+	_, err = db.ExecContext(ctx, `CREATE TABLE ticket (id INTEGER PRIMARY KEY, status INTEGER, updated_at TIMESTAMP);
+		CREATE TABLE ticket_follow (ticket_id INTEGER, "from" TEXT, type INTEGER, content TEXT, created_at TIMESTAMP);
+		INSERT INTO ticket (id, status) VALUES (7, ?)`, ticket.Pending)
+	require.NoError(t, err)
+	conditions, err := structpb.NewStruct(map[string]any{"ticket_id": 7, "content": "Updated the invoice"})
+	require.NoError(t, err)
+	reply := &pluginv1.DbQueryRequest{Model: "ticket_reply", Operation: "create", Conditions: conditions}
+	_, reason = run("reader", "db_query", reply)
+	require.Contains(t, reason, "database_write")
+	store := manager.hostEnv.Store
+	manager.hostEnv.Store = nil
+	_, reason = run("support", "db_query", reply)
+	require.Equal(t, "database not available", reason)
+	manager.hostEnv.Store = store
+	data, reason = run("support", "db_query", reply)
+	require.Empty(t, reason)
+	require.NoError(t, proto.Unmarshal(data, &result))
+	require.EqualValues(t, 1, result.Total)
+	var count, status int
+	var content string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*), MAX(f.content), MAX(t.status)
+		FROM ticket_follow f JOIN ticket t ON t.id = f.ticket_id WHERE t.id = 7`).Scan(&count, &content, &status))
+	require.Equal(t, 1, count)
+	require.Equal(t, "Updated the invoice", content)
+	require.EqualValues(t, ticket.Waiting, status)
 }

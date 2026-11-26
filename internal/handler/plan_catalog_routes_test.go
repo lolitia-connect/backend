@@ -8,12 +8,56 @@ import (
 	"net/http"
 	"testing"
 
+	framework "entgo.io/ent"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/device"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMemberCatalogUsesDefaultLanguageOnlyWhenLocalizedPlansAreUnavailable(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, member := f.account(false)
+	fallback := f.client.Subscribe.Create().SetName("Monthly").SetLanguage("").SetSell(true).SetUnitPrice(500).SaveX(ctx)
+	localized := f.client.Subscribe.Create().SetName("Mensuel").SetLanguage("fr").SetSell(true).SetUnitPrice(450).
+		SetDiscount(`[{"quantity":3,"discount":0.8}]`).SaveX(ctx)
+	f.client.Subscribe.Create().SetName("Retired").SetLanguage("fr").SetSell(false).SaveX(ctx)
+	path := "/v1/public/subscribe/list?language=fr"
+	read := func() types.Subscribe {
+		t.Helper()
+		var result types.QuerySubscribeListResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, path, member, "", http.StatusOK), &result))
+		require.EqualValues(t, 1, result.Total)
+		require.Len(t, result.List, 1)
+		return result.List[0]
+	}
+	plan := read()
+	require.Equal(t, localized.ID, plan.Id)
+	require.Equal(t, localized.UnitPrice, plan.UnitPrice)
+	require.Equal(t, []types.SubscribeDiscount{{Quantity: 3, Discount: 0.8}}, plan.Discount)
+	f.client.Subscribe.UpdateOneID(localized.ID).SetSell(false).ExecX(ctx)
+	fallbackOffline := true
+	var pageReads int
+	f.client.Subscribe.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if framework.QueryFromContext(ctx).Op == framework.OpQueryAll {
+				pageReads++
+				if fallbackOffline && pageReads == 2 {
+					return nil, errors.New("default catalog temporarily unavailable")
+				}
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	require.Empty(t, f.request(http.MethodGet, path, member, "", xerr.DatabaseQueryError))
+	fallbackOffline = false
+	plan = read()
+	require.Equal(t, fallback.ID, plan.Id)
+	require.Equal(t, fallback.UnitPrice, plan.UnitPrice)
+	require.Empty(t, plan.Discount)
+}
 
 func TestPlanGroupCatalogKeepsLastCommittedEdition(t *testing.T) {
 	f := newRouteFixture(t)
@@ -66,6 +110,50 @@ func TestPlanGroupCatalogKeepsLastCommittedEdition(t *testing.T) {
 	f.request(http.MethodDelete, editor+"/batch", operator, selection, http.StatusOK)
 	f.request(http.MethodDelete, editor, operator, single, http.StatusOK)
 	require.Equal(t, map[int64]string{keep: "Special: Gift plans"}, list())
+}
+
+func TestPlanEditorPreservesExactNodeAssignmentsAcrossCatalogViews(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	f.service.DeviceManager = device.NewDeviceManager(60, 30)
+	t.Cleanup(f.service.DeviceManager.Close)
+	const base = "/v1/admin/subscribe"
+	for id, name := range map[int64]string{17: "Local", 9007199254740992: "West", 9007199254740993: "East"} {
+		f.client.Node.Create().SetID(id).SetName(name).SaveX(ctx)
+	}
+	const original = `{"name":"Regional pass","unit_price":750,"unit_time":"Month","nodes":[17,"9007199254740993"]}`
+	f.request(http.MethodPost, base+"/", operator, original, http.StatusOK)
+	plan := f.client.Subscribe.Query().OnlyX(ctx)
+	type selection struct {
+		Nodes []string `json:"nodes"`
+	}
+	check := func(want ...string) {
+		t.Helper()
+		var detail selection
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, fmt.Sprintf("%s/details?id=%d", base, plan.ID), operator, "", http.StatusOK), &detail))
+		var page struct {
+			List []selection `json:"list"`
+		}
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, base+"/list?page=1&size=10", operator, "", http.StatusOK), &page))
+		require.Len(t, page.List, 1)
+		require.Equal(t, want, detail.Nodes)
+		require.Equal(t, want, page.List[0].Nodes)
+	}
+	check("17", "9007199254740993")
+	edit := func(nodes string, code uint32) {
+		t.Helper()
+		body := fmt.Sprintf(`{"id":"%d","name":"Regional pass","unit_price":750,"unit_time":"Month","nodes":%s}`, plan.ID, nodes)
+		f.request(http.MethodPut, base+"/", operator, body, code)
+	}
+	for _, invalid := range []string{`[17,"9223372036854775808"]`, `[17,false]`, `"17"`} {
+		edit(invalid, xerr.InvalidParams)
+		check("17", "9007199254740993")
+	}
+	edit(`[9007199254740992]`, http.StatusOK)
+	check("9007199254740992")
+	edit(`null`, http.StatusOK)
+	check([]string{}...)
 }
 
 func TestPublishedPlanOrderAndBatchRetirement(t *testing.T) {
@@ -137,7 +225,23 @@ func TestPublishedPlanOrderAndBatchRetirement(t *testing.T) {
 	require.Equal(t, "Basic", visible[1].Name)
 
 	sub := f.client.UserSubscribe.Create().SetUserID(customer.ID).SetSubscribeID(basic.Id).SetOrderID(1).SetStatus(1).SaveX(ctx)
+	var listUnavailable bool
+	f.client.UserSubscribe.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if listUnavailable {
+				return nil, errors.New("subscriber list unavailable")
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	single := fmt.Sprintf(`{"id":"%d"}`, basic.Id)
 	batch := fmt.Sprintf(`{"ids":["%d","%d"]}`, plus.Id, basic.Id)
+	listUnavailable = true
+	f.request(http.MethodDelete, plans+"/", operator, single, xerr.DatabaseQueryError)
+	f.request(http.MethodDelete, plans+"/batch", operator, batch, xerr.DatabaseDeletedError)
+	require.Equal(t, visible, catalog())
+	listUnavailable = false
+	f.request(http.MethodDelete, plans+"/", operator, single, xerr.SubscribeIsUsedError)
 	f.request(http.MethodDelete, plans+"/batch", operator, batch, xerr.SubscribeIsUsedError)
 	require.Equal(t, visible, catalog())
 	f.request(http.MethodPut, plans+"/", operator, fmt.Sprintf(`{"id":"%d","name":"Basic legacy","language":"en","show":false,"sell":false,"sort":%d}`, basic.Id, ordered[2].Sort), http.StatusOK)

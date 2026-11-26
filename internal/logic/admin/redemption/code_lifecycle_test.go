@@ -1,7 +1,9 @@
 package redemption
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -33,6 +35,24 @@ func TestRedemptionCodeAdministrationPreservesUsageHistory(t *testing.T) {
 		t.Fatal("empty batch was allowed to create codes")
 	}
 	req.BatchCount = 2
+	writes := 0
+	client.RedemptionCode.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if m.Op().Is(ent.OpCreate) {
+				writes++
+				if writes == 2 {
+					return nil, errors.New("voucher storage unavailable")
+				}
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	if err := create.CreateRedemptionCode(req); err == nil {
+		t.Fatal("interrupted issue returned success")
+	}
+	if issued := client.RedemptionCode.Query().CountX(ctx); issued != 0 {
+		t.Fatalf("interrupted batch published %d redeemable codes", issued)
+	}
 	if err := create.CreateRedemptionCode(req); err != nil {
 		t.Fatal(err)
 	}

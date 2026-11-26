@@ -3,9 +3,8 @@ package initialize
 import (
 	"context"
 	"database/sql"
-	"embed"
+	_ "embed"
 	"fmt"
-	"html/template"
 	"net"
 	"net/http"
 	"net/mail"
@@ -27,8 +26,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed templates/*.html
-var templateFS embed.FS
+//go:embed templates/index.html
+var setupPage []byte
 
 type setupState struct {
 	path        string
@@ -96,10 +95,6 @@ func Config(path string) (<-chan bool, *http.Server, error) {
 		Addr:    net.JoinHostPort(host, fmt.Sprint(port)),
 		Handler: r,
 	}
-	// Load templates
-	tmpl := template.Must(template.ParseFS(templateFS, "templates/*.html"))
-	r.SetHTMLTemplate(tmpl)
-
 	r.GET("/init", handleInit)
 	r.POST("/init/config", state.handleInitConfig)
 	r.POST("/init/database/test", HandleDatabaseTest)
@@ -130,8 +125,10 @@ func Config(path string) (<-chan bool, *http.Server, error) {
 }
 
 func handleInit(c *hertzx.Context) {
-	c.HTML(http.StatusOK, "index.html", nil)
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	_, _ = c.Writer.Write(setupPage)
 }
+
 func (state *setupState) handleInitConfig(c *hertzx.Context) {
 	state.mu.Lock()
 	defer state.mu.Unlock()

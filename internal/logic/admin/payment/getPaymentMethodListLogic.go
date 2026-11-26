@@ -3,14 +3,12 @@ package payment
 import (
 	"context"
 	"encoding/json"
-	"strings"
-
-	"github.com/perfect-panel/server/internal/report"
-	paymentPlatform "github.com/perfect-panel/server/pkg/payment"
 
 	"github.com/perfect-panel/server/internal/model/payment"
+	"github.com/perfect-panel/server/internal/report"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	paymentPlatform "github.com/perfect-panel/server/pkg/payment"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -46,32 +44,13 @@ func (l *GetPaymentMethodListLogic) GetPaymentMethodList(req *types.GetPaymentMe
 		List:  make([]types.PaymentMethodDetail, len(list)),
 	}
 
-	// gateway mod
-
-	isGatewayMod := report.IsGatewayMode()
-
+	gateway := report.IsGatewayMode()
 	for i, v := range list {
 		config := make(map[string]interface{})
 		_ = json.Unmarshal([]byte(v.Config), &config)
 		notifyUrl := ""
-
 		if paymentPlatform.ParsePlatform(v.Platform) != paymentPlatform.Balance {
-			notifyUrl = v.Domain
-			if v.Domain != "" {
-				notifyUrl = strings.TrimSuffix(notifyUrl, "/")
-				if isGatewayMod {
-					notifyUrl += "/api/v1/notify/" + v.Platform + "/" + v.Token
-				} else {
-					notifyUrl += "/v1/notify/" + v.Platform + "/" + v.Token
-				}
-			} else {
-				notifyUrl += "https://" + l.svcCtx.Config.Host
-				if isGatewayMod {
-					notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/api/v1/notify/" + v.Platform + "/" + v.Token
-				} else {
-					notifyUrl = strings.TrimSuffix(notifyUrl, "/") + "/v1/notify/" + v.Platform + "/" + v.Token
-				}
-			}
+			notifyUrl, _ = paymentPlatform.NotifyURL(v.Domain, l.svcCtx.Config.Site.Host, v.Platform, v.Token, gateway)
 		}
 		resp.List[i] = types.PaymentMethodDetail{
 			Id:           v.Id,

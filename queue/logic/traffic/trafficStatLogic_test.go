@@ -172,7 +172,7 @@ func TestTrafficStatRecoversCleanupEnqueueFailure(t *testing.T) {
 func TestTrafficCleanupBatchesPersistAcrossOuterRetry(t *testing.T) {
 	service, _ := trafficStatTestService(t)
 	ctx := t.Context()
-	cutoff := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	cutoff := time.Now().UTC().Truncate(time.Second).AddDate(0, 0, -14)
 	rows := make([]*ent.TrafficLogCreate, 0, 1002)
 	for i := 0; i < 1001; i++ {
 		rows = append(rows, service.Ent.TrafficLog.Create().SetServerID(1).SetUserID(2).SetSubscribeID(3).SetTimestamp(cutoff.Add(-time.Hour)))

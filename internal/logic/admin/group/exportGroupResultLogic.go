@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"go.uber.org/zap"
@@ -57,7 +58,10 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 			}
 
 			// 查询节点组名称
-			nodeGroup, _ := l.svcCtx.Store.Group().FindNodeGroup(l.ctx, detail.NodeGroupId)
+			nodeGroup, err := l.svcCtx.Store.Group().FindNodeGroup(l.ctx, detail.NodeGroupId)
+			if err != nil && !ent.IsNotFound(err) {
+				return nil, "", err
+			}
 
 			// 为每个用户生成记录
 			for _, item := range users {
@@ -99,10 +103,11 @@ func (l *ExportGroupResultLogic) ExportGroupResult(req *types.ExportGroupResultR
 			seen[key] = struct{}{}
 			// 查询节点组信息
 			nodeGroup, err := l.svcCtx.Store.Group().FindNodeGroup(l.ctx, us.NodeGroupId)
-			if err != nil {
-				zap.S().Errorf("failed to find node group: %v", err)
-				// 跳过该用户
+			if ent.IsNotFound(err) {
 				continue
+			}
+			if err != nil {
+				return nil, "", err
 			}
 
 			records = append(records, []string{

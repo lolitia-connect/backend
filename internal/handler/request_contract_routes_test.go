@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -157,7 +158,13 @@ func TestCatalogReadersRecoverFromIncompletePages(t *testing.T) {
 			if strings.HasPrefix(tc.path, "public/") {
 				token = session
 			}
-			path := "/v1/" + tc.path + "?page=1&size=10"
+			base := "/v1/" + tc.path
+			if tc.entity != ent.TypeSubscribeGroup { // Plan groups are returned as one unpaginated list.
+				for _, query := range []string{"?page=1.5&size=10", "?page=1&size=9223372036854775808"} {
+					require.Empty(t, fixture.request(http.MethodGet, base+query, token, "", xerr.InvalidParams))
+				}
+			}
+			path := base + "?page=1&size=10"
 			entity = tc.entity
 			for _, unavailable = range []string{framework.OpQueryCount, framework.OpQueryAll} {
 				require.Empty(t, fixture.request(http.MethodGet, path, token, "", xerr.DatabaseQueryError), unavailable)
@@ -239,6 +246,29 @@ func TestIncompleteEditorFormsReportTheFieldBeforeWriting(t *testing.T) {
 		{"POST", "auth/oauth/register", `{"invite":"MEMBER"}`, "OAuthToken"},
 		{"POST", "common/check_verification_code", `{"account":"member@example.test","code":"123456","method":"postal","type":1}`, "Method"},
 		{"POST", "common/send_sms_code", `{"type":1,"telephone":"2025550101"}`, "TelephoneAreaCode"},
+		{"POST", "common/send_code", `{"email":"member@example.test"}`, "Type"},
+		{"POST", "auth/oauth/login", `{"redirect":"https://panel.example.test/return"}`, "Method"},
+		{"POST", "public/order/pre", `{"subscribe_id":"1","quantity":1001}`, "Quantity"},
+		{"POST", "public/order/purchase", `{"subscribe_id":"1","quantity":-1}`, "Quantity"},
+		{"POST", "public/order/renewal", `{"user_subscribe_id":"1","quantity":1001}`, "Quantity"},
+		{"POST", "public/order/recharge", `{"payment":"1","amount":2000000001}`, "Amount"},
+		{"POST", "public/order/close", `{"orderNo":""}`, "OrderNo"},
+		{"POST", "public/redemption/", `{"code":""}`, "Code"},
+		{"PUT", "public/user/unbind_device", `{"id":"0"}`, "Id"},
+		{"POST", "admin/server/node/create", `{"name":"Regional relay","sort":-1}`, "Sort"},
+		{"POST", "admin/server/node/update", `{"id":"1","sort":-1}`, "Sort"},
+		{"POST", "admin/server/update", `{"id":"1","sort":-1}`, "Sort"},
+		{"POST", "admin/server/node_config/update", `{"server_id":0}`, "ServerID"},
+		{"PUT", "admin/group/node", `{"id":"1","sort":-1}`, "Sort"},
+		{"DELETE", "admin/group/node", `{"name":"Retiring"}`, "Id"},
+		{"DELETE", "admin/subscribe/", `{"name":"Retiring"}`, "Id"},
+		{"DELETE", "admin/subscribe/group", `{"name":"Retiring"}`, "Id"},
+		{"DELETE", "admin/document/", `{"title":"Withdrawn"}`, "Id"},
+		{"DELETE", "admin/announcement/", `{"title":"Withdrawn"}`, "Id"},
+		{"DELETE", "admin/coupon/", `{"code":"RETIRED"}`, "Id"},
+		{"DELETE", "admin/redemption/code", `{"code":"RETIRED"}`, "Id"},
+		{"DELETE", "admin/payment/", `{"name":"Retiring"}`, "Id"},
+		{"DELETE", "admin/user/", `{"email":"archived@example.test"}`, "Id"},
 	} {
 		t.Run(tc.verb+" "+tc.path, func(t *testing.T) {
 			session := ""
@@ -267,6 +297,73 @@ func TestIncompleteEditorFormsReportTheFieldBeforeWriting(t *testing.T) {
 				}
 				require.Zero(t, writes, "invalid form caused a persistent change")
 			}
+		})
+	}
+}
+
+func TestDetailLinksRequireTheSelectedRecord(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	owner, member := f.account(false)
+	ticket := f.client.Ticket.Create().SetUserID(owner.ID).SetTitle("Billing receipt").SaveX(ctx)
+	article := f.client.Document.Create().SetTitle("Export a receipt").SetShow(true).SaveX(ctx)
+	announcement := f.client.Announcement.Create().SetTitle("Receipt export available").SetShow(true).SaveX(ctx)
+	plan := f.client.Subscribe.Create().SetName("Monthly pass").SaveX(ctx)
+	sub := f.client.UserSubscribe.Create().SetOrderID(1).SetSubscribeID(plan.ID).SetUserID(owner.ID).SetStatus(1).SaveX(ctx)
+	for _, tc := range []struct {
+		path, session string
+		id            int64
+	}{
+		{"/v1/admin/user/detail", operator, owner.ID},
+		{"/v1/admin/announcement/detail", operator, announcement.ID},
+		{"/v1/admin/document/detail", operator, article.ID},
+		{"/v1/public/document/detail", member, article.ID},
+		{"/v1/admin/ticket/detail", operator, ticket.ID},
+		{"/v1/public/ticket/detail", member, ticket.ID},
+		{"/v1/admin/subscribe/details", operator, plan.ID},
+		{"/v1/admin/user/subscribe/detail", operator, sub.ID},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			for _, query := range []string{"", "?id=1.5", "?id=9223372036854775808"} {
+				require.Empty(t, f.request(http.MethodGet, tc.path+query, tc.session, "", xerr.InvalidParams))
+			}
+			var selected struct {
+				ID json.Number `json:"id"`
+			}
+			require.NoError(t, json.Unmarshal(f.request(http.MethodGet, fmt.Sprintf("%s?id=%d", tc.path, tc.id), tc.session, "", http.StatusOK), &selected))
+			require.Equal(t, fmt.Sprint(tc.id), selected.ID.String())
+		})
+	}
+}
+
+func TestAccountAndCampaignReportFiltersRejectInvalidSelections(t *testing.T) {
+	f := newRouteFixture(t)
+	_, operator := f.account(true)
+	_, member := f.account(false)
+	for _, tc := range []struct{ path, filter string }{
+		{"admin/user/list", "user_id"}, {"admin/user/auth_method", "user_id"},
+		{"admin/user/subscribe", "user_id"}, {"admin/user/login/logs", "user_id"},
+		{"admin/user/subscribe/logs", "user_id"}, {"admin/user/subscribe/device", "user_id"},
+		{"admin/user/subscribe/reset/logs", "user_subscribe_id"}, {"admin/user/subscribe/traffic_logs", "subscribe_id"},
+		{"admin/redemption/record/list", "code_id"}, {"admin/order/list", "user_id"},
+		{"admin/server/node/list", "node_group_id"}, {"admin/group/preview", "user_id"},
+		{"admin/group/history/detail", "id"}, {"admin/server/node_config", "server_id"},
+		{"admin/server/protocols", "id"}, {"admin/ads/detail", "id"},
+		{"admin/marketing/quota/list", "status"}, {"admin/marketing/email/batch/list", "scope"},
+		{"admin/log/message/list", "type"}, {"admin/withdrawal/list", "status"},
+		{"public/order/list", "page"}, {"public/user/affiliate/list", "size"},
+		{"public/user/commission_log", "size"}, {"public/user/withdrawal_log", "size"},
+		{"public/user/subscribe_log", "size"}, {"public/user/traffic_stats", "days"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			session := operator
+			if strings.HasPrefix(tc.path, "public/") {
+				session = member
+			}
+			params := url.Values{"page": {"1"}, "size": {"10"}}
+			params.Set(tc.filter, "1.5")
+			require.Empty(t, f.request(http.MethodGet, "/v1/"+tc.path+"?"+params.Encode(), session, "", xerr.InvalidParams))
 		})
 	}
 }

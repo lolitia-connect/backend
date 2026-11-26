@@ -73,6 +73,43 @@ func confirmationCommand(t *testing.T, reply, prefix string) string {
 	return ""
 }
 
+func TestOperatorNotificationsReachOnlyActiveLinkedAdministrators(t *testing.T) {
+	logic, db, _, _ := bindingFixture(t)
+	ctx := t.Context()
+	service := logic.svcCtx
+	const text = "Billing close: monthly_report"
+	var calls []string
+	bot, err := tgbot.New("123456:fixture", tgbot.WithSkipGetMe(), tgbot.WithHTTPClient(time.Second, botRequestFunc(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, http.MethodPost, req.Method)
+		require.True(t, strings.HasSuffix(req.URL.Path, "/sendMessage"))
+		require.NoError(t, req.ParseMultipartForm(1<<20))
+		defer req.MultipartForm.RemoveAll()
+		require.Equal(t, `Billing close: monthly\_report`, req.FormValue("text"))
+		require.Equal(t, "markdown", req.FormValue("parse_mode"))
+		calls = append(calls, req.FormValue("chat_id"))
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"ok":true,"result":{"message_id":1}}`))}, nil
+	})))
+	require.NoError(t, err)
+	service.TelegramBot = bot
+	var backup int64
+	for _, recipient := range []struct {
+		chat          string
+		admin, active bool
+	}{{"212", true, true}, {"213", true, false}, {"214", false, true}, {"unlinked", true, true}} {
+		account := db.User.Create().SetPassword("fixture").SetIsAdmin(recipient.admin).SetEnable(recipient.active).SaveX(ctx)
+		db.UserAuthMethod.Create().SetUserID(account.ID).SetAuthType("telegram").SetAuthIdentifier(recipient.chat).SetVerified(true).SaveX(ctx)
+		if recipient.chat == "213" {
+			backup = account.ID
+		}
+	}
+	SendAdminMessage(ctx, service, text, "markdown")
+	require.Equal(t, []string{"212"}, calls)
+	db.User.UpdateOneID(backup).SetEnable(true).ExecX(ctx)
+	calls = nil
+	SendAdminMessage(ctx, service, text, "markdown")
+	require.ElementsMatch(t, []string{"212", "213"}, calls)
+}
+
 func TestSupportBotRepliesAndClosesTicketOnlyAfterConfirmation(t *testing.T) {
 	b := newSupportBot(t)
 	ctx := t.Context()
@@ -120,6 +157,44 @@ func TestSupportBotRepliesAndClosesTicketOnlyAfterConfirmation(t *testing.T) {
 		actions = append(actions, entry.Action)
 	}
 	require.ElementsMatch(t, []string{"ticket.reply", "ticket.status", "ticket.status"}, actions)
+}
+
+func TestSupportBotAccountReviewAndConfirmedSuspension(t *testing.T) {
+	b := newSupportBot(t)
+	ctx := t.Context()
+	member := b.db.User.Create().SetPassword("fixture").SetEnable(true).SaveX(ctx)
+	const email = "review@example.test"
+	b.db.UserAuthMethod.Create().SetUserID(member.ID).SetAuthType("email").SetAuthIdentifier(email).SetVerified(true).SaveX(ctx)
+	for id, ip := range map[int64]string{member.ID: "192.0.2.10", 7: "192.0.2.20"} {
+		login, err := (&modellog.Login{Method: "email", LoginIP: ip, Success: true}).Marshal()
+		require.NoError(t, err)
+		b.db.SystemLog.Create().SetType(modellog.TypeLogin.Uint8()).SetObjectID(id).SetDate(time.Now().Format(time.DateOnly)).SetContent(string(login)).SaveX(ctx)
+	}
+	review := b.send(t, "/user_log "+email)
+	require.Contains(t, review, fmt.Sprintf("Account: %d", member.ID))
+	require.Contains(t, review, "192.0.2.10 email")
+	require.NotContains(t, review, "192.0.2.20")
+	require.Contains(t, b.send(t, "/ban 7"), "Target unavailable")
+	confirm := confirmationCommand(t, b.send(t, "/ban "+email), "/confirm_")
+	b.db.User.UpdateOneID(member.ID).SetEnable(false).ExecX(ctx)
+	require.Contains(t, b.send(t, confirm), "target changed")
+	require.False(t, b.db.User.GetX(ctx, member.ID).Enable)
+	require.Contains(t, b.send(t, confirm), "Confirmation expired")
+	confirm = confirmationCommand(t, b.send(t, "/ban "+email), "/confirm_")
+	require.Equal(t, "Operation completed.", b.send(t, confirm))
+	require.True(t, b.db.User.GetX(ctx, member.ID).Enable)
+	var actions []modellog.AdminAction
+	for _, row := range b.db.SystemLog.Query().AllX(ctx) {
+		if row.Type == modellog.TypeAdminAction.Uint8() {
+			var action modellog.AdminAction
+			require.NoError(t, json.Unmarshal([]byte(row.Content), &action))
+			actions = append(actions, action)
+		}
+	}
+	require.Len(t, actions, 1)
+	require.Equal(t, "user.ban", actions[0].Action)
+	require.Equal(t, member.ID, actions[0].ObjectID)
+	require.Equal(t, b.chatID, actions[0].TelegramSenderID)
 }
 
 func TestSupportBotCanResetAndResumeACustomerSubscription(t *testing.T) {

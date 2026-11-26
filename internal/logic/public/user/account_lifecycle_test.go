@@ -111,7 +111,28 @@ func TestDeletingOwnAccountRemovesItsAccess(t *testing.T) {
 	if err := cache.Set(otherKey, fmt.Sprint(other.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if err := NewDeleteCurrentUserAccountLogic(ownerCtx, service).DeleteCurrentUserAccount(); err != nil {
+	var unavailable string
+	client.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if m.Type() == unavailable {
+				return nil, fmt.Errorf("%s temporarily read-only", unavailable)
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	remove := NewDeleteCurrentUserAccountLogic(ownerCtx, service).DeleteCurrentUserAccount
+	for _, unavailable = range []string{ent.TypeUserDevice, ent.TypeUserAuthMethod, ent.TypeUserSubscribe, ent.TypeUser} {
+		if err := remove(); err == nil {
+			t.Fatalf("account deletion succeeded while %s was read-only", unavailable)
+		}
+		if client.User.GetX(ctx, owner.ID).DeletedAt != nil || !cache.Exists(ownerKey) ||
+			client.UserAuthMethod.GetX(ctx, identity).AuthIdentifier != "owner@example.test" ||
+			client.UserDevice.GetX(ctx, device).Identifier != "owner" || client.UserSubscribe.GetX(ctx, subscription).Token != "owner-subscription" {
+			t.Fatalf("failed deletion at %s partially revoked account access", unavailable)
+		}
+	}
+	unavailable = ""
+	if err := remove(); err != nil {
 		t.Fatal(err)
 	}
 	if client.User.GetX(ctx, owner.ID).DeletedAt == nil || cache.Exists(ownerKey) {

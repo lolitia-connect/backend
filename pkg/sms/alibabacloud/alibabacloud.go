@@ -52,8 +52,11 @@ func (c *Client) SendCode(area, mobile, code string) error {
 	if err != nil {
 		return err
 	}
-	if *sendSmsResponse.Body.Code != "OK" {
-		return fmt.Errorf("alibaba cloud send sms failed, code: %s, message: %s", *sendSmsResponse.Body.Code, *sendSmsResponse.Body.Message)
+	if sendSmsResponse == nil || sendSmsResponse.Body == nil || tea.StringValue(sendSmsResponse.Body.Code) == "" {
+		return fmt.Errorf("alibaba cloud send sms failed: missing delivery status")
+	}
+	if status := *sendSmsResponse.Body.Code; status != "OK" {
+		return fmt.Errorf("alibaba cloud send sms failed, code: %s, message: %s", status, tea.StringValue(sendSmsResponse.Body.Message))
 	}
 	return nil
 }

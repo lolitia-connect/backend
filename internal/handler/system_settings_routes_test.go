@@ -10,12 +10,73 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/xerr"
+	trafficworker "github.com/perfect-panel/server/queue/logic/traffic"
+	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/stretchr/testify/require"
 )
+
+func TestQueuedTrafficCleanupHonorsExtendedRetention(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	admin, operator := f.account(true)
+	inspector := f.startQueue()
+	f.client.System.Create().SetCategory("log").SetKey("AutoClear").SetValue("false").SetType("bool").SetDesc("Enable cleanup").SaveX(ctx)
+	f.client.System.Create().SetCategory("log").SetKey("ClearDays").SetValue("7").SetType("int64").SetDesc("Days of traffic history").SaveX(ctx)
+	const setting = "/v1/admin/log/setting"
+	f.request(http.MethodPost, setting, operator, `{"auto_clear":true,"clear_days":7}`, http.StatusOK)
+	var keep []int64
+	for _, age := range []int{40, 15, 3} {
+		row := f.client.TrafficLog.Create().SetUserID(1).SetServerID(2).SetSubscribeID(3).SetDownload(25).
+			SetTimestamp(time.Now().AddDate(0, 0, -age)).SaveX(ctx)
+		if age <= 30 {
+			keep = append(keep, row.ID)
+		}
+	}
+	require.NoError(t, trafficworker.NewStatLogic(f.service).ProcessTask(ctx, nil))
+	jobs, err := inspector.ListPendingTasks("default")
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, queue.CleanupTrafficLogs, jobs[0].Type)
+	f.request(http.MethodPost, setting, operator, `{"auto_clear":true,"clear_days":30}`, http.StatusOK)
+	var saved types.LogSetting
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, setting, operator, "", http.StatusOK), &saved))
+	require.EqualValues(t, 30, saved.ClearDays)
+	var actions types.FilterAdminActionLogResponse
+	path := fmt.Sprintf("/v1/admin/log/admin-action/list?user_id=%d&search=clear_days%%3D30", admin.ID)
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, path, operator, "", http.StatusOK), &actions))
+	require.EqualValues(t, 1, actions.Total)
+	require.Len(t, actions.List, 1)
+	require.Equal(t, admin.ID, actions.List[0].UserId)
+	require.Equal(t, "settings.log", actions.List[0].Action)
+	require.Contains(t, actions.List[0].Detail, "clear_days=30")
+	cleanup := asynq.NewTask(jobs[0].Type, jobs[0].Payload)
+	require.NoError(t, trafficworker.NewCleanupTrafficLogsLogic(f.service).ProcessTask(ctx, cleanup))
+	require.ElementsMatch(t, keep, f.client.TrafficLog.Query().IDsX(ctx))
+}
+
+func TestOperatorVersionDistinguishesReleasesFromDevelopmentBuilds(t *testing.T) {
+	f := newRouteFixture(t)
+	_, operator := f.account(true)
+	version, buildTime := constant.Version, constant.BuildTime
+	t.Cleanup(func() { constant.Version, constant.BuildTime = version, buildTime })
+	for _, build := range []struct{ version, time, displayed string }{
+		{"v1.8.3", "2026-01-10", "1.8.3(2026-01-10)"},
+		{"local", "2026-01-10", "local(2026-01-10) Develop"},
+		{"unknown version", "unknown time", "unknown(unknown) Develop"},
+	} {
+		constant.Version, constant.BuildTime = build.version, build.time
+		var response types.VersionResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/admin/tool/version", operator, "", http.StatusOK), &response))
+		require.Equal(t, build.displayed, response.Version)
+	}
+}
 
 func TestOperatorReadsLatestLogWindowAfterFileBecomesAvailable(t *testing.T) {
 	f := newRouteFixture(t)
@@ -198,6 +259,12 @@ func TestNodeSettingsKeepOutboundCredentialsWhenOperatorReordersRoutes(t *testin
 	}
 	cfg := types.NodeConfig{NodePullInterval: 25, DNS: []types.NodeDNS{{Proto: "udp", Address: "192.0.2.53", Domains: []string{"example.test"}}}, Block: []string{"blocked.example.test", "blocked.example.test"}, Outbound: []types.NodeOutbound{{Name: "east", Password: first}, {Name: "west", UUID: second}}}
 	put(cfg)
+	for _, key := range []string{"DNS", "Outbound"} {
+		require.NoError(t, f.service.Store.System().UpdateValueByCategoryKey(t.Context(), "server", key, `[{`))
+		require.Empty(t, f.request(http.MethodGet, path, admin, "", xerr.DatabaseQueryError))
+		require.Equal(t, first, f.service.Config.Node.Outbound[0].Password)
+		put(cfg)
+	}
 	raw := f.request(http.MethodGet, path, admin, "", http.StatusOK)
 	require.NotContains(t, string(raw), first)
 	require.NotContains(t, string(raw), second)
@@ -235,16 +302,29 @@ func TestServerOverridesCanReturnIndividualFieldsToGlobalSettings(t *testing.T) 
 		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, fmt.Sprintf("%s?server_id=%d", base, id), admin, "", http.StatusOK), &result))
 		return result
 	}
-	save := func(override types.ServerNodeConfigOverride) {
+	save := func(override types.ServerNodeConfigOverride, want uint32) {
 		t.Helper()
 		body, err := json.Marshal(types.UpdateServerNodeConfigRequest{ServerID: primary.ID, ServerNodeConfigOverride: override})
 		require.NoError(t, err)
-		f.request(http.MethodPost, base+"/update", admin, string(body), http.StatusOK)
+		f.request(http.MethodPost, base+"/update", admin, string(body), want)
 	}
 	defaults := read(backup.ID)
 	require.Equal(t, defaults.Global, defaults.Effective)
 	custom := types.ServerNodeConfigOverride{IPStrategy: "prefer_ipv6", DNS: []types.NodeDNS{{Proto: "udp", Address: "192.0.2.53"}}, Block: []string{"local.example.test"}, Outbound: []types.NodeOutbound{{Name: "local", Protocol: "direct"}}}
-	save(custom)
+	var readOnly bool
+	f.client.ServerConfigOverride.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, mutation ent.Mutation) (ent.Value, error) {
+			if readOnly {
+				return nil, errors.New("override storage is read-only")
+			}
+			return next.Mutate(ctx, mutation)
+		})
+	})
+	readOnly = true
+	save(custom, xerr.DatabaseUpdateError)
+	require.Equal(t, defaults, read(primary.ID))
+	readOnly = false
+	save(custom, http.StatusOK)
 	applied := read(primary.ID)
 	require.Equal(t, custom.IPStrategy, applied.Effective.IPStrategy)
 	require.Equal(t, custom.DNS[0].Address, applied.Effective.DNS[0].Address)
@@ -252,7 +332,11 @@ func TestServerOverridesCanReturnIndividualFieldsToGlobalSettings(t *testing.T) 
 	require.Equal(t, custom.Outbound[0].Name, applied.Effective.Outbound[0].Name)
 	custom.InheritIPStrategy, custom.InheritDNS, custom.InheritOutbound = true, true, true
 	custom.Block = []string{}
-	save(custom)
+	readOnly = true
+	save(custom, xerr.DatabaseUpdateError)
+	require.Equal(t, applied, read(primary.ID))
+	readOnly = false
+	save(custom, http.StatusOK)
 	partial := read(primary.ID)
 	require.True(t, partial.Override.InheritIPStrategy)
 	require.True(t, partial.Override.InheritDNS)
@@ -264,7 +348,11 @@ func TestServerOverridesCanReturnIndividualFieldsToGlobalSettings(t *testing.T) 
 	require.Empty(t, partial.Effective.Block)
 	require.Equal(t, defaults, read(backup.ID))
 	custom.InheritBlock = true
-	save(custom)
+	readOnly = true
+	save(custom, xerr.DatabaseUpdateError)
+	require.Equal(t, partial, read(primary.ID))
+	readOnly = false
+	save(custom, http.StatusOK)
 	require.Equal(t, defaults, read(primary.ID))
 	require.Zero(t, f.client.ServerConfigOverride.Query().CountX(ctx))
 }
@@ -286,9 +374,15 @@ func TestTrafficMultiplierPreviewUsesSavedSchedule(t *testing.T) {
 		return current.Ratio
 	}
 	periods := []types.TimePeriod{{StartTime: "00:00", EndTime: "23:59", Multiplier: 1.5}}
+	const get = base + "get_node_multiplier"
+	require.Empty(t, f.request(http.MethodGet, get, admin, "", xerr.DatabaseQueryError))
+	set(periods)
+	require.NoError(t, f.service.Store.System().UpdateValueByCategoryKey(t.Context(), "server", "NodeMultiplierConfig", `[{`))
+	require.Empty(t, f.request(http.MethodGet, get, admin, "", xerr.ERROR))
+	require.EqualValues(t, 1.5, preview())
 	set(periods)
 	var saved types.GetNodeMultiplierResponse
-	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, base+"get_node_multiplier", admin, "", http.StatusOK), &saved))
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, get, admin, "", http.StatusOK), &saved))
 	require.Equal(t, periods, saved.Periods)
 	require.EqualValues(t, 1.5, preview())
 	set([]types.TimePeriod{})

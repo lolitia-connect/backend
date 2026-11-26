@@ -7,16 +7,62 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"entgo.io/ent"
+	"github.com/perfect-panel/server/internal/config"
+	"github.com/perfect-panel/server/internal/middleware"
 	modellog "github.com/perfect-panel/server/internal/model/log"
+	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/stretchr/testify/require"
 )
+
+func TestOperatorCanTraceASettingsChangeToItsRequestLocation(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	admin, session := f.account(true)
+	_, member := f.account(false)
+	f.router = hertzx.New()
+	f.router.Hertz().Use(middleware.LoggerMiddleware(f.service))
+	RegisterHandlers(f.router, f.service)
+	const lookup = "/v1/admin/tool/ip/location?ip=192.0.2.11"
+	f.request(http.MethodGet, lookup, session, "", xerr.ERROR)
+	location, err := svc.OpenIPLocation(config.GeoIPConfig{Path: filepath.Join("..", "svc", "testdata", "fixture-city.mmdb"), Required: true})
+	require.NoError(t, err)
+	f.service.GeoIP = location
+	t.Cleanup(func() { require.NoError(t, location.Close()) })
+	f.request(http.MethodGet, lookup, member, "", xerr.InvalidAccess)
+	var expected types.QueryIPLocationResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, lookup, session, "", http.StatusOK), &expected))
+	require.Equal(t, types.QueryIPLocationResponse{Country: "Test Country", Region: "Test Region", City: "Test City"}, expected)
+	f.client.System.Create().SetCategory("log").SetKey("AutoClear").SetValue("false").SetType("bool").SetDesc("Enable cleanup").SaveX(ctx)
+	f.client.System.Create().SetCategory("log").SetKey("ClearDays").SetValue("7").SetType("int64").SetDesc("Days of traffic history").SaveX(ctx)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/admin/log/setting", strings.NewReader(`{"auto_clear":true,"clear_days":21}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", session)
+	req.Header.Set("User-Agent", "operations-console")
+	req.Header.Set("X-Forwarded-For", "192.0.2.11")
+	f.serve(req, http.StatusOK, http.StatusOK)
+	var history types.FilterAdminActionLogResponse
+	path := fmt.Sprintf("/v1/admin/log/admin-action/list?user_id=%d&page=1&size=10", admin.ID)
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, path, session, "", http.StatusOK), &history))
+	require.Len(t, history.List, 1)
+	change := history.List[0]
+	require.Equal(t, admin.ID, change.ActorID)
+	require.Equal(t, "settings.log", change.Action)
+	require.Contains(t, change.Detail, "clear_days=21")
+	require.Equal(t, "operations-console", change.UserAgent)
+	require.Equal(t, "192.0.2.11", change.ClientIP)
+	require.Equal(t, expected.Country, change.IPCountry)
+	require.Equal(t, expected.Region, change.IPRegion)
+	require.Equal(t, expected.City, change.IPCity)
+}
 
 func TestOperatorCanTraceRegistrationAndLoginAttemptsForOneMember(t *testing.T) {
 	f := newRouteFixture(t)
@@ -67,6 +113,76 @@ func TestOperatorCanTraceRegistrationAndLoginAttemptsForOneMember(t *testing.T) 
 		require.Equal(t, "email", attempt.Method)
 		require.Equal(t, want.agent, attempt.UserAgent)
 		require.Equal(t, want.success, attempt.Success)
+	}
+}
+
+func TestMemberCanReviewTheirOwnLoginAttempts(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	member, session := f.account(false)
+	other, _ := f.account(false)
+	created := time.Date(2026, 3, 7, 9, 0, 0, 0, time.UTC)
+	write := func(userID int64, content string) int64 {
+		created = created.Add(time.Minute)
+		return f.client.SystemLog.Create().SetType(modellog.TypeLogin.Uint8()).SetObjectID(userID).
+			SetCreatedAt(created).SetContent(content).SaveX(ctx).ID
+	}
+	first := write(member.ID, `{"login_ip":"192.0.2.5","user_agent":"laptop","success":false}`)
+	write(other.ID, `{"login_ip":"192.0.2.8","user_agent":"another member","success":true}`)
+	write(member.ID, `incomplete historical entry`)
+	last := write(member.ID, `{"login_ip":"192.0.2.6","user_agent":"mobile","success":true}`)
+	const history = "/v1/public/user/login_log"
+	f.request(http.MethodGet, history+"?page=bad&size=10", session, "", xerr.InvalidParams)
+	unavailable := true
+	f.client.SystemLog.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, query ent.Query) (ent.Value, error) {
+			if unavailable && ent.QueryFromContext(ctx).Op == ent.OpQueryAll {
+				return nil, errors.New("history temporarily unavailable")
+			}
+			return next.Query(ctx, query)
+		})
+	}))
+	require.Empty(t, f.request(http.MethodGet, history+"?page=1&size=2", session, "", xerr.DatabaseQueryError))
+	unavailable = false
+	for page, want := range []types.UserLoginLog{
+		{Id: last, UserId: member.ID, LoginIP: "192.0.2.6", UserAgent: "mobile", Success: true, Timestamp: created.UnixMilli()},
+		{Id: first, UserId: member.ID, LoginIP: "192.0.2.5", UserAgent: "laptop", Timestamp: created.Add(-3 * time.Minute).UnixMilli()},
+	} {
+		var response types.GetLoginLogResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, fmt.Sprintf("%s?page=%d&size=2", history, page+1), session, "", http.StatusOK), &response))
+		require.EqualValues(t, 3, response.Total)
+		require.Equal(t, []types.UserLoginLog{want}, response.List)
+	}
+}
+
+func TestMemberInvitationHistoryMasksIdentitiesAndExcludesArchivedMembers(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	inviter, session := f.account(false)
+	other, _ := f.account(false)
+	registered := time.Date(2025, 11, 4, 12, 0, 0, 0, time.UTC)
+	invite := func(referrer int64, avatar string, enabled bool) int64 {
+		return f.client.User.Create().SetPassword("fixture").SetAvatar(avatar).SetRefererID(referrer).
+			SetCreatedAt(registered).SetEnable(enabled).SaveX(ctx).ID
+	}
+	first := invite(inviter.ID, "original", true)
+	f.client.UserAuthMethod.Create().SetUserID(first).SetAuthType("email").SetAuthIdentifier("abcdefghi").SaveX(ctx)
+	invite(other.ID, "other", true)
+	archived := invite(inviter.ID, "archived", true)
+	f.client.User.UpdateOneID(archived).SetDeletedAt(registered.Add(time.Hour)).ExecX(ctx)
+	invite(inviter.ID, "waiting", false)
+	const list = "/v1/public/user/affiliate/list"
+	f.request(http.MethodGet, list+"?size=invalid", session, "", xerr.InvalidParams)
+	for i, want := range []types.UserAffiliate{
+		{Avatar: "waiting", RegisteredAt: registered.UnixMilli()},
+		{Avatar: "original", Identifier: "abc***ghi", Enable: true, RegisteredAt: registered.UnixMilli()},
+	} {
+		var page types.QueryUserAffiliateListResponse
+		raw := f.request(http.MethodGet, fmt.Sprintf("%s?page=%d&size=1", list, i+1), session, "", http.StatusOK)
+		require.NotContains(t, string(raw), "abcdefghi")
+		require.NoError(t, json.Unmarshal(raw, &page))
+		require.EqualValues(t, 2, page.Total)
+		require.Equal(t, []types.UserAffiliate{want}, page.List)
 	}
 }
 
@@ -139,9 +255,11 @@ func TestAccountStatementsRecoverAfterPartialPageReadFailure(t *testing.T) {
 		for _, entry := range []struct {
 			kind   modellog.Type
 			amount int64
-		}{{modellog.TypeBalance, -325}, {modellog.TypeCommission, 19}} {
+		}{{modellog.TypeBalance, -325}, {modellog.TypeCommission, 19}, {modellog.TypeGift, -75}, {modellog.TypeOrderCreated, 325}, {modellog.TypeUnmatchedPayment, 490}} {
 			body := fmt.Sprintf(`{"order_no":"receipt-%d","amount":%d,"timestamp":101}`, id, entry.amount)
-			f.client.SystemLog.Create().SetType(entry.kind.Uint8()).SetDate("2026-03-01").SetObjectID(id).SetContent(body).SaveX(t.Context())
+			for _, content := range []string{body, `{"order_no":`} {
+				f.client.SystemLog.Create().SetType(entry.kind.Uint8()).SetDate("2026-03-01").SetObjectID(id).SetContent(content).SaveX(t.Context())
+			}
 		}
 	}
 	var failRows bool
@@ -157,14 +275,18 @@ func TestAccountStatementsRecoverAfterPartialPageReadFailure(t *testing.T) {
 	for _, view := range []struct {
 		path, session string
 		amount        int64
+		readError     uint32
 	}{
-		{"/v1/public/user/balance_log", customer, -325},
-		{"/v1/public/user/commission_log?page=1&size=10", customer, 19},
-		{"/v1/admin/log/balance" + operatorFilter, admin, -325},
-		{"/v1/admin/log/commission" + operatorFilter, admin, 19},
+		{"/v1/public/user/balance_log", customer, -325, xerr.DatabaseQueryError},
+		{"/v1/public/user/commission_log?page=1&size=10", customer, 19, xerr.DatabaseQueryError},
+		{"/v1/admin/log/balance" + operatorFilter, admin, -325, xerr.DatabaseQueryError},
+		{"/v1/admin/log/commission" + operatorFilter, admin, 19, xerr.DatabaseQueryError},
+		{"/v1/admin/log/gift" + operatorFilter, admin, -75, xerr.DatabaseQueryError},
+		{"/v1/admin/log/order" + operatorFilter, admin, 325, xerr.DatabaseQueryError},
+		{"/v1/admin/log/unmatched-payment" + operatorFilter, admin, 490, xerr.ERROR},
 	} {
 		failRows = true
-		require.Empty(t, f.request(http.MethodGet, view.path, view.session, "", xerr.DatabaseQueryError))
+		require.Empty(t, f.request(http.MethodGet, view.path, view.session, "", view.readError))
 		failRows = false
 		var result struct {
 			Total int `json:"total"`
@@ -175,7 +297,7 @@ func TestAccountStatementsRecoverAfterPartialPageReadFailure(t *testing.T) {
 			} `json:"list"`
 		}
 		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, view.path, view.session, "", http.StatusOK), &result))
-		require.Equal(t, 1, result.Total)
+		require.Equal(t, 2, result.Total)
 		require.Len(t, result.List, 1)
 		require.Equal(t, owner.ID, result.List[0].UserID)
 		require.Equal(t, fmt.Sprintf("receipt-%d", owner.ID), result.List[0].OrderNo)
@@ -288,6 +410,63 @@ func TestDownloadHistoryFiltersByBothAccountAndSubscription(t *testing.T) {
 	read(path, operator, &report)
 	require.EqualValues(t, 1, report.Total)
 	require.Equal(t, []types.SubscribeLog{{UserId: owner.ID, UserSubscribeId: 12, Token: phone.Token, UserAgent: phone.UserAgent, ClientIP: phone.IP, Timestamp: phone.Timestamp}}, report.List)
+}
+
+func TestAuditPagesRecoverFromAnUnreadablePageAndSkipDamagedEntries(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	owner, member := f.account(false)
+	_, operator := f.account(true)
+	var failedOp string
+	f.client.SystemLog.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, query ent.Query) (ent.Value, error) {
+			if failedOp != "" && ent.QueryFromContext(ctx).Op == failedOp {
+				return nil, errors.New("audit page unavailable")
+			}
+			return next.Query(ctx, query)
+		})
+	}))
+	for _, report := range []struct {
+		kind                     modellog.Type
+		body, field, value       string
+		operatorPath, memberPath string
+	}{
+		{modellog.TypeEmailMessage, `{"to":"ops@example.test","subject":"Renewal"}`, "to", "ops@example.test", "email/list", ""},
+		{modellog.TypeMobileMessage, `{"to":"+12025550129","platform":"sms"}`, "to", "+12025550129", "mobile/list", ""},
+		{modellog.TypeLogin, `{"method":"mobile","success":true,"user_agent":"mobile-reader"}`, "user_agent", "mobile-reader", "login/list", ""},
+		{modellog.TypeRegister, `{"auth_method":"email","identifier":"signup@example.test"}`, "identifier", "signup@example.test", "register/list", ""},
+		{modellog.TypeSubscribe, `{"user_agent":"subscription-reader","user_subscribe_id":43}`, "user_agent", "subscription-reader", "subscribe/list", "subscribe_log"},
+		{modellog.TypeResetSubscribe, `{"order_no":"quota-reset-43","user_id":43}`, "order_no", "quota-reset-43", "subscribe/reset/list", ""},
+	} {
+		t.Run(report.operatorPath, func(t *testing.T) {
+			fixture := *f
+			fixture.t = t
+			for _, body := range []string{report.body, `{"truncated":`} {
+				f.client.SystemLog.Create().SetType(report.kind.Uint8()).SetObjectID(owner.ID).SetContent(body).SaveX(ctx)
+			}
+			views := []struct{ path, token string }{{"/v1/admin/log/" + report.operatorPath + "?page=1&size=2", operator}}
+			if report.memberPath != "" {
+				views = append(views, struct{ path, token string }{"/v1/public/user/" + report.memberPath + "?page=1&size=2", member})
+			}
+			if report.kind == modellog.TypeEmailMessage || report.kind == modellog.TypeMobileMessage {
+				views = append(views, struct{ path, token string }{fmt.Sprintf("/v1/admin/log/message/list?type=%d&page=1&size=2", report.kind), operator})
+			}
+			for _, view := range views {
+				for _, failedOp = range []string{ent.OpQueryCount, ent.OpQueryAll} {
+					require.Empty(t, fixture.request(http.MethodGet, view.path, view.token, "", xerr.DatabaseQueryError))
+				}
+				failedOp = ""
+				var page struct {
+					Total int                          `json:"total"`
+					List  []map[string]json.RawMessage `json:"list"`
+				}
+				require.NoError(t, json.Unmarshal(fixture.request(http.MethodGet, view.path, view.token, "", http.StatusOK), &page))
+				require.Equal(t, 2, page.Total)
+				require.Len(t, page.List, 1)
+				require.JSONEq(t, fmt.Sprintf("%q", report.value), string(page.List[0][report.field]))
+			}
+		})
+	}
 }
 
 func TestOperatorCanFindDeliveryAttemptsByChannelAndRecipient(t *testing.T) {

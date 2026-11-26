@@ -1,15 +1,82 @@
 package orderLogic
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	tgbot "github.com/go-telegram/bot"
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	modelorder "github.com/perfect-panel/server/internal/model/order"
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/model/user"
+	"github.com/stretchr/testify/require"
 )
+
+func TestRechargeSendsReceiptsAfterCommitOnly(t *testing.T) {
+	service, _ := stripeTestService(t)
+	ctx, db := t.Context(), service.Ent
+	buyer := db.User.Create().SetPassword("fixture").SaveX(ctx)
+	operator := db.User.Create().SetPassword("fixture").SetIsAdmin(true).SaveX(ctx)
+	wallet := db.UserWallet.Create().SetUserID(buyer.ID).SetBalance(25).SaveX(ctx)
+	db.UserAuthMethod.Create().SetUserID(buyer.ID).SetAuthType("email").SetAuthIdentifier("buyer@example.test").SaveX(ctx)
+	db.UserAuthMethod.Create().SetUserID(buyer.ID).SetAuthType("telegram").SetAuthIdentifier("101").SaveX(ctx)
+	db.UserAuthMethod.Create().SetUserID(operator.ID).SetAuthType("telegram").SetAuthIdentifier("202").SaveX(ctx)
+	invoice := db.Order.Create().SetOrderNo("recharge-42").SetTradeNo("trade-17").SetUserID(buyer.ID).
+		SetMethod("Stripe").SetType(modelorder.TypeRecharge).SetStatus(modelorder.StatusPaid).SetPrice(750).SaveX(ctx)
+	type delivery struct{ chat, text string }
+	receipts := make(chan delivery, 8)
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/bot123456:fixture/sendMessage" || r.ParseMultipartForm(64<<10) != nil {
+			http.Error(w, "invalid bot request", http.StatusBadRequest)
+			return
+		}
+		defer r.MultipartForm.RemoveAll()
+		receipts <- delivery{r.FormValue("chat_id"), r.FormValue("text")}
+		fmt.Fprint(w, `{"ok":true,"result":{"message_id":42}}`)
+	}))
+	t.Cleanup(relay.Close)
+	bot, err := tgbot.New("123456:fixture", tgbot.WithSkipGetMe(), tgbot.WithServerURL(relay.URL), tgbot.WithHTTPClient(time.Second, relay.Client()))
+	require.NoError(t, err)
+	service.TelegramBot = bot
+	failEvent := true
+	db.OrderEvent.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if failEvent {
+				return nil, errors.New("order journal offline")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	job := asynq.NewTask("activate", []byte(`{"order_no":"recharge-42"}`))
+	logic := NewActivateOrderLogic(service)
+	require.ErrorContains(t, logic.ProcessTask(ctx, job), "order journal offline")
+	require.Empty(t, receipts)
+	require.Equal(t, wallet.Balance, db.UserWallet.GetX(ctx, wallet.ID).Balance)
+	require.Equal(t, invoice.Status, db.Order.GetX(ctx, invoice.ID).Status)
+	failEvent = false
+	for range 2 {
+		require.NoError(t, logic.ProcessTask(ctx, job))
+	}
+	require.EqualValues(t, 775, db.UserWallet.GetX(ctx, wallet.ID).Balance)
+	require.Equal(t, modelorder.StatusFinished, db.Order.GetX(ctx, invoice.ID).Status)
+	require.Len(t, receipts, 2)
+	byChat := map[string]string{}
+	for range 2 {
+		receipt := <-receipts
+		byChat[receipt.chat] = receipt.text
+	}
+	require.Contains(t, byChat["101"], `7\.50`)
+	require.Contains(t, byChat["101"], `7\.75`)
+	require.Contains(t, byChat["202"], `recharge\-42`)
+	require.Contains(t, byChat["202"], `trade\-17`)
+	require.Contains(t, byChat["202"], `buyer@example\.test`)
+}
 
 func TestActivateOrderHandlesRechargeStatusesAndNotifications(t *testing.T) {
 	service, _ := stripeTestService(t)

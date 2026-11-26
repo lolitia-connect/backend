@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/internal/types"
@@ -85,13 +86,13 @@ func TestEdgeManifestReflectsTrafficExhaustionOnTheNextFetch(t *testing.T) {
 	f.service.Config.EdgeSubscribe = config.EdgeSubscribeConfig{Enabled: true, Keys: []config.EdgeSubscribeAccessKey{{ID: renderer, Secret: secret}}}
 	RegisterNativeHandlers(f.router.Hertz(), f.service)
 	member, _ := f.account(false)
-	server := f.client.Server.Create().SetName("West").SetProtocols(`[{"id":"main","type":"shadowsocks","enable":true,"cipher":"aes-128-gcm"}]`).SaveX(ctx)
+	server := f.client.Server.Create().SetName("West").SetProtocols(`[{"id":"legacy","type":"shadowsocks","enable":true,"cipher":"aes-256-gcm"},{"id":"main","type":"shadowsocks","enable":true,"cipher":"aes-128-gcm"}]`).SaveX(ctx)
 	node := f.client.Node.Create().SetName("West relay").SetServerID(server.ID).SetProtocolID("main").SetProtocol("shadowsocks").SetAddress("west.example.test").SetPort(443).SetEnabled(true).SaveX(ctx)
 	plan := f.client.Subscribe.Create().SetName("Regional pass").SetNodes(fmt.Sprint(node.ID)).SaveX(ctx)
 	const token = "manifest-traffic-fixture"
 	sub := f.client.UserSubscribe.Create().SetUserID(member.ID).SetOrderID(1).SetSubscribeID(plan.ID).SetToken(token).
 		SetUUID("a6a03360-dae2-48da-8380-77793054ba39").SetExpireTime(time.Now().Add(24 * time.Hour)).SetStatus(1).SetTraffic(1000).SetUpload(30).SetDownload(170).SaveX(ctx)
-	fetch := func(id string) types.EdgeManifestResponse {
+	fetch := func(id string, wantStatus int) types.EdgeManifestResponse {
 		t.Helper()
 		const path = "/api/edge/v1/manifest"
 		stamp := fmt.Sprint(time.Now().Unix())
@@ -103,25 +104,73 @@ func TestEdgeManifestReflectsTrafficExhaustionOnTheNextFetch(t *testing.T) {
 		req.Header.Set("Authorization", "PPanel-Edge-HMAC kid="+renderer+", ts="+stamp+", sig="+hex.EncodeToString(signature.Sum(nil)))
 		recorder := httptest.NewRecorder()
 		f.router.ServeHTTP(recorder, req)
-		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		require.Equal(t, wantStatus, recorder.Code, recorder.Body.String())
+		if wantStatus != http.StatusOK {
+			require.Equal(t, http.StatusText(wantStatus), recorder.Body.String())
+			return types.EdgeManifestResponse{}
+		}
 		require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
 		var manifest types.EdgeManifestResponse
 		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &manifest))
 		return manifest
 	}
-	active := fetch("d72817e2-b81b-4379-8eeb-9bfa490e97d3")
+	var offline string
+	outage := func(entity string) ent.Interceptor {
+		return ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+			return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+				if entity == offline {
+					return nil, errors.New("manifest catalog offline")
+				}
+				return next.Query(ctx, q)
+			})
+		})
+	}
+	f.client.UserSubscribe.Intercept(outage(ent.TypeUserSubscribe))
+	f.client.User.Intercept(outage(ent.TypeUser))
+	f.client.Subscribe.Intercept(outage(ent.TypeSubscribe))
+	f.client.Node.Intercept(outage(ent.TypeNode))
+	for _, offline = range []string{ent.TypeUserSubscribe, ent.TypeUser, ent.TypeSubscribe, ent.TypeNode} {
+		id := uuid.NewString()
+		fetch(id, http.StatusInternalServerError)
+		fetch(id, http.StatusNotFound)
+	}
+	offline = ""
+	active := fetch(uuid.NewString(), http.StatusOK)
 	require.Equal(t, plan.Name, active.Subscription.Name)
 	require.Equal(t, "active", active.Subscription.State)
 	require.EqualValues(t, 170, active.Subscription.Download)
 	require.Len(t, active.Proxies, 1)
 	require.Equal(t, node.Address, active.Proxies[0].Server)
 	require.Equal(t, sub.UUID, active.Proxies[0].Password)
+	require.Equal(t, "aes-128-gcm", active.Proxies[0].Cipher)
+	f.client.Node.UpdateOneID(node.ID).SetProtocolID("retired").ExecX(ctx)
+	retired := fetch(uuid.NewString(), http.StatusOK)
+	require.Empty(t, retired.Proxies)
+	require.Len(t, retired.Notices, 1)
+	require.Contains(t, retired.Notices[0], node.Name)
 	f.client.UserSubscribe.UpdateOneID(sub.ID).SetDownload(970).ExecX(ctx)
-	exhausted := fetch("2c50fa94-bf7c-4bfa-b30a-c889451eaba7")
+	exhausted := fetch(uuid.NewString(), http.StatusOK)
 	require.Equal(t, "traffic_exhausted", exhausted.Subscription.State)
 	require.EqualValues(t, 970, exhausted.Subscription.Download)
 	require.Empty(t, exhausted.Proxies)
 	require.NotEqual(t, active.Revision, exhausted.Revision)
+	f.client.Node.UpdateOneID(node.ID).SetProtocolID("main").ExecX(ctx)
+	for _, state := range []struct {
+		status       uint8
+		name, notice string
+	}{{5, "suspended", "Subscription suspended"}, {2, "expired", "Subscription expired"}, {4, "disabled", "Subscription is unavailable"}} {
+		f.client.UserSubscribe.UpdateOneID(sub.ID).SetStatus(state.status).SetDownload(170).ExecX(ctx)
+		unavailable := fetch(uuid.NewString(), http.StatusOK)
+		require.Equal(t, state.name, unavailable.Subscription.State)
+		require.Equal(t, []string{state.notice}, unavailable.Notices)
+		require.Empty(t, unavailable.Proxies)
+		require.NotEqual(t, active.Revision, unavailable.Revision)
+	}
+	f.client.UserSubscribe.UpdateOneID(sub.ID).SetStatus(1).ExecX(ctx)
+	resumed := fetch(uuid.NewString(), http.StatusOK)
+	require.Equal(t, active.Proxies, resumed.Proxies)
+	require.Equal(t, "active", resumed.Subscription.State)
+	require.Empty(t, resumed.Notices)
 }
 
 func TestWildcardSubscriptionDownloadsRecoverWithoutServingPartialProfiles(t *testing.T) {
@@ -195,6 +244,82 @@ func TestWildcardSubscriptionDownloadsRecoverWithoutServingPartialProfiles(t *te
 	request(rootHost, "/", reader, http.StatusForbidden)
 	f.client.UserSubscribe.DeleteOneID(sub.ID).ExecX(ctx)
 	request(host, path, reader, http.StatusNotFound)
+}
+
+func TestClientCatalogPublishesEditsAndRetirementOnlyAfterStorageRecovers(t *testing.T) {
+	f := newRouteFixture(t)
+	_, admin := f.account(true)
+	const editor = "/v1/admin/application"
+	const catalog = editor + "/subscribe_application_list?page=1&size=10"
+	const public = "/v1/common/client"
+	var readUnavailable, writeUnavailable bool
+	f.client.SubscribeApplication.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if readUnavailable {
+				return nil, errors.New("application catalog unavailable")
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	f.client.SubscribeApplication.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if writeUnavailable {
+				return nil, errors.New("application catalog is read-only")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	check := func(id int64, version string) {
+		t.Helper()
+		var internal types.GetSubscribeApplicationListResponse
+		var clients types.GetSubscribeClientResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, catalog, admin, "", http.StatusOK), &internal))
+		raw := f.request(http.MethodGet, public, "", "", http.StatusOK)
+		require.NoError(t, json.Unmarshal(raw, &clients))
+		if version == "" {
+			require.Zero(t, internal.Total)
+			require.Empty(t, internal.List)
+			require.Zero(t, clients.Total)
+			require.Empty(t, clients.List)
+			return
+		}
+		require.Len(t, internal.List, 1)
+		require.Len(t, clients.List, 1)
+		require.Equal(t, id, clients.List[0].Id)
+		require.Equal(t, id, internal.List[0].Id)
+		require.Equal(t, "profile-"+version, internal.List[0].SubscribeTemplate)
+		require.NotContains(t, string(raw), "profile-"+version)
+		require.Equal(t, "https://reader.example.test/"+version, clients.List[0].DownloadLink.Linux)
+		require.Equal(t, clients.List[0].DownloadLink, internal.List[0].DownloadLink)
+	}
+	form := func(id int64, version string) string {
+		return fmt.Sprintf(`{"id":"%d","name":"Reader","user_agent":"Reader","template":"profile-%s","download_link":{"linux":"https://reader.example.test/%s"}}`, id, version, version)
+	}
+	writeUnavailable = true
+	f.request(http.MethodPost, editor+"/", admin, form(0, "one"), xerr.DatabaseInsertError)
+	check(0, "")
+	writeUnavailable = false
+	var app types.SubscribeApplication
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, editor+"/", admin, form(0, "one"), http.StatusOK), &app))
+	check(app.Id, "one")
+	const edit = editor + "/subscribe_application"
+	readUnavailable = true
+	require.Empty(t, f.request(http.MethodGet, catalog, admin, "", xerr.DatabaseQueryError))
+	require.Empty(t, f.request(http.MethodGet, public, "", "", xerr.DatabaseQueryError))
+	f.request(http.MethodPut, edit, admin, form(app.Id, "two"), xerr.DatabaseQueryError)
+	readUnavailable, writeUnavailable = false, true
+	f.request(http.MethodPut, edit, admin, form(app.Id, "two"), xerr.DatabaseUpdateError)
+	check(app.Id, "one")
+	writeUnavailable = false
+	f.request(http.MethodPut, edit, admin, form(app.Id, "two"), http.StatusOK)
+	check(app.Id, "two")
+	remove := fmt.Sprintf(`{"id":"%d"}`, app.Id)
+	writeUnavailable = true
+	f.request(http.MethodDelete, edit, admin, remove, xerr.DatabaseDeletedError)
+	check(app.Id, "two")
+	writeUnavailable = false
+	f.request(http.MethodDelete, edit, admin, remove, http.StatusOK)
+	check(0, "")
 }
 
 func TestSubscriberDownloadsPublishedClientTemplate(t *testing.T) {

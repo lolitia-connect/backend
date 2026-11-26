@@ -949,6 +949,19 @@ func TestRefundCalendarClampsMonthEndAndLeapYear(t *testing.T) {
 	}
 }
 
+func TestRefundWeightsTrafficAndTimeForCurrentPeriod(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	sub := Subscribe{StartTime: start, ExpireTime: start.AddDate(0, 0, 10), Traffic: 1000, Download: 200, Upload: 100, UnitTime: UnitTimeDay}
+	paid := Order{Amount: 1000, Quantity: 10}
+	for _, tc := range []struct{ ratio, want int64 }{{0, 500}, {50, 600}, {100, 700}} {
+		sub.DeductionRatio = tc.ratio
+		got, err := CalculateRemainingAmount(sub, paid, start.AddDate(0, 0, 5))
+		if err != nil || got != tc.want {
+			t.Errorf("refund with traffic weight %d%% = %d, %v, want %d", tc.ratio, got, err, tc.want)
+		}
+	}
+}
+
 // Benchmark tests
 func BenchmarkCalculateRemainingAmount(b *testing.B) {
 	now := time.Now()

@@ -138,7 +138,7 @@ func (l *QuotaTaskLogic) getSubscribes(ctx context.Context, subscriberIDs []int6
 			zap.Any("error", err.Error()),
 			zap.Any("subscribers", subscriberIDs),
 		)
-		return nil, asynq.SkipRetry
+		return nil, err
 	}
 	return subscribes, nil
 }

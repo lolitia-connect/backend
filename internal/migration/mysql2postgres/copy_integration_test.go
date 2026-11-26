@@ -101,10 +101,28 @@ func TestMigrateCopiesSelectedTablesAndPreservesData(t *testing.T) {
 	exec(source, "INSERT INTO "+brokenSrc+" VALUES (1,'true'), (2,'unknown')")
 	exec(target, "CREATE TABLE "+brokenDst+" (id BIGINT PRIMARY KEY, enabled BOOLEAN)")
 	exec(target, "INSERT INTO "+brokenDst+" VALUES (3, FALSE)")
-	if err := Run(ctx, []string{"--mysql", mysqlDSN, "--postgres", postgresDSN, "--schema", schema, "--tables", broken}); err == nil || !strings.Contains(err.Error(), broken+".enabled") {
+	copyFlags := []string{"--mysql", mysqlDSN, "--postgres", postgresDSN, "--schema", schema, "--tables", broken}
+	if err := Run(ctx, copyFlags); err == nil || !strings.Contains(err.Error(), broken+".enabled") {
 		t.Fatalf("copy of invalid boolean returned %v", err)
 	}
 	if err := target.QueryRowContext(ctx, "SELECT COUNT(*), MIN(id) FROM "+brokenDst).Scan(&count, &id); err != nil || count != 1 || id != 3 {
 		t.Fatalf("failed copy left count=%d min id=%d err=%v", count, id, err)
 	}
+	exec(source, "UPDATE "+brokenSrc+" SET enabled='off' WHERE id=2")
+	if err := Run(ctx, copyFlags); err != nil {
+		t.Fatalf("retry after correcting the source row: %v", err)
+	}
+	checkRows := func() {
+		t.Helper()
+		var values string
+		err := target.QueryRowContext(ctx, "SELECT string_agg(id::text || '=' || enabled::text, ',' ORDER BY id) FROM "+brokenDst).Scan(&values)
+		if err != nil || values != "1=true,2=false,3=false" {
+			t.Fatalf("migrated and pre-existing rows = %q, err=%v", values, err)
+		}
+	}
+	checkRows()
+	if err := Run(ctx, copyFlags); err == nil {
+		t.Fatal("copying the same primary keys twice reported success")
+	}
+	checkRows()
 }

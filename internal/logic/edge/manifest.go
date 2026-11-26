@@ -196,7 +196,7 @@ func proxyFromNode(item *node.Node, userSecret string) (types.EdgeManifestProxy,
 		return types.EdgeManifestProxy{}, false, "node protocol definition is invalid"
 	}
 	for _, protocol := range protocols {
-		if strings.EqualFold(strings.TrimSpace(protocol.Type), strings.TrimSpace(item.Protocol)) {
+		if (item.ProtocolId == "" || item.ProtocolId == protocol.Id) && strings.EqualFold(strings.TrimSpace(protocol.Type), strings.TrimSpace(item.Protocol)) {
 			return proxyFromProtocol(item, protocol, userSecret)
 		}
 	}

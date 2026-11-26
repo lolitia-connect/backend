@@ -9,7 +9,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -256,10 +258,13 @@ func (w *rotateWriter) shouldRotate(size int) bool {
 }
 
 func (w *rotateWriter) rotate() error {
+	backup, err := w.backupName()
+	if err != nil {
+		return err
+	}
 	if err := w.file.Close(); err != nil {
 		return err
 	}
-	backup := w.backupName()
 	if _, err := os.Stat(w.filename); err == nil {
 		if err = os.Rename(w.filename, backup); err != nil {
 			return err
@@ -281,14 +286,48 @@ func (w *rotateWriter) rotate() error {
 	return nil
 }
 
-func (w *rotateWriter) backupName() string {
+func (w *rotateWriter) backupName() (string, error) {
+	stem := w.filename + "-" + time.Now().Format(time.DateOnly)
+	ext := ""
 	if w.rotation == sizeRotation {
-		dir, base := filepath.Split(w.filename)
-		ext := filepath.Ext(base)
-		prefix := strings.TrimSuffix(base, ext)
-		return filepath.Join(dir, fmt.Sprintf("%s-%s%s", prefix, time.Now().Format(w.fileTimeFormat), ext))
+		ext = filepath.Ext(w.filename)
+		stem = strings.TrimSuffix(w.filename, ext) + "-" + time.Now().Format(w.backupTimeLayout())
 	}
-	return fmt.Sprintf("%s-%s", w.filename, time.Now().Format("2006-01-02"))
+	entries, err := os.ReadDir(filepath.Dir(w.filename))
+	if err != nil {
+		return "", err
+	}
+	var next int64
+	for _, entry := range entries {
+		name := strings.TrimSuffix(entry.Name(), ".gz")
+		if !strings.HasSuffix(name, ext) {
+			continue
+		}
+		base, sequence := splitBackupSequence(strings.TrimSuffix(name, ext))
+		if base == filepath.Base(stem) {
+			next = max(next, sequence+1)
+		}
+	}
+	if next == 0 {
+		return stem + ext, nil
+	}
+	return fmt.Sprintf("%s~%06d%s", stem, next, ext), nil
+}
+
+func (w *rotateWriter) backupTimeLayout() string {
+	if runtime.GOOS == "windows" {
+		return strings.NewReplacer("07:00", "0700", ":", "-").Replace(w.fileTimeFormat)
+	}
+	return w.fileTimeFormat
+}
+
+func splitBackupSequence(name string) (string, int64) {
+	if i := strings.LastIndexByte(name, '~'); i >= 0 {
+		if n, err := strconv.ParseInt(name[i+1:], 10, 32); err == nil && n > 0 && name[i+1:] == fmt.Sprintf("%06d", n) {
+			return name[:i], n
+		}
+	}
+	return name, 0
 }
 
 func (w *rotateWriter) cleanup() {
@@ -312,25 +351,55 @@ func (w *rotateWriter) cleanup() {
 }
 
 func (w *rotateWriter) backups() []string {
-	dir, base := filepath.Split(w.filename)
+	dir := filepath.Dir(w.filename)
+	base := filepath.Base(w.filename)
 	ext := filepath.Ext(base)
-	prefix := strings.TrimSuffix(base, ext)
-	patterns := []string{
-		filepath.Join(dir, prefix+"-*"+ext),
-		w.filename + "-*",
+	sizePrefix := strings.TrimSuffix(base, ext) + "-"
+	entries, _ := os.ReadDir(dir)
+	type archive struct {
+		path     string
+		modified time.Time
+		sequence int64
 	}
-	seen := make(map[string]struct{})
-	var files []string
-	for _, pattern := range patterns {
-		matches, _ := filepath.Glob(pattern)
-		for _, match := range matches {
-			if _, ok := seen[match]; !ok {
-				seen[match] = struct{}{}
-				files = append(files, match)
+	var archives []archive
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || entry.Name() == base {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".gz")
+		var stamp, layout string
+		switch {
+		case strings.HasPrefix(name, base+"-") && ext != "":
+			stamp, layout = strings.TrimPrefix(name, base+"-"), time.DateOnly
+		case strings.HasPrefix(name, sizePrefix) && strings.HasSuffix(name, ext):
+			stamp, layout = strings.TrimSuffix(strings.TrimPrefix(name, sizePrefix), ext), w.backupTimeLayout()
+		default:
+			continue
+		}
+		stamp, sequence := splitBackupSequence(stamp)
+		if _, err := time.Parse(layout, stamp); err != nil {
+			if ext != "" {
+				continue
+			}
+			if _, err = time.Parse(time.DateOnly, stamp); err != nil {
+				continue
 			}
 		}
+		info, err := entry.Info()
+		if err == nil {
+			archives = append(archives, archive{filepath.Join(dir, entry.Name()), info.ModTime(), sequence})
+		}
 	}
-	sort.Strings(files)
+	sort.SliceStable(archives, func(i, j int) bool {
+		if archives[i].modified.Equal(archives[j].modified) {
+			return archives[i].sequence < archives[j].sequence
+		}
+		return archives[i].modified.Before(archives[j].modified)
+	})
+	files := make([]string, 0, len(archives))
+	for _, a := range archives {
+		files = append(files, a.path)
+	}
 	return files
 }
 

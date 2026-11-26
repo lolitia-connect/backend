@@ -79,9 +79,9 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	}
 
 	// Get monthly daily list for the current month (from 1st to current date)
-	monthlyListData, err := l.svcCtx.Store.Order().QueryDailyOrdersList(l.ctx, now)
-	if err != nil {
-		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryDailyOrdersList error", zap.Any("error", err.Error()))
+	monthlyListData, dailyChartErr := l.svcCtx.Store.Order().QueryDailyOrdersList(l.ctx, now)
+	if dailyChartErr != nil {
+		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryDailyOrdersList error", zap.Any("error", dailyChartErr.Error()))
 		// Don't return error, just log it and continue with empty list
 	} else {
 		monthlyList := make([]types.OrdersStatistics, len(monthlyListData))
@@ -115,9 +115,9 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 	}
 
 	// Get all monthly list for the past 6 months
-	allListData, err := l.svcCtx.Store.Order().QueryMonthlyOrdersList(l.ctx, now)
-	if err != nil {
-		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrdersList error", zap.Any("error", err.Error()))
+	allListData, monthlyChartErr := l.svcCtx.Store.Order().QueryMonthlyOrdersList(l.ctx, now)
+	if monthlyChartErr != nil {
+		l.Logger.Errorw("[QueryRevenueStatisticsLogic] QueryMonthlyOrdersList error", zap.Any("error", monthlyChartErr.Error()))
 		// Don't return error, just log it and continue with empty list
 	} else {
 		allList := make([]types.OrdersStatistics, len(allListData))
@@ -140,7 +140,9 @@ func (l *QueryRevenueStatisticsLogic) QueryRevenueStatistics() (resp *types.Reve
 		All:     all,
 	}
 
-	// Cache the result
+	if dailyChartErr != nil || monthlyChartErr != nil {
+		return resp, nil
+	}
 	if data, marshalErr := json.Marshal(resp); marshalErr == nil {
 		l.svcCtx.Redis.Set(l.ctx, consoleRevenueStatisticsCacheKey, data, consoleRevenueStatisticsCacheTTL)
 	}

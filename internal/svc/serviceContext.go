@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,15 +30,15 @@ type PluginReadySignaler interface {
 }
 
 type ServiceContext struct {
-	Redis        *redis.Client
-	Config       config.Config
-	Queue        *asynq.Client
-	ExchangeRate float64
-	GeoIP        *IPLocation
-	Store        repository.Store
-	Ent          *ent.Client
-	SQLDB        *sql.DB
-	SQLDialect   string
+	Redis      *redis.Client
+	Config     config.Config
+	Queue      *asynq.Client
+	cnyRates   sync.Map
+	GeoIP      *IPLocation
+	Store      repository.Store
+	Ent        *ent.Client
+	SQLDB      *sql.DB
+	SQLDialect string
 
 	//NodeCache   *cache.NodeCacheClient
 	Restart               func() error
@@ -51,6 +52,20 @@ type ServiceContext struct {
 	closeError            error
 	userIndexOnce         sync.Once
 	userIndexes           *node.UserIndexCache
+}
+
+func (srv *ServiceContext) CNYRate(base string) float64 {
+	value, _ := srv.cnyRates.Load(strings.ToUpper(base))
+	rate, _ := value.(float64)
+	return rate
+}
+
+func (srv *ServiceContext) SetCNYRate(base string, rate float64) {
+	srv.cnyRates.Store(strings.ToUpper(base), rate)
+}
+
+func (srv *ServiceContext) ClearCNYRates() {
+	srv.cnyRates.Clear()
 }
 
 func (srv *ServiceContext) NodeUserIndexes() *node.UserIndexCache {
@@ -112,15 +127,14 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	authLimiter := limit.NewPeriodLimit(86400, 15, rds, config.SendCountLimitKeyPrefix, limit.Align())
 	store := repository.NewStore(entClient, rds)
 	srv := &ServiceContext{
-		Redis:        rds,
-		Config:       c,
-		Queue:        NewAsynqClient(c),
-		ExchangeRate: 0,
-		GeoIP:        geoIP,
-		Store:        store,
-		Ent:          entClient,
-		SQLDB:        sqlDB,
-		SQLDialect:   sqlDialect,
+		Redis:      rds,
+		Config:     c,
+		Queue:      NewAsynqClient(c),
+		GeoIP:      geoIP,
+		Store:      store,
+		Ent:        entClient,
+		SQLDB:      sqlDB,
+		SQLDialect: sqlDialect,
 		//NodeCache:   cache.NewNodeCacheClient(rds),
 		AuthLimiter: authLimiter,
 	}

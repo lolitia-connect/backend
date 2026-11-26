@@ -20,6 +20,7 @@ import (
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/auth"
 	"github.com/perfect-panel/server/internal/types"
+	"github.com/perfect-panel/server/pkg/oauthstate"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +28,66 @@ import (
 type providerTransport func(*http.Request) (*http.Response, error)
 
 func (fn providerTransport) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
+
+func TestProviderLinksCanResumeAfterConfigurationAndStateStorageRecover(t *testing.T) {
+	const callback = "https://panel.example.test/account?tab=profile&source=app"
+	for _, provider := range []struct{ name, host, config string }{
+		{"google", "accounts.google.com", `{"client_id":"mobile-client"}`},
+		{"facebook", "www.facebook.com", `{"client_id":"mobile-client","redirect_url":"https://panel.example.test/account?tab=profile&source=app"}`},
+		{"github", "github.com", `{"client_id":"mobile-client","redirect_url":"https://panel.example.test/account?tab=profile&source=app"}`},
+		{"apple", "appleid.apple.com", `{"client_id":"mobile-client","redirect_url":"https://api.example.test"}`},
+		{"telegram", "oauth.telegram.org", `{"bot_token":"123456:local-fixture"}`},
+	} {
+		t.Run(provider.name, func(t *testing.T) {
+			f := newRouteFixture(t)
+			ctx := t.Context()
+			f.service.Config.Site.Host = "https://panel.example.test"
+			owner, session := f.account(false)
+			fault := &cacheWriteFault{prefix: provider.name + ":"}
+			f.service.Redis.AddHook(fault)
+			body := fmt.Sprintf(`{"method":%q,"redirect":%q}`, provider.name, callback)
+			for _, flow := range []struct {
+				path, token, purpose string
+				userID               int64
+			}{
+				{"/v1/auth/oauth/login", "", "login", 0}, {"/v1/public/user/bind_oauth", session, "bind", owner.ID},
+			} {
+				f.request(http.MethodPost, flow.path, flow.token, body, xerr.ERROR)
+				settings := f.client.AuthMethod.Create().SetMethod(provider.name).SetEnabled(true).SetConfig(`{`).SaveX(ctx)
+				require.Empty(t, f.request(http.MethodPost, flow.path, flow.token, body, xerr.ERROR))
+				if provider.name == "telegram" {
+					f.client.AuthMethod.UpdateOneID(settings.ID).SetConfig(`{"bot_token":"incomplete"}`).ExecX(ctx)
+					require.Empty(t, f.request(http.MethodPost, flow.path, flow.token, body, xerr.ERROR))
+				}
+				f.client.AuthMethod.UpdateOneID(settings.ID).SetConfig(provider.config).ExecX(ctx)
+				fault.unavailable = true
+				require.Empty(t, f.request(http.MethodPost, flow.path, flow.token, body, xerr.ERROR))
+				fault.unavailable = false
+				var link types.OAuthLoginResponse
+				require.NoError(t, json.Unmarshal(f.request(http.MethodPost, flow.path, flow.token, body, http.StatusOK), &link))
+				u, err := url.Parse(link.Redirect)
+				require.NoError(t, err)
+				require.Equal(t, provider.host, u.Hostname())
+				query := u.Query()
+				state := query.Get("state")
+				switch provider.name {
+				case "telegram":
+					state = query.Get("embed")
+					require.Equal(t, "123456", query.Get("bot_id"))
+					require.Equal(t, callback, query.Get("return_to"))
+				case "apple":
+					require.Equal(t, "https://api.example.test/v1/auth/oauth/callback/apple", query.Get("redirect_uri"))
+				default:
+					require.Equal(t, callback, query.Get("redirect_uri"))
+				}
+				redirect, err := oauthstate.Consume(ctx, f.service.Redis, provider.name, flow.purpose, flow.userID, state)
+				require.NoError(t, err)
+				require.Equal(t, callback, redirect)
+				f.client.AuthMethod.DeleteOneID(settings.ID).ExecX(ctx)
+			}
+		})
+	}
+}
 
 func TestGitHubLoginUsesTheLastPublishedOperatorConfiguration(t *testing.T) {
 	f := newRouteFixture(t)
@@ -127,9 +188,17 @@ func TestAppleFormPostReturnsCustomerToPanelAndExchangesTheSameRedirectURI(t *te
 			return nil, err
 		}
 		body := fmt.Sprintf(`{"id_token":%q,"access_token":"opaque-access-token","token_type":"Bearer"}`, idToken)
+		switch req.Form.Get("code") {
+		case "exchange-offline":
+			return nil, fmt.Errorf("provider temporarily unavailable")
+		case "exchange-declined":
+			body = `{"error":"invalid_grant"}`
+		case "incomplete-profile":
+			body = `{"access_token":"opaque-access-token"}`
+		}
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{"Content-Type": {"application/json"}}}, nil
 	})
-	complete := func(startPath, endPath, session, code string) json.RawMessage {
+	complete := func(startPath, endPath, session, code string, want uint32) json.RawMessage {
 		t.Helper()
 		var start types.OAuthLoginResponse
 		require.NoError(t, json.Unmarshal(f.request(http.MethodPost, startPath, session, `{"method":"apple","redirect":"`+site+`/account?tab=devices"}`, http.StatusOK), &start))
@@ -151,17 +220,48 @@ func TestAppleFormPostReturnsCustomerToPanelAndExchangesTheSameRedirectURI(t *te
 		require.Equal(t, site+"/account", redirect.Scheme+"://"+redirect.Host+redirect.Path)
 		require.Equal(t, url.Values{"tab": {"devices"}, "method": {"apple"}, "code": {code}, "state": {state}}, redirect.Query())
 		payload := fmt.Sprintf(`{"method":"apple","callback":{"state":%q,"code":%q}}`, state, code)
-		return f.request(http.MethodPost, endPath, session, payload, http.StatusOK)
+		return f.request(http.MethodPost, endPath, session, payload, want)
 	}
-	complete("/v1/public/user/bind_oauth", "/v1/public/user/bind_oauth/callback", session, "bind-code")
+	const bindPath = "/v1/public/user/bind_oauth"
+	const loginPath = "/v1/auth/oauth/login"
+	checkOwner := func(token string) {
+		t.Helper()
+		var profile types.User
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/public/user/info", token, "", http.StatusOK), &profile))
+		require.Equal(t, owner.ID, profile.Id)
+	}
+	readOnly := false
+	f.client.UserAuthMethod.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if readOnly && m.Op().Is(ent.OpCreate) {
+				return nil, fmt.Errorf("identity store is read-only")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	for _, attempt := range []struct {
+		code string
+		want uint32
+	}{{"exchange-offline", xerr.ERROR}, {"exchange-declined", xerr.ERROR}, {"incomplete-profile", xerr.ERROR}, {"write-interrupted", xerr.DatabaseInsertError}} {
+		readOnly = attempt.want == xerr.DatabaseInsertError
+		require.Empty(t, complete(bindPath, bindPath+"/callback", session, attempt.code, attempt.want))
+		require.Zero(t, f.client.UserAuthMethod.Query().CountX(t.Context()))
+		checkOwner(session)
+	}
+	readOnly = false
+	complete(bindPath, bindPath+"/callback", session, "bind-code", http.StatusOK)
 	binding := f.client.UserAuthMethod.Query().OnlyX(t.Context())
 	require.Equal(t, owner.ID, binding.UserID)
 	require.Equal(t, identity, binding.AuthIdentifier)
+	require.True(t, binding.Verified)
+	for _, code := range []string{"exchange-offline", "exchange-declined", "incomplete-profile"} {
+		require.Empty(t, complete(loginPath, loginPath+"/token", "", code, xerr.ERROR))
+		require.Equal(t, binding.ID, f.client.UserAuthMethod.Query().OnlyX(t.Context()).ID)
+		checkOwner(session)
+	}
 	var login types.LoginResponse
-	require.NoError(t, json.Unmarshal(complete("/v1/auth/oauth/login", "/v1/auth/oauth/login/token", "", "sign-in-code"), &login))
-	var profile types.User
-	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/public/user/info", login.Token, "", http.StatusOK), &profile))
-	require.Equal(t, owner.ID, profile.Id)
+	require.NoError(t, json.Unmarshal(complete(loginPath, loginPath+"/token", "", "sign-in-code", http.StatusOK), &login))
+	checkOwner(login.Token)
 }
 
 func TestInvitedGitHubSignupKeepsItsTicketUntilTheTrialIsGranted(t *testing.T) {
@@ -334,6 +434,22 @@ func TestOAuthLinkedIdentityCanSignInToTheSameAccount(t *testing.T) {
 			}
 			checkOutage(bindPath, bindPath+"/callback", ownerSession)
 			require.Zero(t, f.client.UserAuthMethod.Query().CountX(ctx))
+			readOnly := true
+			f.client.UserAuthMethod.Use(func(next ent.Mutator) ent.Mutator {
+				return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+					if readOnly && m.Op().Is(ent.OpCreate) {
+						return nil, fmt.Errorf("identity store is read-only")
+					}
+					return next.Mutate(ctx, m)
+				})
+			})
+			interrupted := start(bindPath, ownerSession)
+			require.Empty(t, f.request(http.MethodPost, bindPath+"/callback", ownerSession, interrupted, xerr.ERROR))
+			require.Zero(t, f.client.UserAuthMethod.Query().CountX(ctx))
+			readOnly = false
+			beforeRetry := exchanges
+			f.request(http.MethodPost, bindPath+"/callback", ownerSession, interrupted, xerr.ERROR)
+			require.Equal(t, beforeRetry, exchanges)
 			beforeBind := exchanges
 			bind := start(bindPath, ownerSession)
 			f.request(http.MethodPost, loginPath+"/token", "", bind, xerr.ERROR)
@@ -344,6 +460,10 @@ func TestOAuthLinkedIdentityCanSignInToTheSameAccount(t *testing.T) {
 			require.Equal(t, provider.openID, binding.AuthIdentifier)
 			require.Equal(t, provider.name, binding.AuthType)
 			require.True(t, binding.Verified)
+			_, secondSession := f.account(false)
+			duplicate := start(bindPath, secondSession)
+			f.request(http.MethodPost, bindPath+"/callback", secondSession, duplicate, xerr.UserExist)
+			require.Equal(t, account.ID, f.client.UserAuthMethod.Query().OnlyX(ctx).UserID)
 
 			checkOutage(loginPath, loginPath+"/token", "")
 			require.Equal(t, binding.ID, f.client.UserAuthMethod.Query().OnlyX(ctx).ID)
@@ -358,7 +478,7 @@ func TestOAuthLinkedIdentityCanSignInToTheSameAccount(t *testing.T) {
 			f.request(http.MethodPost, loginPath+"/token", "", login, xerr.ERROR)
 			require.Equal(t, beforeLogin+1, exchanges)
 			require.Equal(t, beforeProfile+1, profiles)
-			require.Equal(t, 1, f.client.User.Query().CountX(ctx))
+			require.Equal(t, 2, f.client.User.Query().CountX(ctx))
 		})
 	}
 }

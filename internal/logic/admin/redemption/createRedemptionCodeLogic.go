@@ -3,10 +3,11 @@ package redemption
 import (
 	"context"
 	"crypto/rand"
-	"github.com/perfect-panel/server/ent"
 	"math/big"
 
+	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/model/redemption"
+	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
@@ -30,7 +31,7 @@ func NewCreateRedemptionCodeLogic(ctx context.Context, svcCtx *svc.ServiceContex
 }
 
 // generateUniqueCode generates a unique redemption code
-func (l *CreateRedemptionCodeLogic) generateUniqueCode() (string, error) {
+func (l *CreateRedemptionCodeLogic) generateUniqueCode(codes redemption.RedemptionCodeModel) (string, error) {
 	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // Removed confusing characters like I, O, 0, 1
 	const codeLength = 16
 
@@ -48,7 +49,7 @@ func (l *CreateRedemptionCodeLogic) generateUniqueCode() (string, error) {
 		codeStr := string(code)
 
 		// Check if code already exists
-		_, err := l.svcCtx.Store.RedemptionCode().FindOneByCode(l.ctx, codeStr)
+		_, err := codes.FindOneByCode(l.ctx, codeStr)
 		if ent.IsNotFound(err) {
 			return codeStr, nil
 		} else if err != nil {
@@ -84,37 +85,31 @@ func (l *CreateRedemptionCodeLogic) CreateRedemptionCode(req *types.CreateRedemp
 		return errors.Wrapf(xerr.NewErrCode(xerr.InvalidParams), "batch count must be at least 1")
 	}
 
-	// Generate redemption codes in batch
-	var createdCodes []string
-	for i := int64(0); i < req.BatchCount; i++ {
-		code, err := l.generateUniqueCode()
-		if err != nil {
-			l.Logger.Errorw("[CreateRedemptionCode] Failed to generate unique code", zap.Any("error", err.Error()))
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "generate unique code error: %v", err.Error())
+	err = l.svcCtx.Store.InTx(l.ctx, func(store repository.Store) error {
+		codes := store.RedemptionCode()
+		for i := int64(0); i < req.BatchCount; i++ {
+			code, err := l.generateUniqueCode(codes)
+			if err != nil {
+				return errors.Wrap(err, "generate unique code")
+			}
+			if err := codes.Insert(l.ctx, &redemption.RedemptionCode{
+				Code:          code,
+				TotalCount:    req.TotalCount,
+				SubscribePlan: req.SubscribePlan,
+				UnitTime:      normalizeUnitTime(req.UnitTime),
+				Quantity:      req.Quantity,
+				Status:        1,
+			}); err != nil {
+				return err
+			}
 		}
-
-		redemptionCode := &redemption.RedemptionCode{
-			Code:          code,
-			TotalCount:    req.TotalCount,
-			UsedCount:     0,
-			SubscribePlan: req.SubscribePlan,
-			UnitTime:      normalizeUnitTime(req.UnitTime),
-			Quantity:      req.Quantity,
-			Status:        1, // Default to enabled
-		}
-
-		err = l.svcCtx.Store.RedemptionCode().Insert(l.ctx, redemptionCode)
-		if err != nil {
-			l.Logger.Errorw("[CreateRedemptionCode] Database Error", zap.Any("error", err.Error()))
-			return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create redemption code error: %v", err.Error())
-		}
-
-		createdCodes = append(createdCodes, code)
+		return nil
+	})
+	if err != nil {
+		l.Logger.Errorw("[CreateRedemptionCode] Batch creation failed", zap.Error(err))
+		return errors.Wrapf(xerr.NewErrCode(xerr.DatabaseInsertError), "create redemption codes: %v", err)
 	}
-
-	l.Logger.Infow("[CreateRedemptionCode] Successfully created redemption codes",
-		zap.Any("count", len(createdCodes)),
-		zap.Any("codes", createdCodes))
+	l.Logger.Infow("[CreateRedemptionCode] Successfully created redemption codes", "count", req.BatchCount)
 
 	return nil
 }

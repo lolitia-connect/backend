@@ -1,12 +1,16 @@
 package middleware
 
 import (
+	"context"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"github.com/perfect-panel/server/internal/model/node"
+	"github.com/perfect-panel/server/internal/svc"
+	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/perfect-panel/server/pkg/logredact"
 )
 
@@ -70,5 +74,33 @@ func TestMaskSensitiveFieldsLeavesNonJSONAlone(t *testing.T) {
 	body := []byte("not json at all")
 	if got := maskSensitiveFields(body, []string{"password"}); string(got) != string(body) {
 		t.Fatalf("maskSensitiveFields = %q, want %q", got, body)
+	}
+}
+
+func TestPanDomainMiddlewareRejectsUnusableRequests(t *testing.T) {
+	tests := []struct {
+		name  string
+		host  string
+		ua    string
+		limit bool
+	}{
+		{name: "empty user agent", host: "panel.example.test", limit: true},
+		{name: "host without subdomain", host: "localhost"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := app.NewContext(0)
+			raw.Request.SetRequestURI("/")
+			raw.Request.Header.SetHost(tc.host)
+			raw.Request.Header.Set("User-Agent", tc.ua)
+			ctx := hertzx.NewContext(context.Background(), raw)
+			service := &svc.ServiceContext{}
+			service.Config.Subscribe.PanDomain = true
+			service.Config.Subscribe.UserAgentLimit = tc.limit
+			PanDomainMiddleware(service)(ctx)
+			if raw.Response.StatusCode() != http.StatusForbidden || string(raw.Response.Body()) != "Access denied" {
+				t.Fatalf("response = %d %q, want forbidden", raw.Response.StatusCode(), raw.Response.Body())
+			}
+		})
 	}
 }

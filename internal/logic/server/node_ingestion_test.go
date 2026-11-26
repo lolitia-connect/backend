@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -86,6 +88,120 @@ func TestNodeRosterAppliesRecentTrafficLimitsAndRefreshesOnPlanChange(t *testing
 	for _, item := range updated {
 		require.EqualValues(t, 10, item.SpeedLimit)
 	}
+}
+
+func TestNodeRosterRetriesWithoutCachingIncompleteMembership(t *testing.T) {
+	for _, assignment := range []string{"group", "tag"} {
+		t.Run(assignment, func(t *testing.T) {
+			ctx := t.Context()
+			service, server, cache := nodeLogicFixture(t, node.Protocol{Type: "vless", Id: "west", Enable: true})
+			db := service.Store.Ent()
+			endpoint := db.Node.Create().SetServerID(server.ID).SetProtocol("vless").SetProtocolID("west")
+			plan := db.Subscribe.Create().SetName("Western region").SetSpeedLimit(35).SetDeviceLimit(2)
+			if assignment == "group" {
+				group := db.NodeGroup.Create().SetName("West").SaveX(ctx)
+				endpoint.SetNodeGroupIds([]int64{group.ID})
+				plan.SetNodeGroupID(group.ID)
+			} else {
+				endpoint.SetTags("west")
+				plan.SetNodeTags("west")
+			}
+			endpoint.SaveX(ctx)
+			published := plan.SaveX(ctx)
+			var want []types.ServerUser
+			for range 2 {
+				owner := db.User.Create().SetPassword("fixture").SetEnable(true).SaveX(ctx)
+				sub := db.UserSubscribe.Create().SetUserID(owner.ID).SetSubscribeID(published.ID).SetOrderID(owner.ID).
+					SetExpireTime(time.Now().Add(24 * time.Hour)).SetStatus(1).SetUUID(fmt.Sprintf("00000000-0000-4000-8000-%012d", owner.ID)).SaveX(ctx)
+				want = append(want, types.ServerUser{Id: sub.ID, UUID: sub.UUID, SpeedLimit: 35, DeviceLimit: 2})
+			}
+			unavailable := errors.New("roster data unavailable")
+			var blocked string
+			db.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+				return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+					switch q.(type) {
+					case *ent.NodeQuery:
+						if blocked == "nodes" {
+							return nil, unavailable
+						}
+					case *ent.SubscribeQuery:
+						if blocked == "plans" {
+							return nil, unavailable
+						}
+					case *ent.UserSubscribeQuery:
+						if blocked == "subscriptions" {
+							return nil, unavailable
+						}
+					case *ent.UserQuery:
+						if blocked == "accounts" {
+							return nil, unavailable
+						}
+					}
+					return next.Query(ctx, q)
+				})
+			}))
+			query := &types.GetServerUserListRequest{ServerCommon: types.ServerCommon{ServerId: server.ID, Protocol: "vless", ProtocolId: "west"}}
+			key := fmt.Sprintf("%s%d:vless:west", node.ServerUserListCacheKey, server.ID)
+			for _, blocked = range []string{"nodes", "plans", "subscriptions", "accounts"} {
+				list, err := NewGetServerUserListLogic(ctx, service, RequestMeta{}).GetServerUserList(query)
+				require.ErrorIs(t, err, unavailable, blocked)
+				require.Nil(t, list)
+				require.False(t, cache.Exists(key), "published a partial roster while %s were unreadable", blocked)
+			}
+			blocked = ""
+			reader := NewGetServerUserListLogic(ctx, service, RequestMeta{})
+			list, err := reader.GetServerUserList(query)
+			require.NoError(t, err)
+			require.ElementsMatch(t, want, list.Users)
+			etag := reader.ResponseMeta().Headers["ETag"]
+			require.NotEmpty(t, etag)
+			blocked = "accounts"
+			list, err = NewGetServerUserListLogic(ctx, service, RequestMeta{IfNoneMatch: etag}).GetServerUserList(query)
+			require.ErrorIs(t, err, xerr.StatusNotModified)
+			require.Nil(t, list)
+		})
+	}
+}
+
+func TestNodeRosterMatchesDirectAndTaggedPlansAfterPlanEdit(t *testing.T) {
+	ctx := t.Context()
+	service, west, _ := nodeLogicFixture(t, node.Protocol{Type: "vless", Id: "edge", Enable: true})
+	db := service.Store.Ent()
+	east := db.Server.Create().SetName("East").SaveX(ctx)
+	westNode := db.Node.Create().SetServerID(west.ID).SetProtocol("vless").SetProtocolID("edge").SetTags("travel,west,").SaveX(ctx)
+	eastNode := db.Node.Create().SetServerID(east.ID).SetProtocol("vless").SetProtocolID("edge").SetTags("east").SaveX(ctx)
+	assign := func(name, nodes, tags string) (*ent.Subscribe, types.ServerUser) {
+		t.Helper()
+		plan := db.Subscribe.Create().SetName(name).SetNodes(nodes).SetNodeTags(tags).SetSpeedLimit(25).SaveX(ctx)
+		owner := db.User.Create().SetPassword("fixture").SetEnable(true).SaveX(ctx)
+		sub := db.UserSubscribe.Create().SetUserID(owner.ID).SetSubscribeID(plan.ID).SetOrderID(owner.ID).
+			SetExpireTime(time.Now().Add(24 * time.Hour)).SetStatus(1).SetUUID(fmt.Sprintf("00000000-0000-4000-8000-%012d", owner.ID)).SaveX(ctx)
+		return plan, types.ServerUser{Id: sub.ID, UUID: sub.UUID, SpeedLimit: plan.SpeedLimit, DeviceLimit: plan.DeviceLimit}
+	}
+	move, direct := assign("Direct", fmt.Sprint(westNode.ID), "")
+	_, tagged := assign("Tagged", "", "travel")
+	_, both := assign("Overlapping assignment", fmt.Sprint(westNode.ID), "west")
+	_, regional := assign("Eastern region", "", "east")
+	roster := func(serverID int64, previousETag string, want ...types.ServerUser) string {
+		t.Helper()
+		reader := NewGetServerUserListLogic(ctx, service, RequestMeta{IfNoneMatch: previousETag})
+		result, err := reader.GetServerUserList(&types.GetServerUserListRequest{ServerCommon: types.ServerCommon{ServerId: serverID, Protocol: "vless", ProtocolId: "edge"}})
+		require.NoError(t, err)
+		require.ElementsMatch(t, want, result.Users)
+		etag := reader.ResponseMeta().Headers["ETag"]
+		require.NotEmpty(t, etag)
+		require.NotEqual(t, previousETag, etag)
+		return etag
+	}
+	westTag := roster(west.ID, "", direct, tagged, both)
+	eastTag := roster(east.ID, "", regional)
+	plans := service.Store.Subscribe()
+	edited, err := plans.FindOne(ctx, move.ID)
+	require.NoError(t, err)
+	edited.Nodes = fmt.Sprint(eastNode.ID)
+	require.NoError(t, plans.Update(ctx, edited))
+	roster(west.ID, westTag, tagged, both)
+	roster(east.ID, eastTag, regional, direct)
 }
 
 func TestGroupedNodeRosterIncludesEligibleGracePeriodSubscriptions(t *testing.T) {

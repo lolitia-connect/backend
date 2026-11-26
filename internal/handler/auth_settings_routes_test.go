@@ -23,6 +23,7 @@ import (
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestInterruptedRegistrationCanRetryWithoutAnOrphanedAccountOrTrial(t *testing.T) {
@@ -218,6 +219,66 @@ func TestLoginRetriesAfterAccountStorageRecovers(t *testing.T) {
 	}
 }
 
+func TestLegacyPasswordUpgradesOnTheNextSuccessfulWrite(t *testing.T) {
+	const password = "legacy-account-fixture"
+	legacy, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
+	require.NoError(t, err)
+	for _, channel := range []struct{ method, identity, path, fields string }{
+		{"email", "member@example.test", "/v1/auth/login", `"email":"member@example.test"`},
+		{"mobile", "+12025550123", "/v1/auth/login/telephone", `"telephone_area_code":"1","telephone":"2025550123"`},
+	} {
+		t.Run(channel.method, func(t *testing.T) {
+			f := newRouteFixture(t)
+			ctx := t.Context()
+			f.service.Config.JwtAuth.AccessExpire = 300
+			f.service.Config.Mobile.Enable = true
+			owner := f.client.User.Create().SetPassword(string(legacy)).SetAlgo("bcrypt").SetSalt("imported").SetEnable(true).SaveX(ctx)
+			f.client.UserAuthMethod.Create().SetUserID(owner.ID).SetAuthType(channel.method).SetAuthIdentifier(channel.identity).SetVerified(true).SaveX(ctx)
+			readOnly := true
+			var writes int
+			f.client.User.Use(func(next ent.Mutator) ent.Mutator {
+				return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+					if _, changed := m.(*ent.UserMutation).Password(); changed {
+						writes++
+						if readOnly {
+							return nil, fmt.Errorf("account storage temporarily read-only")
+						}
+					}
+					return next.Mutate(ctx, m)
+				})
+			})
+			login := func(secret string, want uint32) json.RawMessage {
+				t.Helper()
+				return f.request(http.MethodPost, channel.path, "", fmt.Sprintf(`{%s,"password":%q}`, channel.fields, secret), want)
+			}
+			checkSession := func(raw json.RawMessage) {
+				t.Helper()
+				var issued types.LoginResponse
+				require.NoError(t, json.Unmarshal(raw, &issued))
+				var profile types.User
+				require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/public/user/info", issued.Token, "", http.StatusOK), &profile))
+				require.Equal(t, owner.ID, profile.Id)
+			}
+			login("incorrect-password", xerr.UserPasswordError)
+			require.Zero(t, writes)
+			first := login(password, http.StatusOK)
+			checkSession(first)
+			require.Equal(t, 1, writes)
+			require.Equal(t, owner.Password, f.client.User.GetX(ctx, owner.ID).Password)
+			readOnly = false
+			checkSession(login(password, http.StatusOK))
+			updated := f.client.User.GetX(ctx, owner.ID)
+			require.Equal(t, tool.PasswordAlgoArgon2id, updated.Algo)
+			require.Empty(t, updated.Salt)
+			require.True(t, tool.VerifyPassWord(password, updated.Password))
+			checkSession(first)
+			checkSession(login(password, http.StatusOK))
+			require.Equal(t, 2, writes)
+			require.Equal(t, updated.Password, f.client.User.GetX(ctx, owner.ID).Password)
+		})
+	}
+}
+
 func TestChallengeEndpointsFollowThePublishedVerificationMethod(t *testing.T) {
 	f := newRouteFixture(t)
 	_, admin := f.account(true)
@@ -260,6 +321,92 @@ func TestChallengeEndpointsFollowThePublishedVerificationMethod(t *testing.T) {
 	}
 }
 
+func TestChallengeProtectedLoginsRecoverWithoutBindingUnverifiedDevices(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	f.service.Config.JwtAuth.AccessExpire = 300
+	f.service.Config.Mobile.Enable = true
+	const password = "verified-login-fixture"
+	const path = "/v1/admin/system/verify_config"
+	configure := func(method string) {
+		t.Helper()
+		f.request(http.MethodPut, path, operator, fmt.Sprintf(`{"captcha_type":%q,"enable_user_login_captcha":true,"enable_admin_login_captcha":true,"turnstile_secret":"login-test-key"}`, method), http.StatusOK)
+	}
+	var unavailable bool
+	f.client.System.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if unavailable {
+				return nil, fmt.Errorf("verification settings offline")
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	http.DefaultTransport = providerTransport(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPost || req.URL.String() != "https://challenges.cloudflare.com/turnstile/v0/siteverify" {
+			return nil, fmt.Errorf("unexpected verification request to %s", req.URL.Host)
+		}
+		if err := req.ParseMultipartForm(4096); err != nil {
+			return nil, err
+		}
+		if req.FormValue("secret") != "login-test-key" {
+			return nil, fmt.Errorf("wrong verifier configuration")
+		}
+		if req.FormValue("response") == "outage" {
+			return nil, fmt.Errorf("verification unavailable")
+		}
+		body := fmt.Sprintf(`{"success":%t}`, req.FormValue("response") == "accepted")
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	for _, channel := range []struct {
+		method, path, identity, fields string
+		admin                          bool
+	}{
+		{"email", "/v1/auth/login", "member@example.test", `"email":"member@example.test"`, false},
+		{"mobile", "/v1/auth/login/telephone", "+12025550124", `"telephone_area_code":"1","telephone":"2025550124"`, false},
+		{"email", "/v1/auth/admin/login", "admin@example.test", `"email":"admin@example.test"`, true},
+	} {
+		t.Run(channel.path, func(t *testing.T) {
+			fixture := *f
+			fixture.t = t
+			account := f.client.User.Create().SetPassword(tool.EncodePassWord(password)).SetAlgo(tool.PasswordAlgoArgon2id).SetIsAdmin(channel.admin).SetEnable(true).SaveX(ctx)
+			f.client.UserAuthMethod.Create().SetUserID(account.ID).SetAuthType(channel.method).SetAuthIdentifier(channel.identity).SetVerified(true).SaveX(ctx)
+			device := fmt.Sprintf("workstation-%d", account.ID)
+			login := func(proof string, want uint32) json.RawMessage {
+				t.Helper()
+				body := fmt.Sprintf(`{%s,"password":%q,"identifier":%q,"cf_token":%q}`, channel.fields, password, device, proof)
+				return fixture.request(http.MethodPost, channel.path, "", body, want)
+			}
+			before := f.client.UserDevice.Query().CountX(ctx)
+			configure("local")
+			unavailable = true
+			require.Empty(t, login("", xerr.DatabaseQueryError))
+			unavailable = false
+			require.Empty(t, login("", xerr.VerifyCodeError))
+			configure("slider")
+			require.Empty(t, login("", xerr.VerifyCodeError))
+			configure("turnstile")
+			for _, proof := range []string{"", "outage", "declined"} {
+				require.Empty(t, login(proof, xerr.VerifyCodeError))
+			}
+			require.Equal(t, before, f.client.UserDevice.Query().CountX(ctx))
+			var signed types.LoginResponse
+			require.NoError(t, json.Unmarshal(login("accepted", http.StatusOK), &signed))
+			var me types.User
+			require.NoError(t, json.Unmarshal(fixture.request(http.MethodGet, "/v1/public/user/info", signed.Token, "", http.StatusOK), &me))
+			require.Equal(t, account.ID, me.Id)
+			if !channel.admin {
+				var devices types.GetDeviceListResponse
+				require.NoError(t, json.Unmarshal(fixture.request(http.MethodGet, "/v1/public/user/devices", signed.Token, "", http.StatusOK), &devices))
+				require.Len(t, devices.List, 1)
+				require.Equal(t, device, devices.List[0].Identifier)
+			}
+		})
+	}
+}
+
 func TestPhoneRecoveryPreservesTrialAndRotatesTheCustomerSession(t *testing.T) {
 	f := newRouteFixture(t)
 	ctx := t.Context()
@@ -271,6 +418,13 @@ func TestPhoneRecoveryPreservesTrialAndRotatesTheCustomerSession(t *testing.T) {
 	f.service.Config.Register.TrialSubscribe = plan.ID
 	f.service.Config.Register.TrialTime, f.service.Config.Register.TrialTimeUnit = 2, "Hour"
 	const phone = "+12025550123"
+	lookup := func(want bool) {
+		t.Helper()
+		var result types.TelephoneCheckUserResponse
+		require.NoError(t, json.Unmarshal(f.request(http.MethodGet, "/v1/auth/check/telephone?telephone_area_code=1&telephone=2025550123", "", "", http.StatusOK), &result))
+		require.Equal(t, want, result.Exist)
+	}
+	lookup(false)
 	code := func(purpose, value string) {
 		t.Helper()
 		key := fmt.Sprintf("%s:%s:%s", config.AuthCodeTelephoneCacheKey, purpose, phone)
@@ -282,6 +436,7 @@ func TestPhoneRecoveryPreservesTrialAndRotatesTheCustomerSession(t *testing.T) {
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, "/v1/auth/register/telephone", "", `{`+fields+`,"code":"351820","password":"registration-fixture"}`, http.StatusOK), &registered))
 	identity := f.client.UserAuthMethod.Query().OnlyX(ctx)
 	require.Equal(t, phone, identity.AuthIdentifier)
+	lookup(true)
 	trial := f.client.UserSubscribe.Query().OnlyX(ctx)
 	require.Equal(t, identity.UserID, trial.UserID)
 	require.Equal(t, plan.ID, trial.SubscribeID)
@@ -320,6 +475,52 @@ func TestPhoneRecoveryPreservesTrialAndRotatesTheCustomerSession(t *testing.T) {
 	require.JSONEq(t, string(before), string(f.request(http.MethodGet, methods, recovered.Token, "", http.StatusOK)))
 	require.NotEqual(t, previous, f.client.User.GetX(ctx, identity.UserID).Password)
 	require.Equal(t, trial.ID, f.client.UserSubscribe.Query().OnlyX(ctx).ID)
+}
+
+func TestLoginMethodsWithEmptySettingsCanBeConfiguredAndToggled(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, operator := f.account(true)
+	const path = "/v1/admin/auth-method/config"
+	for _, tc := range []struct {
+		method, field string
+		value         any
+	}{
+		{"apple", "team_id", "TEST-TEAM"}, {"google", "client_id", "web-client"},
+		{"github", "redirect_url", "https://portal.example.test"}, {"facebook", "client_id", "member-app"},
+		{"telegram", "webhook_domain", "https://notify.example.test"}, {"device", "show_ads", true},
+		{"email", "verify_email_subject", "Member verification"}, {"mobile", "enable_whitelist", true},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			fixture := *f
+			fixture.t = t
+			row := f.client.AuthMethod.Create().SetMethod(tc.method).SetEnabled(false).SetConfig("").SaveX(ctx)
+			toggle := func(enabled bool) types.AuthMethodConfig {
+				t.Helper()
+				body := fmt.Sprintf(`{"id":"%d","method":%q,"enabled":%t}`, row.ID, tc.method, enabled)
+				var result types.AuthMethodConfig
+				require.NoError(t, json.Unmarshal(fixture.request(http.MethodPut, path, operator, body, http.StatusOK), &result))
+				return result
+			}
+			initialized := toggle(true)
+			require.Equal(t, row.ID, initialized.Id)
+			require.True(t, initialized.Enabled)
+			require.Contains(t, initialized.Config, tc.field)
+			settings := map[string]any{tc.field: tc.value}
+			body, err := json.Marshal(types.UpdateAuthMethodConfigRequest{Id: row.ID, Method: tc.method, Config: settings})
+			require.NoError(t, err)
+			fixture.request(http.MethodPut, path, operator, string(body), http.StatusOK)
+			disabled := toggle(false)
+			require.False(t, disabled.Enabled)
+			var reloaded types.AuthMethodConfig
+			require.NoError(t, json.Unmarshal(fixture.request(http.MethodGet, path+"?method="+tc.method, operator, "", http.StatusOK), &reloaded))
+			require.Equal(t, disabled, reloaded)
+			require.Equal(t, tc.value, reloaded.Config.(map[string]any)[tc.field])
+			var stored map[string]any
+			require.NoError(t, json.Unmarshal([]byte(f.client.AuthMethod.GetX(ctx, row.ID).Config), &stored))
+			require.Equal(t, tc.value, stored[tc.field])
+		})
+	}
 }
 
 func TestEmailVerificationSettingTakesEffectOnNextRegistration(t *testing.T) {

@@ -137,6 +137,70 @@ func TestPaidReferralPurchaseCommitsGrantAndCommissionTogether(t *testing.T) {
 	require.EqualValues(t, 270, receipt.Balance)
 }
 
+func TestPaidGuestRefundReleasesStockCouponAndBothWalletBalancesTogether(t *testing.T) {
+	service, _ := stripeTestService(t)
+	ctx, db := t.Context(), service.Ent
+	owner := db.User.Create().SetPassword("existing-account").SaveX(ctx)
+	funds := db.UserWallet.Create().SetUserID(owner.ID).SetBalance(125).SetGiftAmount(30).SaveX(ctx)
+	const address = "guest@example.test"
+	binding := db.UserAuthMethod.Create().SetUserID(owner.ID).SetAuthType("email").SetAuthIdentifier(address).SetVerified(true).SaveX(ctx)
+	plan := db.Subscribe.Create().SetInventory(4).SaveX(ctx)
+	coupon := db.Coupon.Create().SetCode("RESERVED").SetUsedCount(2).SaveX(ctx)
+	paid := db.Order.Create().SetOrderNo("guest-refund").SetGuestAuthType("email").SetGuestIdentifier(address).
+		SetGuestPasswordHash("registration-fixture").SetSubscribeID(plan.ID).SetType(order.TypeSubscribe).SetStatus(order.StatusPaid).
+		SetCoupon(coupon.Code).SetCouponReserved(true).SetAmount(310).SetGiftAmount(24).SaveX(ctx)
+	job := asynq.NewTask("activate", []byte(`{"order_no":"guest-refund"}`))
+	worker := NewActivateOrderLogic(service)
+	failure := errors.New("refund posting interrupted")
+	var stage string
+	db.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if stage == m.Type() {
+				return nil, failure
+			}
+			if entry, ok := m.(*ent.SystemLogMutation); ok && stage == "gift receipt" {
+				if kind, _ := entry.GetType(); kind == log.TypeGift.Uint8() {
+					return nil, failure
+				}
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	for _, stage = range []string{ent.TypeOrder, "gift receipt", ent.TypeUserWallet, ent.TypeCoupon, ent.TypeSubscribe, ent.TypeOrderEvent} {
+		require.ErrorIs(t, worker.ProcessTask(ctx, job), failure, stage)
+		current := db.Order.GetX(ctx, paid.ID)
+		require.Equal(t, paid.Status, current.Status)
+		require.Equal(t, paid.UserID, current.UserID)
+		require.True(t, current.CouponReserved)
+		require.Equal(t, paid.GuestPasswordHash, current.GuestPasswordHash)
+		w := db.UserWallet.GetX(ctx, funds.ID)
+		require.Equal(t, funds.Balance, w.Balance)
+		require.Equal(t, funds.GiftAmount, w.GiftAmount)
+		require.Equal(t, plan.Inventory, db.Subscribe.GetX(ctx, plan.ID).Inventory)
+		require.Equal(t, coupon.UsedCount, db.Coupon.GetX(ctx, coupon.ID).UsedCount)
+		require.Zero(t, db.SystemLog.Query().CountX(ctx))
+		require.Zero(t, db.OrderEvent.Query().CountX(ctx))
+	}
+	stage = ""
+	for range 2 {
+		require.NoError(t, worker.ProcessTask(ctx, job))
+	}
+	current := db.Order.GetX(ctx, paid.ID)
+	require.EqualValues(t, order.StatusClosed, current.Status)
+	require.Equal(t, owner.ID, current.UserID)
+	require.False(t, current.CouponReserved)
+	require.Empty(t, current.GuestPasswordHash)
+	require.Equal(t, order.EventOrderClosed, db.OrderEvent.Query().OnlyX(ctx).EventType)
+	require.Equal(t, binding.ID, db.UserAuthMethod.Query().OnlyX(ctx).ID)
+	require.Zero(t, db.UserSubscribe.Query().CountX(ctx))
+	w := db.UserWallet.GetX(ctx, funds.ID)
+	require.EqualValues(t, 435, w.Balance)
+	require.EqualValues(t, 54, w.GiftAmount)
+	require.EqualValues(t, 5, db.Subscribe.GetX(ctx, plan.ID).Inventory)
+	require.EqualValues(t, 1, db.Coupon.GetX(ctx, coupon.ID).UsedCount)
+	require.Equal(t, 2, db.SystemLog.Query().Where(systemlog.ObjectID(owner.ID)).CountX(ctx))
+}
+
 func TestPaidSubscriptionOrdersFulfillOnceOnRedelivery(t *testing.T) {
 	service, _ := stripeTestService(t)
 	ctx, db := t.Context(), service.Ent

@@ -2,6 +2,7 @@ package ip
 
 import (
 	"compress/gzip"
+	"compress/zlib"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -164,6 +165,8 @@ func decompressResponse(resp *http.Response) ([]byte, error) {
 	switch resp.Header.Get("Content-Encoding") {
 	case "gzip":
 		reader, err = gzip.NewReader(resp.Body)
+	case "deflate":
+		reader, err = zlib.NewReader(resp.Body)
 	case "br":
 		reader = io.NopCloser(brotli.NewReader(resp.Body))
 	case "zstd":

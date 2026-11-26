@@ -15,6 +15,7 @@ import (
 	"github.com/perfect-panel/server/ent/enttest"
 	"github.com/perfect-panel/server/internal/model/subscribe"
 	"github.com/perfect-panel/server/internal/repository"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -189,6 +190,60 @@ func TestReconcileEntitlementPersistsProjectionAndReplayIsSafe(t *testing.T) {
 	if subscription.Upload != 60 || subscription.Download != 40 || subscription.Status != 2 {
 		t.Fatalf("replay changed usage or status: %+v", subscription)
 	}
+}
+
+func TestInterruptedProviderRenewalRetainsUsageUntilTheNewPeriodCommits(t *testing.T) {
+	f := newReconcilerFixture(t)
+	ctx := t.Context()
+	f.client.Subscribe.UpdateOneID(1).SetResetCycle(0).ExecX(ctx)
+	reconciler := NewReconciler(f.store)
+	initial := f.command()
+	first, err := reconciler.Reconcile(ctx, initial)
+	require.NoError(t, err)
+	before := f.client.UserSubscribe.UpdateOneID(first.UserSubscribeID).SetUpload(17).SetDownload(53).SaveX(ctx)
+	renewal := initial
+	renewal.OrderID, renewal.TransactionKey, renewal.Revision = 2, "tx-2", 2
+	renewal.PeriodStart, renewal.PeriodEnd = f.now.Add(-time.Hour), f.now.Add(30*24*time.Hour)
+	f.client.Order.Create().SetID(renewal.OrderID).SetUserID(renewal.UserID).SetOrderNo("renewal-2").SetMethod(AppleIAPOrderMethod).
+		SetTradeNo(renewal.TransactionKey).SetStatus(2).SetSubscribeID(renewal.PlanID).SaveX(ctx)
+	interrupted := errors.New("renewal storage temporarily unavailable")
+	var unavailable string
+	f.client.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, mutation ent.Mutation) (ent.Value, error) {
+			if mutation.Type() == unavailable {
+				return nil, interrupted
+			}
+			return next.Mutate(ctx, mutation)
+		})
+	})
+	for _, unavailable = range []string{ent.TypeUserSubscribe, ent.TypeSubscriptionPeriod, ent.TypeSubscriptionEntitlement, ent.TypeSubscriptionEntitlementRevision} {
+		result, err := reconciler.Reconcile(ctx, renewal)
+		require.ErrorIs(t, err, interrupted, unavailable)
+		require.Nil(t, result)
+		current := f.client.UserSubscribe.Query().OnlyX(ctx)
+		require.Equal(t, before.ID, current.ID)
+		require.Equal(t, [2]int64{17, 53}, [2]int64{current.Upload, current.Download})
+		require.True(t, current.ExpireTime.Equal(before.ExpireTime))
+		require.Equal(t, initial.TransactionKey, f.client.SubscriptionPeriod.Query().OnlyX(ctx).TransactionKey)
+		require.Equal(t, initial.Revision, f.client.SubscriptionEntitlement.Query().OnlyX(ctx).Revision)
+		require.Equal(t, 1, f.client.SubscriptionEntitlementRevision.Query().CountX(ctx))
+	}
+	unavailable = ""
+	result, err := reconciler.Reconcile(ctx, renewal)
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+	current := f.client.UserSubscribe.Query().OnlyX(ctx)
+	require.True(t, current.ExpireTime.Equal(renewal.PeriodEnd))
+	require.Equal(t, before.Token, current.Token)
+	require.Equal(t, [2]int64{}, [2]int64{current.Upload, current.Download})
+	f.client.UserSubscribe.UpdateOneID(current.ID).SetDownload(9).ExecX(ctx)
+	replayed, err := reconciler.Reconcile(ctx, renewal)
+	require.NoError(t, err)
+	require.False(t, replayed.Applied)
+	require.Equal(t, first.UserSubscribeID, replayed.UserSubscribeID)
+	require.EqualValues(t, 9, f.client.UserSubscribe.GetX(ctx, current.ID).Download)
+	require.Equal(t, 2, f.client.SubscriptionPeriod.Query().CountX(ctx))
+	require.Equal(t, 2, f.client.SubscriptionEntitlementRevision.Query().CountX(ctx))
 }
 
 func TestReconcileEntitlementRejectsStaleAndConflictingRevision(t *testing.T) {

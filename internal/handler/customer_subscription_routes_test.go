@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	framework "entgo.io/ent"
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/alicebob/miniredis/v2"
@@ -38,8 +41,6 @@ func TestMemberSeesOperatorSubscriptionChanges(t *testing.T) {
 	expires := time.Now().AddDate(0, 1, 0).UnixMilli()
 	body := fmt.Sprintf(`{"user_id":"%d","subscribe_id":"%d","traffic":1024,"expired_at":%d}`, owner.ID, starter.ID, expires)
 	f.service.Config.Subscribe.SingleModel = true
-	f.request(http.MethodPost, admin, operator, body, http.StatusOK)
-	f.request(http.MethodPost, admin, operator, body, xerr.SingleSubscribeModeExceedsLimit)
 	list := func(path, token string) []types.UserSubscribe {
 		t.Helper()
 		var result types.GetUserSubscribeListResponse
@@ -47,6 +48,40 @@ func TestMemberSeesOperatorSubscriptionChanges(t *testing.T) {
 		require.EqualValues(t, len(result.List), result.Total)
 		return result.List
 	}
+	operatorView := fmt.Sprintf("%s?user_id=%d&page=1&size=10", admin, owner.ID)
+	var readOffline, writeOffline bool
+	unavailable := errors.New("subscription storage unavailable")
+	f.client.UserSubscribe.Intercept(framework.InterceptFunc(func(next framework.Querier) framework.Querier {
+		return framework.QuerierFunc(func(ctx context.Context, q framework.Query) (framework.Value, error) {
+			if readOffline {
+				return nil, unavailable
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	f.client.UserSubscribe.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if writeOffline {
+				return nil, unavailable
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	retryChange := func(method, path, token, payload string, writeCode uint32) {
+		t.Helper()
+		before := list(operatorView, operator)
+		readOffline = true
+		f.request(method, path, token, payload, xerr.DatabaseQueryError)
+		readOffline = false
+		require.Equal(t, before, list(operatorView, operator))
+		writeOffline = true
+		f.request(method, path, token, payload, writeCode)
+		writeOffline = false
+		require.Equal(t, before, list(operatorView, operator))
+		f.request(method, path, token, payload, http.StatusOK)
+	}
+	retryChange(http.MethodPost, admin, operator, body, xerr.DatabaseInsertError)
+	f.request(http.MethodPost, admin, operator, body, xerr.SingleSubscribeModeExceedsLimit)
 	issued := list(member, session)
 	require.Len(t, issued, 1)
 	sub := issued[0]
@@ -55,8 +90,7 @@ func TestMemberSeesOperatorSubscriptionChanges(t *testing.T) {
 	require.Equal(t, expires, sub.ExpireTime)
 	require.NotEmpty(t, sub.Token)
 	id := fmt.Sprintf(`{"user_subscribe_id":"%d"}`, sub.Id)
-	operatorView := fmt.Sprintf("%s?user_id=%d&page=1&size=10", admin, owner.ID)
-	f.request(http.MethodPost, admin+"/toggle", operator, id, http.StatusOK)
+	retryChange(http.MethodPost, admin+"/toggle", operator, id, xerr.DatabaseUpdateError)
 	require.Empty(t, list(member, session))
 	paused := list(operatorView, operator)
 	require.Len(t, paused, 1)
@@ -65,7 +99,7 @@ func TestMemberSeesOperatorSubscriptionChanges(t *testing.T) {
 	resumed := list(member, session)
 	require.Len(t, resumed, 1)
 	require.Equal(t, sub.Token, resumed[0].Token)
-	f.request(http.MethodPut, member+"_token", session, id, http.StatusOK)
+	retryChange(http.MethodPut, member+"_token", session, id, xerr.DatabaseUpdateError)
 	rotated := list(member, session)
 	require.Len(t, rotated, 1)
 	require.NotEmpty(t, rotated[0].Token)
@@ -73,7 +107,7 @@ func TestMemberSeesOperatorSubscriptionChanges(t *testing.T) {
 	edit := func(end int64) {
 		t.Helper()
 		payload := fmt.Sprintf(`{"user_subscribe_id":"%d","subscribe_id":"%d","expired_at":%d,"traffic":8192,"upload":123,"download":345}`, sub.Id, standard.ID, end)
-		f.request(http.MethodPut, admin, operator, payload, http.StatusOK)
+		retryChange(http.MethodPut, admin, operator, payload, xerr.DatabaseUpdateError)
 	}
 	edit(time.Now().Add(-time.Hour).UnixMilli())
 	f.request(http.MethodPost, admin+"/toggle", operator, id, xerr.ERROR)
@@ -87,7 +121,12 @@ func TestMemberSeesOperatorSubscriptionChanges(t *testing.T) {
 	require.Equal(t, "Standard", revised[0].Subscribe.Name)
 	require.EqualValues(t, 1, revised[0].Status)
 	require.Equal(t, [3]int64{8192, 123, 345}, [3]int64{revised[0].Traffic, revised[0].Upload, revised[0].Download})
-	f.request(http.MethodDelete, admin, operator, id, http.StatusOK)
+	retryChange(http.MethodPost, admin+"/reset/traffic", operator, id, xerr.DatabaseUpdateError)
+	reset := list(member, session)
+	require.Len(t, reset, 1)
+	require.Equal(t, [3]int64{8192, 0, 0}, [3]int64{reset[0].Traffic, reset[0].Upload, reset[0].Download})
+	require.Equal(t, rotated[0].Token, reset[0].Token)
+	retryChange(http.MethodDelete, admin, operator, id, xerr.DatabaseDeletedError)
 	require.Empty(t, list(member, session))
 	require.Empty(t, list(operatorView, operator))
 }

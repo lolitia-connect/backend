@@ -8,6 +8,7 @@ import (
 
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegisteredAnnouncementRoutesPublishAndRemoveAnAnnouncement(t *testing.T) {
@@ -21,6 +22,12 @@ func TestRegisteredAnnouncementRoutesPublishAndRemoveAnAnnouncement(t *testing.T
 	request(http.MethodPost, adminPath, "", `{"title":"Unreachable","content":"Missing session"}`, xerr.ErrorTokenEmpty)
 	request(http.MethodPost, adminPath, admin, `{"title":"Maintenance","content":"Service is restarting"}`, http.StatusOK)
 	id := client.Announcement.Query().OnlyX(ctx).ID
+	detailPath := fmt.Sprintf("%sdetail?id=%d", adminPath, id)
+	var draft types.Announcement
+	require.NoError(t, json.Unmarshal(request(http.MethodGet, detailPath, admin, "", http.StatusOK), &draft))
+	require.Equal(t, "Service is restarting", draft.Content)
+	require.NotNil(t, draft.Show)
+	require.False(t, *draft.Show)
 	visible := func(wantTotal int64) types.QueryAnnouncementResponse {
 		t.Helper()
 		var list types.QueryAnnouncementResponse
@@ -38,6 +45,7 @@ func TestRegisteredAnnouncementRoutesPublishAndRemoveAnAnnouncement(t *testing.T
 	}
 	request(http.MethodDelete, adminPath, admin, fmt.Sprintf(`{"id":"%d"}`, id), http.StatusOK)
 	visible(0)
+	require.Empty(t, request(http.MethodGet, detailPath, admin, "", xerr.DatabaseQueryError))
 	if count := client.Announcement.Query().CountX(ctx); count != 0 {
 		t.Fatalf("deleted announcement is still stored, count = %d", count)
 	}

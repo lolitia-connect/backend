@@ -16,7 +16,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol"
 	"github.com/cloudwego/hertz/pkg/protocol/sse"
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
+	"github.com/perfect-panel/server/internal/logic/notify"
 	"github.com/perfect-panel/server/internal/model/order"
+	"github.com/perfect-panel/server/internal/orderstream"
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/xerr"
 	worker "github.com/perfect-panel/server/queue/logic/order"
@@ -88,7 +91,29 @@ func TestPublishedCouponCanBeQuotedAndReservedWithinItsWindow(t *testing.T) {
 		}
 		return f.request(http.MethodPost, path, token, body+"}", want)
 	}
-	for _, route := range []struct{ path, token string }{{guest + "/pre", ""}, {guest + "/purchase", ""}, {member + "/pre", session}, {member + "/purchase", session}} {
+	routes := []struct{ path, token string }{{guest + "/pre", ""}, {guest + "/purchase", ""}, {member + "/pre", session}, {member + "/purchase", session}}
+	voucher := f.client.Coupon.Query().OnlyX(ctx)
+	publish := func(start, end time.Time, enabled bool) {
+		t.Helper()
+		body, err := json.Marshal(types.UpdateCouponRequest{Id: voucher.ID, Name: voucher.Name, Code: code, Count: 2, Type: 2, Discount: 100,
+			StartTime: start.UnixMilli(), ExpireTime: end.UnixMilli(), UserLimit: 1, Subscribe: []string{fmt.Sprint(plan.ID)}, Enable: &enabled})
+		require.NoError(t, err)
+		f.request(http.MethodPut, "/v1/admin/coupon/", operator, string(body), http.StatusOK)
+	}
+	for _, offer := range []struct {
+		start, end time.Duration
+		enabled    bool
+		want       uint32
+	}{{time.Hour, 2 * time.Hour, true, xerr.CouponNotApplicable}, {-2 * time.Hour, -time.Hour, true, xerr.CouponExpired}, {-time.Hour, time.Hour, false, xerr.CouponDisabled}} {
+		publish(now.Add(offer.start), now.Add(offer.end), offer.enabled)
+		for _, route := range routes {
+			post(route.path, route.token, plan.ID, offer.want)
+		}
+	}
+	require.EqualValues(t, 4, f.client.Subscribe.GetX(ctx, plan.ID).Inventory)
+	require.EqualValues(t, 75, f.client.UserWallet.GetX(ctx, wallet.ID).GiftAmount)
+	publish(now.Add(-time.Hour), now.Add(time.Hour), true)
+	for _, route := range routes {
 		post(route.path, route.token, other.ID, xerr.CouponNotApplicable)
 	}
 	require.Zero(t, f.client.Order.Query().CountX(ctx))
@@ -150,14 +175,31 @@ func TestGuestCheckoutDeliversSubscriptionAndAccountSession(t *testing.T) {
 		req.Header.Set("Idempotency-Key", "fixture-guest-purchase-001")
 		data := f.serve(req, httpStatus, code)
 		var response types.V2OrderResponse
-		if httpStatus == http.StatusOK {
+		if code == http.StatusOK {
 			require.NoError(t, json.Unmarshal(data, &response))
+		} else {
+			require.Empty(t, data)
 		}
 		return response
 	}
+	// The order commits, but its first checkout response cannot load the invoice.
+	loseFirstRead := true
+	f.client.Order.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			result, err := next.Query(ctx, q)
+			if invoices, ok := result.([]*ent.Order); loseFirstRead && ok && len(invoices) > 0 && err == nil {
+				loseFirstRead = false
+				return nil, fmt.Errorf("invoice read interrupted")
+			}
+			return result, err
+		})
+	}))
+	create(checkout, http.StatusOK, xerr.DatabaseQueryError)
+	committed := f.client.Order.Query().OnlyX(ctx)
+	require.EqualValues(t, 1, f.client.Subscribe.GetX(ctx, plan.ID).Inventory)
 	created := create(checkout, http.StatusOK, http.StatusOK)
 	require.NotEmpty(t, created.CheckoutToken)
-	require.NotEmpty(t, created.Order.OrderNo)
+	require.Equal(t, committed.OrderNo, created.Order.OrderNo)
 	require.Equal(t, "pending_payment", created.Order.Status)
 	require.Equal(t, int64(6210), created.Order.Amount)
 	require.NotNil(t, created.Payment)
@@ -230,17 +272,124 @@ func TestGuestCheckoutDeliversSubscriptionAndAccountSession(t *testing.T) {
 
 type orderStreamClient struct {
 	bytes.Buffer
-	disconnect context.CancelFunc
+	onFlush func([]byte)
 }
 
 func (s *orderStreamClient) Flush() error {
-	if bytes.Contains(s.Bytes(), []byte(`"receipt":"cleared-43"`)) {
-		s.disconnect()
-	}
+	s.onFlush(s.Bytes())
 	return nil
 }
 
 func (*orderStreamClient) Finalize() error { return nil }
+
+func readOrderStream(t *testing.T, f *routeFixture, url, lastID, through string, onFlush func([]byte)) *sse.Reader {
+	t.Helper()
+	ctx, disconnect := context.WithTimeout(t.Context(), 5*time.Second)
+	defer disconnect()
+	client := &orderStreamClient{onFlush: func(data []byte) {
+		if onFlush != nil {
+			onFlush(data)
+		}
+		if bytes.Contains(data, []byte(through)) {
+			disconnect()
+		}
+	}}
+	raw := app.NewContext(0)
+	raw.Request.Header.SetMethod(http.MethodGet)
+	raw.Request.SetRequestURI(url)
+	raw.Request.Header.SetHost("panel.example.test")
+	raw.Request.Header.Set("Last-Event-ID", lastID)
+	raw.Response.HijackWriter(client)
+	f.router.Hertz().ServeHTTP(ctx, raw)
+	require.Equal(t, http.StatusOK, raw.Response.StatusCode())
+	require.Equal(t, "no", string(raw.Response.Header.Peek("X-Accel-Buffering")))
+	var response protocol.Response
+	response.Header.SetContentTypeBytes(raw.Response.Header.ContentType())
+	response.SetBody(client.Bytes())
+	reader, err := sse.NewReader(&response)
+	require.NoError(t, err)
+	return reader
+}
+
+func TestOrderStreamResumesAfterPaymentWithTheCommittedWalletCredit(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	RegisterV2OrderHandlers(f.router.Hertz(), f.service)
+	inspector := f.startQueue()
+	owner, session := f.account(false)
+	wallet := f.client.UserWallet.Create().SetUserID(owner.ID).SetBalance(50).SaveX(ctx)
+	row := f.client.Payment.Create().SetPlatform("EPay").SetCurrencyUnit("CNY").SetEnable(true).SetConfig(`{}`).SaveX(ctx)
+	method, err := f.service.Store.Payment().FindOne(ctx, row.ID)
+	require.NoError(t, err)
+	var recharge types.RechargeOrderResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, "/v1/public/order/recharge", session, fmt.Sprintf(`{"amount":435,"payment":"%d"}`, row.ID), http.StatusOK), &recharge))
+	var ticket types.V2EventTicketResponse
+	path := "/v2/public/orders/" + recharge.OrderNo + "/event-ticket"
+	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, path, session, `{}`, http.StatusOK), &ticket))
+	created := f.client.OrderEvent.Query().OnlyX(ctx)
+	charged := false
+	first := readOrderStream(t, f, ticket.URL, "", order.EventOrderPaymentPaid, func(data []byte) {
+		if !charged && bytes.Contains(data, []byte(order.EventOrderCreated)) {
+			charged = true
+			require.NoError(t, notify.SettleConfirmedPayment(ctx, f.service, method, recharge.OrderNo, "receipt-435", 435, "CNY"))
+		}
+	})
+	readEvent := func(reader *sse.Reader, kind string, version int64, paymentStatus, fulfillment string) string {
+		t.Helper()
+		var event sse.Event
+		require.NoError(t, reader.Read(&event))
+		require.Equal(t, kind, event.Type)
+		var state order.EventPayload
+		require.NoError(t, json.Unmarshal(event.Data, &state))
+		require.Equal(t, recharge.OrderNo, state.OrderNo)
+		require.Equal(t, version, state.StateVersion)
+		require.Equal(t, paymentStatus, state.PaymentStatus)
+		require.Equal(t, fulfillment, state.FulfillmentStatus)
+		return event.ID
+	}
+	readEvent(first, "order.snapshot", 1, "pending", "not_started")
+	require.Equal(t, fmt.Sprint(created.ID), readEvent(first, order.EventOrderCreated, 1, "pending", "not_started"))
+	cursor := readEvent(first, order.EventOrderPaymentPaid, 2, "paid", "pending")
+	journal, err := f.service.Store.OrderEvent().ListAfter(ctx, recharge.OrderNo, created.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, journal, 1)
+	require.Equal(t, fmt.Sprint(journal[0].Id), cursor)
+	var end sse.Event
+	require.ErrorIs(t, first.Read(&end), io.EOF)
+	require.Equal(t, wallet.Balance, f.client.UserWallet.GetX(ctx, wallet.ID).Balance)
+	jobs, err := inspector.ListPendingTasks("default")
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, queue.ForthwithActivateOrder, jobs[0].Type)
+	activation := asynq.NewTask(jobs[0].Type, jobs[0].Payload)
+	for range 2 {
+		require.NoError(t, worker.NewActivateOrderLogic(f.service).ProcessTask(ctx, activation))
+	}
+	// The notification is only a wake-up. The reconnecting client must recover the
+	// durable fulfillment even when its first journal reads are interrupted.
+	var interrupted int
+	f.client.OrderEvent.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(queryCtx context.Context, q ent.Query) (ent.Value, error) {
+			if interrupted < 2 {
+				interrupted++
+				if interrupted == 2 {
+					orderstream.Wake(ctx, f.service.Redis, recharge.OrderNo)
+				}
+				return nil, fmt.Errorf("order journal temporarily unavailable")
+			}
+			return next.Query(queryCtx, q)
+		})
+	}))
+	second := readOrderStream(t, f, ticket.URL, cursor, order.EventOrderFulfilled, nil)
+	require.Equal(t, 2, interrupted)
+	readEvent(second, "order.snapshot", 3, "paid", "finished")
+	remaining, err := f.service.Store.OrderEvent().ListAfter(ctx, recharge.OrderNo, journal[0].Id, 10)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1)
+	require.Equal(t, fmt.Sprint(remaining[0].Id), readEvent(second, order.EventOrderFulfilled, 3, "paid", "finished"))
+	require.ErrorIs(t, second.Read(&end), io.EOF)
+	require.EqualValues(t, 485, f.client.UserWallet.GetX(ctx, wallet.ID).Balance)
+}
 
 func TestOrderStreamResetsAStaleCursorAndReplaysOnlyTheOwnersReceipt(t *testing.T) {
 	f := newRouteFixture(t)
@@ -259,23 +408,7 @@ func TestOrderStreamResetsAStaleCursorAndReplaysOnlyTheOwnersReceipt(t *testing.
 	require.NoError(t, json.Unmarshal(f.request(http.MethodPost, path, session, `{}`, http.StatusOK), &ticket))
 	require.Greater(t, ticket.TicketExpiresAt, time.Now().Unix())
 
-	streamCtx, disconnect := context.WithTimeout(ctx, 5*time.Second)
-	defer disconnect()
-	client := &orderStreamClient{disconnect: disconnect}
-	raw := app.NewContext(0)
-	raw.Request.Header.SetMethod(http.MethodGet)
-	raw.Request.SetRequestURI(ticket.URL)
-	raw.Request.Header.SetHost("panel.example.test")
-	raw.Request.Header.Set("Last-Event-ID", "7")
-	raw.Response.HijackWriter(client)
-	f.router.Hertz().ServeHTTP(streamCtx, raw)
-	require.Equal(t, http.StatusOK, raw.Response.StatusCode())
-	require.Equal(t, "no", string(raw.Response.Header.Peek("X-Accel-Buffering")))
-	var response protocol.Response
-	response.Header.SetContentTypeBytes(raw.Response.Header.ContentType())
-	response.SetBody(client.Bytes())
-	reader, err := sse.NewReader(&response)
-	require.NoError(t, err)
+	reader := readOrderStream(t, f, ticket.URL, "7", receipt, nil)
 	for _, kind := range []string{"order.snapshot", "order.reset"} {
 		var event sse.Event
 		require.NoError(t, reader.Read(&event))

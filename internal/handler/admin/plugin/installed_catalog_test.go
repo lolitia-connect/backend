@@ -14,9 +14,11 @@ import (
 	runtimeplugin "github.com/perfect-panel/server/internal/plugin"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/pkg/hertzx"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInstalledPluginCatalogUsesUploadedManifest(t *testing.T) {
+	t.Chdir(t.TempDir())
 	manager := runtimeplugin.NewManager(&runtimeplugin.HostEnv{
 		Config: config.Config{Plugin: config.PluginConfig{Directory: t.TempDir(), Enabled: true}},
 	})
@@ -33,7 +35,10 @@ func TestInstalledPluginCatalogUsesUploadedManifest(t *testing.T) {
 	router.Hertz().GET(base+"/:name/middlewares", InstalledMiddlewareHandler(service))
 	router.Hertz().GET(base+"/:name/events", InstalledEventsHandler(service))
 	router.Hertz().GET(base+"/:name/health", InstalledHealthHandler(service))
-	router.Hertz().POST(base+"/:name/archive", InstalledActionHandler(service, "archive"))
+	router.Hertz().POST(base+"/reload-all", InstalledReloadAllHandler(service))
+	for _, action := range []string{"enable", "disable", "restart"} {
+		router.Hertz().POST(base+"/:name/"+action, InstalledActionHandler(service, action))
+	}
 
 	call := func(method, path string, body *bytes.Buffer, contentType string, code int, out any) {
 		t.Helper()
@@ -139,7 +144,16 @@ func TestInstalledPluginCatalogUsesUploadedManifest(t *testing.T) {
 	if health.Name != "catalog" || health.Status != runtimeplugin.StatusUnloaded || health.Ready {
 		t.Fatalf("unloaded plugin health = %+v", health)
 	}
-	call(http.MethodPost, base+"/catalog/archive", empty, "", http.StatusBadRequest, nil)
+	call(http.MethodPost, base+"/catalog/restart", empty, "", http.StatusInternalServerError, nil)
+	var action pluginActionResponse
+	call(http.MethodPost, base+"/catalog/enable", empty, "", http.StatusOK, &action)
+	// The archive compiles but lacks a guest init function.
+	require.Equal(t, string(runtimeplugin.StatusError), action.Status)
+	call(http.MethodGet, base+"/catalog/health", empty, "", http.StatusOK, &health)
+	require.False(t, health.Ready)
+	require.NotEmpty(t, health.Error)
+	call(http.MethodPost, base+"/catalog/disable", empty, "", http.StatusOK, &action)
+	require.Equal(t, string(runtimeplugin.StatusUnloaded), action.Status)
 	call(http.MethodGet, base+"/Bad", empty, "", http.StatusBadRequest, nil)
 	var list pluginListResponse
 	call(http.MethodGet, base+"?q=REGIONAL&status=unloaded&page=2&size=1", empty, "", http.StatusOK, &list)
@@ -147,4 +161,17 @@ func TestInstalledPluginCatalogUsesUploadedManifest(t *testing.T) {
 		t.Fatalf("filtered plugin page = %+v", list)
 	}
 	call(http.MethodGet, base+"/unknown", empty, "", http.StatusNotFound, nil)
+	service.PluginMgr = nil
+	call(http.MethodPost, base+"/reload-all", empty, "", http.StatusServiceUnavailable, nil)
+	service.PluginMgr = manager
+	call(http.MethodPost, base+"/reload-all", empty, "", http.StatusOK, &list)
+	require.Equal(t, 3, list.Total)
+	versions := make(map[string]string)
+	for _, item := range list.List {
+		versions[item.Name] = item.Version
+	}
+	require.Equal(t, map[string]string{"catalog": "2.0", "metrics": "1.0", "support": "1.0"}, versions)
+	call(http.MethodGet, base+"/catalog/health", empty, "", http.StatusOK, &health)
+	require.Equal(t, runtimeplugin.StatusError, health.Status)
+	require.False(t, health.Ready)
 }

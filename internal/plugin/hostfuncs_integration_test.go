@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -124,6 +125,64 @@ func TestHostFunctionsEnforceCapabilitiesThroughWasmABI(t *testing.T) {
 	require.Len(t, jobs, 1)
 	require.Equal(t, "build-site-report", jobs[0].Type)
 	require.JSONEq(t, `{"site":"Fixture","featured":{"title":"Getting started"}}`, string(jobs[0].Payload))
+}
+
+func TestPluginReceivesRegisteredEventsAndScheduledReports(t *testing.T) {
+	t.Chdir(t.TempDir())
+	ctx := t.Context()
+	const name = "reporting-fixture"
+	manifest := &PluginManifest{Permissions: []string{string(PermEvents), string(PermScheduler)}}
+	manager := NewManager(&HostEnv{})
+	t.Cleanup(manager.Stop)
+	host := manager.buildHostFunctions(name, manifest)
+	events := make(chan *pluginv1.EmitEventRequest, 1)
+	host["on_order_paid"] = MakeHostFunc(name, func(_ context.Context, _ string, req *pluginv1.EmitEventRequest) (*pluginv1.BoolResult, error) {
+		events <- req
+		return &pluginv1.BoolResult{Success: true}, nil
+	}, func() *pluginv1.EmitEventRequest { return &pluginv1.EmitEventRequest{} })
+	reports := make(chan *pluginv1.HandleRequest, 1)
+	host["annual_report"] = MakeHostFunc(name, func(_ context.Context, _ string, req *pluginv1.HandleRequest) (*pluginv1.HandleResponse, error) {
+		reports <- req
+		return &pluginv1.HandleResponse{Status: 200}, nil
+	}, func() *pluginv1.HandleRequest { return &pluginv1.HandleRequest{} })
+	rt := wazero.NewRuntime(ctx)
+	t.Cleanup(func() { _ = rt.Close(context.Background()) })
+	compiled, err := rt.CompileModule(ctx, forwardingGuestWASM([]string{"host_subscribe_event", "host_emit_event", "host_schedule_task", "on_order_paid", "annual_report"}))
+	require.NoError(t, err)
+	pool, err := InstantiateWithHostFuncs(ctx, rt, compiled, name, host, 1)
+	require.NoError(t, err)
+	manager.plugins[name] = &PluginInstance{Name: name, Manifest: manifest, Pool: pool, Runtime: rt, Status: StatusRunning}
+	call := func(export string, req proto.Message) {
+		t.Helper()
+		result, err := callGuestFromPool(ctx, manager.GetPlugin(name), export, req, func() *pluginv1.BoolResult { return &pluginv1.BoolResult{} })
+		require.NoError(t, err)
+		require.True(t, result.GetSuccess(), result.GetError())
+	}
+	call("host_subscribe_event", &pluginv1.SubscribeEventRequest{Event: "order.paid"})
+	payload, err := structpb.NewStruct(map[string]any{"order_no": "report-701", "amount": 1250})
+	require.NoError(t, err)
+	call("host_emit_event", &pluginv1.EmitEventRequest{Event: "order.paid", Payload: payload})
+	select {
+	case delivered := <-events:
+		require.Equal(t, "order.paid", delivered.GetEvent())
+		require.Equal(t, payload.AsMap(), delivered.GetPayload().AsMap())
+	case <-time.After(3 * time.Second):
+		t.Fatal("order event did not reach the reporting plugin")
+	}
+	call("host_schedule_task", &pluginv1.ScheduleTaskRequest{Name: "annual-sales", Cron: "0 0 1 1 *", Handler: "annual_report"})
+	jobs := manager.cronScheduler.Entries()
+	require.Len(t, jobs, 1)
+	jobs[0].Job.Run()
+	select {
+	case report := <-reports:
+		require.Equal(t, "CRON", report.GetMethod())
+		require.Equal(t, "/_cron/annual-sales", report.GetPath())
+	default:
+		t.Fatal("scheduled report did not reach the plugin")
+	}
+	require.NoError(t, manager.DisablePlugin(name))
+	require.Empty(t, manager.EventBus().Subscriptions(name))
+	require.Empty(t, manager.cronScheduler.Entries())
 }
 
 // The guest forwards each protobuf request and returns the host's actual pointer and length.

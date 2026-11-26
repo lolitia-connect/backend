@@ -66,6 +66,58 @@ func TestSetupChecksDatabaseBeforeSavingAndSavesBeforeMigration(t *testing.T) {
 	}
 }
 
+func TestWizardKeepsRecoverableConfigurationAcrossSetupFailures(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "setup.yaml")
+	const original = "Port: 0\n"
+	if err := os.WriteFile(path, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := newSetupState(path)
+	failure := errors.New("storage unavailable")
+	stage := "connect"
+	state.connect = func(orm.Config) (*sql.DB, string, error) {
+		if stage == "connect" {
+			return nil, "", failure
+		}
+		return nil, orm.DriverPostgres, nil
+	}
+	state.tables = func(*sql.DB, string) ([]string, error) {
+		if stage == "tables" {
+			return nil, failure
+		}
+		return nil, nil
+	}
+	state.migrate = func(orm.Mysql) error { return nil }
+	state.createAdmin = func(context.Context, string, string, *sql.DB, string) error { return failure }
+	for _, stage = range []string{"connect", "tables", "admin"} {
+		if got := submitSetup(state); got != http.StatusInternalServerError {
+			t.Fatalf("%s failure returned HTTP %d", stage, got)
+		}
+		select {
+		case <-state.status:
+			t.Fatalf("wizard signalled completion after %s failure", stage)
+		default:
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stage != "admin" {
+			if string(data) != original {
+				t.Fatalf("%s failure replaced the original config", stage)
+			}
+			continue
+		}
+		var saved config.File
+		if err := conf.Load(path, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved.Database.Addr != "localhost:5432" || saved.Administrator.Email != "admin@example.com" || saved.JwtAuth.AccessSecret == "" || strings.Contains(string(data), "strong-password") {
+			t.Fatal("administrator failure did not leave a resumable configuration")
+		}
+	}
+}
+
 func TestConcurrentSetupCreatesAdministratorOnce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "setup.yaml")
 	if err := os.WriteFile(path, nil, 0600); err != nil {

@@ -191,6 +191,46 @@ func TestNekoproxyCreateRollsBackRemoteAndLocalFailures(t *testing.T) {
 	}
 }
 
+func TestAdoptingAnExistingSessionKeepsTheRemoteForwardOnFailure(t *testing.T) {
+	f := setupIntegration(t)
+	ctx := t.Context()
+	options := &types.NekoproxyNodeOptions{ForwardID: "l4s-1", SessionID: "session-1"}
+	insertBlocked := true
+	f.client.Node.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if insertBlocked && m.Op().Is(ent.OpCreate) {
+				return nil, fmt.Errorf("node catalog is read-only")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	for _, attempt := range []struct {
+		options *types.NekoproxyNodeOptions
+		reason  string
+	}{
+		{&types.NekoproxyNodeOptions{Create: newForwardOptions().Create, ForwardID: options.ForwardID}, "select either"},
+		{&types.NekoproxyNodeOptions{ForwardID: options.ForwardID, SessionID: "retired"}, "session no longer exists"},
+		{options, "node catalog is read-only"},
+	} {
+		if err := f.logic.CreateNode(&node.Node{Name: "Adopted"}, attempt.options); err == nil || !strings.Contains(err.Error(), attempt.reason) {
+			t.Fatalf("creating node returned %v, want %q", err, attempt.reason)
+		}
+		if f.client.Node.Query().CountX(ctx) != 2 || f.client.NekoproxyBinding.Query().CountX(ctx) != 0 || f.deletes != 0 {
+			t.Fatal("failed adoption changed the node catalog or deleted the upstream forward")
+		}
+	}
+	insertBlocked = false
+	adopted := &node.Node{Name: "Adopted", Protocol: "vless"}
+	if err := f.logic.CreateNode(adopted, options); err != nil {
+		t.Fatal(err)
+	}
+	binding := f.client.NekoproxyBinding.Query().OnlyX(ctx)
+	stored := f.client.Node.GetX(ctx, adopted.Id)
+	if stored.Address != "entry.example.com" || stored.Port != uint16(f.port) || binding.NodeID != stored.ID || binding.SessionID != options.SessionID || binding.ManagedTargetPort != nil || f.deletes != 0 {
+		t.Fatalf("adopted node=%+v binding=%+v deletions=%d", stored, binding, f.deletes)
+	}
+}
+
 func TestNekoproxyNodeSavePreferenceAndAtomicSync(t *testing.T) {
 	f := setupIntegration(t)
 	ctx := t.Context()

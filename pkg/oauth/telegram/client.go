@@ -111,6 +111,12 @@ func BuildTelegramOAuthURL(botToken, embed, redirect string) (string, error) {
 	if parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return "", fmt.Errorf("redirect %q must be an absolute URL", redirect)
 	}
-	uri := "https://oauth.telegram.org/auth?bot_id=%s&origin=%s&embed=%s&request_access=write&return_to=%s"
-	return fmt.Sprintf(uri, botID, fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host), embed, redirect), nil
+	query := url.Values{
+		"bot_id":         {botID},
+		"origin":         {parsedURL.Scheme + "://" + parsedURL.Host},
+		"embed":          {embed},
+		"request_access": {"write"},
+		"return_to":      {redirect},
+	}
+	return "https://oauth.telegram.org/auth?" + query.Encode(), nil
 }

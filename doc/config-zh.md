@@ -256,6 +256,7 @@ MaxMind GeoLite2 城市库为登录与审计日志提供地址归属地。没有
   `config.yaml.example` 提供 `50`。
 - **`Rotation`**：日志轮转策略：`daily` 或 `size`。默认 `daily`。
 - **`FileTimeFormat`**：日志文件名使用的时间戳格式。默认 `2006-01-02T15:04:05.000Z07:00`。
+  同一时间戳内多次轮转时，后续备份名会附加序号。压缩和未压缩备份都计入 `MaxBackups`。
 
 > 上述默认值来自 `pkg/logging/logging.go` 的结构体 tag。`config.yaml.example` 设置的是一套面向生产的
 > 配置（`FilePath: logs/ppanel.log`、`MaxSize: 50`、`MaxBackup: 3`、`MaxAge: 30`、`Compress: true`、
@@ -372,7 +373,7 @@ SMTP 中继设置保存在数据库中（系统设置 → 邮件），在面板�
 - **`Node`**：`NodeSecret`、拉取/推送间隔、`TrafficReportThreshold`、`IPStrategy`、`DNS`、`Block`、
   `Outbound`。
 - **`Mobile`**、**`Device`**、**`Verify`**、**`VerifyCode`**、**`Register`**、**`Log`**、
-  **`Currency`**、**`Invite`**、**`Telegram`**：客户端、设备准入、验证码、注册、日志保留、货币与邀请设置。
+  **`Currency`**、**`Invite`**、**`Telegram`**：客户端、设备准入、验证码、注册、日志保留、货币与邀请设置。短信发送器初始化时不会把供应商配置和签名密钥写入应用日志。
 - **`Subscribe`**：订阅下发设置，其中 `ProfileUpdateInterval` 与 `ProfileWebPageURL` 会下发给自行
   刷新订阅配置的客户端（`0` / 空值表示响应中省略该字段）。
 - **`Plugin`**：**fork 专有的插件系统。** `Enabled`（默认 `true`）、`Directory`（默认 `plugins`）、
@@ -380,6 +381,7 @@ SMTP 中继设置保存在数据库中（系统设置 → 邮件），在面板�
   `BlockList`。WASM 插件二进制被 git 忽略（`plugins/**/*.wasm`），因为它们在别处构建。
 - **`EdgeSubscribe`**：**fork 专有的签名 Edge Manifest API**（`GET /api/edge/v1/manifest`），
   由可信的 Cloudflare Worker 消费。默认关闭，因为启用后会暴露一个可签发用户凭据的 HMAC 认证端点。
+  清单使用节点指定的协议实例。实例被删除后，清单会省略该节点并给出提示。未指定实例 ID 的旧节点使用首个类型匹配的协议。
   - **`Enabled`**：默认 `false`。
   - **`MaxClockSkewSeconds`**：请求时间戳允许的时钟偏差。
   - **`Keys`**：`{ID, Secret}` HMAC 凭据列表。轮换是增量的：先加新密钥，部署使用它的 Worker，
@@ -407,6 +409,8 @@ SMTP 中继设置保存在数据库中（系统设置 → 邮件），在面板�
 - **Stripe Checkout Sessions。** Stripe 支付方式使用托管的 Checkout Session
   （`CreateCheckoutSession`），包括异步成功处理。凭据在面板中按支付方式配置。
 - **EPay V1/V2。** EPay 支付方式同时支持两个协议版本；V2 API 端点可使用站点相对路径。在面板中按支付方式配置。
+- **支付回调地址。** 收银台和支付渠道列表优先使用渠道域名，未设置时使用 `Site.Host` 中的第一个公开域名。
+  网关模式会在 `/v1/notify/` 前加上 `/api`。外部支付渠道的回调地址为空时，请检查渠道域名和站点域名。
 - **支付账单描述。** 支付方式的 `BillDesc` 支持 `{order_no}`、`{item_name}`、`{amount}`、`{trade_no}`。
   `{item_name}` 在充值订单中为“充值”，订阅相关订单使用套餐名称；`{amount}` 为订单金额，保留两位小数。
 
@@ -460,6 +464,7 @@ ssh -L 8080:127.0.0.1:8080 user@your-server
 - **反向代理**：同机或私有网络内的代理默认被信任；公网地址的代理需填入 `TrustedProxies`；客户端直连的
   服务应设置 `TrustedProxies: ["none"]`。请把 `AllowedOrigins` 设为前端的来源。
 - **站点域名**：在启用 Apple 或 Telegram 登录前，先在系统设置中设置 `Site.Host`。
+  Telegram 登录和账号绑定需要格式为 `<bot_id>:<secret>` 的机器人令牌。返回面板的地址可以带查询参数。
 - **日志**：生产环境建议使用 `file` 或 `volume` 模式持久化日志。将 `Level` 设为 `error` 可减少日志量；
   `severe` 则完全不写日志。
 - **数据库**：确保 `Database` 与 `Redis` 凭据安全，避免在版本控制中暴露，并保持 `config.yaml` 为

@@ -1,80 +1,53 @@
 package google
 
 import (
-	"context"
+	"errors"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
-	"golang.org/x/oauth2"
+	"github.com/stretchr/testify/require"
 )
 
-func TestGoogleOAuth(t *testing.T) {
-	t.Skipf("Skip TestGoogleOAuth test")
-	http.HandleFunc("/", handleMain)
-	http.HandleFunc("/login", handleLogin)
-	http.HandleFunc("/auth", handleCallback)
-	http.HandleFunc("/user", handleAuth)
+type profileTransport func(*http.Request) (*http.Response, error)
 
-	fmt.Println("Server is running on http://localhost:3001")
-	log.Fatal(http.ListenAndServe(":3001", nil))
-}
+func (f profileTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func handleMain(w http.ResponseWriter, r *http.Request) {
-	html := `<html>
-		<body>
-			<a href="/login">Log in with Google</a>
-		</body>
-	</html>`
-	fmt.Fprint(w, html)
-}
-
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	oauthConfig := New(&Config{
-		ClientID:     "",
-		ClientSecret: "",
-		RedirectURL:  "http://localhost:3001/auth",
-	})
-	url := oauthConfig.AuthCodeURL("randomstate", oauth2.AccessTypeOffline)
-	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
-}
-
-func handleCallback(w http.ResponseWriter, r *http.Request) {
-	if r.FormValue("state") != "randomstate" {
-		http.Error(w, "State is invalid", http.StatusBadRequest)
-		return
+func TestGoogleProfileLookupRecoversAfterProviderFailure(t *testing.T) {
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	client := New(&Config{ClientID: "panel-web"})
+	const profile = `{"id":"member-42","email":"member@example.test","name":"Ada","verified_email":"true"}`
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"offline", 0, ""}, {"expired access token", http.StatusUnauthorized, profile},
+		{"incomplete response", http.StatusOK, `{"id":"member-42"`}, {"recovered", http.StatusOK, profile},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			http.DefaultTransport = profileTransport(func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet || req.URL.String() != "https://www.googleapis.com/oauth2/v2/userinfo" || req.Header.Get("Authorization") != "Bearer profile-proof" {
+					return nil, fmt.Errorf("unexpected profile request %s %s", req.Method, req.URL.Path)
+				}
+				if tc.status == 0 {
+					return nil, errors.New("provider unavailable")
+				}
+				return &http.Response{StatusCode: tc.status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+			})
+			member, err := client.GetUserInfo("profile-proof")
+			if tc.name != "recovered" {
+				require.Error(t, err)
+				require.Nil(t, member)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, &UserInfo{OpenID: "member-42", Email: "member@example.test", Name: "Ada", VerifiedEmail: true}, member)
+		})
 	}
-
-	log.Printf("url: %v", r.URL)
-
-	oauthConfig := New(&Config{
-		ClientID:     "",
-		ClientSecret: "Key",
-		RedirectURL:  "http://localhost:3001/auth",
-	})
-	code := r.FormValue("code")
-	token, err := oauthConfig.Exchange(context.Background(), code)
-	if err != nil {
-		http.Error(w, "Failed to exchange token", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/user?token="+token.AccessToken, http.StatusTemporaryRedirect)
-}
-
-func handleAuth(w http.ResponseWriter, r *http.Request) {
-	token := r.FormValue("token")
-	client := New(&Config{
-		ClientID:     "Id",
-		ClientSecret: "Key",
-		RedirectURL:  "http://localhost:3001/auth",
-	})
-	userInfo, err := client.GetUserInfo(token)
-	if err != nil {
-		http.Error(w, "Failed to get user info", http.StatusInternalServerError)
-		return
-	}
-	fmt.Fprintf(w, "Hello, %s", userInfo.Name)
 }
 
 func TestParseVerifiedEmail(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/limit"
+	"github.com/perfect-panel/server/pkg/xerr"
 	smsworker "github.com/perfect-panel/server/queue/logic/sms"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/stretchr/testify/require"
@@ -56,9 +58,20 @@ func TestSMSLoginDeliveryReceipt(t *testing.T) {
 			f.client.UserAuthMethod.Create().SetUserID(account.ID).SetAuthType("mobile").SetAuthIdentifier("+1" + number).SetVerified(true).SaveX(ctx)
 			inspector := f.startQueue()
 			_, operator := f.account(true)
-			method := f.client.AuthMethod.Create().SetMethod("mobile").SetConfig(`{}`).SetEnabled(false).SaveX(ctx)
 			const settings = "/v1/admin/auth-method"
-			payload := fmt.Sprintf(`{"id":"%d","method":"mobile","enabled":true,"config":{"platform":"abosend","platform_config":{"api_domain":%q,"access":"fixture","secret":"fixture","template":"Login code {{.code}}"}}}`, method.ID, gateway.URL)
+			const probeForm = `{"area_code":"1","telephone":"2025550199"}`
+			f.request(http.MethodPost, settings+"/test_sms_send", operator, probeForm, xerr.ERROR)
+			method := f.client.AuthMethod.Create().SetMethod("mobile").SetConfig(`{"platform":`).SetEnabled(false).SaveX(ctx)
+			for _, path := range []string{"/config?method=mobile", "/list"} {
+				require.Empty(t, f.request(http.MethodGet, settings+path, operator, "", xerr.ERROR))
+			}
+			var catalog types.PlatformResponse
+			require.NoError(t, json.Unmarshal(f.request(http.MethodGet, settings+"/sms_platform", operator, "", http.StatusOK), &catalog))
+			i := slices.IndexFunc(catalog.List, func(p types.PlatformInfo) bool { return p.Platform == "abosend" })
+			require.NotEqual(t, -1, i, "the operator must be able to select Abosend")
+			provider := catalog.List[i]
+			template := "Login code " + provider.PlatformFieldDescription["code_variable"]
+			payload := fmt.Sprintf(`{"id":"%d","method":"mobile","enabled":true,"config":{"platform":%q,"platform_config":{"api_domain":%q,"access":"fixture","secret":"fixture","template":%q}}}`, method.ID, provider.Platform, gateway.URL, template)
 			f.request(http.MethodPut, settings+"/config", operator, payload, http.StatusOK)
 			var saved types.GetAuthMethodListResponse
 			require.NoError(t, json.Unmarshal(f.request(http.MethodGet, settings+"/list", operator, "", http.StatusOK), &saved))
@@ -69,7 +82,7 @@ func TestSMSLoginDeliveryReceipt(t *testing.T) {
 			if tc.gatewayCode != 200 {
 				probeStatus = http.StatusInternalServerError
 			}
-			f.request(http.MethodPost, settings+"/test_sms_send", operator, `{"area_code":"1","telephone":"2025550199"}`, probeStatus)
+			f.request(http.MethodPost, settings+"/test_sms_send", operator, probeForm, probeStatus)
 			select {
 			case probe := <-messages:
 				require.Equal(t, message{Area: "+1", Number: "12025550199", Content: "Login code 123456"}, probe)

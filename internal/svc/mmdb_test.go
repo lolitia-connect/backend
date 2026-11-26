@@ -11,7 +11,38 @@ import (
 
 	"github.com/perfect-panel/server/internal/config"
 	"github.com/perfect-panel/server/pkg/requestmeta"
+	"github.com/stretchr/testify/require"
 )
+
+func TestDownloadedCityDatabaseEnrichesRequestsAfterAnOfflineRestart(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "fixture-city.mmdb"))
+	require.NoError(t, err)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(fixture)
+	}))
+	t.Cleanup(provider.Close)
+	digest := sha256.Sum256(fixture)
+	settings := config.GeoIPConfig{Required: true, Download: true, DownloadURL: provider.URL,
+		Path: filepath.Join(t.TempDir(), "cache", "city.mmdb"), SHA256: hex.EncodeToString(digest[:])}
+	location, err := OpenIPLocation(settings)
+	require.NoError(t, err)
+	require.NoError(t, location.Close())
+	provider.Close()
+	location, err = OpenIPLocation(settings)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, location.Close()) })
+	for _, tc := range []struct{ ip, code, country, region, city string }{
+		{"192.0.2.11", "US", "Test Country", "Test Region", "Test City"},
+		{"198.51.100.8", "CN", "乙国", "乙省", "乙市"},
+		{"203.0.113.1", "", "", "", ""},
+		{"unavailable", "", "", "", ""},
+	} {
+		metadata := requestmeta.New(tc.ip, "audit-client")
+		want := metadata
+		want.IPCountryCode, want.IPCountry, want.IPRegion, want.IPCity = tc.code, tc.country, tc.region, tc.city
+		require.Equal(t, want, location.EnrichMetadata(metadata), tc.ip)
+	}
+}
 
 func TestGeoIPOptionalAndRequiredModes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.mmdb")

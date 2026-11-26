@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/perfect-panel/server/ent"
 	"github.com/perfect-panel/server/internal/types"
@@ -80,7 +81,7 @@ func TestBatchDocumentRemovalRetriesAsOnePublicationChange(t *testing.T) {
 	_, customer := f.account(false)
 	var ids []int64
 	for _, title := range []string{"Setup", "Billing", "Support"} {
-		doc := f.client.Document.Create().SetTitle(title).SetContent(title+" guide").SetShow(true).SaveX(ctx)
+		doc := f.client.Document.Create().SetTitle(title).SetContent(title + " guide").SetShow(true).SaveX(ctx)
 		ids = append(ids, doc.ID)
 	}
 	blocked := true
@@ -116,7 +117,7 @@ func TestBatchDocumentRemovalRetriesAsOnePublicationChange(t *testing.T) {
 func TestCustomerDocumentCatalogFollowsOperatorPublication(t *testing.T) {
 	f := newRouteFixture(t)
 	_, admin := f.account(true)
-	_, customer := f.account(false)
+	buyer, customer := f.account(false)
 	const editor = "/v1/admin/document"
 	const library = "/v1/public/document"
 	read := func(path, token string, result any) {
@@ -133,12 +134,21 @@ func TestCustomerDocumentCatalogFollowsOperatorPublication(t *testing.T) {
 	doc := drafts.List[0]
 	require.False(t, doc.Show)
 	require.Equal(t, "Check for updates.", doc.Content)
+	editorDetail := fmt.Sprintf("%s/detail?id=%d", editor, doc.Id)
+	var editing types.Document
+	read(editorDetail, admin, &editing)
+	require.Equal(t, doc, editing)
 	var hidden types.QueryDocumentListResponse
 	read(library+"/list", customer, &hidden)
 	require.Empty(t, hidden.List)
 
-	published := fmt.Sprintf(`{"id":"%d","title":"Travel guide","content":"Welcome. {{#if_not_subscribed}}Choose a plan.{{/if_not_subscribed}}","tags":["travel"],"show":true}`, doc.Id)
+	const content = "Welcome. {{#if_subscribed}}Open your dashboard.{{/if_subscribed}}{{#if_not_subscribed}}Choose a plan.{{/if_not_subscribed}}"
+	published := fmt.Sprintf(`{"id":"%d","title":"Travel guide","content":%q,"tags":["travel"],"show":true}`, doc.Id, content)
 	f.request(http.MethodPut, editor+"/", admin, published, http.StatusOK)
+	read(editorDetail, admin, &editing)
+	require.True(t, editing.Show)
+	require.Equal(t, []string{"travel"}, editing.Tags)
+	require.Equal(t, content, editing.Content)
 	var catalog types.QueryDocumentListResponse
 	read(library+"/list", customer, &catalog)
 	require.EqualValues(t, 1, catalog.Total)
@@ -149,6 +159,22 @@ func TestCustomerDocumentCatalogFollowsOperatorPublication(t *testing.T) {
 	var article types.Document
 	read(detail, customer, &article)
 	require.Equal(t, "Welcome. Choose a plan.", article.Content)
+	plan := f.client.Subscribe.Create().SetName("Travel plan").SaveX(t.Context())
+	f.client.UserSubscribe.Create().SetUserID(buyer.ID).SetSubscribeID(plan.ID).SetOrderID(1).SetStatus(1).SetExpireTime(time.Now().AddDate(0, 1, 0)).SaveX(t.Context())
+	offline := true
+	f.client.UserSubscribe.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if offline {
+				return nil, errors.New("member subscriptions unavailable")
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	read(detail, customer, &article)
+	require.Equal(t, "Welcome. Choose a plan.", article.Content)
+	offline = false
+	read(detail, customer, &article)
+	require.Equal(t, "Welcome. Open your dashboard.", article.Content)
 	f.request(http.MethodDelete, editor+"/", admin, fmt.Sprintf(`{"id":"%d"}`, doc.Id), http.StatusOK)
 	var removed types.QueryDocumentListResponse
 	read(library+"/list", customer, &removed)

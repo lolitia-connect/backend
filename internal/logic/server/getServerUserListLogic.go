@@ -244,13 +244,7 @@ func (l *GetServerUserListLogic) loadServerUserList(req *types.GetServerUserList
 		}
 	} else {
 		// 传统模式：查询匹配节点 ID 或 tags 的订阅
-		nodeTags = tool.RemoveDuplicateElements(nodeTags...)
-		_, subs, err = l.svcCtx.Store.Subscribe().FilterList(l.ctx, &subscribe.FilterParams{
-			Page: 1,
-			Size: 9999,
-			Node: nodeIds,
-			Tags: nodeTags,
-		})
+		subs, err = l.queryMatchedSubscribes(nodeIds, nodeTags)
 		if err != nil {
 			l.Logger.Errorw("FilterList error", zap.Any("error", err.Error()))
 			return nil, err

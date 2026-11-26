@@ -79,6 +79,64 @@ func TestDeadLetterBackoffAndRecovery(t *testing.T) {
 	}
 }
 
+func TestMeteredReportRetryAcrossMinutesKeepsOriginalCharge(t *testing.T) {
+	store := accountingStore(t)
+	ctx := t.Context()
+	db := store.Ent()
+	cache := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+	t.Cleanup(func() { _ = cache.Close() })
+	server := db.Server.Create().SetName("Metered relay").SaveX(ctx)
+	sub := db.UserSubscribe.Create().SetUserID(8).SetOrderID(1).SetSubscribeID(3).SaveX(ctx)
+	request := []Report{{SID: sub.ID, Upload: 12, Download: 16}}
+	start := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
+	aggregator := &Aggregator{Store: store, Redis: cache, Multiplier: func(at time.Time) float32 {
+		if at.Before(start.Add(time.Minute)) {
+			return 1.5
+		}
+		return 0.5
+	}}
+	relay := &node.Server{Id: server.ID, Protocols: `[{"type":"vless","id":"billed","ratio":2}]`}
+	for _, input := range []struct {
+		id string
+		at time.Time
+	}{
+		{"first-report", start}, {"first-report", start.Add(time.Minute)}, {"second-report", start.Add(time.Minute)},
+	} {
+		if err := aggregator.AddReportOnceAt(ctx, relay, "vless", "billed", request, input.at, input.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	unavailable := &unavailableTrafficStore{Store: store}
+	aggregator.Store = unavailable
+	if err := aggregator.Flush(ctx, start.Add(2*time.Minute)); err == nil {
+		t.Fatal("flush succeeded while accounting storage was unavailable")
+	}
+	if stored := db.UserSubscribe.GetX(ctx, sub.ID); stored.Upload != 0 || stored.Download != 0 || db.TrafficLog.Query().CountX(ctx) != 0 {
+		t.Fatal("interrupted flush posted a partial charge")
+	}
+	aggregator.Store = store
+	for range 2 {
+		if err := aggregator.Flush(ctx, start.Add(3*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored := db.UserSubscribe.GetX(ctx, sub.ID)
+	if stored.Upload != 48 || stored.Download != 64 || db.TrafficBatch.Query().CountX(ctx) != 2 {
+		t.Fatalf("recovered metering: upload %d, download %d, batches %d", stored.Upload, stored.Download, db.TrafficBatch.Query().CountX(ctx))
+	}
+	rows := db.TrafficLog.Query().AllX(ctx)
+	if len(rows) != 2 {
+		t.Fatalf("metering produced %d ledger rows, want 2", len(rows))
+	}
+	charges := map[int64][2]int64{start.Unix(): {36, 48}, start.Add(time.Minute).Unix(): {12, 16}}
+	for _, row := range rows {
+		if want, found := charges[row.Timestamp.Unix()]; !found || want != [2]int64{row.Upload, row.Download} || row.SubscribeID != sub.ID || row.ServerID != relay.Id || row.UserID != sub.UserID {
+			t.Fatalf("unexpected ledger charge: %+v", row)
+		}
+		delete(charges, row.Timestamp.Unix())
+	}
+}
+
 func TestMinuteBucketsReissueLateReportsAndReplayCommittedBatch(t *testing.T) {
 	store := accountingStore(t)
 	ctx := context.Background()

@@ -171,7 +171,7 @@ func (l *BindOAuthLogic) telegram(req *types.BindOAuthRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return telegram.GenerateTelegramOAuthURL(cfg.BotToken, code, req.Redirect), nil
+	return telegram.BuildTelegramOAuthURL(cfg.BotToken, code, req.Redirect)
 }
 
 func (l *BindOAuthLogic) issueState(provider, redirect string) (string, error) {

@@ -44,11 +44,16 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 	if req.Sort != nil {
 		data.Sort = *req.Sort
 	}
-	data.Country = req.Country
-	data.City = req.City
-	// only update address when it's  different
-	if req.Address != data.Address || (data.Country == "" || req.Country == "") {
-		// query server ip location
+	addressChanged := req.Address != data.Address
+	if addressChanged || req.Country != "" || req.City != "" {
+		data.Country, data.City = req.Country, req.City
+	}
+	if addressChanged {
+		data.Address = req.Address
+		data.Latitude, data.Longitude = "", ""
+		data.LatitudeCenter, data.LongitudeCenter = "", ""
+	}
+	if addressChanged || req.Country == "" {
 		result, err := ip.GetRegionByIp(req.Address)
 		if err != nil {
 			l.Logger.Errorf("[UpdateServer] GetRegionByIp Error: %v", err.Error())
@@ -60,8 +65,6 @@ func (l *UpdateServerLogic) UpdateServer(req *types.UpdateServerRequest) error {
 			data.LatitudeCenter = result.LatitudeCenter
 			data.LongitudeCenter = result.LongitudeCenter
 		}
-		// update address
-		data.Address = req.Address
 	}
 	protocols := make([]node.Protocol, 0)
 	for _, item := range req.Protocols {

@@ -3,7 +3,6 @@ package sms
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"github.com/perfect-panel/server/pkg/sms/abosend"
 	"github.com/perfect-panel/server/pkg/sms/alibabacloud"
@@ -17,7 +16,6 @@ type Sender interface {
 }
 
 func NewSender(platform, config string) (Sender, error) {
-	log.Printf("platform: %s, config: %s", platform, config)
 	switch parsePlatform(platform) {
 	case AlibabaCloud:
 		cfg := alibabacloud.Config{}

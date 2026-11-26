@@ -322,7 +322,8 @@ The `healthcheck` subcommand follows these settings (section 6).
   **Divergence:** upstream defaults to `100`; `config.yaml.example` ships `50`.
 - **`Rotation`**: Log rotation strategy: `daily` or `size`. Default: `daily`.
 - **`FileTimeFormat`**: Timestamp format used in log file names. Default:
-  `2006-01-02T15:04:05.000Z07:00`.
+  `2006-01-02T15:04:05.000Z07:00`. Rotations with the same timestamp get a
+  numbered suffix. Compressed and uncompressed backups count toward `MaxBackups`.
 
 > The defaults above come from the struct tags in `pkg/logging/logging.go`.
 > `config.yaml.example` sets a production-oriented profile
@@ -481,7 +482,7 @@ them because the panel manages them at runtime. Their defaults are in section 2.
 - **`Mobile`**, **`Device`**, **`Verify`**, **`VerifyCode`**, **`Register`**,
   **`Log`**, **`Currency`**, **`Invite`**, **`Telegram`**: client app, device
   admission, captcha, verification-code, registration, log-retention, currency
-  and referral settings.
+  and referral settings. Initializing an SMS provider keeps its configuration and signing credentials out of the application log.
 - **`Subscribe`**: subscription delivery settings, including
   `ProfileUpdateInterval` and `ProfileWebPageURL`, which are surfaced to clients
   that refresh a profile on their own schedule (`0` / empty omits the field).
@@ -493,7 +494,9 @@ them because the panel manages them at runtime. Their defaults are in section 2.
 - **`EdgeSubscribe`**: **fork-specific signed Edge Manifest API**
   (`GET /api/edge/v1/manifest`), consumed by a trusted Cloudflare Worker. It is
   disabled by default because enabling it exposes an HMAC-authenticated endpoint
-  that mints user credentials.
+  that mints user credentials. Each node uses its configured protocol instance. If that
+  instance is removed, the manifest omits the node and includes a notice. Legacy nodes
+  without an instance ID use the first matching protocol type.
   - **`Enabled`**: Default `false`.
   - **`MaxClockSkewSeconds`**: Allowed clock skew for the request timestamp.
   - **`Keys`**: A list of `{ID, Secret}` HMAC credentials. Rotation is additive:
@@ -529,6 +532,10 @@ them because the panel manages them at runtime. Their defaults are in section 2.
   credentials are configured per payment method in the panel.
 - **EPay V1/V2.** The EPay method supports both protocol versions; V2 API
   endpoints may be site-relative. Configured in the panel, per payment method.
+- **Payment callbacks.** Checkout and the payment method list use the channel's
+  domain, falling back to the first public host in `Site.Host`. Gateway mode
+  adds `/api` before `/v1/notify/`. A blank callback on an external payment
+  method means its public address needs configuring.
 - **Payment billing descriptions.** A payment method's `BillDesc` supports
   `{order_no}`, `{item_name}`, `{amount}`, and `{trade_no}`. For recharge orders,
   `{item_name}` is `充值`; subscription-related orders use the plan name.
@@ -598,7 +605,8 @@ image's `HEALTHCHECK` runs it, and a systemd or cron watchdog can too.
   server its clients reach directly sets `TrustedProxies: ["none"]`. Set
   `AllowedOrigins` to the frontends' origins.
 - **Site host**: Set `Site.Host` in the system settings before enabling Apple or
-  Telegram sign-in.
+  Telegram sign-in. Telegram login and account linking require a bot token in
+  the form `<bot_id>:<secret>`. The panel return URL can include query parameters.
 - **Logging**: Use `file` or `volume` mode for production to persist logs. Set
   `Level` to `error` to reduce log volume; `severe` writes nothing at all.
 - **Database**: Ensure `Database` and `Redis` credentials are secure and not

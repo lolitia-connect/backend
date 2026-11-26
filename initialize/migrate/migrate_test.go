@@ -12,6 +12,7 @@ import (
 
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/perfect-panel/server/pkg/orm"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMigrateMySQL(t *testing.T) {
@@ -28,6 +29,59 @@ func TestMigratePostgres(t *testing.T) {
 		t.Skip("set PPANEL_TEST_POSTGRES_DSN to run PostgreSQL migration test")
 	}
 	runMigration(t, orm.DriverPostgres, dsn)
+}
+
+func TestTrafficIndexMigrationCanResumeAfterAnIncompleteSchema(t *testing.T) {
+	dsn := os.Getenv("PPANEL_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("set PPANEL_TEST_POSTGRES_DSN to run the traffic index migration test")
+	}
+	ctx := t.Context()
+	db, err := sql.Open("postgres", dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+	exec := func(query string) {
+		t.Helper()
+		_, err := tx.ExecContext(ctx, query)
+		require.NoError(t, err)
+	}
+	exec(`SET LOCAL search_path TO pg_temp`)
+	exec(`CREATE TEMP TABLE traffic_log (server_id bigint, user_id bigint, timestamp timestamptz, download bigint) ON COMMIT DROP`)
+	exec(`INSERT INTO traffic_log VALUES (10, 20, CURRENT_TIMESTAMP, 350)`)
+	exec(`CREATE INDEX idx_server_id ON traffic_log(server_id)`)
+	exec(`CREATE INDEX idx_user_id ON traffic_log(user_id)`)
+	exec(`CREATE INDEX idx_timestamp ON traffic_log(timestamp)`)
+	indexes := func() []string {
+		t.Helper()
+		rows, err := tx.QueryContext(ctx, `SELECT indexname FROM pg_indexes WHERE schemaname = (SELECT nspname FROM pg_namespace WHERE oid = pg_my_temp_schema()) AND tablename = 'traffic_log' ORDER BY indexname`)
+		require.NoError(t, err)
+		defer rows.Close()
+		var names []string
+		for rows.Next() {
+			var name string
+			require.NoError(t, rows.Scan(&name))
+			names = append(names, name)
+		}
+		require.NoError(t, rows.Err())
+		return names
+	}
+	const migration = "database/postgres/02155_traffic_log_hot_indexes."
+	original := indexes()
+	exec(`SAVEPOINT before_upgrade`)
+	require.ErrorContains(t, ExecuteSQLFile(tx, migration+"up.sql"), "subscribe_id")
+	exec(`ROLLBACK TO SAVEPOINT before_upgrade`)
+	require.Equal(t, original, indexes())
+	exec(`ALTER TABLE traffic_log ADD COLUMN subscribe_id bigint DEFAULT 30`)
+	require.NoError(t, ExecuteSQLFile(tx, migration+"up.sql"))
+	require.ElementsMatch(t, []string{"idx_traffic_server_time", "idx_traffic_user_sub_time", "idx_traffic_log_timestamp_brin"}, indexes())
+	require.NoError(t, ExecuteSQLFile(tx, migration+"down.sql"))
+	require.Equal(t, original, indexes())
+	var download int64
+	require.NoError(t, tx.QueryRowContext(ctx, `SELECT download FROM traffic_log WHERE user_id = 20 AND subscribe_id = 30`).Scan(&download))
+	require.EqualValues(t, 350, download)
 }
 
 func TestMySQLProtocolInstanceBackfill(t *testing.T) {

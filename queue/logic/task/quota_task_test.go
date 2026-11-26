@@ -1,10 +1,13 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"testing"
 
+	framework "entgo.io/ent"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/hibiken/asynq"
 	"github.com/perfect-panel/server/ent"
@@ -82,6 +85,60 @@ func TestQuotaTaskPersistsPartialGrantAndIgnoresRedelivery(t *testing.T) {
 
 	resetEntry := db.SystemLog.Query().Where(systemlog.TypeEQ(modellog.TypeResetSubscribe.Uint8())).OnlyX(ctx)
 	require.Equal(t, activeID, resetEntry.ObjectID)
+}
+
+func TestQuotaGrantRetriesStorageOutagesUntilProgressCommits(t *testing.T) {
+	service, db := quotaFixture(t)
+	ctx := t.Context()
+	seedSubscription(t, db, 41, nil)
+	before := db.UserSubscribe.GetX(ctx, 41)
+	stored := db.Task.Create().SetType(int8(modeltask.TypeQuota)).SetScope(`{"recipients":[41]}`).
+		SetContent(`{"days":2,"reset_traffic":true}`).SetTotal(1).SaveX(ctx)
+	worker := NewQuotaTaskLogic(service)
+	job := asynq.NewTask(types.ForthwithQuotaTask, []byte(strconv.FormatInt(stored.ID, 10)))
+	outage := errors.New("campaign storage unavailable")
+	var failedRead string
+	db.Intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+		return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+			if failedRead == framework.QueryFromContext(ctx).Type {
+				return nil, outage
+			}
+			return next.Query(ctx, q)
+		})
+	}))
+	failProgress := false
+	db.Task.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if _, publishing := m.(*ent.TaskMutation).Current(); failProgress && publishing {
+				return nil, outage
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	for _, stage := range []string{ent.TypeTask, ent.TypeUserSubscribe, "progress"} {
+		failedRead, failProgress = stage, stage == "progress"
+		err := worker.ProcessTask(ctx, job)
+		require.ErrorIs(t, err, outage, stage)
+		require.NotErrorIs(t, err, asynq.SkipRetry)
+		failedRead, failProgress = "", false
+		require.Equal(t, int8(modeltask.StatusPending), db.Task.GetX(ctx, stored.ID).Status)
+		row := db.UserSubscribe.GetX(ctx, before.ID)
+		require.True(t, before.ExpireTime.Equal(row.ExpireTime))
+		require.Equal(t, before.Upload, row.Upload)
+		require.Equal(t, before.Download, row.Download)
+		require.Zero(t, db.SystemLog.Query().CountX(ctx))
+	}
+	for range 2 {
+		require.NoError(t, worker.ProcessTask(ctx, job))
+	}
+	current := db.Task.GetX(ctx, stored.ID)
+	require.EqualValues(t, modeltask.StatusCompleted, current.Status)
+	require.EqualValues(t, 1, current.Current)
+	row := db.UserSubscribe.GetX(ctx, before.ID)
+	require.True(t, before.ExpireTime.AddDate(0, 0, 2).Equal(row.ExpireTime))
+	require.Zero(t, row.Upload)
+	require.Zero(t, row.Download)
+	require.Equal(t, before.ID, db.SystemLog.Query().OnlyX(ctx).ObjectID)
 }
 
 func TestQuotaTaskRejectsMalformedStoredContentWithoutClaiming(t *testing.T) {

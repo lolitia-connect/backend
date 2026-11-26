@@ -153,6 +153,9 @@ type StoreAdapter struct {
 
 // NewStoreAdapter 创建数据库 Store 适配器
 func NewStoreAdapter(db *sql.DB, dialect string) *StoreAdapter {
+	if dialect == "pgx" {
+		dialect = "postgres"
+	}
 	return &StoreAdapter{db: db, dialect: dialect}
 }
 
@@ -196,7 +199,7 @@ func (a *StoreAdapter) query(
 
 	// 统计总数
 	var total int64
-	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", quoteIdentifier(table), where)
+	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s%s", a.quoteIdentifier(table), where)
 	if err := a.db.QueryRow(countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count %s: %w", model, err)
 	}
@@ -205,14 +208,14 @@ func (a *StoreAdapter) query(
 	if len(fields) > 0 {
 		quoted := make([]string, 0, len(fields))
 		for _, field := range fields {
-			quoted = append(quoted, quoteIdentifier(field))
+			quoted = append(quoted, a.quoteIdentifier(field))
 		}
 		selectFields = strings.Join(quoted, ", ")
 	}
 
 	switch operation {
 	case "list", "find":
-		querySQL := fmt.Sprintf("SELECT %s FROM %s%s", selectFields, quoteIdentifier(table), where)
+		querySQL := fmt.Sprintf("SELECT %s FROM %s%s", selectFields, a.quoteIdentifier(table), where)
 		queryArgs := append([]interface{}{}, args...)
 		if limit > 0 {
 			querySQL += fmt.Sprintf(" LIMIT %s", a.placeholder(len(queryArgs)+1))
@@ -231,7 +234,7 @@ func (a *StoreAdapter) query(
 	case "create":
 		if len(conditions) > 0 {
 			columns, placeholders, insertArgs := a.insertParts(conditions)
-			result, err := a.db.Exec(fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", quoteIdentifier(table), columns, placeholders), insertArgs...)
+			result, err := a.db.Exec(fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", a.quoteIdentifier(table), columns, placeholders), insertArgs...)
 			if err != nil {
 				return nil, 0, fmt.Errorf("create %s: %w", model, err)
 			}
@@ -243,7 +246,8 @@ func (a *StoreAdapter) query(
 	case "update":
 		if len(conditions) > 0 {
 			setClause, updateArgs := a.setClause(conditions)
-			result, err := a.db.Exec(fmt.Sprintf("UPDATE %s SET %s%s", quoteIdentifier(table), setClause, where), append(updateArgs, args...)...)
+			updateWhere, whereArgs := a.whereClause(conditions, len(updateArgs)+1)
+			result, err := a.db.Exec(fmt.Sprintf("UPDATE %s SET %s%s", a.quoteIdentifier(table), setClause, updateWhere), append(updateArgs, whereArgs...)...)
 			if err != nil {
 				return nil, 0, fmt.Errorf("update %s: %w", model, err)
 			}
@@ -254,7 +258,7 @@ func (a *StoreAdapter) query(
 
 	case "delete":
 		if len(conditions) > 0 {
-			result, err := a.db.Exec(fmt.Sprintf("DELETE FROM %s%s", quoteIdentifier(table), where), args...)
+			result, err := a.db.Exec(fmt.Sprintf("DELETE FROM %s%s", a.quoteIdentifier(table), where), args...)
 			if err != nil {
 				return nil, 0, fmt.Errorf("delete %s: %w", model, err)
 			}
@@ -306,7 +310,7 @@ func (a *StoreAdapter) createTicketReply(operation string, conditions map[string
 	}
 	defer tx.Rollback()
 	err = func() error {
-		statement := fmt.Sprintf("SELECT %s FROM %s WHERE %s = %s", quoteIdentifier("status"), quoteIdentifier("ticket"), quoteIdentifier("id"), a.placeholder(1))
+		statement := fmt.Sprintf("SELECT %s FROM %s WHERE %s = %s", a.quoteIdentifier("status"), a.quoteIdentifier("ticket"), a.quoteIdentifier("id"), a.placeholder(1))
 		if a.dialect == "mysql" || a.dialect == "postgres" {
 			statement += " FOR UPDATE"
 		}
@@ -319,7 +323,7 @@ func (a *StoreAdapter) createTicketReply(operation string, conditions map[string
 		}
 
 		_, err := tx.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s (%s, %s, %s, %s, %s) VALUES (%s, %s, %s, %s, %s)",
-			quoteIdentifier("ticket_follow"), quoteIdentifier("ticket_id"), quoteIdentifier("from"), quoteIdentifier("type"), quoteIdentifier("content"), quoteIdentifier("created_at"),
+			a.quoteIdentifier("ticket_follow"), a.quoteIdentifier("ticket_id"), a.quoteIdentifier("from"), a.quoteIdentifier("type"), a.quoteIdentifier("content"), a.quoteIdentifier("created_at"),
 			a.placeholder(1), a.placeholder(2), a.placeholder(3), a.placeholder(4), a.placeholder(5)),
 			ticketID, from, uint8(replyType), content, time.Now())
 		if err != nil {
@@ -327,7 +331,7 @@ func (a *StoreAdapter) createTicketReply(operation string, conditions map[string
 		}
 
 		_, err = tx.ExecContext(ctx, fmt.Sprintf("UPDATE %s SET %s = %s, %s = %s WHERE %s = %s",
-			quoteIdentifier("ticket"), quoteIdentifier("status"), a.placeholder(1), quoteIdentifier("updated_at"), a.placeholder(2), quoteIdentifier("id"), a.placeholder(3)),
+			a.quoteIdentifier("ticket"), a.quoteIdentifier("status"), a.placeholder(1), a.quoteIdentifier("updated_at"), a.placeholder(2), a.quoteIdentifier("id"), a.placeholder(3)),
 			ticket.Waiting, time.Now(), ticketID)
 		if err != nil {
 			return fmt.Errorf("update ticket status: %w", err)
@@ -399,7 +403,7 @@ func (a *StoreAdapter) whereClause(conditions map[string]interface{}, start int)
 	args := make([]interface{}, 0, len(conditions))
 	idx := start
 	for field, value := range conditions {
-		parts = append(parts, fmt.Sprintf("%s = %s", quoteIdentifier(field), a.placeholder(idx)))
+		parts = append(parts, fmt.Sprintf("%s = %s", a.quoteIdentifier(field), a.placeholder(idx)))
 		args = append(args, value)
 		idx++
 	}
@@ -412,7 +416,7 @@ func (a *StoreAdapter) insertParts(values map[string]interface{}) (string, strin
 	args := make([]interface{}, 0, len(values))
 	idx := 1
 	for field, value := range values {
-		columns = append(columns, quoteIdentifier(field))
+		columns = append(columns, a.quoteIdentifier(field))
 		placeholders = append(placeholders, a.placeholder(idx))
 		args = append(args, value)
 		idx++
@@ -425,7 +429,7 @@ func (a *StoreAdapter) setClause(values map[string]interface{}) (string, []inter
 	args := make([]interface{}, 0, len(values))
 	idx := 1
 	for field, value := range values {
-		parts = append(parts, fmt.Sprintf("%s = %s", quoteIdentifier(field), a.placeholder(idx)))
+		parts = append(parts, fmt.Sprintf("%s = %s", a.quoteIdentifier(field), a.placeholder(idx)))
 		args = append(args, value)
 		idx++
 	}
@@ -466,7 +470,10 @@ func (a *StoreAdapter) queryRows(query string, args ...interface{}) ([]map[strin
 	return result, rows.Err()
 }
 
-func quoteIdentifier(identifier string) string {
+func (a *StoreAdapter) quoteIdentifier(identifier string) string {
+	if a.dialect == "postgres" {
+		return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
+	}
 	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`"
 }
 

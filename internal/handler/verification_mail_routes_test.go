@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/mail"
 	"net/textproto"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +23,7 @@ import (
 	"github.com/perfect-panel/server/internal/types"
 	"github.com/perfect-panel/server/pkg/constant"
 	"github.com/perfect-panel/server/pkg/limit"
+	"github.com/perfect-panel/server/pkg/xerr"
 	emailworker "github.com/perfect-panel/server/queue/logic/email"
 	queue "github.com/perfect-panel/server/queue/types"
 	"github.com/stretchr/testify/require"
@@ -31,7 +34,7 @@ type verificationMail struct {
 	message  []byte
 }
 
-func receiveVerificationMail(listener net.Listener) (verificationMail, error) {
+func receiveVerificationMail(listener net.Listener, refused []string) (verificationMail, error) {
 	var delivery verificationMail
 	conn, err := listener.Accept()
 	if err != nil {
@@ -57,6 +60,9 @@ func receiveVerificationMail(listener net.Listener) (verificationMail, error) {
 			delivery.from = strings.TrimPrefix(line, "MAIL FROM:")
 		case strings.HasPrefix(line, "RCPT TO:"):
 			delivery.to = strings.TrimPrefix(line, "RCPT TO:")
+			if slices.Contains(refused, strings.Trim(delivery.to, "<>")) {
+				return delivery, wire.PrintfLine("550 Mailbox unavailable")
+			}
 		case line == "DATA":
 			if err := wire.PrintfLine("354 End with a dot"); err != nil {
 				return delivery, err
@@ -76,19 +82,26 @@ func receiveVerificationMail(listener net.Listener) (verificationMail, error) {
 	}
 }
 
-func captureMail(t *testing.T, f *routeFixture) func() []verificationMail {
+func captureMail(t *testing.T, f *routeFixture, refused ...string) func() []verificationMail {
+	t.Helper()
+	config, finish := startMailRelay(t, refused...)
+	f.service.Config.Email.Platform = "smtp"
+	f.service.Config.Email.PlatformConfig = string(config)
+	return finish
+}
+
+func startMailRelay(t *testing.T, refused ...string) (json.RawMessage, func() []verificationMail) {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
-	f.service.Config.Email.Platform = "smtp"
-	f.service.Config.Email.PlatformConfig = fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"from":"portal@example.test"}`, listener.Addr().(*net.TCPAddr).Port)
+	config := json.RawMessage(fmt.Sprintf(`{"host":"127.0.0.1","port":%d,"from":"portal@example.test"}`, listener.Addr().(*net.TCPAddr).Port))
 	var inbox []verificationMail
 	var relayErr error
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for {
-			delivery, err := receiveVerificationMail(listener)
+			delivery, err := receiveVerificationMail(listener, refused)
 			if err != nil {
 				if !errors.Is(err, net.ErrClosed) {
 					relayErr = err
@@ -110,7 +123,80 @@ func captureMail(t *testing.T, f *routeFixture) func() []verificationMail {
 		return inbox
 	}
 	t.Cleanup(func() { finish() })
-	return finish
+	return config, finish
+}
+
+func TestOperatorDeliveryCheckAndQueuedNoticesUseConfiguredRelay(t *testing.T) {
+	f := newRouteFixture(t)
+	ctx := t.Context()
+	_, admin := f.account(true)
+	_, member := f.account(false)
+	const editor = "/v1/admin/auth-method"
+	const probe = editor + "/test_email_send"
+	const recipient = "member@example.test"
+	const probeForm = `{"email":"operator@example.test"}`
+	f.request(http.MethodPost, probe, member, probeForm, xerr.InvalidAccess)
+	f.request(http.MethodPost, probe, admin, `{}`, xerr.InvalidParams)
+	f.request(http.MethodPost, probe, admin, probeForm, xerr.ERROR)
+	var catalog types.PlatformResponse
+	require.NoError(t, json.Unmarshal(f.request(http.MethodGet, editor+"/email_platform", admin, "", http.StatusOK), &catalog))
+	i := slices.IndexFunc(catalog.List, func(p types.PlatformInfo) bool { return p.Platform == "smtp" })
+	require.NotEqual(t, -1, i, "the operator must be able to select SMTP")
+	relay, inbox := startMailRelay(t, "retired@example.test")
+	method := f.client.AuthMethod.Create().SetMethod("email").SetConfig(`{}`).SetEnabled(false).SaveX(ctx)
+	settings := map[string]any{
+		"platform": catalog.List[i].Platform, "platform_config": relay,
+		"maintenance_email_subject": "Maintenance for {{.Plan}}", "maintenance_email_template": "Offline at {{.When}}",
+		"expiration_email_subject": "Renew {{.Plan}}", "expiration_email_template": "Expires at {{.When}}",
+		"traffic_exceed_email_subject": "{{.Plan}} usage", "traffic_exceed_email_template": "Limit reached at {{.When}}",
+	}
+	form, err := json.Marshal(map[string]any{"id": fmt.Sprint(method.ID), "method": "email", "enabled": true, "config": settings})
+	require.NoError(t, err)
+	f.request(http.MethodPut, editor+"/config", admin, string(form), http.StatusOK)
+	f.request(http.MethodPost, probe, admin, `{"email":"retired@example.test"}`, http.StatusInternalServerError)
+	f.request(http.MethodPost, probe, admin, probeForm, http.StatusOK)
+	worker := emailworker.NewSendEmailLogic(f.service)
+	notices := []struct{ kind, subject, body string }{
+		{queue.EmailTypeMaintenance, "Maintenance for Monthly", "Offline at noon"},
+		{queue.EmailTypeExpiration, "Renew Monthly", "Expires at noon"},
+		{queue.EmailTypeTrafficExceed, "Monthly usage", "Limit reached at noon"},
+		{queue.EmailTypeCustom, "Account notice", "custom message"},
+	}
+	for i, notice := range notices {
+		payload, err := json.Marshal(queue.SendEmailPayload{Type: notice.kind, Email: recipient, Subject: "Account notice",
+			Content: map[string]any{"Plan": "Monthly", "When": "noon", "content": "custom message"}})
+		require.NoError(t, err)
+		task := asynq.NewTask(queue.ForthwithSendEmail, payload)
+		if i == 0 {
+			interrupted, cancel := context.WithCancel(ctx)
+			cancel()
+			require.ErrorIs(t, worker.ProcessTask(interrupted, task), context.Canceled)
+			require.Zero(t, f.client.SystemLog.Query().Where(systemlog.TypeEQ(log.TypeEmailMessage.Uint8())).CountX(ctx))
+		}
+		require.NoError(t, worker.ProcessTask(ctx, task))
+	}
+	deliveries := inbox()
+	require.Len(t, deliveries, 2+len(notices))
+	require.Equal(t, "<retired@example.test>", deliveries[0].to)
+	require.Empty(t, deliveries[0].message)
+	require.Equal(t, "<operator@example.test>", deliveries[1].to)
+	receipts := f.client.SystemLog.Query().Where(systemlog.TypeEQ(log.TypeEmailMessage.Uint8())).Order(systemlog.ByID()).AllX(ctx)
+	require.Len(t, receipts, len(notices))
+	for i, notice := range notices {
+		delivery := deliveries[i+2]
+		require.Equal(t, "<"+recipient+">", delivery.to)
+		msg, err := mail.ReadMessage(bytes.NewReader(delivery.message))
+		require.NoError(t, err)
+		require.Equal(t, notice.subject, msg.Header.Get("Subject"))
+		body, err := io.ReadAll(quotedprintable.NewReader(msg.Body))
+		require.NoError(t, err)
+		require.Equal(t, notice.body, strings.TrimSpace(string(body)))
+		var receipt log.Message
+		require.NoError(t, json.Unmarshal([]byte(receipts[i].Content), &receipt))
+		require.Equal(t, recipient, receipt.To)
+		require.Equal(t, notice.subject, receipt.Subject)
+		require.EqualValues(t, 1, receipt.Status)
+	}
 }
 
 func TestRegistrationCodeInDeliveredEmailCanBeVerified(t *testing.T) {

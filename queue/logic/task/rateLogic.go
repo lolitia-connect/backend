@@ -12,12 +12,11 @@ import (
 
 type RateLogic struct {
 	svcCtx *svc.ServiceContext
+	quote  func(from, to, access string, amount float64) (float64, error)
 }
 
 func NewRateLogic(svcCtx *svc.ServiceContext) *RateLogic {
-	return &RateLogic{
-		svcCtx: svcCtx,
-	}
+	return &RateLogic{svcCtx: svcCtx, quote: exchangeRate.GetExchangeRete}
 }
 
 func (l *RateLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
@@ -41,12 +40,12 @@ func (l *RateLogic) ProcessTask(ctx context.Context, _ *asynq.Task) error {
 		return nil
 	}
 	// Update exchange rates
-	result, err := exchangeRate.GetExchangeRete(configs.CurrencyUnit, "CNY", configs.AccessKey, 1)
+	result, err := l.quote(configs.CurrencyUnit, "CNY", configs.AccessKey, 1)
 	if err != nil {
 		zap.S().Errorw("[RateLogic] GetExchangeRete error", zap.Any("error", err.Error()))
 		return err
 	}
-	l.svcCtx.ExchangeRate = result
+	l.svcCtx.SetCNYRate(configs.CurrencyUnit, result)
 	zap.S().Infof("[RateLogic] GetExchangeRete success, result: %+v", result)
 	return nil
 }

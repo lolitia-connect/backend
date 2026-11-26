@@ -2,10 +2,14 @@ package plugin
 
 import (
 	"database/sql"
+	"os"
 	"strings"
 	"testing"
 
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 	"github.com/perfect-panel/server/internal/model/ticket"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -239,6 +243,47 @@ func TestStoreAdapterDocumentCatalogRespectsProjectionAndPagination(t *testing.T
 	remaining, total, err := adapter.Query("document", "find", published, []string{"id"}, 1, 0)
 	if err != nil || total != 1 || len(remaining) != 1 || remaining[0]["id"] != int64(1) {
 		t.Fatalf("published catalog after deletion = %v, total = %d, %v", remaining, total, err)
+	}
+}
+
+func TestPluginSupportReplyOnConfiguredSQLBackends(t *testing.T) {
+	for _, backend := range []struct{ driver, env, senderColumn string }{
+		{"mysql", "PPANEL_TEST_MYSQL_DSN", "`from`"},
+		{"postgres", "PPANEL_TEST_POSTGRES_DSN", `"from"`},
+	} {
+		t.Run(backend.driver, func(t *testing.T) {
+			dsn := os.Getenv(backend.env)
+			if dsn == "" {
+				t.Skipf("set %s to test plugin support replies", backend.env)
+			}
+			db, err := sql.Open(backend.driver, dsn)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			db.SetMaxOpenConns(1)
+			ctx := t.Context()
+			for _, stmt := range []string{
+				`CREATE TEMPORARY TABLE ticket (id BIGINT PRIMARY KEY, status INTEGER NOT NULL, updated_at TIMESTAMP NULL)`,
+				`CREATE TEMPORARY TABLE ticket_follow (ticket_id BIGINT, ` + backend.senderColumn + ` VARCHAR(100), type INTEGER, content TEXT, created_at TIMESTAMP)`,
+				`INSERT INTO ticket (id, status) VALUES (701, 1), (702, 1)`,
+			} {
+				_, err := db.ExecContext(ctx, stmt)
+				require.NoError(t, err)
+			}
+			store := NewStoreAdapter(db, backend.driver)
+			_, count, err := store.Query("ticket_reply", "create", map[string]any{
+				"ticket_id": int64(701), "from": "Billing", "content": "May receipt attached",
+			}, nil, 0, 0)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, count)
+			rows, total, err := store.Query("ticket_follow", "list", map[string]any{"ticket_id": 701}, []string{"from", "content"}, 1, 0)
+			require.NoError(t, err)
+			require.EqualValues(t, 1, total)
+			require.Equal(t, []map[string]any{{"from": "Billing", "content": "May receipt attached"}}, rows)
+			var updated, untouched int
+			require.NoError(t, db.QueryRowContext(ctx, `SELECT MAX(CASE WHEN id=701 THEN status END), MAX(CASE WHEN id=702 THEN status END) FROM ticket`).Scan(&updated, &untouched))
+			require.EqualValues(t, ticket.Waiting, updated)
+			require.EqualValues(t, ticket.Pending, untouched)
+		})
 	}
 }
 

@@ -674,27 +674,31 @@ func (l *PurchaseCheckoutLogic) queryExchangeRate(to string, src int64) (amount 
 	amount = float64(src) / float64(100)
 
 	// No conversion needed if target currency matches system currency
-	if strings.EqualFold(to, l.svcCtx.Config.Currency.Unit) {
+	currency := l.svcCtx.Config.Currency
+	if strings.EqualFold(to, currency.Unit) {
 		return amount, nil
 	}
 
-	if l.svcCtx.ExchangeRate != 0 && to == "CNY" {
-		amount = amount * l.svcCtx.ExchangeRate
-		return amount, nil
+	if strings.EqualFold(to, "CNY") {
+		if rate := l.svcCtx.CNYRate(currency.Unit); rate != 0 {
+			return amount * rate, nil
+		}
 	}
 
 	// Skip conversion if no exchange rate API key configured
-	if l.svcCtx.Config.Currency.AccessKey == "" {
+	if currency.AccessKey == "" {
 		return amount, nil
 	}
 
 	// Convert currency if system currency differs from target currency
-	result, err := exchangeRate.GetExchangeRete(l.svcCtx.Config.Currency.Unit, to, l.svcCtx.Config.Currency.AccessKey, 1)
+	result, err := exchangeRate.GetExchangeRete(currency.Unit, to, currency.AccessKey, 1)
 	if err != nil {
 		l.Logger.Error("[PurchaseCheckout] QueryExchangeRate error", zap.Any("error", err.Error()))
 		return 0, err
 	}
-	l.svcCtx.ExchangeRate = result
+	if strings.EqualFold(to, "CNY") {
+		l.svcCtx.SetCNYRate(currency.Unit, result)
+	}
 	return result * amount, nil
 }
 

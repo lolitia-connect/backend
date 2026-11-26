@@ -64,6 +64,57 @@ func TestScheduledTrafficResetRetriesOnlyAfterRollingBack(t *testing.T) {
 	require.WithinDuration(t, now, checkpoint.LastResetTime, time.Minute)
 }
 
+func TestScheduledResetResumesAcrossCyclesWithoutLosingNewTraffic(t *testing.T) {
+	service, _ := trafficStatTestService(t)
+	ctx := t.Context()
+	db := service.Ent
+	now := time.Now()
+	seed := func(cycle, account int64) *ent.UserSubscribe {
+		plan := db.Subscribe.Create().SetResetCycle(cycle).SaveX(ctx)
+		start := now.AddDate(-3, 0, -2)
+		return db.UserSubscribe.Create().SetUserID(account).SetOrderID(account).SetSubscribeID(plan.ID).
+			SetStartTime(start).SetTrafficResetAt(start).SetStatus(2).SetUpload(20).SetDownload(30).SaveX(ctx)
+	}
+	yearly, first, monthly := seed(3, 31), seed(1, 32), seed(2, 33)
+	unavailable := errors.New("database is locked")
+	blocked := true
+	db.SystemLog.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, mutation ent.Mutation) (ent.Value, error) {
+			entry := mutation.(*ent.SystemLogMutation)
+			if id, _ := entry.ObjectID(); blocked && id == first.ID {
+				return nil, unavailable
+			}
+			return next.Mutate(ctx, mutation)
+		})
+	})
+	worker := NewResetTrafficLogic(service)
+	require.ErrorIs(t, worker.ProcessTask(ctx, nil), unavailable)
+	require.Equal(t, yearly.ID, db.SystemLog.Query().OnlyX(ctx).ObjectID)
+	require.Zero(t, db.UserSubscribe.GetX(ctx, yearly.ID).Download)
+	for _, item := range []*ent.UserSubscribe{first, monthly} {
+		current := db.UserSubscribe.GetX(ctx, item.ID)
+		require.Equal(t, item.Download, current.Download)
+		require.Equal(t, item.Status, current.Status)
+	}
+	db.UserSubscribe.UpdateOneID(yearly.ID).SetDownload(95).ExecX(ctx)
+	blocked = false
+	require.NoError(t, worker.ProcessTask(ctx, nil))
+	require.NoError(t, worker.ProcessTask(ctx, nil))
+	require.EqualValues(t, 95, db.UserSubscribe.GetX(ctx, yearly.ID).Download)
+	for _, item := range []*ent.UserSubscribe{first, monthly} {
+		current := db.UserSubscribe.GetX(ctx, item.ID)
+		require.Zero(t, current.Upload)
+		require.Zero(t, current.Download)
+		require.EqualValues(t, 1, current.Status)
+	}
+	entries := db.SystemLog.Query().AllX(ctx)
+	var resetIDs []int64
+	for _, entry := range entries {
+		resetIDs = append(resetIDs, entry.ObjectID)
+	}
+	require.ElementsMatch(t, []int64{yearly.ID, first.ID, monthly.ID}, resetIDs)
+}
+
 func TestMonthlyTrafficResetCatchesUpOnceAndPreservesIneligibleUsage(t *testing.T) {
 	service, _ := trafficStatTestService(t)
 	ctx := t.Context()

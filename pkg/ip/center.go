@@ -2439,6 +2439,9 @@ func handleCombinedInput(input string) (latitude, longitude string, found bool) 
 	}
 
 	countryPart := strings.TrimSpace(parts[0])
+	if countryPart == "" {
+		return "", "", false
+	}
 	regionPart := strings.TrimSpace(parts[1])
 
 	countryLower := strings.ToLower(countryPart)

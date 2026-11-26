@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/perfect-panel/server/internal/repository"
 	"github.com/perfect-panel/server/internal/svc"
 	"github.com/perfect-panel/server/internal/usersession"
+	pkgaes "github.com/perfect-panel/server/pkg/aes"
 	"github.com/perfect-panel/server/pkg/hertzx"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
@@ -46,7 +48,6 @@ func newPluginHTTPService(t *testing.T, admin bool) (*svc.ServiceContext, int64,
 func TestPluginManagementClientsShareTheRunningCatalog(t *testing.T) {
 	service, _, operator := newPluginHTTPService(t, true)
 	mgr, _ := plugin.StartDispatchTestGuest(t, nil)
-	service.PluginMgr = mgr
 	router := hertzx.New()
 	handler.RegisterNativeHandlers(router.Hertz(), service)
 	handler.RegisterPluginHandlers(router, service, mgr)
@@ -107,6 +108,22 @@ func TestPluginManagementClientsShareTheRunningCatalog(t *testing.T) {
 		require.Equal(t, verb, reply.Data.Action)
 		require.Equal(t, want, reply.Data.Status)
 	}
+	var legacyList []plugin.PluginInfo
+	require.NoError(t, json.Unmarshal(request(http.MethodGet, legacy+"list", "", http.StatusOK), &legacyList))
+	require.Empty(t, legacyList)
+	for _, path := range []string{"", "/health", "/manifest", "/routes", "/middlewares", "/events"} {
+		var reply struct{ Code int }
+		require.NoError(t, json.Unmarshal(request(http.MethodGet, installed+path, "", http.StatusOK), &reply))
+		require.Equal(t, http.StatusServiceUnavailable, reply.Code, path)
+	}
+	for _, verb := range []string{"enable", "reload", "disable"} {
+		request(http.MethodPost, legacy+verb, "name="+name, http.StatusServiceUnavailable)
+	}
+	service.PluginMgr = mgr
+	var restored plugin.PluginInfo
+	require.NoError(t, json.Unmarshal(request(http.MethodGet, legacy+"detail?name="+name, "", http.StatusOK), &restored))
+	require.Equal(t, name, restored.Name)
+	require.Equal(t, plugin.StatusRunning, restored.Status)
 	readState(plugin.StatusRunning)
 	request(http.MethodPost, legacy+"disable", "name="+name, http.StatusOK)
 	readState(plugin.StatusUnloaded)
@@ -118,6 +135,40 @@ func TestPluginManagementClientsShareTheRunningCatalog(t *testing.T) {
 	request(http.MethodPost, legacy+"enable", "name="+name, http.StatusOK)
 	action("restart", plugin.StatusRunning)
 	readState(plugin.StatusRunning)
+}
+
+func TestSignedInDeviceCanSubmitAnEncryptedPluginReport(t *testing.T) {
+	ctx := t.Context()
+	service, memberID, _ := newPluginHTTPService(t, false)
+	service.Config.Device.Enable = true
+	service.Config.Device.SecuritySecret = "report-test-secret"
+	token, err := usersession.Issue(ctx, service.Redis, service.Config.JwtAuth.AccessSecret, 300, memberID, "", "device", "", "test-phone")
+	require.NoError(t, err)
+	mgr, lastRequest := plugin.StartDispatchTestGuest(t, &pluginv1.MiddlewareResponse{Action: "next"})
+	require.NoError(t, mgr.RegisterRoute(plugin.RouteRegistration{PluginName: "lifecycle-guest", Method: http.MethodPost, Path: "/mobile-report", Handler: "handle", Middleware: []string{"auth", "device"}}))
+	router := hertzx.New()
+	handler.RegisterPluginHandlers(router, service, mgr)
+	const report = `{"period":"daily","usage":125}`
+	ciphertext, nonce, err := pkgaes.Encrypt([]byte(report), service.Config.Device.SecuritySecret)
+	require.NoError(t, err)
+	envelope, err := json.Marshal(map[string]string{"data": ciphertext, "time": nonce})
+	require.NoError(t, err)
+	region, iv, err := pkgaes.Encrypt([]byte(`{"region":"west"}`), service.Config.Device.SecuritySecret)
+	require.NoError(t, err)
+	path := "/v1/plugin/lifecycle-guest/mobile-report?" + url.Values{"data": {region}, "time": {iv}}.Encode()
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(string(envelope)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", token)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	require.Equal(t, http.StatusAccepted, rr.Code, rr.Body.String())
+	require.Equal(t, "report accepted", rr.Body.String())
+	received := lastRequest()
+	require.NotNil(t, received)
+	require.JSONEq(t, report, string(received.Body))
+	require.Equal(t, []string{"west"}, received.Query["region"].GetValues())
+	require.NotContains(t, received.Query, "time")
+	require.Equal(t, memberID, received.GetContext().GetUserId())
 }
 
 func TestPluginHTTPDispatch(t *testing.T) {

@@ -1,8 +1,52 @@
 package plugin
 
 import (
+	"context"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	pluginv1 "github.com/perfect-panel/server/api/plugin/v1"
+	"github.com/stretchr/testify/require"
 )
+
+func TestPluginReportUploadRequiresACompleteRemoteResponse(t *testing.T) {
+	const endpoint = "http://192.0.2.10:8080/report"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil || r.Method != http.MethodPost || r.URL.Path != "/report" || string(body) != "monthly report" || r.Header.Get("X-Report") != "April" {
+			http.Error(w, "invalid report", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("X-Receipt", "42")
+		w.Header().Set("Content-Length", "8")
+		w.WriteHeader(http.StatusAccepted)
+		if r.Header.Get("X-Delivery") == "first" {
+			_, _ = io.WriteString(w, "acc")
+			return
+		}
+		_, _ = io.WriteString(w, "accepted")
+	}))
+	t.Cleanup(upstream.Close)
+	dial := func(ctx context.Context, network, address string) (net.Conn, error) {
+		if address != "192.0.2.10:8080" {
+			return nil, &net.AddrError{Err: "unexpected report destination", Addr: address}
+		}
+		return (&net.Dialer{}).DialContext(ctx, network, upstream.Listener.Addr().String())
+	}
+	report := &pluginv1.HttpRequestRequest{Method: http.MethodPost, Url: endpoint, Headers: map[string]string{"X-Report": "April", "X-Delivery": "first"}, Body: []byte("monthly report")}
+	receipt, err := doHTTPWithDial(t.Context(), report, dial)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.Nil(t, receipt)
+	report.Headers["X-Delivery"] = "retry"
+	receipt, err = doHTTPWithDial(t.Context(), report, dial)
+	require.NoError(t, err)
+	require.EqualValues(t, http.StatusAccepted, receipt.Status)
+	require.Equal(t, "42", receipt.Headers["X-Receipt"])
+	require.Equal(t, []byte("accepted"), receipt.Body)
+}
 
 func TestIsSafeConfigKey(t *testing.T) {
 	tests := []struct {

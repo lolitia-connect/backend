@@ -7,6 +7,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNodeCatalogFiltersAndPreloadsPersistedServers(t *testing.T) {
@@ -98,6 +99,52 @@ func TestNodeUpdateRepairsDuplicateSortPositions(t *testing.T) {
 		if peer := client.Node.GetX(ctx, id); peer.Sort != wantSort || peer.Name != "original" || peer.Port != 443 {
 			t.Fatalf("reordered peer = %+v; want original fields and sort %d", peer, wantSort)
 		}
+	}
+}
+
+func TestFilteredNodeInvalidationRejectsStalePublicationsOnlyOnMatchingServers(t *testing.T) {
+	ctx := t.Context()
+	client := deletionClient(t)
+	cache := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr()})
+	t.Cleanup(func() { _ = cache.Close() })
+	model := NewModel(client, cache)
+	for _, n := range []struct {
+		server int64
+		tag    string
+	}{{1, "red"}, {1, "red,blue"}, {2, "red"}, {12, "infrared"}} {
+		client.Node.Create().SetServerID(n.server).SetTags(n.tag).SaveX(ctx)
+	}
+	keys := func(id int64) []string {
+		return []string{fmt.Sprintf("%s%d", ServerUserListCacheKey, id), fmt.Sprintf("%s%d:ss:443", ServerConfigCacheKey, id), fmt.Sprintf("%s%d:ss:443", ServerUserListCacheKey, id)}
+	}
+	for _, id := range []int64{1, 2, 12} {
+		for _, key := range keys(id) {
+			require.NoError(t, cache.Set(ctx, key, "before update", 0).Err())
+		}
+	}
+	filter := &FilterNodeParams{Tag: []string{"red"}, Page: 1, Size: 10}
+	require.NoError(t, model.ClearNodeCache(ctx, filter))
+	for _, id := range []int64{1, 2} {
+		version, err := ServerCacheGeneration(ctx, cache, id)
+		require.NoError(t, err)
+		require.Equal(t, "1", version)
+		for _, key := range keys(id) {
+			require.ErrorIs(t, cache.Get(ctx, key).Err(), redis.Nil)
+			ok, err := PublishServerCache(ctx, cache, id, key, []byte("stale"), "0")
+			require.NoError(t, err)
+			require.False(t, ok)
+			ok, err = PublishServerCache(ctx, cache, id, key, []byte("rebuilt"), version)
+			require.NoError(t, err)
+			require.True(t, ok)
+			body, _, err := ReadServerCache(ctx, cache, key, version)
+			require.NoError(t, err)
+			require.Equal(t, "rebuilt", string(body))
+		}
+	}
+	for _, key := range keys(12) {
+		body, _, err := ReadServerCache(ctx, cache, key, "0")
+		require.NoError(t, err)
+		require.Equal(t, "before update", string(body))
 	}
 }
 

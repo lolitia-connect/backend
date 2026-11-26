@@ -60,12 +60,11 @@ func TestInstalledPanelRestoresAdministratorAndSettingsOnRestart(t *testing.T) {
 			redisHost, redisPort, err := net.SplitHostPort(miniredis.RunT(t).Addr())
 			require.NoError(t, err)
 			const password = "installation-test-password"
-			body, err := json.Marshal(map[string]string{
+			form := map[string]string{
 				"adminEmail": "Installer@Example.test", "adminPassword": password,
 				"databaseDriver": backend.driver, "mysqlHost": host, "mysqlPort": port, "mysqlDatabase": name,
 				"mysqlUser": settings.Username, "mysqlPassword": settings.Password, "redisHost": redisHost, "redisPort": redisPort,
-			})
-			require.NoError(t, err)
+			}
 			installed, wizard, err := initialize.Config(path)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = wizard.Close() })
@@ -89,17 +88,47 @@ func TestInstalledPanelRestoresAdministratorAndSettingsOnRestart(t *testing.T) {
 				require.Equal(t, wantOK, *result.Status)
 				require.Equal(t, wantMessage, result.Message)
 			}
+			page, err := web.Get(origin + "/")
+			require.NoError(t, err)
+			html, err := io.ReadAll(page.Body)
+			_ = page.Body.Close()
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, page.StatusCode)
+			require.Equal(t, "text/html; charset=utf-8", page.Header.Get("Content-Type"))
+			require.Equal(t, "/init", page.Request.URL.Path)
+			require.Contains(t, string(html), `id="setupForm"`)
 			probeDatabase(settings.Password+"-incorrect", false, "Database connection failed")
 			probeDatabase(settings.Password, true, "")
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, origin+"/init/config", bytes.NewReader(body))
+			submit := func(body []byte, wantStatus int) string {
+				t.Helper()
+				response, err := web.Post(origin+"/init/config", "application/json", bytes.NewReader(body))
+				require.NoError(t, err)
+				defer response.Body.Close()
+				var result struct {
+					Message string `json:"msg"`
+				}
+				require.Equal(t, wantStatus, response.StatusCode)
+				require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+				return result.Message
+			}
+			require.Equal(t, "Invalid request", submit([]byte(`{"adminEmail":`), http.StatusBadRequest))
+			for _, invalid := range []struct{ field, value, reason string }{
+				{"adminEmail", "installer", "a valid administrator email"},
+				{"databaseDriver", "unknown", "unsupported database driver"},
+			} {
+				original := form[invalid.field]
+				form[invalid.field] = invalid.value
+				body, err := json.Marshal(form)
+				require.NoError(t, err)
+				require.Contains(t, submit(body, http.StatusBadRequest), invalid.reason)
+				form[invalid.field] = original
+			}
+			unchanged, err := os.ReadFile(path)
 			require.NoError(t, err)
-			req.Header.Set("Content-Type", "application/json")
-			response, err := web.Do(req)
+			require.Equal(t, "Port: 0\n", string(unchanged))
+			body, err := json.Marshal(form)
 			require.NoError(t, err)
-			reply, err := io.ReadAll(response.Body)
-			_ = response.Body.Close()
-			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, response.StatusCode, string(reply))
+			require.Equal(t, "Configuration initialized", submit(body, http.StatusOK))
 			select {
 			case ok := <-installed:
 				require.True(t, ok)

@@ -263,6 +263,50 @@ func TestNodeConfigAndUserRoutesNegotiateRepresentations(t *testing.T) {
 	}
 }
 
+func TestNodeSettingsRefetchAfterAnUnreadableOverride(t *testing.T) {
+	f := newNodeHTTPFixture(t)
+	ctx := t.Context()
+	db := f.service.Store.Ent()
+	target := fmt.Sprintf("/v2/server/%d?secret_key=%s&protocols=vless:edge", f.serverID, testNodeSecret)
+	initial := f.request(http.MethodGet, target, nil)
+	requireNodeResultCode(t, initial, false, http.StatusOK)
+	etag := string(initial.Header().Peek("ETag"))
+	require.NotEmpty(t, etag)
+	conditional := ut.Header{Key: "If-None-Match", Value: etag}
+	row := db.ServerConfigOverride.Create().SetServerID(f.serverID).SetDNS(`[{`).SaveX(ctx)
+	original := db.Server.GetX(ctx, f.serverID).Protocols
+	db.Server.UpdateOneID(f.serverID).SetProtocols(`[{`).ExecX(ctx)
+	checkUnavailable := func() {
+		t.Helper()
+		for _, binary := range []bool{false, true} {
+			headers := []ut.Header{conditional}
+			if binary {
+				headers = append(headers, ut.Header{Key: "Accept", Value: protobufContentType})
+			}
+			response := f.request(http.MethodGet, target, nil, headers...)
+			requireNodeResultCode(t, response, binary, xerr.ERROR)
+			require.Empty(t, response.Header().Peek("ETag"))
+		}
+	}
+	checkUnavailable()
+	db.Server.UpdateOneID(f.serverID).SetNillableProtocols(original).ExecX(ctx)
+	checkUnavailable()
+	db.ServerConfigOverride.UpdateOneID(row.ID).SetDNS(`[{"proto":"udp","address":"192.0.2.53"}]`).ExecX(ctx)
+	recovered := f.request(http.MethodGet, target, nil, conditional)
+	requireNodeResultCode(t, recovered, false, http.StatusOK)
+	var result struct {
+		Data types.QueryServerConfigResponse
+	}
+	require.NoError(t, json.Unmarshal(recovered.Body.Bytes(), &result))
+	require.Len(t, result.Data.DNS, 1)
+	require.Equal(t, "192.0.2.53", result.Data.DNS[0].Address)
+	require.Len(t, result.Data.Protocols, 1)
+	require.Equal(t, "edge", result.Data.Protocols[0].Id)
+	updated := string(recovered.Header().Peek("ETag"))
+	require.NotEqual(t, etag, updated)
+	require.Equal(t, http.StatusNotModified, f.request(http.MethodGet, target, nil, ut.Header{Key: "If-None-Match", Value: updated}).Code)
+}
+
 func TestFlatNodeConfigRouteRequiresSecretAndSupportsInstanceSelectors(t *testing.T) {
 	f := newNodeHTTPFixture(t)
 	protoAccept := ut.Header{Key: "Accept", Value: protobufContentType}

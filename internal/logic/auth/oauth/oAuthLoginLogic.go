@@ -169,5 +169,5 @@ func (l *OAuthLoginLogic) telegram(req *types.OAthLoginRequest) (string, error) 
 		l.Logger.Errorw("error save state code to redis", zap.Any("code", code), zap.Any("error", err.Error()))
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "error save state code to redis")
 	}
-	return telegram.GenerateTelegramOAuthURL(cfg.BotToken, code, req.Redirect), nil
+	return telegram.BuildTelegramOAuthURL(cfg.BotToken, code, req.Redirect)
 }

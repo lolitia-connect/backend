@@ -41,7 +41,7 @@ func TestAlipayF2FRechargeSettlesAgainstTheCashierReceipt(t *testing.T) {
 		"public_key":  base64.StdEncoding.EncodeToString(publicDER),
 	})
 	require.NoError(t, err)
-	for _, scenario := range []string{"notification", "cancel unpaid QR", "payment during cancellation"} {
+	for _, scenario := range []string{"notification", "cancel unpaid QR", "payment during cancellation", "delayed cashier receipt"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newRouteFixture(t)
 			ctx := t.Context()
@@ -88,7 +88,11 @@ func TestAlipayF2FRechargeSettlesAgainstTheCashierReceipt(t *testing.T) {
 					require.Equal(t, "https://shop.example.test"+callback, r.Form.Get("notify_url"))
 					response["qr_code"] = qr
 				case "alipay.trade.query":
-					response["trade_no"], response["total_amount"], response["trade_status"] = "cashier-57", "6.65", state
+					if scenario == "delayed cashier receipt" && state == "WAIT_BUYER_PAY" {
+						response["code"], response["sub_code"] = "40004", "ACQ.SYSTEM_ERROR"
+					} else {
+						response["trade_no"], response["total_amount"], response["trade_status"] = "cashier-57", "6.65", state
+					}
 				case "alipay.trade.close":
 					if scenario == "payment during cancellation" {
 						state = "TRADE_SUCCESS"
@@ -108,7 +112,7 @@ func TestAlipayF2FRechargeSettlesAgainstTheCashierReceipt(t *testing.T) {
 			invoice := f.client.Order.Query().OnlyX(ctx)
 			require.Equal(t, "CNY", invoice.PaymentCurrency)
 			require.EqualValues(t, 665, invoice.PaymentAmount)
-			notify := func(status string) {
+			notify := func(status string) string {
 				t.Helper()
 				form := url.Values{"out_trade_no": {created.OrderNo}, "trade_no": {"cashier-57"}, "trade_status": {status}, "total_amount": {"6.65"}}
 				form.Set("sign", sign(form.Encode()))
@@ -118,13 +122,36 @@ func TestAlipayF2FRechargeSettlesAgainstTheCashierReceipt(t *testing.T) {
 				rec := httptest.NewRecorder()
 				f.router.ServeHTTP(rec, req)
 				require.Equal(t, http.StatusOK, rec.Code)
-				require.Equal(t, "success", rec.Body.String())
+				return rec.Body.String()
 			}
 			wantOps := []string{"alipay.trade.precreate"}
 			if scenario == "notification" {
-				notify("WAIT_BUYER_PAY")
+				require.Equal(t, "success", notify("WAIT_BUYER_PAY"))
 				require.Equal(t, order.StatusPending, f.client.Order.GetX(ctx, invoice.ID).Status)
-				notify("TRADE_SUCCESS")
+				require.NoError(t, f.service.Queue.Close())
+				var failure struct {
+					Code uint32 `json:"code"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(notify("TRADE_SUCCESS")), &failure))
+				require.EqualValues(t, xerr.ERROR, failure.Code)
+				require.Equal(t, order.StatusPaid, f.client.Order.GetX(ctx, invoice.ID).Status)
+				require.EqualValues(t, 120, f.client.UserWallet.GetX(ctx, wallet.ID).Balance)
+				pending, err := inspector.ListPendingTasks("default")
+				require.NoError(t, err)
+				require.Empty(t, pending)
+				f.startQueue()
+				require.Equal(t, "success", notify("TRADE_SUCCESS"))
+			} else if scenario == "delayed cashier receipt" {
+				const closePath = "/v1/public/order/close"
+				f.request(http.MethodPost, closePath, session, pay, xerr.ERROR)
+				require.Equal(t, order.StatusPending, f.client.Order.GetX(ctx, invoice.ID).Status)
+				require.Equal(t, wallet.Balance, f.client.UserWallet.GetX(ctx, wallet.ID).Balance)
+				pending, err := inspector.ListPendingTasks("default")
+				require.NoError(t, err)
+				require.Empty(t, pending)
+				state = "TRADE_SUCCESS"
+				f.request(http.MethodPost, closePath, session, pay, http.StatusOK)
+				wantOps = append(wantOps, "alipay.trade.query", "alipay.trade.query")
 			} else {
 				f.request(http.MethodPost, "/v1/public/order/close", session, pay, http.StatusOK)
 				wantOps = append(wantOps, "alipay.trade.query", "alipay.trade.close")
@@ -145,7 +172,7 @@ func TestAlipayF2FRechargeSettlesAgainstTheCashierReceipt(t *testing.T) {
 			require.Len(t, jobs, 1)
 			require.Equal(t, queue.ForthwithActivateOrder, jobs[0].Type)
 			require.NoError(t, worker.NewActivateOrderLogic(f.service).ProcessTask(ctx, asynq.NewTask(jobs[0].Type, jobs[0].Payload)))
-			notify("TRADE_SUCCESS")
+			require.Equal(t, "success", notify("TRADE_SUCCESS"))
 			require.Equal(t, order.StatusFinished, f.client.Order.GetX(ctx, invoice.ID).Status)
 			require.EqualValues(t, 770, f.client.UserWallet.GetX(ctx, wallet.ID).Balance)
 		})

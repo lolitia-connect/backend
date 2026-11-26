@@ -2,6 +2,7 @@ package exchangeRate
 
 import (
 	"errors"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -30,7 +31,7 @@ type Response struct {
 }
 
 func GetExchangeRete(form, to, access string, amount float64) (float64, error) {
-	client := resty.New().SetBaseURL(Url).SetRetryCount(3).SetTimeout(5 * time.Second)
+	client := resty.NewWithClient(&http.Client{Transport: http.DefaultTransport}).SetBaseURL(Url).SetRetryCount(3).SetTimeout(5 * time.Second)
 	return convert(client, form, to, access, amount)
 }
 

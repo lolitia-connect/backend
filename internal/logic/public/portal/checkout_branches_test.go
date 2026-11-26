@@ -69,17 +69,48 @@ func TestPurchaseCheckoutRejectsInvalidGatewayConfigurations(t *testing.T) {
 	}
 }
 
+func TestOverlappingCheckoutsUseTheFirstCommittedQuote(t *testing.T) {
+	service := newCheckoutBranchService(t)
+	ctx := t.Context()
+	invoice := service.Ent.Order.Create().SetOrderNo("shared-quote").SetMethod("EPay").
+		SetStatus(order.StatusPending).SetAmount(1250).SaveX(ctx)
+	initial, err := service.Store.Order().FindOneByOrderNo(ctx, invoice.OrderNo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, changedCurrency := *initial, *initial
+	logic := NewPurchaseCheckoutLogic(ctx, service)
+	channel := &payment.Payment{CurrencyUnit: "CNY", ExchangeRate: 6.4}
+	if amount, err := logic.paymentAmount(channel, initial, "cny"); err != nil || amount != 8000 {
+		t.Fatalf("first cashier quote = %d, %v", amount, err)
+	}
+	channel.ExchangeRate = 7.2
+	if amount, err := logic.paymentAmount(channel, &second, "CNY"); err != nil || amount != 8000 || second.PaymentAmount != 8000 {
+		t.Fatalf("overlapping checkout after rate refresh = %d, %v", amount, err)
+	}
+	channel.CurrencyUnit = "EUR"
+	for _, copy := range []*order.Order{&changedCurrency, &second} {
+		if _, err := logic.paymentAmount(channel, copy, "EUR"); err == nil {
+			t.Fatal("checkout accepted a different settlement currency for the same invoice")
+		}
+	}
+	stored := service.Ent.Order.GetX(ctx, invoice.ID)
+	if stored.PaymentAmount != 8000 || stored.PaymentCurrency != "CNY" || stored.Amount != 1250 || stored.Status != order.StatusPending {
+		t.Fatalf("stored amount/currency after overlapping checkout = %d %s, invoice %d, status %d", stored.PaymentAmount, stored.PaymentCurrency, stored.Amount, stored.Status)
+	}
+}
+
 func TestPurchaseCheckoutExchangeRateSelection(t *testing.T) {
 	service := newCheckoutBranchService(t)
 	logic := NewPurchaseCheckoutLogic(t.Context(), service)
 	if amount, err := logic.queryExchangeRate("USD", 1250); err != nil || amount != 12.5 {
 		t.Fatalf("same-currency conversion = %v, %v", amount, err)
 	}
-	service.ExchangeRate = 7.2
+	service.SetCNYRate("USD", 7.2)
 	if amount, err := logic.queryExchangeRate("CNY", 1250); err != nil || amount != 90 {
 		t.Fatalf("configured conversion = %v, %v", amount, err)
 	}
-	service.ExchangeRate = 0
+	service.ClearCNYRates()
 	if amount, err := logic.queryExchangeRate("EUR", 1250); err != nil || amount != 12.5 {
 		t.Fatalf("no-key conversion fallback = %v, %v", amount, err)
 	}

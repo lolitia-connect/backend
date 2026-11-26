@@ -62,6 +62,66 @@ func TestDailyLogRotationCompressesPreviousFileAndRemovesOldBackup(t *testing.T)
 	}
 }
 
+func TestSizeRotationRetainsTheLatestCompressedBackups(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, accessFilename)
+	other := filepath.Join(dir, "access-worker.log.gz")
+	if err := os.WriteFile(other, []byte("worker diagnostics"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := normalize(LogConf{MaxSize: 1, MaxBackup: 2, Compress: true})
+	// A coarse timestamp is valid configuration. Several rotations can share it.
+	cfg.FileTimeFormat = "2006-01-02"
+	writer, err := newRotateWriter(path, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+	for _, marker := range []string{"a", "b", "c", "d", "e", "f"} {
+		if _, err := io.WriteString(writer, strings.Repeat(marker, megabyte-1)+"\n"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	untouched, err := os.ReadFile(other)
+	if err != nil || string(untouched) != "worker diagnostics" {
+		t.Fatalf("rotation changed the adjacent service log: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "access-2*.gz"))
+	if err != nil || len(matches) != 2 {
+		t.Fatalf("retained %d compressed backups, want 2: %v", len(matches), err)
+	}
+	var archived []string
+	for _, name := range matches {
+		file, err := os.Open(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		gz, err := gzip.NewReader(file)
+		if err != nil {
+			_ = file.Close()
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(gz)
+		_ = gz.Close()
+		_ = file.Close()
+		if err != nil || len(data) != megabyte {
+			t.Fatalf("incomplete backup of %d bytes: %v", len(data), err)
+		}
+		archived = append(archived, string(data[:1]))
+	}
+	slices.Sort(archived)
+	if !slices.Equal(archived, []string{"d", "e"}) {
+		t.Fatalf("retained records %v, want d and e", archived)
+	}
+	active, err := os.ReadFile(path)
+	if err != nil || string(active) != strings.Repeat("f", megabyte-1)+"\n" {
+		t.Fatalf("latest log lost after rotation: %v", err)
+	}
+}
+
 func TestReadLastNLinesAcrossReadBoundary(t *testing.T) {
 	dir := t.TempDir()
 	last := strings.Repeat("z", 5000)

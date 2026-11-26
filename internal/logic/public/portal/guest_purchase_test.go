@@ -1,12 +1,15 @@
 package portal
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/hibiken/asynq"
+	"github.com/perfect-panel/server/ent"
 	entorder "github.com/perfect-panel/server/ent/order"
 	"github.com/perfect-panel/server/internal/model/log"
 	"github.com/perfect-panel/server/internal/model/order"
@@ -15,7 +18,67 @@ import (
 	"github.com/perfect-panel/server/pkg/tool"
 	"github.com/perfect-panel/server/pkg/xerr"
 	queue "github.com/perfect-panel/server/queue/types"
+	"github.com/stretchr/testify/require"
 )
+
+func TestGuestPurchaseCanRetryAfterAReservationWriteFails(t *testing.T) {
+	service, db := newCatalogFixture(t)
+	ctx := t.Context()
+	queueOptions := asynq.RedisClientOpt{Addr: miniredis.RunT(t).Addr()}
+	service.Queue = asynq.NewClient(queueOptions)
+	inspector := asynq.NewInspector(queueOptions)
+	t.Cleanup(func() { _ = service.Queue.Close(); _ = inspector.Close() })
+	plan := db.Subscribe.Create().SetName("Final seat").SetSell(true).SetInventory(1).SetUnitPrice(750).SaveX(ctx)
+	voucher := db.Coupon.Create().SetCode("GUEST").SetType(2).SetDiscount(125).SetCount(1).SetUserLimit(1).
+		SetExpireTime(time.Now().Add(time.Hour).UnixMilli()).SaveX(ctx)
+	method := db.Payment.Create().SetPlatform("Stripe").SetEnable(true).SetConfig(`{}`).SaveX(ctx)
+	req := &types.PortalPurchaseRequest{AuthType: "email", Identifier: "visitor@example.test", Password: "guest-purchase-fixture",
+		SubscribeId: plan.ID, Quantity: 1, Payment: method.ID, Coupon: voucher.Code}
+	var unavailable string
+	db.Use(func(next ent.Mutator) ent.Mutator {
+		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+			if m.Type() == unavailable {
+				return nil, errors.New("checkout storage unavailable")
+			}
+			return next.Mutate(ctx, m)
+		})
+	})
+	checkout := NewPurchaseLogic(ctx, service)
+	for _, unavailable = range []string{ent.TypeSubscribe, ent.TypeCoupon, ent.TypeOrder, ent.TypeOrderEvent, ent.TypeSystemLog} {
+		result, err := checkout.Purchase(req)
+		require.Error(t, err, unavailable)
+		require.Nil(t, result)
+		require.EqualValues(t, 1, db.Subscribe.GetX(ctx, plan.ID).Inventory)
+		require.Zero(t, db.Coupon.GetX(ctx, voucher.ID).UsedCount)
+		require.Zero(t, db.Order.Query().CountX(ctx))
+		require.Zero(t, db.OrderEvent.Query().CountX(ctx))
+		require.Zero(t, db.SystemLog.Query().CountX(ctx))
+		queues, err := inspector.Queues()
+		require.NoError(t, err)
+		require.Empty(t, queues)
+	}
+	unavailable = ""
+	created, err := checkout.Purchase(req)
+	require.NoError(t, err)
+	invoice := db.Order.Query().OnlyX(ctx)
+	require.Equal(t, created.OrderNo, invoice.OrderNo)
+	require.EqualValues(t, 625, invoice.Amount)
+	require.NotNil(t, invoice.Coupon)
+	require.Equal(t, voucher.Code, *invoice.Coupon)
+	require.True(t, invoice.CouponReserved)
+	require.Zero(t, db.Subscribe.GetX(ctx, plan.ID).Inventory)
+	require.EqualValues(t, 1, db.Coupon.GetX(ctx, voucher.ID).UsedCount)
+	require.Equal(t, created.OrderNo, db.OrderEvent.Query().OnlyX(ctx).OrderNo)
+	var receipt log.OrderCreated
+	require.NoError(t, receipt.Unmarshal([]byte(db.SystemLog.Query().OnlyX(ctx).Content)))
+	require.Equal(t, created.OrderNo, receipt.OrderNo)
+	tasks, err := inspector.ListScheduledTasks("default")
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	var expiration queue.DeferCloseOrderPayload
+	require.NoError(t, json.Unmarshal(tasks[0].Payload, &expiration))
+	require.Equal(t, created.OrderNo, expiration.OrderNo)
+}
 
 func TestGuestPurchaseReservesInventoryAndSchedulesOrderClose(t *testing.T) {
 	service, db := newCatalogFixture(t)

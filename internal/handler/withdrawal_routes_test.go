@@ -20,11 +20,22 @@ func TestCommissionWithdrawalAndReviewRollBackOnStorageFailure(t *testing.T) {
 	member, customer := f.account(false)
 	_, reviewer := f.account(true)
 	wallet := f.client.UserWallet.Create().SetUserID(member.ID).SetBalance(40).SetCommission(750).SaveX(ctx)
-	var failWithdrawal, failReview bool
-	f.client.UserWithdrawal.Use(func(next ent.Mutator) ent.Mutator {
+	var unavailableRead, readOnly string
+	outage := errors.New("payout storage temporarily unavailable")
+	for entity, intercept := range map[string]func(...ent.Interceptor){ent.TypeUserWallet: f.client.UserWallet.Intercept, ent.TypeUserWithdrawal: f.client.UserWithdrawal.Intercept} {
+		intercept(ent.InterceptFunc(func(next ent.Querier) ent.Querier {
+			return ent.QuerierFunc(func(ctx context.Context, q ent.Query) (ent.Value, error) {
+				if entity == unavailableRead {
+					return nil, outage
+				}
+				return next.Query(ctx, q)
+			})
+		}))
+	}
+	f.client.Use(func(next ent.Mutator) ent.Mutator {
 		return ent.MutateFunc(func(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-			if failWithdrawal && m.Op().Is(ent.OpCreate) || failReview && m.Op().Is(ent.OpUpdate|ent.OpUpdateOne) {
-				return nil, errors.New("payout storage temporarily unavailable")
+			if readOnly == m.Type() {
+				return nil, outage
 			}
 			return next.Mutate(ctx, m)
 		})
@@ -50,12 +61,17 @@ func TestCommissionWithdrawalAndReviewRollBackOnStorageFailure(t *testing.T) {
 		require.Equal(t, commission, got.Commission)
 		require.EqualValues(t, 40, got.Balance)
 	}
-	failWithdrawal = true
-	withdraw(xerr.DatabaseInsertError)
-	checkWallet(750)
-	require.Empty(t, ledger())
-	require.Zero(t, f.client.UserWithdrawal.Query().CountX(ctx))
-	failWithdrawal = false
+	for _, failure := range []struct {
+		read, write string
+		code        uint32
+	}{{ent.TypeUserWallet, "", xerr.DatabaseQueryError}, {"", ent.TypeUserWallet, xerr.DatabaseUpdateError}, {"", ent.TypeSystemLog, xerr.DatabaseInsertError}, {"", ent.TypeUserWithdrawal, xerr.DatabaseInsertError}} {
+		unavailableRead, readOnly = failure.read, failure.write
+		withdraw(failure.code)
+		unavailableRead, readOnly = "", ""
+		checkWallet(750)
+		require.Empty(t, ledger())
+		require.Zero(t, f.client.UserWithdrawal.Query().CountX(ctx))
+	}
 	withdraw(http.StatusOK)
 	withdraw(xerr.UserCommissionNotEnough)
 	checkWallet(250)
@@ -70,12 +86,23 @@ func TestCommissionWithdrawalAndReviewRollBackOnStorageFailure(t *testing.T) {
 		t.Helper()
 		f.request(http.MethodPut, "/v1/admin/withdrawal/status", reviewer, fmt.Sprintf(`{"id":"%d","status":2,"reason":"  Destination unavailable  "}`, id), want)
 	}
-	failReview = true
-	review(xerr.DatabaseUpdateError)
-	checkWallet(250)
-	require.Equal(t, []int64{-500}, ledger())
-	require.EqualValues(t, types.WithdrawalStatusPending, f.client.UserWithdrawal.GetX(ctx, id).Status)
-	failReview = false
+	for _, failure := range []struct {
+		read, write string
+		code        uint32
+	}{
+		{ent.TypeUserWithdrawal, "", xerr.DatabaseQueryError},
+		{ent.TypeUserWallet, "", xerr.DatabaseQueryError},
+		{"", ent.TypeUserWallet, xerr.DatabaseUpdateError},
+		{"", ent.TypeSystemLog, xerr.DatabaseInsertError},
+		{"", ent.TypeUserWithdrawal, xerr.DatabaseUpdateError},
+	} {
+		unavailableRead, readOnly = failure.read, failure.write
+		review(failure.code)
+		unavailableRead, readOnly = "", ""
+		checkWallet(250)
+		require.Equal(t, []int64{-500}, ledger())
+		require.EqualValues(t, types.WithdrawalStatusPending, f.client.UserWithdrawal.GetX(ctx, id).Status)
+	}
 	review(http.StatusOK)
 	review(xerr.WithdrawalAlreadyReviewed)
 	checkWallet(750)
